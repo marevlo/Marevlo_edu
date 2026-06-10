@@ -1,0 +1,569 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Inclusion-Exclusion - Visualization</title>
+    <style>
+        :root {
+            --bg-page: #070b14;
+            --bg-surface: rgba(255, 255, 255, 0.045);
+            --bg-input: rgba(255, 255, 255, 0.04);
+            --border-main: rgba(255, 255, 255, 0.10);
+            --btn-bg: rgba(255, 255, 255, 0.05);
+            --btn-hover: rgba(255, 255, 255, 0.10);
+            --text-main: #e8eefb;
+            --text-dim: #8b98b3;
+            --accent-orange: #f5a524;   /* running total / answer         */
+            --accent-blue:   #06b6d4;   /* divisors / chrome              */
+            --accent-green:  #22c55e;   /* added (+) terms                */
+            --accent-red:    #f43f5e;   /* subtracted (-) terms           */
+            --accent-purple: #a855f7;   /* active subset being evaluated  */
+            --mono: ui-monospace, 'SF Mono', 'Cascadia Code', 'Courier New', monospace;
+            --sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+            --shell: 900px;
+        }
+
+        * { box-sizing: border-box; }
+        html, body { overflow-x: hidden; }
+        body {
+            background:
+                radial-gradient(1100px 600px at 15% -10%, rgba(168, 85, 247, 0.10), transparent 60%),
+                radial-gradient(900px 600px at 100% 10%, rgba(6, 182, 212, 0.10), transparent 55%),
+                linear-gradient(160deg, #070b14 0%, #0b1120 55%, #0a0f1c 100%);
+            background-attachment: fixed;
+            color: var(--text-main); font-family: var(--sans); margin: 0;
+            display: flex; flex-direction: column; align-items: center; min-height: 100vh;
+            padding-bottom: 48px; -webkit-font-smoothing: antialiased;
+        }
+        body::before, body::after { content: ''; position: fixed; border-radius: 50%; filter: blur(70px); pointer-events: none; z-index: 0; opacity: 0.45; }
+        body::before { width: 380px; height: 380px; top: 8%; left: -120px; background: radial-gradient(circle, rgba(168,85,247,0.30), transparent 70%); }
+        body::after  { width: 420px; height: 420px; bottom: 4%; right: -140px; background: radial-gradient(circle, rgba(6,182,212,0.22), transparent 70%); }
+        body > * { position: relative; z-index: 1; }
+
+        .input-bar {
+            width: 100%; background: rgba(10, 15, 28, 0.55);
+            backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+            padding: 14px 16px; display: flex; justify-content: center; align-items: center; gap: 10px;
+            border-bottom: 1px solid var(--border-main); flex-wrap: wrap; position: sticky; top: 0; z-index: 50;
+        }
+        label.ui-label, .ui-label { font-family: var(--mono); font-size: 13px; color: var(--text-dim); letter-spacing: 0.2px; }
+        input[type="text"], input[type="number"] {
+            background: var(--bg-input); border: 1px solid var(--border-main); color: var(--text-main);
+            height: 34px; border-radius: 9px; padding: 0 12px; font-size: 13px; font-family: var(--mono); width: 72px;
+            transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+        }
+        input#divisors-input { width: 120px; }
+        input[type="text"]:focus, input[type="number"]:focus { outline: none; border-color: var(--accent-purple); box-shadow: 0 0 0 3px rgba(168, 85, 247, 0.18); background: rgba(168, 85, 247, 0.06); }
+
+        button {
+            height: 34px; border-radius: 9px; padding: 0 14px; background: var(--btn-bg);
+            border: 1px solid var(--border-main); color: var(--text-main); font-size: 13px; font-weight: 600; cursor: pointer;
+            transition: transform 0.15s ease, background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+        }
+        button:hover { background: var(--btn-hover); border-color: rgba(6, 182, 212, 0.5); box-shadow: 0 0 18px rgba(6, 182, 212, 0.18); transform: translateY(-1px); }
+        button:active { transform: translateY(0); }
+        #play-btn { background: linear-gradient(135deg, rgba(6,182,212,0.22), rgba(6,182,212,0.10)); border-color: rgba(6, 182, 212, 0.45); color: #a5f3fc; min-width: 80px; }
+
+        .shell { width: var(--shell); max-width: 95%; margin: 24px auto 0; display: flex; flex-direction: column; gap: 16px; }
+
+        .title-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+        .title-row h1 { font-size: 18px; font-weight: 800; margin: 0; letter-spacing: 0.2px; }
+        .title-row .sub { color: var(--text-dim); font-weight: 500; font-size: 13px; }
+        .step-badge { font-family: var(--mono); font-size: 12px; font-weight: 700; color: #a5f3fc; background: rgba(6,182,212,0.12); border: 1px solid rgba(6,182,212,0.3); padding: 4px 10px; border-radius: 999px; white-space: nowrap; }
+        .progress-track { height: 4px; width: 100%; background: rgba(255,255,255,0.07); border-radius: 999px; overflow: hidden; margin-top: -6px; }
+        .progress-fill { height: 100%; width: 0%; border-radius: 999px; background: linear-gradient(90deg, var(--accent-blue), var(--accent-purple)); box-shadow: 0 0 12px rgba(6,182,212,0.5); transition: width 0.45s cubic-bezier(0.34,1.1,0.64,1); }
+
+        .narration { background: var(--bg-surface); border: 1px solid rgba(6,182,212,0.22); border-radius: 12px; padding: 12px 18px; font-family: var(--mono); font-size: 14px; line-height: 1.5; color: #cfe9f5; min-height: 48px; display: flex; align-items: center; gap: 10px; transition: border-color 0.3s, background 0.3s; }
+        .narration::before { content: '\25B8'; color: var(--accent-blue); font-size: 13px; }
+        .narration.done { border-color: rgba(34,197,94,0.4); background: rgba(34,197,94,0.06); }
+        .narration.done::before { content: '\2713'; color: var(--accent-green); }
+        .narration code { background: rgba(6,182,212,0.14); color: #7dd3fc; padding: 1px 6px; border-radius: 5px; font-size: 12.5px; }
+        .narration b { color: #fff; }
+
+        .stage-card { background: var(--bg-surface); border: 1px solid var(--border-main); border-radius: 18px; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); box-shadow: 0 12px 38px rgba(0,0,0,0.4); overflow: hidden; }
+        .stage-screen { position: relative; margin: 14px; border-radius: 14px; background: radial-gradient(700px 300px at 50% -10%, rgba(6,182,212,0.08), transparent 70%), #090d18; border: 1px solid rgba(255,255,255,0.06); padding: 20px; }
+
+        /* divisors header strip */
+        .div-strip { display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; }
+        .div-strip .lab { font-family: var(--mono); font-size: 12px; color: var(--text-dim); }
+        .div-chip {
+            min-width: 38px; height: 38px; padding: 0 10px; display: inline-flex; align-items: center; justify-content: center;
+            border-radius: 10px; font-family: var(--mono); font-weight: 800; font-size: 16px; will-change: transform;
+            border: 2px solid var(--border-main); background: rgba(255,255,255,0.04); color: var(--text-main);
+            transition: background 0.35s, border-color 0.35s, color 0.35s, box-shadow 0.35s, transform 0.3s;
+        }
+        .div-chip.lit { border-color: var(--accent-purple); background: rgba(168,85,247,0.18); color: #e9d5ff; box-shadow: 0 0 18px rgba(168,85,247,0.5); transform: scale(1.08); }
+
+        /* subset-term cards laid out as accumulating grid */
+        .terms-grid { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; min-height: 96px; }
+        .term {
+            position: relative; min-width: 116px; padding: 10px 12px 8px; border-radius: 12px;
+            border: 2px solid var(--border-main); background: rgba(255,255,255,0.035);
+            display: flex; flex-direction: column; align-items: center; gap: 4px; will-change: transform;
+            transition: background 0.35s, border-color 0.35s, box-shadow 0.35s, opacity 0.35s, transform 0.3s;
+            opacity: 0.32;
+        }
+        .term.seen { opacity: 1; }
+        .term.current { border-color: var(--accent-purple); background: rgba(168,85,247,0.14); box-shadow: 0 0 22px rgba(168,85,247,0.5); transform: scale(1.05); z-index: 2; opacity: 1; }
+        .term.add.seen { border-color: var(--accent-green); background: rgba(34,197,94,0.10); }
+        .term.sub.seen { border-color: var(--accent-red); background: rgba(244,63,94,0.10); }
+        .term-set { font-family: var(--mono); font-size: 13px; font-weight: 800; color: #cbd5e8; letter-spacing: 0.3px; }
+        .term-lcm { font-family: var(--mono); font-size: 11px; color: var(--text-dim); }
+        .term-val { font-family: var(--mono); font-size: 19px; font-weight: 800; line-height: 1; }
+        .term.add .term-val { color: var(--accent-green); }
+        .term.sub .term-val { color: var(--accent-red); }
+        .term-sign { position: absolute; top: -10px; left: -10px; width: 22px; height: 22px; border-radius: 50%;
+            display: flex; align-items: center; justify-content: center; font-family: var(--mono); font-weight: 800; font-size: 14px;
+            border: 2px solid var(--border-main); background: #0c1120; color: var(--text-dim); }
+        .term.add.seen .term-sign { border-color: var(--accent-green); color: var(--accent-green); }
+        .term.sub.seen .term-sign { border-color: var(--accent-red); color: var(--accent-red); }
+
+        /* running accumulator */
+        .accumulator { margin-top: 16px; display: flex; flex-direction: column; align-items: center; gap: 8px; min-height: 64px; }
+        .accum-expr { font-family: var(--mono); font-size: 15px; letter-spacing: 0.3px; text-align: center; color: #cfe9f5; line-height: 1.6; min-height: 22px; }
+        .accum-expr .plus { color: var(--accent-green); font-weight: 800; }
+        .accum-expr .minus { color: var(--accent-red); font-weight: 800; }
+        .accum-expr .t { color: var(--text-main); font-weight: 700; }
+        .accum-total { display: inline-flex; align-items: center; gap: 10px; font-family: var(--mono); }
+        .accum-total .eq { color: var(--text-dim); font-size: 16px; }
+        .accum-tile {
+            min-width: 54px; height: 50px; padding: 0 12px; display: inline-flex; align-items: center; justify-content: center;
+            border-radius: 11px; font-family: var(--mono); font-size: 24px; font-weight: 800; will-change: transform;
+            border: 2px solid var(--accent-orange); background: rgba(245,165,36,0.16); color: #ffd591; box-shadow: 0 0 14px rgba(245,165,36,0.4);
+            transition: background 0.35s, box-shadow 0.35s;
+        }
+        .accum-tile.done { border-color: var(--accent-green); background: rgba(34,197,94,0.18); color: #bbf7d0; box-shadow: 0 0 18px rgba(34,197,94,0.5); }
+
+        .action-stage { position: relative; min-height: 36px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; }
+        .action-word { font-family: var(--mono); font-weight: 800; font-size: 18px; letter-spacing: 0.4px; min-height: 22px; text-align: center; transition: color 0.3s; }
+        #confetti { position: absolute; inset: 0; overflow: visible; pointer-events: none; }
+        .confetti-piece { position: absolute; top: 0; left: 50%; width: 8px; height: 13px; border-radius: 2px; opacity: 0; animation: confettiFall ease-out forwards; }
+
+        .controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: center; }
+        .controls .kbd-hint { font-size: 11px; color: var(--text-dim); font-family: var(--mono); margin-left: 4px; }
+        .kbd { background: rgba(255,255,255,0.07); border: 1px solid var(--border-main); border-radius: 5px; padding: 1px 6px; font-size: 10px; }
+        input[type="range"] { accent-color: var(--accent-blue); width: 110px; cursor: pointer; }
+
+        .details-toggle { align-self: center; height: 32px; padding: 0 16px; border-radius: 999px; cursor: pointer; background: rgba(255,255,255,0.04); border: 1px solid var(--border-main); color: var(--text-dim); font-family: var(--mono); font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; gap: 8px; transition: color 0.2s, border-color 0.2s, background 0.2s; }
+        .details-toggle:hover { color: var(--text-main); border-color: rgba(6,182,212,0.4); background: rgba(6,182,212,0.06); }
+        .details-toggle .chev { transition: transform 0.3s ease; }
+        .details-wrap.open .details-toggle .chev { transform: rotate(180deg); }
+        .details-body { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.4s ease; }
+        .details-wrap.open .details-body { grid-template-rows: 1fr; }
+        .details-inner { overflow: hidden; min-height: 0; }
+        .details-grid { display: flex; flex-direction: column; gap: 14px; padding-top: 14px; }
+
+        .panel-card { background: var(--bg-surface); border: 1px solid var(--border-main); border-radius: 16px; backdrop-filter: blur(10px); box-shadow: 0 8px 30px rgba(0,0,0,0.35); }
+        .panel-head { display: flex; align-items: center; gap: 8px; padding: 11px 16px; border-bottom: 1px solid var(--border-main); font-size: 11px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; color: var(--text-dim); }
+        .panel-head .pip { width: 7px; height: 7px; border-radius: 50%; background: var(--accent-blue); box-shadow: 0 0 8px var(--accent-blue); }
+        .code-body { padding: 12px 6px 14px; font-family: var(--mono); font-size: 12.5px; line-height: 1.7; }
+        .code-line { display: flex; gap: 12px; padding: 1px 16px; border-left: 2px solid transparent; transition: background 0.3s, border-color 0.3s; white-space: pre; }
+        .code-line .lno { color: #4b5772; width: 16px; text-align: right; user-select: none; }
+        .code-line .src { color: #c4cee0; }
+        .code-line .kw { color: #c792ea; }
+        .code-line .fn { color: #82aaff; }
+        .code-line.active { background: rgba(6,182,212,0.12); border-left-color: var(--accent-blue); }
+        .code-line.active .src, .code-line.active .lno { color: #e8eefb; }
+
+        .state-strip { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 0 2px; }
+        .pill { display: inline-flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 12px; color: var(--text-dim); background: rgba(255,255,255,0.04); border: 1px solid var(--border-main); border-radius: 999px; padding: 4px 11px; }
+        .pill b { color: var(--text-main); font-weight: 800; }
+        .pill.c b { color: var(--accent-purple); } .pill.b b { color: var(--accent-orange); } .pill.g b { color: var(--accent-green); } .pill.r b { color: var(--accent-red); }
+
+        .log-panel { border-radius: 14px; padding: 12px 16px; height: 110px; overflow-y: auto; font-family: var(--mono); font-size: 12.5px; line-height: 1.5; background: var(--bg-surface); border: 1px solid var(--border-main); }
+        .log-panel::-webkit-scrollbar { width: 8px; }
+        .log-panel::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 8px; }
+
+        @keyframes confettiFall { 0%{ opacity:1; transform: translate(-50%, 0) rotate(0deg); } 100%{ opacity:0; transform: translate(calc(-50% + var(--x)), 220px) rotate(var(--rot)); } }
+        @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; } }
+    </style>
+</head>
+<body>
+
+    <div class="input-bar">
+        <label class="ui-label">a =</label>
+        <input type="number" id="a-input" value="1">
+        <label class="ui-label">b =</label>
+        <input type="number" id="b-input" value="10">
+        <label class="ui-label">primes =</label>
+        <input type="text" id="divisors-input" value="2,3">
+        <button onclick="loadCustom()">Load</button>
+        <span class="ui-label" style="opacity:.5">|</span>
+        <button onclick="loadExample(1,10,'2,3')">Ex 1 &middot; [1,10] {2,3}</button>
+        <button onclick="loadExample(10,20,'5')">Ex 2 &middot; [10,20] {5}</button>
+    </div>
+
+    <div class="shell">
+        <div class="title-row">
+            <h1>Inclusion&ndash;Exclusion <span class="sub">&middot; count k&isin;[a,b] divisible by &ge;1 prime &middot; &sum;<sub>S</sub> (&minus;1)<sup>|S|+1</sup> &fnof;(b,L)&minus;&fnof;(a&minus;1,L)</span></h1>
+            <span class="step-badge" id="step-badge">Step 1 / 1</span>
+        </div>
+        <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+
+        <div class="narration" id="main-panel">&mdash;</div>
+
+        <div class="stage-card">
+            <div class="stage-screen">
+                <div class="div-strip" id="div-strip"></div>
+                <div class="terms-grid" id="terms-grid"></div>
+                <div class="accumulator">
+                    <div class="accum-expr" id="accum-expr"></div>
+                    <div class="accum-total"><span class="eq">=</span><div class="accum-tile" id="accum-tile">0</div></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="action-stage">
+            <div id="confetti"></div>
+            <div class="action-word" id="action-word"></div>
+        </div>
+
+        <div class="controls">
+            <button onclick="resetSim()">&#8634; Reset</button>
+            <button onclick="prevStep()">&#8592; Back</button>
+            <button onclick="togglePlay()" id="play-btn">Play</button>
+            <button onclick="nextStep()">Next &#8594;</button>
+            <span class="ui-label" style="margin-left:6px; font-size:11px">Speed</span>
+            <input type="range" id="speed" min="0" max="2" value="1">
+            <span class="kbd-hint"><span class="kbd">&#8592;</span> <span class="kbd">&#8594;</span> step &middot; <span class="kbd">space</span> play</span>
+        </div>
+
+        <div class="details-wrap" id="details-wrap">
+            <button class="details-toggle" onclick="toggleDetails()" aria-expanded="false">
+                <span id="details-label">Show code, state &amp; log</span> <span class="chev">&#9662;</span>
+            </button>
+            <div class="details-body">
+                <div class="details-inner">
+                    <div class="details-grid">
+                        <div class="state-strip">
+                            <span class="pill c">subset <b id="st-set">&mdash;</b></span>
+                            <span class="pill">lcm <b id="st-lcm">&mdash;</b></span>
+                            <span class="pill g">term <b id="st-term">&mdash;</b></span>
+                            <span class="pill b">running <b id="st-total">0</b></span>
+                        </div>
+                        <div class="panel-card">
+                            <div class="panel-head"><span class="pip"></span> Algorithm</div>
+                            <div class="code-body" id="code-panel"></div>
+                        </div>
+                        <div class="log-panel" id="log"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        'use strict';
+
+        // ───────── Motion engine (spring pop, zero deps) ─────────
+        const REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        const FRAME = 1000 / 60;
+        function sampleSpring(stiffness, damping, mass) {
+            const dt = 1 / 60; let x = 1, v = 0; const out = [];
+            for (let i = 0; i < 240; i++) { const a = (-stiffness * x - damping * v) / mass; v += a * dt; x += v * dt; out.push(1 - x); if (Math.abs(x) < 0.0015 && Math.abs(v) < 0.0015) break; }
+            out.push(1); return out;
+        }
+        const SPRING_POP = sampleSpring(520, 17, 1);
+        const durOf = (a) => a.length * FRAME;
+        const Motion = {
+            pop(el) {
+                if (REDUCED) return;
+                const kf = SPRING_POP.map(p => ({ transform: `scale(${(0.4 + 0.66 * p).toFixed(3)})` }));
+                el.animate(kf, { duration: durOf(SPRING_POP), easing: 'linear' });
+            },
+        };
+
+        // ───────── State ─────────
+        let a = 1, b = 10;
+        let divisors = [2, 3];
+        let steps = [];
+        let stepIdx = 0;
+        let timer = null;
+        let confettiArmed = true;
+        const delays = [1450, 720, 330];
+        const chipEls = {};   // divisor index -> element
+        const termEls = {};   // subset mask  -> element
+
+        const CODE = [
+            [['kw','def '],['fn','countDivisible'],['src','(a, b, P):']],
+            [['src','  total = 0']],
+            [['kw','  for '],['src','S in nonempty_subsets(P):']],
+            [['src','    L = lcm(S)']],
+            [['src','    cnt = b // L  -  (a-1) // L']],
+            [['kw','    sign '],['src','= +1 if |S| odd else -1']],
+            [['src','    total += sign * cnt']],
+            [['kw','  return '],['src','total']],
+        ];
+        function buildCodePanel() {
+            const panel = document.getElementById('code-panel'); panel.innerHTML = '';
+            CODE.forEach((tokens, i) => {
+                const line = document.createElement('div'); line.className = 'code-line'; line.dataset.line = i;
+                const lno = document.createElement('span'); lno.className = 'lno'; lno.textContent = i + 1; line.appendChild(lno);
+                const src = document.createElement('span');
+                tokens.forEach(([cls, txt]) => { const s = document.createElement('span'); s.className = cls; s.textContent = txt; src.appendChild(s); });
+                line.appendChild(src); panel.appendChild(line);
+            });
+        }
+        function highlightCode(arr) { document.querySelectorAll('.code-line').forEach(el => el.classList.toggle('active', arr && arr.includes(+el.dataset.line))); }
+        function toggleDetails() {
+            const wrap = document.getElementById('details-wrap'); const open = wrap.classList.toggle('open');
+            wrap.querySelector('.details-toggle').setAttribute('aria-expanded', open ? 'true' : 'false');
+            document.getElementById('details-label').textContent = open ? 'Hide code, state & log' : 'Show code, state & log';
+        }
+
+        // ───────── math helpers ─────────
+        function gcd(x, y) { x = Math.abs(x); y = Math.abs(y); while (y) { [x, y] = [y, x % y]; } return x; }
+        function lcm(x, y) { return x / gcd(x, y) * y; }
+        function fcount(x, L) { return x <= 0 ? 0 : Math.floor(x / L); }   // |{k in [1,x] : L | k}|
+
+        // enumerate non-empty subsets ordered by size, then by mask
+        function subsetOrder(n) {
+            const all = [];
+            for (let mask = 1; mask < (1 << n); mask++) all.push(mask);
+            all.sort((p, q) => {
+                const pc = popcount(p), qc = popcount(q);
+                return pc !== qc ? pc - qc : p - q;
+            });
+            return all;
+        }
+        function popcount(m) { let c = 0; while (m) { c += m & 1; m >>= 1; } return c; }
+        function maskMembers(mask) { const out = []; for (let i = 0; i < divisors.length; i++) if (mask & (1 << i)) out.push(divisors[i]); return out; }
+        function setLabel(mask) { return '{' + maskMembers(mask).join(',') + '}'; }
+
+        // ───────── step generation (genuine IE simulation) ─────────
+        function generateSteps() {
+            steps = [];
+            const order = subsetOrder(divisors.length);
+            let total = 0;
+            const termResults = {};   // mask -> {sign, cnt, lcm}
+
+            const snap = (extra) => Object.assign({
+                a, b, order,
+                total, activeMask: null, termResults: Object.assign({}, termResults),
+                exprParts: order.filter(m => termResults[m]).map(m => ({
+                    set: setLabel(m), sign: termResults[m].sign, cnt: termResults[m].cnt
+                }))
+            }, extra);
+
+            steps.push(snap({
+                code: [0, 1], action: 'INCLUSION–EXCLUSION', actionColor: 'var(--accent-blue)',
+                panel: `Count integers <code>k</code> in <code>[${a}, ${b}]</code> divisible by at least one of <code>{${divisors.join(', ')}}</code>. Na&iuml;vely adding multiples double-counts overlaps, so we alternate <b>+</b>/<b>&minus;</b> over every non-empty subset of primes.`,
+                log: `init  range=[${a},${b}]  primes={${divisors.join(',')}}  ${order.length} subset(s)`
+            }));
+
+            order.forEach((mask) => {
+                const members = maskMembers(mask);
+                let L = 1; for (const d of members) L = lcm(L, d);
+                const size = members.length;
+                const sign = (size % 2 === 1) ? 1 : -1;
+                const cntB = fcount(b, L), cntA = fcount(a - 1, L);
+                const cnt = cntB - cntA;
+                const signCh = sign > 0 ? '+' : '−';
+
+                // (1) select subset + compute lcm
+                steps.push(snap({
+                    activeMask: mask, code: [2, 3],
+                    action: `S = ${setLabel(mask)}`, actionColor: 'var(--accent-purple)',
+                    panel: size === 1
+                        ? `Subset <code>${setLabel(mask)}</code> &#8594; <code>lcm = ${L}</code>. Count multiples of ${L} in the range.`
+                        : `Subset <code>${setLabel(mask)}</code> &#8594; <code>lcm(${members.join(',')}) = ${L}</code>. These are the integers counted by <b>every</b> prime in the subset (the overlap).`,
+                    log: `S=${setLabel(mask)}  lcm=${L}`
+                }));
+
+                // (2) count term + apply sign + accumulate
+                total += sign * cnt;
+                termResults[mask] = { sign, cnt, lcm: L, size };
+                steps.push(snap({
+                    activeMask: mask, code: [4, 5, 6],
+                    action: `${signCh}${cnt}  →  total ${total}`,
+                    actionColor: sign > 0 ? 'var(--accent-green)' : 'var(--accent-red)',
+                    panel: `<code>&fnof;(${b},${L}) &minus; &fnof;(${a-1},${L}) = ${cntB} &minus; ${cntA} = ${cnt}</code>. ` +
+                        `|S| = ${size} is <b>${size % 2 === 1 ? 'odd' : 'even'}</b> &#8594; sign <b>${signCh}</b>. Running total = <b>${total}</b>.`,
+                    log: `  ${signCh}${cnt}  (${cntB}-${cntA})  total=${total}`,
+                    justAdded: mask
+                }));
+            });
+
+            // final
+            steps.push(snap({
+                complete: true, confetti: true, code: [7],
+                action: `✓ count = ${total}`, actionColor: 'var(--accent-green)',
+                answer: total,
+                panel: `Summing the signed terms gives <b>${total}</b> integers in <code>[${a}, ${b}]</code> divisible by at least one of <code>{${divisors.join(', ')}}</code>.`,
+                log: `done  result = ${total}`
+            }));
+        }
+
+        // ───────── render (persistent DOM) ─────────
+        function rebuildSkeleton() {
+            // divisor chips
+            const strip = document.getElementById('div-strip');
+            Object.keys(chipEls).forEach(k => { chipEls[k].remove(); delete chipEls[k]; });
+            strip.innerHTML = '';
+            const lab = document.createElement('span'); lab.className = 'lab'; lab.textContent = 'primes:'; strip.appendChild(lab);
+            divisors.forEach((d, i) => {
+                const c = document.createElement('div'); c.className = 'div-chip'; c.textContent = d;
+                chipEls[i] = c; strip.appendChild(c);
+            });
+
+            // one term card per non-empty subset, in evaluation order
+            const grid = document.getElementById('terms-grid');
+            Object.keys(termEls).forEach(k => { termEls[k].remove(); delete termEls[k]; });
+            grid.innerHTML = '';
+            const order = subsetOrder(divisors.length);
+            order.forEach((mask) => {
+                const members = maskMembers(mask);
+                let L = 1; for (const d of members) L = lcm(L, d);
+                const size = members.length;
+                const sign = (size % 2 === 1) ? 1 : -1;
+                const card = document.createElement('div');
+                card.className = 'term ' + (sign > 0 ? 'add' : 'sub');
+                const badge = document.createElement('div'); badge.className = 'term-sign'; badge.textContent = sign > 0 ? '+' : '−';
+                const setEl = document.createElement('div'); setEl.className = 'term-set'; setEl.textContent = setLabel(mask);
+                const lcmEl = document.createElement('div'); lcmEl.className = 'term-lcm'; lcmEl.textContent = 'lcm ' + L;
+                const valEl = document.createElement('div'); valEl.className = 'term-val'; valEl.textContent = (sign > 0 ? '+' : '−') + '?';
+                card.appendChild(badge); card.appendChild(setEl); card.appendChild(lcmEl); card.appendChild(valEl);
+                termEls[mask] = card; grid.appendChild(card);
+            });
+        }
+
+        function renderStep(idx) {
+            stepIdx = idx; const step = steps[idx]; if (!step) return;
+
+            // divisor chips: light up members of active subset
+            const activeMembers = new Set(step.activeMask != null ? Array.from({ length: divisors.length }, (_, i) => i).filter(i => step.activeMask & (1 << i)) : []);
+            divisors.forEach((d, i) => {
+                const c = chipEls[i]; if (!c) return;
+                c.classList.toggle('lit', activeMembers.has(i));
+            });
+
+            // term cards
+            Object.keys(termEls).forEach(k => {
+                const mask = +k; const card = termEls[k];
+                const res = step.termResults[mask];
+                const isCurrent = step.activeMask === mask && !step.complete;
+                card.classList.toggle('current', isCurrent);
+                if (res) {
+                    card.classList.add('seen');
+                    const valEl = card.querySelector('.term-val');
+                    const txt = (res.sign > 0 ? '+' : '−') + res.cnt;
+                    if (valEl.textContent !== txt) { valEl.textContent = txt; if (!REDUCED) Motion.pop(card); }
+                } else {
+                    card.classList.remove('seen');
+                    const valEl = card.querySelector('.term-val');
+                    valEl.textContent = (card.classList.contains('add') ? '+' : '−') + '?';
+                }
+            });
+            if (step.justAdded != null && termEls[step.justAdded]) Motion.pop(termEls[step.justAdded]);
+
+            // accumulator expression
+            const exprEl = document.getElementById('accum-expr');
+            if (!step.exprParts || step.exprParts.length === 0) {
+                exprEl.innerHTML = '<span style="color:var(--text-dim)">no terms yet</span>';
+            } else {
+                exprEl.innerHTML = step.exprParts.map((p, i) => {
+                    const sc = p.sign > 0 ? 'plus' : 'minus';
+                    const sym = p.sign > 0 ? '+' : '&minus;';
+                    const lead = (i === 0 && p.sign > 0) ? '' : `<span class="${sc}">${sym}</span> `;
+                    return `${lead}<span class="t">${p.cnt}</span>`;
+                }).join(' ');
+            }
+            const tile = document.getElementById('accum-tile');
+            const prev = tile.textContent;
+            tile.textContent = String(step.total);
+            tile.classList.toggle('done', !!step.complete);
+            if (prev !== String(step.total)) Motion.pop(tile);
+
+            // narration
+            const mp = document.getElementById('main-panel');
+            mp.innerHTML = step.panel || '&mdash;';
+            mp.classList.toggle('done', !!step.complete);
+            const aw = document.getElementById('action-word'); aw.textContent = step.action || ''; aw.style.color = step.actionColor || 'var(--text-dim)';
+            highlightCode(step.code);
+
+            if (step.confetti) { if (confettiArmed) { fireConfetti(); confettiArmed = false; } } else confettiArmed = true;
+
+            // state pills
+            document.getElementById('st-set').textContent = step.activeMask != null ? setLabel(step.activeMask) : (step.complete ? 'all' : '—');
+            const ar = step.activeMask != null ? step.termResults[step.activeMask] : null;
+            document.getElementById('st-lcm').textContent = ar ? ar.lcm : '—';
+            document.getElementById('st-term').textContent = ar ? ((ar.sign > 0 ? '+' : '−') + ar.cnt) : '—';
+            document.getElementById('st-total').textContent = step.total;
+
+            document.getElementById('step-badge').textContent = `Step ${idx + 1} / ${steps.length}`;
+            document.getElementById('progress-fill').style.width = `${(idx / Math.max(1, steps.length - 1)) * 100}%`;
+
+            const logEl = document.getElementById('log');
+            logEl.innerHTML = steps.slice(0, idx + 1).map(s => `<div style="margin:3px 0;white-space:pre-wrap;">${s.log}</div>`).join('');
+            logEl.scrollTop = logEl.scrollHeight;
+        }
+
+        function fireConfetti() {
+            const host = document.getElementById('confetti'); if (!host || REDUCED) return;
+            const colors = ['#22c55e', '#06b6d4', '#a855f7', '#f5a524', '#f43f5e'];
+            for (let i = 0; i < 38; i++) {
+                const p = document.createElement('div'); p.className = 'confetti-piece';
+                p.style.setProperty('--x', ((Math.random() * 2 - 1) * 220) + 'px');
+                p.style.setProperty('--rot', ((Math.random() * 720 - 360)) + 'deg');
+                p.style.background = colors[i % colors.length];
+                p.style.animationDuration = (0.9 + Math.random() * 0.8) + 's';
+                p.style.animationDelay = (Math.random() * 0.15) + 's';
+                host.appendChild(p); setTimeout(() => p.remove(), 1900);
+            }
+        }
+
+        // ───────── controls ─────────
+        function nextStep() { if (stepIdx < steps.length - 1) renderStep(stepIdx + 1); else pause(); }
+        function prevStep() { if (stepIdx > 0) renderStep(stepIdx - 1); }
+        function resetSim() { pause(); renderStep(0); }
+        function togglePlay() {
+            const btn = document.getElementById('play-btn');
+            if (timer) { pause(); return; }
+            btn.textContent = 'Pause';
+            if (stepIdx >= steps.length - 1) renderStep(0);
+            timer = setInterval(() => { if (stepIdx < steps.length - 1) nextStep(); else pause(); }, delays[document.getElementById('speed').value]);
+        }
+        function pause() { clearInterval(timer); timer = null; document.getElementById('play-btn').textContent = 'Play'; }
+
+        function loadRun() {
+            pause(); rebuildSkeleton(); generateSteps(); renderStep(0); confettiArmed = true;
+        }
+        function loadCustom() {
+            const av = parseInt(document.getElementById('a-input').value);
+            const bv = parseInt(document.getElementById('b-input').value);
+            a = Number.isFinite(av) ? av : 1;
+            b = Number.isFinite(bv) ? bv : 10;
+            if (b < a) { const t = a; a = b; b = t; }
+            const divStr = document.getElementById('divisors-input').value || '2,3';
+            let divs = divStr.split(',').map(x => parseInt(x.trim())).filter(x => Number.isFinite(x) && x > 1);
+            // dedupe, cap at 4 to keep the subset lattice legible
+            divs = [...new Set(divs)].slice(0, 4);
+            divisors = divs.length ? divs : [2, 3];
+            loadRun();
+        }
+        function loadExample(aa, bb, divsStr) {
+            a = aa; b = bb;
+            document.getElementById('a-input').value = a;
+            document.getElementById('b-input').value = b;
+            document.getElementById('divisors-input').value = divsStr;
+            let divs = divsStr.split(',').map(x => parseInt(x.trim())).filter(x => Number.isFinite(x) && x > 1);
+            divs = [...new Set(divs)].slice(0, 4);
+            divisors = divs.length ? divs : [2, 3];
+            loadRun();
+        }
+
+        document.addEventListener('keydown', (e) => {
+            const tag = (e.target.tagName || '').toLowerCase(); if (tag === 'input' || tag === 'textarea') return;
+            if (e.key === 'ArrowRight') { e.preventDefault(); pause(); nextStep(); }
+            else if (e.key === 'ArrowLeft') { e.preventDefault(); pause(); prevStep(); }
+            else if (e.key === ' ') { e.preventDefault(); togglePlay(); }
+        });
+        ['a-input', 'b-input', 'divisors-input'].forEach(id => document.getElementById(id).addEventListener('keydown', (e) => { if (e.key === 'Enter') loadCustom(); }));
+        window.addEventListener('resize', () => { if (steps.length) renderStep(stepIdx); });
+
+        buildCodePanel();
+        window.onload = () => loadExample(1, 10, '2,3');
+    </script>
+</body>
+</html>

@@ -1,0 +1,1843 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>RAG Academy • Module 7.2 — Observability & Tracing</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  if (typeof console !== 'undefined') {
+    const origWarn = console.warn;
+    console.warn = function(...args) {
+      if (args[0] && typeof args[0] === 'string' && args[0].includes('cdn.tailwindcss.com')) return;
+      origWarn.apply(console, args);
+    };
+  }
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700;800;900&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+<style>
+  :root {
+    --bg-deep: #02030a;
+    --bg-mid: #060818;
+    --bg-card: rgba(12, 16, 38, 0.6);
+    --neon-cyan: #00f0ff;
+    --neon-blue: #4d8eff;
+    --neon-purple: #b86bff;
+    --neon-pink: #ff4dcf;
+    --neon-amber: #ffb84d;
+    --neon-green: #4dffb8;
+    --text-primary: #e8efff;
+    --text-secondary: #8a96b8;
+    --border-glow: rgba(0, 240, 255, 0.25);
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    font-family: 'Inter', sans-serif;
+    background: var(--bg-deep);
+    color: var(--text-primary);
+    overflow-x: hidden;
+    min-height: 100vh;
+  }
+
+  .font-display { font-family: 'Orbitron', sans-serif; letter-spacing: 0.02em; }
+  .font-mono { font-family: 'JetBrains Mono', monospace; }
+
+  /* ===== STARFIELD ===== */
+  #starfield { position: fixed; inset: 0; z-index: 0; pointer-events: none; }
+  .nebula {
+    position: fixed; border-radius: 50%; filter: blur(120px);
+    opacity: 0.35; pointer-events: none; z-index: 0;
+  }
+  .nebula-1 { top: -10%; left: -5%; width: 50vw; height: 50vw; background: radial-gradient(circle, #4d8eff, transparent 70%); animation: drift1 22s ease-in-out infinite; }
+  .nebula-2 { top: 30%; right: -10%; width: 45vw; height: 45vw; background: radial-gradient(circle, #b86bff, transparent 70%); animation: drift2 28s ease-in-out infinite; }
+  .nebula-3 { bottom: -10%; left: 20%; width: 40vw; height: 40vw; background: radial-gradient(circle, #00f0ff, transparent 70%); animation: drift3 25s ease-in-out infinite; opacity: 0.22; }
+  @keyframes drift1 { 0%,100% { transform: translate(0,0); } 50% { transform: translate(40px, 60px); } }
+  @keyframes drift2 { 0%,100% { transform: translate(0,0); } 50% { transform: translate(-50px, 40px); } }
+  @keyframes drift3 { 0%,100% { transform: translate(0,0); } 50% { transform: translate(30px, -50px); } }
+
+  /* ===== NAV ===== */
+  .top-nav {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 50;
+    backdrop-filter: blur(20px); background: rgba(2, 3, 10, 0.7);
+    border-bottom: 1px solid rgba(0, 240, 255, 0.15);
+  }
+  .nav-logo {
+    background: linear-gradient(135deg, var(--neon-cyan), var(--neon-purple));
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+
+  /* ===== HOLO CARDS ===== */
+  .holo-card {
+    background: linear-gradient(135deg, rgba(12, 16, 38, 0.7), rgba(20, 12, 50, 0.5));
+    border: 1px solid rgba(0, 240, 255, 0.18);
+    border-radius: 18px;
+    backdrop-filter: blur(14px);
+    position: relative;
+    overflow: hidden;
+    transition: all 0.4s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  .holo-card::before {
+    content: ''; position: absolute; inset: 0;
+    background: linear-gradient(135deg, transparent 40%, rgba(0, 240, 255, 0.08) 50%, transparent 60%);
+    transform: translateX(-100%); transition: transform 0.8s ease; pointer-events: none;
+  }
+  .holo-card:hover::before { transform: translateX(100%); }
+  .holo-card:hover {
+    border-color: rgba(0, 240, 255, 0.5);
+    box-shadow: 0 0 40px rgba(0, 240, 255, 0.15), inset 0 0 30px rgba(77, 142, 255, 0.05);
+    transform: translateY(-4px);
+  }
+
+  /* ===== GRADIENT TEXT ===== */
+  .gradient-cyan { background: linear-gradient(135deg, #00f0ff, #4d8eff); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .gradient-purple { background: linear-gradient(135deg, #b86bff, #ff4dcf); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .gradient-amber { background: linear-gradient(135deg, #ffb84d, #ff4dcf); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .gradient-multi { background: linear-gradient(135deg, #00f0ff 0%, #4d8eff 35%, #b86bff 70%, #ff4dcf 100%); -webkit-background-clip: text; background-clip: text; color: transparent; }
+
+  /* ===== BUTTONS ===== */
+  .btn-primary {
+    background: linear-gradient(135deg, #00f0ff, #4d8eff);
+    color: #02030a; font-weight: 700; padding: 14px 28px;
+    border-radius: 12px; border: none; position: relative; overflow: hidden;
+    transition: all 0.3s ease; cursor: pointer;
+    box-shadow: 0 0 30px rgba(0, 240, 255, 0.35);
+  }
+  .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 0 50px rgba(0, 240, 255, 0.6); }
+  .btn-ghost {
+    background: rgba(12, 16, 38, 0.5); border: 1px solid rgba(0, 240, 255, 0.3);
+    color: var(--text-primary); font-weight: 600; padding: 14px 28px;
+    border-radius: 12px; transition: all 0.3s ease; cursor: pointer;
+  }
+  .btn-ghost:hover { border-color: var(--neon-cyan); background: rgba(0, 240, 255, 0.08); }
+
+  /* ===== HERO ===== */
+  .hero-title { font-size: clamp(2.5rem, 7vw, 6rem); line-height: 0.95; font-weight: 900; }
+  .scan-line {
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--neon-cyan), transparent);
+    animation: scan 4s linear infinite;
+  }
+  @keyframes scan { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }
+
+  /* ===== ORBIT ===== */
+  .orbit-container {
+    position: relative; width: 100%; max-width: 520px;
+    aspect-ratio: 1; margin: 0 auto;
+  }
+  .orbit-core {
+    position: absolute; top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 110px; height: 110px; border-radius: 50%;
+    background: radial-gradient(circle, #00f0ff 0%, #4d8eff 40%, #b86bff 100%);
+    box-shadow: 0 0 60px rgba(0, 240, 255, 0.7), 0 0 120px rgba(77, 142, 255, 0.4);
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Orbitron', sans-serif; font-weight: 900; color: #02030a;
+    font-size: 1.05rem; z-index: 5;
+    animation: pulse-core 3s ease-in-out infinite;
+  }
+  @keyframes pulse-core {
+    0%,100% { box-shadow: 0 0 60px rgba(0, 240, 255, 0.7), 0 0 120px rgba(77, 142, 255, 0.4); }
+    50% { box-shadow: 0 0 80px rgba(0, 240, 255, 1), 0 0 160px rgba(184, 107, 255, 0.6); }
+  }
+  .orbit-ring {
+    position: absolute; top: 50%; left: 50%; border-radius: 50%;
+    border: 1px dashed rgba(0, 240, 255, 0.25);
+    transform: translate(-50%, -50%);
+  }
+  .ring-1 { width: 50%; height: 50%; animation: spin 20s linear infinite; }
+  .ring-2 { width: 75%; height: 75%; animation: spin 35s linear infinite reverse; }
+  .ring-3 { width: 100%; height: 100%; animation: spin 50s linear infinite; }
+  @keyframes spin { from { transform: translate(-50%, -50%) rotate(0deg); } to { transform: translate(-50%, -50%) rotate(360deg); } }
+  .orbit-planet {
+    position: absolute; width: 44px; height: 44px;
+    border-radius: 50%; display: flex;
+    align-items: center; justify-content: center;
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(255,255,255,0.2);
+  }
+  .orbit-planet i { width: 20px; height: 20px; }
+
+  /* ===== STAT ===== */
+  .stat-num {
+    font-family: 'Orbitron', sans-serif; font-weight: 800; font-size: 2.4rem;
+    background: linear-gradient(135deg, #00f0ff, #b86bff);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+
+  /* ===== PILL ===== */
+  .pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 6px 14px; border-radius: 999px;
+    font-size: 0.75rem; font-weight: 600;
+    letter-spacing: 0.08em; text-transform: uppercase;
+    border: 1px solid rgba(0, 240, 255, 0.3);
+    background: rgba(0, 240, 255, 0.06);
+    color: var(--neon-cyan);
+  }
+
+  /* ===== ROADMAP NODES ===== */
+  .roadmap-node { transition: all 0.3s ease; cursor: pointer; }
+  .roadmap-node:hover { transform: scale(1.05); }
+  .roadmap-node.active .node-circle {
+    background: linear-gradient(135deg, var(--neon-cyan), var(--neon-purple));
+    box-shadow: 0 0 30px rgba(0, 240, 255, 0.6);
+  }
+  .node-circle {
+    width: 60px; height: 60px; border-radius: 50%;
+    background: rgba(12, 16, 38, 0.8);
+    border: 2px solid rgba(0, 240, 255, 0.3);
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Orbitron', sans-serif; font-weight: 700;
+    color: var(--neon-cyan); transition: all 0.3s ease;
+  }
+
+  /* ===== CODE BLOCK ===== */
+  .code-block {
+    background: rgba(2, 3, 10, 0.8);
+    border: 1px solid rgba(0, 240, 255, 0.2);
+    border-radius: 14px; padding: 24px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.82rem; line-height: 1.7;
+    overflow-x: auto; position: relative;
+  }
+  .code-block::before {
+    content: ''; position: absolute; top: 0; left: 0; right: 0;
+    height: 1px; background: linear-gradient(90deg, transparent, var(--neon-cyan), transparent);
+  }
+  .tok-keyword { color: #ff4dcf; }
+  .tok-string { color: #4dffb8; }
+  .tok-fn { color: #00f0ff; }
+  .tok-comment { color: #5a6788; font-style: italic; }
+  .tok-num { color: #ffb84d; }
+  .tok-var { color: #e8efff; }
+  .tok-deco { color: #ffb84d; }
+
+  /* ===== FLOAT ===== */
+  .float-y { animation: floaty 6s ease-in-out infinite; }
+  @keyframes floaty { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-12px); } }
+
+  /* ===== REVEAL ===== */
+  .reveal { transition: opacity 1s cubic-bezier(0.2, 0.8, 0.2, 1), transform 1s cubic-bezier(0.2, 0.8, 0.2, 1); }
+  .js-reveal .reveal { opacity: 0; transform: translateY(40px); }
+  .js-reveal .reveal.in { opacity: 1; transform: translateY(0); }
+
+  /* ===== USE CASE ICON ===== */
+  .use-case-icon {
+    width: 56px; height: 56px; border-radius: 14px;
+    display: flex; align-items: center; justify-content: center;
+    margin-bottom: 16px;
+  }
+
+  /* ===== PROGRESS ===== */
+  .progress-bar { height: 6px; background: rgba(0, 240, 255, 0.1); border-radius: 999px; overflow: hidden; position: relative; }
+  .progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--neon-cyan), var(--neon-purple), var(--neon-pink));
+    border-radius: 999px;
+    transition: width 1.5s cubic-bezier(0.2, 0.8, 0.2, 1);
+    position: relative;
+  }
+  .progress-fill::after {
+    content: ''; position: absolute; inset: 0;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
+    animation: shimmer 2s linear infinite;
+  }
+  @keyframes shimmer { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }
+
+  /* ===== CHECKPOINT ===== */
+  .checkpoint-glow {
+    background: radial-gradient(circle at center, rgba(0, 240, 255, 0.12), transparent 70%);
+    border: 1px solid rgba(0, 240, 255, 0.3);
+  }
+
+  /* ===== SIDE DOTS ===== */
+  .side-dots {
+    position: fixed; right: 24px; top: 50%; transform: translateY(-50%);
+    z-index: 40; display: flex; flex-direction: column; gap: 14px;
+  }
+  @media (max-width: 1024px) { .side-dots { display: none; } }
+  .dot {
+    width: 10px; height: 10px; border-radius: 50%;
+    background: rgba(0, 240, 255, 0.2);
+    border: 1px solid rgba(0, 240, 255, 0.4);
+    transition: all 0.3s ease; cursor: pointer;
+  }
+  .dot.active { background: var(--neon-cyan); box-shadow: 0 0 15px var(--neon-cyan); transform: scale(1.3); }
+
+  /* ===== SCROLLBAR ===== */
+  ::-webkit-scrollbar { width: 10px; }
+  ::-webkit-scrollbar-track { background: var(--bg-deep); }
+  ::-webkit-scrollbar-thumb { background: linear-gradient(180deg, var(--neon-cyan), var(--neon-purple)); border-radius: 10px; }
+
+  /* ===== HOLO BORDER ===== */
+  .holo-border { position: relative; }
+  .holo-border::after {
+    content: ''; position: absolute; inset: -1px;
+    border-radius: inherit; padding: 1px;
+    background: linear-gradient(135deg, var(--neon-cyan), transparent 40%, transparent 60%, var(--neon-purple));
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    pointer-events: none; opacity: 0.6;
+  }
+
+  /* ===== GRID FLOOR ===== */
+  .grid-floor {
+    position: absolute; bottom: 0; left: 0; right: 0; height: 30vh;
+    background-image:
+      linear-gradient(rgba(0, 240, 255, 0.15) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0, 240, 255, 0.15) 1px, transparent 1px);
+    background-size: 50px 50px;
+    transform: perspective(500px) rotateX(60deg);
+    transform-origin: bottom;
+    opacity: 0.4;
+    mask-image: linear-gradient(180deg, transparent, black 50%);
+    -webkit-mask-image: linear-gradient(180deg, transparent, black 50%);
+  }
+
+  /* ===== CALLOUTS ===== */
+  .callout {
+    background: linear-gradient(135deg, rgba(255, 184, 77, 0.08), rgba(255, 77, 207, 0.04));
+    border-left: 3px solid var(--neon-amber);
+    border-radius: 8px; padding: 16px 20px;
+  }
+  .callout-cyan {
+    background: linear-gradient(135deg, rgba(0, 240, 255, 0.08), rgba(77, 142, 255, 0.04));
+    border-left: 3px solid var(--neon-cyan);
+    border-radius: 8px; padding: 16px 20px;
+  }
+  .callout-pink {
+    background: linear-gradient(135deg, rgba(255, 77, 207, 0.08), rgba(184, 107, 255, 0.04));
+    border-left: 3px solid var(--neon-pink);
+    border-radius: 8px; padding: 16px 20px;
+  }
+  .callout-green {
+    background: linear-gradient(135deg, rgba(77, 255, 184, 0.08), rgba(0, 240, 255, 0.04));
+    border-left: 3px solid var(--neon-green);
+    border-radius: 8px; padding: 16px 20px;
+  }
+
+  /* ===== QUIZ ===== */
+  .quiz-option {
+    background: rgba(12, 16, 38, 0.6);
+    border: 1px solid rgba(0, 240, 255, 0.2);
+    border-radius: 12px;
+    padding: 14px 18px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    text-align: left;
+    width: 100%;
+    color: var(--text-primary);
+    font-family: 'Inter', sans-serif;
+  }
+  .quiz-option:hover { border-color: rgba(0, 240, 255, 0.5); background: rgba(0, 240, 255, 0.04); }
+  .quiz-option.correct { border-color: var(--neon-green); background: rgba(77, 255, 184, 0.08); color: #d4ffe8; }
+  .quiz-option.wrong { border-color: var(--neon-pink); background: rgba(255, 77, 207, 0.08); color: #ffd0ec; }
+  .quiz-option.disabled { cursor: not-allowed; pointer-events: none; }
+
+  /* ===== DATA TABLE ===== */
+  .data-table {
+    width: 100%; border-collapse: separate; border-spacing: 0;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.82rem;
+  }
+  .data-table th {
+    background: rgba(0, 240, 255, 0.08);
+    color: var(--neon-cyan);
+    text-align: left; padding: 12px 14px;
+    font-weight: 600; letter-spacing: 0.05em;
+    border-bottom: 1px solid rgba(0, 240, 255, 0.25);
+  }
+  .data-table td {
+    padding: 12px 14px;
+    color: var(--text-primary);
+    border-bottom: 1px solid rgba(0, 240, 255, 0.08);
+  }
+  .data-table tr:hover td { background: rgba(0, 240, 255, 0.03); }
+
+  /* ===== TRACE SPAN VISUAL ===== */
+  .trace-span {
+    display: flex; align-items: center; gap: 8px;
+    padding: 6px 10px;
+    border-radius: 6px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.75rem;
+    margin-bottom: 4px;
+    transition: all 0.3s ease;
+    border: 1px solid transparent;
+  }
+  .trace-span:hover {
+    border-color: rgba(0, 240, 255, 0.4);
+    background: rgba(0, 240, 255, 0.04) !important;
+  }
+  .trace-bar {
+    height: 22px; border-radius: 4px;
+    display: flex; align-items: center;
+    padding: 0 8px;
+    color: #02030a; font-weight: 700;
+    font-size: 0.7rem;
+    box-shadow: 0 0 12px rgba(0,240,255,0.25);
+  }
+
+  /* ===== TOOL CARD ===== */
+  .tool-card {
+    background: linear-gradient(135deg, rgba(12, 16, 38, 0.7), rgba(20, 12, 50, 0.5));
+    border-radius: 16px;
+    padding: 22px;
+    transition: all 0.3s ease;
+    border: 1px solid rgba(0, 240, 255, 0.18);
+  }
+  .tool-card:hover {
+    transform: translateY(-3px);
+    border-color: rgba(0, 240, 255, 0.4);
+  }
+
+  /* ===== ALERT ROW ===== */
+  .alert-row {
+    display: flex; align-items: center; gap: 14px;
+    padding: 14px 16px;
+    border-radius: 10px;
+    background: rgba(12, 16, 38, 0.5);
+    border: 1px solid rgba(0, 240, 255, 0.15);
+    transition: all 0.3s ease;
+  }
+  .alert-row:hover { border-color: rgba(0, 240, 255, 0.4); }
+  .alert-row.warn { border-color: rgba(255, 184, 77, 0.4); background: rgba(255, 184, 77, 0.04); }
+  .alert-row.crit { border-color: rgba(255, 77, 207, 0.5); background: rgba(255, 77, 207, 0.05); }
+
+  /* ===== LATENCY CHART WRAPPER ===== */
+  .latency-chart-wrapper { position: relative; width: 100%; height: 280px; }
+  #latencyChart { max-height: 280px !important; display: block !important; }
+
+  /* ===== LOG SIGNAL ===== */
+  .log-signal {
+    background: rgba(12, 16, 38, 0.6);
+    border-left: 3px solid var(--neon-cyan);
+    padding: 12px 14px;
+    border-radius: 8px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.78rem;
+    color: #c9d4f4;
+    margin-bottom: 6px;
+  }
+  .log-info { border-color: var(--neon-cyan); }
+  .log-warn { border-color: var(--neon-amber); }
+  .log-error { border-color: var(--neon-pink); }
+
+  /* ===== MOBILE ===== */
+  @media (max-width: 768px) {
+    .orbit-container { max-width: 340px; }
+    .code-block { font-size: 0.72rem; padding: 16px; }
+    .data-table { font-size: 0.72rem; }
+    .trace-span { font-size: 0.65rem; }
+  }
+
+
+  /* ===== LEARN & PRACTICE CARDS ===== */
+  .resource-stack {
+    max-width: 860px;
+    margin: 0 auto;
+    display: grid;
+    gap: 14px;
+  }
+  .resource-card {
+    background: linear-gradient(135deg, rgba(6, 8, 24, 0.92), rgba(10, 12, 34, 0.86));
+    border: 1px solid rgba(0, 240, 255, 0.32);
+    border-radius: 16px;
+    padding: 20px;
+    box-shadow: 0 0 28px rgba(0, 240, 255, 0.08);
+  }
+  .resource-card.repo {
+    border-color: rgba(255, 77, 207, 0.35);
+    box-shadow: 0 0 28px rgba(255, 77, 207, 0.08);
+  }
+  .resource-icon {
+    width: 34px;
+    height: 34px;
+    border-radius: 10px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid rgba(0, 240, 255, 0.4);
+    background: rgba(0, 240, 255, 0.08);
+    color: var(--neon-cyan);
+    flex-shrink: 0;
+  }
+  .resource-card.repo .resource-icon {
+    border-color: rgba(255, 77, 207, 0.45);
+    background: rgba(255, 77, 207, 0.1);
+    color: var(--neon-pink);
+  }
+  .resource-cta {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 12px;
+    padding: 10px 18px;
+    border-radius: 10px;
+    border: 1px solid rgba(0, 240, 255, 0.55);
+    color: var(--neon-cyan);
+    font-family: 'Orbitron', sans-serif;
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    background: rgba(0, 240, 255, 0.06);
+    transition: all 0.25s ease;
+  }
+  .resource-cta:hover {
+    background: rgba(0, 240, 255, 0.12);
+    box-shadow: 0 0 20px rgba(0, 240, 255, 0.22);
+  }
+  .resource-card.repo .resource-cta {
+    border-color: rgba(255, 77, 207, 0.55);
+    color: var(--neon-pink);
+    background: rgba(255, 77, 207, 0.08);
+  }
+  .resource-card.repo .resource-cta:hover {
+    background: rgba(255, 77, 207, 0.15);
+    box-shadow: 0 0 20px rgba(255, 77, 207, 0.24);
+  }
+
+</style>
+</head>
+
+<body>
+
+<div class="nebula nebula-1"></div>
+<div class="nebula nebula-2"></div>
+<div class="nebula nebula-3"></div>
+
+<canvas id="starfield"></canvas>
+
+<!-- TOP NAV -->
+<nav class="top-nav">
+  <div class="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
+    <div class="flex items-center gap-3">
+      <div class="w-10 h-10 rounded-xl flex items-center justify-center" style="background: linear-gradient(135deg, #00f0ff, #b86bff); box-shadow: 0 0 20px rgba(0,240,255,0.5);">
+        <i data-lucide="orbit" class="w-5 h-5 text-black"></i>
+      </div>
+      <div>
+        <div class="font-display font-bold text-lg nav-logo">RAG ACADEMY</div>
+        <div class="text-[10px] text-gray-400 tracking-widest -mt-1">TRACK 07 · MODULE 7.2</div>
+      </div>
+    </div>
+
+    <div class="hidden md:flex items-center gap-8 text-sm">
+      <a href="#hero" class="text-cyan-300 font-medium">Overview</a>
+      <a href="#pillars" class="text-gray-300 hover:text-cyan-300 transition">3 Pillars</a>
+      <a href="#tools" class="text-gray-300 hover:text-cyan-300 transition">Tools</a>
+      <a href="#otel" class="text-gray-300 hover:text-cyan-300 transition">OpenTelemetry</a>
+      <a href="#what-to-log" class="text-gray-300 hover:text-cyan-300 transition">What To Log</a>
+      <a href="#dashboards" class="text-gray-300 hover:text-cyan-300 transition">Dashboards</a>
+      <a href="#alerts" class="text-gray-300 hover:text-cyan-300 transition">Alerts</a>
+      <a href="#checkpoint" class="text-gray-300 hover:text-cyan-300 transition">Checkpoint</a>
+    </div>
+
+    <div class="flex items-center gap-3">
+      <div class="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full" style="background: rgba(0,240,255,0.08); border: 1px solid rgba(0,240,255,0.25);">
+        <div class="w-2 h-2 rounded-full" style="background: #4dffb8; box-shadow: 0 0 8px #4dffb8;"></div>
+        <span class="text-xs font-mono text-cyan-200">CADET ONLINE</span>
+      </div>
+      <button class="btn-ghost text-sm py-2 px-4">Save Progress</button>
+    </div>
+  </div>
+  <div class="scan-line"></div>
+</nav>
+
+<!-- SIDE DOTS -->
+<div class="side-dots">
+  <div class="dot active" data-target="hero"></div>
+  <div class="dot" data-target="pillars"></div>
+  <div class="dot" data-target="tools"></div>
+  <div class="dot" data-target="otel"></div>
+  <div class="dot" data-target="what-to-log"></div>
+  <div class="dot" data-target="dashboards"></div>
+  <div class="dot" data-target="alerts"></div>
+  <div class="dot" data-target="checkpoint"></div>
+</div>
+
+<!-- ========== HERO ========== -->
+<section id="hero" class="relative min-h-screen flex items-center pt-32 pb-24 px-6">
+  <div class="grid-floor"></div>
+
+  <div class="max-w-7xl mx-auto w-full grid lg:grid-cols-2 gap-16 items-center relative z-10">
+    <div class="reveal">
+      <div class="flex items-center gap-3 mb-6">
+        <span class="pill"><i data-lucide="activity" class="w-3 h-3"></i> Track 7 · Module 7.2</span>
+        <span class="text-xs text-gray-400 font-mono">EST. 55 MIN</span>
+      </div>
+
+      <h1 class="hero-title font-display mb-6">
+        <span class="block text-white">Observability</span>
+        <span class="block gradient-multi">&amp; Tracing</span>
+      </h1>
+
+      <p class="text-lg md:text-xl text-gray-300 leading-relaxed mb-8 max-w-xl">
+        When a RAG fails in production, "the answer was bad" isn't a bug report — it's a mystery. This module turns mystery into
+        <span class="text-cyan-300 font-semibold">forensic evidence</span>: traces, metrics, logs, and the
+        <span class="text-purple-300 font-semibold">tools</span> that make every LLM call replay-able.
+      </p>
+
+      <div class="flex flex-wrap gap-4 mb-12">
+        <button class="btn-primary flex items-center gap-2" onclick="document.getElementById('pillars').scrollIntoView({behavior:'smooth'})">
+          <i data-lucide="play" class="w-4 h-4"></i> Begin Module
+        </button>
+        <button class="btn-ghost flex items-center gap-2" onclick="document.getElementById('tools').scrollIntoView({behavior:'smooth'})">
+          <i data-lucide="layers" class="w-4 h-4"></i> Tool Comparison
+        </button>
+      </div>
+
+      <div class="grid grid-cols-3 gap-4">
+        <div class="holo-card p-4">
+          <div class="stat-num" data-count="3">0</div>
+          <div class="text-xs text-gray-400 uppercase tracking-wider mt-1">Pillars</div>
+        </div>
+        <div class="holo-card p-4">
+          <div class="stat-num" data-count="3">0</div>
+          <div class="text-xs text-gray-400 uppercase tracking-wider mt-1">LLM-Native Tools</div>
+        </div>
+        <div class="holo-card p-4">
+          <div class="stat-num"><span data-count="6">0</span></div>
+          <div class="text-xs text-gray-400 uppercase tracking-wider mt-1">Critical Signals</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ORBIT -->
+    <div class="reveal flex flex-col items-center">
+      <div class="orbit-container float-y">
+        <div class="orbit-ring ring-3"></div>
+        <div class="orbit-ring ring-2"></div>
+        <div class="orbit-ring ring-1"></div>
+        <div class="orbit-core">TRACE</div>
+
+        <div class="orbit-planet" style="top: 5%; left: 50%; transform: translate(-50%,-50%); background: rgba(77, 142, 255, 0.25); color: #4d8eff;">
+          <i data-lucide="line-chart"></i>
+        </div>
+        <div class="orbit-planet" style="top: 50%; right: 0%; transform: translate(50%,-50%); background: rgba(184, 107, 255, 0.25); color: #b86bff;">
+          <i data-lucide="git-branch"></i>
+        </div>
+        <div class="orbit-planet" style="bottom: 5%; left: 50%; transform: translate(-50%,50%); background: rgba(255, 77, 207, 0.25); color: #ff4dcf;">
+          <i data-lucide="bell-ring"></i>
+        </div>
+        <div class="orbit-planet" style="top: 50%; left: 0%; transform: translate(-50%,-50%); background: rgba(0, 240, 255, 0.25); color: #00f0ff;">
+          <i data-lucide="file-text"></i>
+        </div>
+        <div class="orbit-planet" style="top: 15%; right: 15%; background: rgba(255, 184, 77, 0.25); color: #ffb84d;">
+          <i data-lucide="search"></i>
+        </div>
+        <div class="orbit-planet" style="bottom: 15%; left: 15%; background: rgba(77, 255, 184, 0.25); color: #4dffb8;">
+          <i data-lucide="layout-dashboard"></i>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========== 3 PILLARS ========== -->
+<section id="pillars" class="relative py-24 px-6 z-10">
+  <div class="max-w-7xl mx-auto">
+    <div class="text-center mb-16 reveal">
+      <span class="pill mb-4"><i data-lucide="layers" class="w-3 h-3"></i> The Framework</span>
+      <h2 class="font-display text-4xl md:text-5xl font-bold mt-4">
+        Observability's <span class="gradient-cyan">Three Pillars</span>
+      </h2>
+      <p class="text-gray-400 mt-4 max-w-3xl mx-auto">
+        Logs, metrics, traces. Each answers a different question. Skip any one and you'll spend hours debugging what minutes of instrumentation would have solved.
+      </p>
+    </div>
+
+    <div class="grid md:grid-cols-3 gap-6 mb-12">
+      <!-- LOGS -->
+      <div class="holo-card p-7 reveal">
+        <div class="use-case-icon" style="background: linear-gradient(135deg, rgba(0,240,255,0.15), rgba(77,142,255,0.05)); color: #00f0ff;">
+          <i data-lucide="file-text" class="w-7 h-7"></i>
+        </div>
+        <div class="font-mono text-[10px] text-gray-500 tracking-widest mb-1">PILLAR 01</div>
+        <h3 class="font-display font-bold text-lg mb-2" style="color:#00f0ff;">Logs</h3>
+        <p class="text-sm text-gray-400 leading-relaxed mb-4">Discrete events with context. "User X asked Y at time Z, retrieval returned these chunks". The narrative record.</p>
+        <div class="space-y-2 text-xs">
+          <div class="text-gray-300"><span class="text-cyan-300 font-mono">Answers:</span> "what happened in this request?"</div>
+          <div class="text-gray-300"><span class="text-cyan-300 font-mono">Granularity:</span> Per event</div>
+          <div class="text-gray-300"><span class="text-cyan-300 font-mono">Cost:</span> Storage-heavy</div>
+        </div>
+        <div class="mt-4 pt-4 border-t border-cyan-500/10">
+          <div class="text-[10px] text-gray-500 uppercase tracking-widest">Best for</div>
+          <div class="text-sm text-cyan-200 mt-1">Forensic debugging, audit trails, replays</div>
+        </div>
+      </div>
+
+      <!-- METRICS -->
+      <div class="holo-card p-7 reveal" style="border-color: rgba(184,107,255,0.3);">
+        <div class="use-case-icon" style="background: linear-gradient(135deg, rgba(184,107,255,0.15), rgba(255,77,207,0.05)); color: #b86bff;">
+          <i data-lucide="bar-chart-3" class="w-7 h-7"></i>
+        </div>
+        <div class="font-mono text-[10px] text-gray-500 tracking-widest mb-1">PILLAR 02</div>
+        <h3 class="font-display font-bold text-lg mb-2" style="color:#b86bff;">Metrics</h3>
+        <p class="text-sm text-gray-400 leading-relaxed mb-4">Aggregated numerical signals over time. P95 latency, tokens/min, error rate. The pulse of the system.</p>
+        <div class="space-y-2 text-xs">
+          <div class="text-gray-300"><span class="text-purple-300 font-mono">Answers:</span> "is something off RIGHT NOW?"</div>
+          <div class="text-gray-300"><span class="text-purple-300 font-mono">Granularity:</span> Time-series</div>
+          <div class="text-gray-300"><span class="text-purple-300 font-mono">Cost:</span> Cheap to store</div>
+        </div>
+        <div class="mt-4 pt-4 border-t border-cyan-500/10">
+          <div class="text-[10px] text-gray-500 uppercase tracking-widest">Best for</div>
+          <div class="text-sm text-purple-200 mt-1">Dashboards, alerts, capacity planning</div>
+        </div>
+      </div>
+
+      <!-- TRACES -->
+      <div class="holo-card p-7 reveal" style="border-color: rgba(255,77,207,0.3);">
+        <div class="use-case-icon" style="background: linear-gradient(135deg, rgba(255,77,207,0.15), rgba(255,184,77,0.05)); color: #ff4dcf;">
+          <i data-lucide="git-branch" class="w-7 h-7"></i>
+        </div>
+        <div class="font-mono text-[10px] text-gray-500 tracking-widest mb-1">PILLAR 03</div>
+        <h3 class="font-display font-bold text-lg mb-2" style="color:#ff4dcf;">Traces</h3>
+        <p class="text-sm text-gray-400 leading-relaxed mb-4">A request's full lifecycle as a tree of timed spans. Embed → search → rerank → LLM → response. The flame graph of a RAG call.</p>
+        <div class="space-y-2 text-xs">
+          <div class="text-gray-300"><span class="text-pink-300 font-mono">Answers:</span> "WHERE in the call did time go?"</div>
+          <div class="text-gray-300"><span class="text-pink-300 font-mono">Granularity:</span> Per-span, per-request</div>
+          <div class="text-gray-300"><span class="text-pink-300 font-mono">Cost:</span> Sampled in prod</div>
+        </div>
+        <div class="mt-4 pt-4 border-t border-cyan-500/10">
+          <div class="text-[10px] text-gray-500 uppercase tracking-widest">Best for</div>
+          <div class="text-sm text-pink-200 mt-1">Performance debugging, multi-stage pipelines</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- VISUAL: A RAG TRACE -->
+    <div class="reveal">
+      <div class="flex items-center gap-3 mb-6">
+        <i data-lucide="zap" class="w-5 h-5 text-cyan-400"></i>
+        <h3 class="font-display font-bold text-xl">A Real RAG Trace — One Request, Seven Spans</h3>
+      </div>
+      <div class="holo-card p-6">
+        <div class="font-mono text-xs text-gray-500 mb-3 flex items-center justify-between">
+          <span>request_id: req_8c4a · total: 1840 ms</span>
+          <span class="text-cyan-300">0 ──────────── 2000 ms</span>
+        </div>
+        <div class="space-y-1">
+          <div class="trace-span" style="background: rgba(0,240,255,0.04);">
+            <div style="width: 180px; flex-shrink: 0;">POST /v1/query</div>
+            <div class="trace-bar" style="width: 96%; background: linear-gradient(90deg, #00f0ff, #4d8eff);">1840 ms</div>
+          </div>
+          <div class="trace-span" style="background: rgba(77,142,255,0.04); padding-left: 24px;">
+            <div style="width: 156px; flex-shrink: 0;">→ embed_query</div>
+            <div class="trace-bar" style="width: 6%; background: linear-gradient(90deg, #4d8eff, #b86bff); margin-left: 2%;">82 ms</div>
+          </div>
+          <div class="trace-span" style="background: rgba(77,142,255,0.04); padding-left: 24px;">
+            <div style="width: 156px; flex-shrink: 0;">→ qdrant.search</div>
+            <div class="trace-bar" style="width: 9%; background: linear-gradient(90deg, #4d8eff, #b86bff); margin-left: 8%;">110 ms</div>
+          </div>
+          <div class="trace-span" style="background: rgba(184,107,255,0.04); padding-left: 24px;">
+            <div style="width: 156px; flex-shrink: 0;">→ rerank</div>
+            <div class="trace-bar" style="width: 12%; background: linear-gradient(90deg, #b86bff, #ff4dcf); margin-left: 17%;">240 ms</div>
+          </div>
+          <div class="trace-span" style="background: rgba(255,184,77,0.04); padding-left: 24px;">
+            <div style="width: 156px; flex-shrink: 0;">→ build_prompt</div>
+            <div class="trace-bar" style="width: 2%; background: linear-gradient(90deg, #ffb84d, #ff4dcf); margin-left: 29%;">28 ms</div>
+          </div>
+          <div class="trace-span" style="background: rgba(255,77,207,0.04); padding-left: 24px;">
+            <div style="width: 156px; flex-shrink: 0;">→ openai.completion</div>
+            <div class="trace-bar" style="width: 62%; background: linear-gradient(90deg, #ff4dcf, #ffb84d); margin-left: 31%;">1240 ms</div>
+          </div>
+          <div class="trace-span" style="background: rgba(77,255,184,0.04); padding-left: 24px;">
+            <div style="width: 156px; flex-shrink: 0;">→ log_response</div>
+            <div class="trace-bar" style="width: 2%; background: linear-gradient(90deg, #4dffb8, #00f0ff); margin-left: 93%;">30 ms</div>
+          </div>
+        </div>
+
+        <div class="callout-cyan mt-6 text-sm text-gray-300">
+          <strong class="text-cyan-300">📍 What this trace tells you in 3 seconds:</strong>
+          The LLM call is <span class="text-cyan-200">67% of total latency</span>. If you want to make this endpoint faster, optimizing retrieval will save you 100 ms; switching to a faster model or streaming will save you 600+ ms. <span class="text-cyan-200">Traces aim your effort.</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========== TOOLS ========== -->
+<section id="tools" class="relative py-24 px-6 z-10">
+  <div class="max-w-7xl mx-auto">
+    <div class="text-center mb-16 reveal">
+      <span class="pill mb-4"><i data-lucide="package-2" class="w-3 h-3"></i> The Stack</span>
+      <h2 class="font-display text-4xl md:text-5xl font-bold mt-4">
+        LLM-Native vs <span class="gradient-purple">Generic</span> Observability
+      </h2>
+      <p class="text-gray-400 mt-4 max-w-3xl mx-auto">
+        Datadog tells you a span took 1.2s. LangSmith tells you what tokens were in the prompt. You need both — but you definitely need an LLM-aware tool.
+      </p>
+    </div>
+
+    <!-- 3 LLM TOOLS -->
+    <div class="grid md:grid-cols-3 gap-5 mb-12">
+      <div class="tool-card reveal">
+        <div class="flex items-center gap-3 mb-3">
+          <div class="w-12 h-12 rounded-xl flex items-center justify-center" style="background: rgba(0,240,255,0.15);">
+            <i data-lucide="search-code" class="w-6 h-6" style="color:#00f0ff;"></i>
+          </div>
+          <div>
+            <div class="text-xs uppercase tracking-wider" style="color:#00f0ff;">Tool 01</div>
+            <h4 class="font-display font-bold text-xl">LangSmith</h4>
+          </div>
+        </div>
+        <p class="text-sm text-gray-400 mb-4">LangChain's first-party platform. Best-in-class for LangChain/LangGraph stacks. Trace UI, eval, prompt management, datasets.</p>
+        <div class="space-y-1.5 text-xs">
+          <div class="text-gray-300"><span class="text-green-300">✓</span> Deepest integration with LangChain</div>
+          <div class="text-gray-300"><span class="text-green-300">✓</span> Eval + dataset features built-in</div>
+          <div class="text-gray-300"><span class="text-pink-300">✗</span> Hosted SaaS · pricier at scale</div>
+        </div>
+        <div class="mt-4 pt-4 border-t border-cyan-500/10 text-[11px] text-cyan-200">
+          Best for: LangChain-heavy teams
+        </div>
+      </div>
+
+      <div class="tool-card reveal" style="border-color: rgba(184,107,255,0.3);">
+        <div class="flex items-center gap-3 mb-3">
+          <div class="w-12 h-12 rounded-xl flex items-center justify-center" style="background: rgba(184,107,255,0.15);">
+            <i data-lucide="binoculars" class="w-6 h-6" style="color:#b86bff;"></i>
+          </div>
+          <div>
+            <div class="text-xs uppercase tracking-wider" style="color:#b86bff;">Tool 02</div>
+            <h4 class="font-display font-bold text-xl">Langfuse</h4>
+          </div>
+        </div>
+        <p class="text-sm text-gray-400 mb-4">Open-source LLM observability. Self-host or cloud. Framework-agnostic — works with raw OpenAI, Anthropic, anything.</p>
+        <div class="space-y-1.5 text-xs">
+          <div class="text-gray-300"><span class="text-green-300">✓</span> Open source — self-host for free</div>
+          <div class="text-gray-300"><span class="text-green-300">✓</span> Framework-agnostic SDK</div>
+          <div class="text-gray-300"><span class="text-pink-300">✗</span> Smaller ecosystem than LangSmith</div>
+        </div>
+        <div class="mt-4 pt-4 border-t border-cyan-500/10 text-[11px] text-purple-200">
+          Best for: privacy / on-prem / cost-sensitive
+        </div>
+      </div>
+
+      <div class="tool-card reveal" style="border-color: rgba(255,77,207,0.3);">
+        <div class="flex items-center gap-3 mb-3">
+          <div class="w-12 h-12 rounded-xl flex items-center justify-center" style="background: rgba(255,77,207,0.15);">
+            <i data-lucide="flame" class="w-6 h-6" style="color:#ff4dcf;"></i>
+          </div>
+          <div>
+            <div class="text-xs uppercase tracking-wider" style="color:#ff4dcf;">Tool 03</div>
+            <h4 class="font-display font-bold text-xl">Phoenix / Arize</h4>
+          </div>
+        </div>
+        <p class="text-sm text-gray-400 mb-4">Arize is the enterprise ML observability platform. Phoenix is its OSS sibling, focused on LLM apps with OpenTelemetry roots.</p>
+        <div class="space-y-1.5 text-xs">
+          <div class="text-gray-300"><span class="text-green-300">✓</span> OpenTelemetry-native</div>
+          <div class="text-gray-300"><span class="text-green-300">✓</span> Strong eval &amp; embedding drift tools</div>
+          <div class="text-gray-300"><span class="text-pink-300">✗</span> Steeper learning curve</div>
+        </div>
+        <div class="mt-4 pt-4 border-t border-cyan-500/10 text-[11px] text-pink-200">
+          Best for: enterprise ML ops teams
+        </div>
+      </div>
+    </div>
+
+    <!-- TOOL DECISION TABLE -->
+    <div class="reveal">
+      <div class="flex items-center gap-3 mb-6">
+        <i data-lucide="route" class="w-5 h-5 text-cyan-400"></i>
+        <h3 class="font-display font-bold text-xl">Which Tool Fits Your Team?</h3>
+      </div>
+      <div class="holo-card overflow-hidden">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>You Are...</th>
+              <th>Pick</th>
+              <th>Why</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>LangChain / LangGraph app, want hosted</td>
+              <td style="color:#00f0ff;">LangSmith</td>
+              <td>Native integration · best-in-class UX for chains</td>
+            </tr>
+            <tr>
+              <td>Privacy-sensitive · self-host required</td>
+              <td style="color:#b86bff;">Langfuse (self-hosted)</td>
+              <td>Full feature set on your own infra</td>
+            </tr>
+            <tr>
+              <td>Bare Python + OpenAI SDK · framework-free</td>
+              <td style="color:#b86bff;">Langfuse</td>
+              <td>SDK is framework-agnostic</td>
+            </tr>
+            <tr>
+              <td>Enterprise ML team with existing OTel stack</td>
+              <td style="color:#ff4dcf;">Phoenix / Arize</td>
+              <td>OTel-native, slots into existing telemetry</td>
+            </tr>
+            <tr>
+              <td>Already deep in Datadog / New Relic</td>
+              <td style="color:#ffb84d;">Datadog/NR + LLM tool</td>
+              <td>Generic APM + LLM tool · don't dual-pay for traces</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="callout mt-12 max-w-4xl mx-auto text-sm text-gray-300 reveal">
+      <strong class="text-amber-300">⚡ The split-brain trap:</strong>
+      Many teams send traces to Datadog (for infra) AND LangSmith (for LLM specifics) — and end up unable to correlate the two.
+      <span class="text-amber-200">Pick a primary tool and either propagate trace IDs both ways, or ship from OTel SDK to both.</span>
+    </div>
+  </div>
+</section>
+
+<!-- ========== OPENTELEMETRY ========== -->
+<section id="otel" class="relative py-24 px-6 z-10">
+  <div class="max-w-7xl mx-auto">
+    <div class="text-center mb-16 reveal">
+      <span class="pill mb-4"><i data-lucide="git-merge" class="w-3 h-3"></i> The Vendor-Free Layer</span>
+      <h2 class="font-display text-4xl md:text-5xl font-bold mt-4">
+        <span class="gradient-cyan">OpenTelemetry</span> for LLM Apps
+      </h2>
+      <p class="text-gray-400 mt-4 max-w-3xl mx-auto">
+        OTel is a vendor-neutral standard for emitting telemetry. Instrument once with OTel, ship to any backend — no lock-in, no rewrite.
+      </p>
+    </div>
+
+    <!-- WHY OTEL -->
+    <div class="grid md:grid-cols-2 gap-6 mb-12">
+      <div class="holo-card p-7 reveal" style="border-color: rgba(255,77,207,0.3);">
+        <div class="flex items-center gap-3 mb-3">
+          <div class="w-10 h-10 rounded-lg flex items-center justify-center" style="background: rgba(255,77,207,0.15);">
+            <i data-lucide="lock" class="w-5 h-5" style="color:#ff4dcf;"></i>
+          </div>
+          <h3 class="font-display font-bold text-lg">Without OTel</h3>
+        </div>
+        <p class="text-sm text-gray-400 mb-3">Each tool wants its own SDK. Switching means rewriting all instrumentation.</p>
+        <div class="space-y-1 text-xs font-mono">
+          <div class="text-pink-300">→ Datadog SDK in code</div>
+          <div class="text-pink-300">→ New Relic SDK in code</div>
+          <div class="text-pink-300">→ LangSmith SDK in code</div>
+          <div class="text-pink-300">→ Migration = rip &amp; replace</div>
+        </div>
+      </div>
+
+      <div class="holo-card p-7 reveal holo-border" style="border-color: rgba(0,240,255,0.4);">
+        <div class="flex items-center gap-3 mb-3">
+          <div class="w-10 h-10 rounded-lg flex items-center justify-center" style="background: rgba(0,240,255,0.15);">
+            <i data-lucide="git-fork" class="w-5 h-5" style="color:#00f0ff;"></i>
+          </div>
+          <h3 class="font-display font-bold text-lg">With OTel</h3>
+        </div>
+        <p class="text-sm text-gray-400 mb-3">Instrument once with the OTel SDK. Configure an exporter to any backend.</p>
+        <div class="space-y-1 text-xs font-mono">
+          <div class="text-cyan-300">→ OTel SDK in code (once)</div>
+          <div class="text-cyan-300">→ Exporter config in env</div>
+          <div class="text-cyan-300">→ Switch backends = env change</div>
+          <div class="text-cyan-300">→ Future-proof</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- OTel CODE -->
+    <div class="reveal">
+      <div class="flex items-center gap-3 mb-6">
+        <i data-lucide="code-2" class="w-5 h-5 text-cyan-400"></i>
+        <h3 class="font-display font-bold text-xl">Instrumenting a RAG Call with OTel</h3>
+        <span class="pill ml-auto"><i data-lucide="sparkles" class="w-3 h-3"></i> ~30 lines</span>
+      </div>
+
+      <div class="code-block">
+<pre><span class="tok-keyword">from</span> <span class="tok-var">opentelemetry</span> <span class="tok-keyword">import</span> <span class="tok-var">trace</span>
+<span class="tok-keyword">from</span> <span class="tok-var">opentelemetry.sdk.trace</span> <span class="tok-keyword">import</span> <span class="tok-var">TracerProvider</span>
+<span class="tok-keyword">from</span> <span class="tok-var">opentelemetry.sdk.trace.export</span> <span class="tok-keyword">import</span> <span class="tok-var">BatchSpanProcessor</span>
+<span class="tok-keyword">from</span> <span class="tok-var">opentelemetry.exporter.otlp.proto.grpc.trace_exporter</span> <span class="tok-keyword">import</span> <span class="tok-var">OTLPSpanExporter</span>
+
+<span class="tok-comment"># ---------- ONE-TIME SETUP ----------</span>
+<span class="tok-fn">trace</span>.<span class="tok-fn">set_tracer_provider</span>(<span class="tok-fn">TracerProvider</span>())
+<span class="tok-fn">trace</span>.<span class="tok-fn">get_tracer_provider</span>().<span class="tok-fn">add_span_processor</span>(
+    <span class="tok-fn">BatchSpanProcessor</span>(<span class="tok-fn">OTLPSpanExporter</span>())  <span class="tok-comment"># reads OTEL_EXPORTER_OTLP_ENDPOINT env</span>
+)
+<span class="tok-var">tracer</span> <span class="tok-keyword">=</span> <span class="tok-fn">trace</span>.<span class="tok-fn">get_tracer</span>(<span class="tok-string">"rag-api"</span>)
+
+<span class="tok-comment"># ---------- INSTRUMENTED RAG ----------</span>
+<span class="tok-keyword">async def</span> <span class="tok-fn">answer</span>(<span class="tok-var">question</span>: <span class="tok-var">str</span>):
+    <span class="tok-keyword">with</span> <span class="tok-var">tracer</span>.<span class="tok-fn">start_as_current_span</span>(<span class="tok-string">"rag.query"</span>) <span class="tok-keyword">as</span> <span class="tok-var">span</span>:
+        <span class="tok-var">span</span>.<span class="tok-fn">set_attribute</span>(<span class="tok-string">"rag.question"</span>, <span class="tok-var">question</span>[:<span class="tok-num">120</span>])
+
+        <span class="tok-keyword">with</span> <span class="tok-var">tracer</span>.<span class="tok-fn">start_as_current_span</span>(<span class="tok-string">"rag.embed"</span>):
+            <span class="tok-var">vec</span> <span class="tok-keyword">=</span> <span class="tok-keyword">await</span> <span class="tok-fn">embed</span>(<span class="tok-var">question</span>)
+
+        <span class="tok-keyword">with</span> <span class="tok-var">tracer</span>.<span class="tok-fn">start_as_current_span</span>(<span class="tok-string">"rag.retrieve"</span>) <span class="tok-keyword">as</span> <span class="tok-var">s</span>:
+            <span class="tok-var">chunks</span> <span class="tok-keyword">=</span> <span class="tok-keyword">await</span> <span class="tok-var">qdrant</span>.<span class="tok-fn">search</span>(<span class="tok-var">vec</span>, <span class="tok-var">k</span><span class="tok-keyword">=</span><span class="tok-num">5</span>)
+            <span class="tok-var">s</span>.<span class="tok-fn">set_attribute</span>(<span class="tok-string">"rag.top_k"</span>, <span class="tok-num">5</span>)
+            <span class="tok-var">s</span>.<span class="tok-fn">set_attribute</span>(<span class="tok-string">"rag.chunks_returned"</span>, <span class="tok-fn">len</span>(<span class="tok-var">chunks</span>))
+
+        <span class="tok-keyword">with</span> <span class="tok-var">tracer</span>.<span class="tok-fn">start_as_current_span</span>(<span class="tok-string">"rag.generate"</span>) <span class="tok-keyword">as</span> <span class="tok-var">s</span>:
+            <span class="tok-var">resp</span> <span class="tok-keyword">=</span> <span class="tok-keyword">await</span> <span class="tok-var">llm</span>.<span class="tok-fn">complete</span>(<span class="tok-var">question</span>, <span class="tok-var">chunks</span>)
+            <span class="tok-var">s</span>.<span class="tok-fn">set_attribute</span>(<span class="tok-string">"llm.model"</span>, <span class="tok-string">"gpt-4o-mini"</span>)
+            <span class="tok-var">s</span>.<span class="tok-fn">set_attribute</span>(<span class="tok-string">"llm.tokens_in"</span>, <span class="tok-var">resp</span>.<span class="tok-var">usage</span>.<span class="tok-var">prompt_tokens</span>)
+            <span class="tok-var">s</span>.<span class="tok-fn">set_attribute</span>(<span class="tok-string">"llm.tokens_out"</span>, <span class="tok-var">resp</span>.<span class="tok-var">usage</span>.<span class="tok-var">completion_tokens</span>)
+
+        <span class="tok-keyword">return</span> <span class="tok-var">resp</span>.<span class="tok-var">text</span></pre>
+      </div>
+
+      <div class="callout-cyan mt-6 text-sm text-gray-300">
+        <strong class="text-cyan-300">📍 The 3 power moves:</strong>
+        <ul class="mt-2 space-y-1 text-gray-300">
+          <li>• <span class="font-mono text-cyan-200">start_as_current_span</span> creates a parent-child tree — you get the flame graph for free</li>
+          <li>• <span class="font-mono text-cyan-200">set_attribute</span> adds searchable metadata (model, top_k, tokens) — filter your traces in any backend</li>
+          <li>• <span class="font-mono text-cyan-200">OTEL_EXPORTER_OTLP_ENDPOINT</span> env var switches backends without code changes</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- AUTO-INSTRUMENTATION -->
+    <div class="mt-12 reveal">
+      <div class="grid md:grid-cols-3 gap-4">
+        <div class="holo-card p-5">
+          <div class="font-mono text-[10px] text-cyan-300 tracking-widest mb-2">SHORTCUT · 01</div>
+          <h4 class="font-display font-bold text-base mb-2">Auto-Instrumentation</h4>
+          <p class="text-xs text-gray-400">Packages like <span class="font-mono text-cyan-200">opentelemetry-instrumentation-fastapi</span> auto-trace every route. Add one line, get HTTP spans free.</p>
+        </div>
+        <div class="holo-card p-5">
+          <div class="font-mono text-[10px] text-purple-300 tracking-widest mb-2">SHORTCUT · 02</div>
+          <h4 class="font-display font-bold text-base mb-2">OpenLLMetry</h4>
+          <p class="text-xs text-gray-400">Open-source semantic conventions for LLM spans. Standardizes <span class="font-mono">llm.tokens_in</span>, <span class="font-mono">llm.model</span>, etc. across vendors.</p>
+        </div>
+        <div class="holo-card p-5">
+          <div class="font-mono text-[10px] text-amber-300 tracking-widest mb-2">SHORTCUT · 03</div>
+          <h4 class="font-display font-bold text-base mb-2">Vendor SDKs Speak OTel</h4>
+          <p class="text-xs text-gray-400">Langfuse, Phoenix, Honeycomb, Datadog all accept OTel-format. Configure the endpoint, you're done.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========== WHAT TO LOG / TRACE ========== -->
+<section id="what-to-log" class="relative py-24 px-6 z-10">
+  <div class="max-w-7xl mx-auto">
+    <div class="text-center mb-16 reveal">
+      <span class="pill mb-4"><i data-lucide="list-checks" class="w-3 h-3"></i> The Checklist</span>
+      <h2 class="font-display text-4xl md:text-5xl font-bold mt-4">
+        What To <span class="gradient-purple">Log</span>, What To <span class="gradient-cyan">Trace</span>
+      </h2>
+      <p class="text-gray-400 mt-4 max-w-3xl mx-auto">
+        Log everything &amp; you'll never search it. Log nothing &amp; you can't debug. Here's the minimum signal set that makes RAG debugging tractable.
+      </p>
+    </div>
+
+    <!-- LOG VS TRACE -->
+    <div class="grid md:grid-cols-2 gap-6 mb-12">
+      <div class="holo-card p-7 reveal">
+        <div class="flex items-center gap-3 mb-4">
+          <div class="w-12 h-12 rounded-xl flex items-center justify-center" style="background: rgba(184,107,255,0.15);">
+            <i data-lucide="file-text" class="w-6 h-6" style="color:#b86bff;"></i>
+          </div>
+          <div>
+            <div class="text-xs uppercase tracking-wider" style="color:#b86bff;">Log it</div>
+            <h4 class="font-display font-bold text-xl">Discrete Events</h4>
+          </div>
+        </div>
+        <div class="space-y-1.5 text-sm text-gray-300">
+          <div class="flex items-start gap-2"><i data-lucide="check" class="w-4 h-4 text-purple-300 mt-0.5"></i> Request started · path · user_id</div>
+          <div class="flex items-start gap-2"><i data-lucide="check" class="w-4 h-4 text-purple-300 mt-0.5"></i> Auth failure / rate limit hit</div>
+          <div class="flex items-start gap-2"><i data-lucide="check" class="w-4 h-4 text-purple-300 mt-0.5"></i> Retrieval returned 0 results</div>
+          <div class="flex items-start gap-2"><i data-lucide="check" class="w-4 h-4 text-purple-300 mt-0.5"></i> LLM refused or returned an error</div>
+          <div class="flex items-start gap-2"><i data-lucide="check" class="w-4 h-4 text-purple-300 mt-0.5"></i> User submitted thumbs-up / -down</div>
+        </div>
+      </div>
+
+      <div class="holo-card p-7 reveal" style="border-color: rgba(0,240,255,0.3);">
+        <div class="flex items-center gap-3 mb-4">
+          <div class="w-12 h-12 rounded-xl flex items-center justify-center" style="background: rgba(0,240,255,0.15);">
+            <i data-lucide="git-branch" class="w-6 h-6" style="color:#00f0ff;"></i>
+          </div>
+          <div>
+            <div class="text-xs uppercase tracking-wider" style="color:#00f0ff;">Trace it</div>
+            <h4 class="font-display font-bold text-xl">Pipeline Stages</h4>
+          </div>
+        </div>
+        <div class="space-y-1.5 text-sm text-gray-300">
+          <div class="flex items-start gap-2"><i data-lucide="check" class="w-4 h-4 text-cyan-300 mt-0.5"></i> rag.query (parent span)</div>
+          <div class="flex items-start gap-2"><i data-lucide="check" class="w-4 h-4 text-cyan-300 mt-0.5"></i> rag.embed · rag.retrieve · rag.rerank</div>
+          <div class="flex items-start gap-2"><i data-lucide="check" class="w-4 h-4 text-cyan-300 mt-0.5"></i> rag.generate (with model + tokens)</div>
+          <div class="flex items-start gap-2"><i data-lucide="check" class="w-4 h-4 text-cyan-300 mt-0.5"></i> rag.eval (if scoring inline)</div>
+          <div class="flex items-start gap-2"><i data-lucide="check" class="w-4 h-4 text-cyan-300 mt-0.5"></i> External API calls (OpenAI, Qdrant)</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- THE STRUCTURED LOG -->
+    <div class="reveal mb-12">
+      <div class="flex items-center gap-3 mb-6">
+        <i data-lucide="code-2" class="w-5 h-5 text-purple-400"></i>
+        <h3 class="font-display font-bold text-xl">The Anatomy of A Good Log Line</h3>
+      </div>
+      <div class="code-block">
+<pre>{
+  <span class="tok-string">"ts"</span>:           <span class="tok-string">"2026-05-19T10:34:12.418Z"</span>,
+  <span class="tok-string">"level"</span>:        <span class="tok-string">"info"</span>,
+  <span class="tok-string">"service"</span>:      <span class="tok-string">"rag-api"</span>,
+  <span class="tok-string">"version"</span>:      <span class="tok-string">"0.4.2"</span>,
+  <span class="tok-string">"trace_id"</span>:     <span class="tok-string">"a4f2c8b9..."</span>,    <span class="tok-comment"># ← links to a trace</span>
+  <span class="tok-string">"request_id"</span>:   <span class="tok-string">"req_8c4a"</span>,
+  <span class="tok-string">"user_id"</span>:      <span class="tok-string">"u_4421"</span>,
+  <span class="tok-string">"event"</span>:        <span class="tok-string">"rag.query.completed"</span>,
+  <span class="tok-string">"duration_ms"</span>:  <span class="tok-num">1840</span>,
+  <span class="tok-string">"model"</span>:        <span class="tok-string">"gpt-4o-mini"</span>,
+  <span class="tok-string">"tokens_in"</span>:    <span class="tok-num">1284</span>,
+  <span class="tok-string">"tokens_out"</span>:   <span class="tok-num">87</span>,
+  <span class="tok-string">"top_k"</span>:        <span class="tok-num">5</span>,
+  <span class="tok-string">"chunks_used"</span>:  [<span class="tok-string">"doc_42#3"</span>, <span class="tok-string">"doc_88#1"</span>],
+  <span class="tok-string">"refused"</span>:      <span class="tok-keyword">false</span>
+}</pre>
+      </div>
+      <div class="callout-cyan mt-6 text-sm text-gray-300">
+        <strong class="text-cyan-300">🎯 The five non-negotiables:</strong>
+        <span class="font-mono text-cyan-200">trace_id</span> (link to trace),
+        <span class="font-mono text-cyan-200">request_id</span> (group a request's logs),
+        <span class="font-mono text-cyan-200">user_id</span> (correlate user complaints),
+        <span class="font-mono text-cyan-200">version</span> (find regressions to a deploy),
+        <span class="font-mono text-cyan-200">structured JSON</span> (parseable, queryable).
+      </div>
+    </div>
+
+    <!-- WHAT NOT TO LOG -->
+    <div class="reveal">
+      <div class="flex items-center gap-3 mb-6">
+        <i data-lucide="x-circle" class="w-5 h-5 text-pink-400"></i>
+        <h3 class="font-display font-bold text-xl">What You Should NEVER Log</h3>
+      </div>
+      <div class="grid md:grid-cols-3 gap-5">
+        <div class="holo-card p-5" style="border-color: rgba(255,77,207,0.3);">
+          <div class="font-mono text-[10px] text-pink-300 tracking-widest mb-2">NEVER · 01</div>
+          <h4 class="font-display font-bold text-base mb-2">Raw PII</h4>
+          <p class="text-xs text-gray-400">Names, emails, SSNs, addresses in question text. <span class="text-pink-300">Redact or hash before logging.</span> GDPR/CCPA cares.</p>
+        </div>
+        <div class="holo-card p-5" style="border-color: rgba(255,77,207,0.3);">
+          <div class="font-mono text-[10px] text-pink-300 tracking-widest mb-2">NEVER · 02</div>
+          <h4 class="font-display font-bold text-base mb-2">Full Prompts in Plain</h4>
+          <p class="text-xs text-gray-400">Prompts may contain customer data via retrieved chunks. Log a hash + first 200 chars, NOT the full payload.</p>
+        </div>
+        <div class="holo-card p-5" style="border-color: rgba(255,77,207,0.3);">
+          <div class="font-mono text-[10px] text-pink-300 tracking-widest mb-2">NEVER · 03</div>
+          <h4 class="font-display font-bold text-base mb-2">Secrets / API Keys</h4>
+          <p class="text-xs text-gray-400">It WILL happen by accident. Use scrubbing filters at the logger level — assume devs forget.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========== DASHBOARDS ========== -->
+<section id="dashboards" class="relative py-24 px-6 z-10">
+  <div class="max-w-7xl mx-auto">
+    <div class="text-center mb-16 reveal">
+      <span class="pill mb-4"><i data-lucide="layout-dashboard" class="w-3 h-3"></i> The Wall Display</span>
+      <h2 class="font-display text-4xl md:text-5xl font-bold mt-4">
+        The <span class="gradient-amber">Production RAG</span> Dashboard
+      </h2>
+      <p class="text-gray-400 mt-4 max-w-3xl mx-auto">
+        What goes on the wall-mounted screen. Six panels you should be able to read at 3 AM half-awake.
+      </p>
+    </div>
+
+    <!-- LATENCY CHART -->
+    <div class="holo-card p-8 mb-12 reveal">
+      <div class="flex flex-wrap items-center justify-between gap-4 mb-6">
+        <div>
+          <h3 class="font-display font-bold text-xl">End-to-End Latency · P50 / P95 / P99</h3>
+          <p class="text-sm text-gray-400 mt-1">Last 24 hours · 1-minute buckets</p>
+        </div>
+        <span class="pill"><i data-lucide="timer" class="w-3 h-3"></i> Live</span>
+      </div>
+      <div class="latency-chart-wrapper">
+        <canvas id="latencyChart" width="800" height="280"></canvas>
+      </div>
+      <div class="callout-cyan mt-6 text-sm text-gray-300">
+        <strong class="text-cyan-300">📍 Why three percentiles?</strong>
+        P50 = the median user's experience. P95 = your "slow but acceptable" tail. P99 = the customer who's tweeting about you. <span class="text-cyan-200">An average alone hides all three stories.</span>
+      </div>
+    </div>
+
+    <!-- 6 DASHBOARD PANELS -->
+    <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-5">
+      <div class="holo-card p-6 reveal">
+        <div class="use-case-icon" style="background: linear-gradient(135deg, rgba(0,240,255,0.15), rgba(77,142,255,0.05)); color: #00f0ff;">
+          <i data-lucide="timer" class="w-7 h-7"></i>
+        </div>
+        <div class="font-mono text-[10px] text-gray-500 tracking-widest mb-1">PANEL · 01</div>
+        <h3 class="font-display font-bold text-base mb-2" style="color:#00f0ff;">Latency Percentiles</h3>
+        <p class="text-xs text-gray-400 leading-relaxed">P50 / P95 / P99 per endpoint. Broken out by stage (embed / retrieve / generate) for instant root-cause.</p>
+      </div>
+
+      <div class="holo-card p-6 reveal">
+        <div class="use-case-icon" style="background: linear-gradient(135deg, rgba(77,142,255,0.15), rgba(184,107,255,0.05)); color: #4d8eff;">
+          <i data-lucide="trending-up" class="w-7 h-7"></i>
+        </div>
+        <div class="font-mono text-[10px] text-gray-500 tracking-widest mb-1">PANEL · 02</div>
+        <h3 class="font-display font-bold text-base mb-2" style="color:#4d8eff;">Request Rate (RPM)</h3>
+        <p class="text-xs text-gray-400 leading-relaxed">Requests per minute. Spikes signal launches or attacks; troughs signal upstream incidents.</p>
+      </div>
+
+      <div class="holo-card p-6 reveal">
+        <div class="use-case-icon" style="background: linear-gradient(135deg, rgba(184,107,255,0.15), rgba(255,77,207,0.05)); color: #b86bff;">
+          <i data-lucide="alert-triangle" class="w-7 h-7"></i>
+        </div>
+        <div class="font-mono text-[10px] text-gray-500 tracking-widest mb-1">PANEL · 03</div>
+        <h3 class="font-display font-bold text-base mb-2" style="color:#b86bff;">Error Rate</h3>
+        <p class="text-xs text-gray-400 leading-relaxed">4xx + 5xx + LLM refusals + tool errors. Bucketed by category — a 429 cluster ≠ a 500 cluster.</p>
+      </div>
+
+      <div class="holo-card p-6 reveal">
+        <div class="use-case-icon" style="background: linear-gradient(135deg, rgba(255,77,207,0.15), rgba(255,184,77,0.05)); color: #ff4dcf;">
+          <i data-lucide="dollar-sign" class="w-7 h-7"></i>
+        </div>
+        <div class="font-mono text-[10px] text-gray-500 tracking-widest mb-1">PANEL · 04</div>
+        <h3 class="font-display font-bold text-base mb-2" style="color:#ff4dcf;">Cost &amp; Tokens</h3>
+        <p class="text-xs text-gray-400 leading-relaxed">$/hour, tokens_in/out per request. A 2× spike in tokens_in = retrieved chunks ballooning. Catch it before the bill.</p>
+      </div>
+
+      <div class="holo-card p-6 reveal">
+        <div class="use-case-icon" style="background: linear-gradient(135deg, rgba(255,184,77,0.15), rgba(255,77,207,0.05)); color: #ffb84d;">
+          <i data-lucide="anchor" class="w-7 h-7"></i>
+        </div>
+        <div class="font-mono text-[10px] text-gray-500 tracking-widest mb-1">PANEL · 05</div>
+        <h3 class="font-display font-bold text-base mb-2" style="color:#ffb84d;">Quality (Sampled)</h3>
+        <p class="text-xs text-gray-400 leading-relaxed">Faithfulness &amp; answer-relevance on 5% of traffic. Rolling 24h. Drops here = retrieval or model issue.</p>
+      </div>
+
+      <div class="holo-card p-6 reveal">
+        <div class="use-case-icon" style="background: linear-gradient(135deg, rgba(77,255,184,0.15), rgba(0,240,255,0.05)); color: #4dffb8;">
+          <i data-lucide="thumbs-up" class="w-7 h-7"></i>
+        </div>
+        <div class="font-mono text-[10px] text-gray-500 tracking-widest mb-1">PANEL · 06</div>
+        <h3 class="font-display font-bold text-base mb-2" style="color:#4dffb8;">User Feedback</h3>
+        <p class="text-xs text-gray-400 leading-relaxed">👍 / 👎 ratio, comment volume. Ground truth from real users — the most honest signal you have.</p>
+      </div>
+    </div>
+
+    <div class="callout mt-12 max-w-4xl mx-auto text-sm text-gray-300 reveal">
+      <strong class="text-amber-300">⚡ The 3 AM test:</strong>
+      Can someone half-asleep look at your dashboard and tell in 10 seconds whether the system is healthy?
+      <span class="text-amber-200">If you need a doc to interpret it, redesign it.</span> Dashboards should answer one question: "is anything on fire?"
+    </div>
+  </div>
+</section>
+
+<!-- ========== ALERTS ========== -->
+<section id="alerts" class="relative py-24 px-6 z-10">
+  <div class="max-w-7xl mx-auto">
+    <div class="text-center mb-16 reveal">
+      <span class="pill mb-4" style="border-color: rgba(255,77,207,0.4); color:#ff4dcf; background:rgba(255,77,207,0.06);">
+        <i data-lucide="bell-ring" class="w-3 h-3"></i> The Pager
+      </span>
+      <h2 class="font-display text-4xl md:text-5xl font-bold mt-4">
+        Quality &amp; Regression <span class="gradient-purple">Alerts</span>
+      </h2>
+      <p class="text-gray-400 mt-4 max-w-3xl mx-auto">
+        Alerts should wake someone up only when a human action is needed. Every false alarm trains your team to ignore the next real one.
+      </p>
+    </div>
+
+    <!-- ALERT EXAMPLES -->
+    <div class="holo-card p-6 mb-12 reveal">
+      <div class="font-mono text-xs text-cyan-300 tracking-widest mb-4">CURRENT ALERT STATE</div>
+      <div class="space-y-3">
+        <div class="alert-row">
+          <i data-lucide="check-circle-2" class="w-5 h-5 flex-shrink-0" style="color:#4dffb8;"></i>
+          <div class="flex-1">
+            <div class="font-mono text-sm">latency_p95 &lt; 2000ms</div>
+            <div class="text-xs text-gray-500 mt-0.5">Current: 1840ms · threshold: 2000ms</div>
+          </div>
+          <span class="text-xs font-mono" style="color:#4dffb8;">HEALTHY</span>
+        </div>
+        <div class="alert-row warn">
+          <i data-lucide="alert-triangle" class="w-5 h-5 flex-shrink-0" style="color:#ffb84d;"></i>
+          <div class="flex-1">
+            <div class="font-mono text-sm">faithfulness_24h &gt; 0.85</div>
+            <div class="text-xs text-gray-500 mt-0.5">Current: 0.81 (declining) · firing for 2h</div>
+          </div>
+          <span class="text-xs font-mono" style="color:#ffb84d;">WARN</span>
+        </div>
+        <div class="alert-row crit">
+          <i data-lucide="x-circle" class="w-5 h-5 flex-shrink-0" style="color:#ff4dcf;"></i>
+          <div class="flex-1">
+            <div class="font-mono text-sm">error_rate_5xx &lt; 1%</div>
+            <div class="text-xs text-gray-500 mt-0.5">Current: 4.7% · sudden spike at 10:14 UTC</div>
+          </div>
+          <span class="text-xs font-mono" style="color:#ff4dcf;">PAGE</span>
+        </div>
+        <div class="alert-row">
+          <i data-lucide="check-circle-2" class="w-5 h-5 flex-shrink-0" style="color:#4dffb8;"></i>
+          <div class="flex-1">
+            <div class="font-mono text-sm">cost_per_query &lt; 2× baseline</div>
+            <div class="text-xs text-gray-500 mt-0.5">Current: 1.04× · baseline rolling 7d</div>
+          </div>
+          <span class="text-xs font-mono" style="color:#4dffb8;">HEALTHY</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 5 ALERT PRINCIPLES -->
+    <div class="reveal">
+      <div class="flex items-center gap-3 mb-6">
+        <i data-lucide="list-checks" class="w-5 h-5 text-cyan-400"></i>
+        <h3 class="font-display font-bold text-xl">Five Principles For Alerts That Don't Make You Numb</h3>
+      </div>
+      <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-5">
+        <div class="holo-card p-5">
+          <div class="font-mono text-[10px] text-cyan-300 tracking-widest mb-2">PRINCIPLE · 01</div>
+          <h4 class="font-display font-bold text-base mb-2">Alert on Symptoms, Not Causes</h4>
+          <p class="text-sm text-gray-400">Alert on "P95 latency &gt; 2s" (user-facing). Don't alert on "CPU &gt; 80%" (a cause that may or may not matter).</p>
+        </div>
+        <div class="holo-card p-5">
+          <div class="font-mono text-[10px] text-blue-300 tracking-widest mb-2">PRINCIPLE · 02</div>
+          <h4 class="font-display font-bold text-base mb-2">Two Tiers: Page vs Warn</h4>
+          <p class="text-sm text-gray-400"><span class="font-mono text-pink-300">PAGE</span> = wake someone up. <span class="font-mono text-amber-300">WARN</span> = open a ticket. Most alerts are WARNs. Pages are rare.</p>
+        </div>
+        <div class="holo-card p-5">
+          <div class="font-mono text-[10px] text-purple-300 tracking-widest mb-2">PRINCIPLE · 03</div>
+          <h4 class="font-display font-bold text-base mb-2">Sustained Duration</h4>
+          <p class="text-sm text-gray-400">"&gt; 2% errors for 5+ minutes", not "any single spike". A 30-second blip of 429s isn't worth a pager.</p>
+        </div>
+        <div class="holo-card p-5">
+          <div class="font-mono text-[10px] text-amber-300 tracking-widest mb-2">PRINCIPLE · 04</div>
+          <h4 class="font-display font-bold text-base mb-2">Quality Regression Alerts</h4>
+          <p class="text-sm text-gray-400">"Faithfulness 24h-avg &lt; 0.85" — quality is a first-class signal. Treat it like latency.</p>
+        </div>
+        <div class="holo-card p-5">
+          <div class="font-mono text-[10px] text-pink-300 tracking-widest mb-2">PRINCIPLE · 05</div>
+          <h4 class="font-display font-bold text-base mb-2">Runbook Per Alert</h4>
+          <p class="text-sm text-gray-400">Every alert links to a runbook: "what does this mean, what to check first, who to ping". <span class="text-pink-300">An alert without a runbook is a panic attack.</span></p>
+        </div>
+        <div class="holo-card p-5">
+          <div class="font-mono text-[10px] text-green-300 tracking-widest mb-2">PRINCIPLE · 06</div>
+          <h4 class="font-display font-bold text-base mb-2">Auto-Mute Known Incidents</h4>
+          <p class="text-sm text-gray-400">When OpenAI has an outage, don't get 47 pages about LLM errors. Detect known root causes, suppress duplicates, page once.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="callout-pink mt-12 max-w-4xl mx-auto text-sm text-gray-300 reveal">
+      <strong class="text-pink-300">🚨 The alert decay curve:</strong>
+      Every false page reduces the team's response speed to real ones. After 5 false alarms in a week, on-call starts hitting snooze.
+      <span class="text-pink-200">Treat alert hygiene as seriously as code review — a noisy alert IS a production bug.</span>
+    </div>
+  </div>
+</section>
+
+<!-- ========== QUIZ ========== -->
+<section id="quiz" class="relative py-24 px-6 z-10">
+  <div class="max-w-4xl mx-auto">
+    <div class="text-center mb-12 reveal">
+      <span class="pill mb-4"><i data-lucide="brain" class="w-3 h-3"></i> Lock It In</span>
+      <h2 class="font-display text-4xl md:text-5xl font-bold mt-4">
+        Quick <span class="gradient-amber">Check</span>
+      </h2>
+    </div>
+
+    <div class="holo-card p-8 reveal" id="quizCard">
+      <div class="flex items-center justify-between mb-4">
+        <div class="font-mono text-xs text-cyan-300 tracking-widest">QUESTION <span id="qNum">1</span> / 4</div>
+        <div class="font-mono text-xs text-gray-400">SCORE <span id="qScore" class="text-cyan-300">0</span></div>
+      </div>
+      <h3 class="font-display font-bold text-xl mb-6" id="qText">Loading...</h3>
+      <div class="space-y-3" id="qOptions"></div>
+      <div id="qFeedback" class="mt-6 hidden text-sm"></div>
+      <div class="mt-6 flex justify-end">
+        <button class="btn-primary text-sm py-2 px-5 hidden" id="qNext" onclick="nextQuestion()">
+          Next <i data-lucide="arrow-right" class="w-4 h-4 inline ml-1"></i>
+        </button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========== CHECKPOINT ========== -->
+
+<!-- RESOURCE SECTION -->
+<section class="relative py-16 px-6 z-10">
+  <div class="max-w-7xl mx-auto">
+    <div class="text-center mb-12 reveal">
+      <span class="pill mb-4"><i data-lucide="book" class="w-3 h-3"></i> Continue Learning</span>
+      <h3 class="font-display text-4xl md:text-5xl font-bold mt-4">Learn &amp; <span class="gradient-purple">Practice</span></h3>
+      <p class="text-gray-400 mt-2">Explore curated resources and practice with real code</p>
+    </div>
+
+    <div class="resource-stack mb-12">
+      <article class="resource-card">
+        <div class="flex items-start gap-3">
+          <div class="resource-icon">
+            <i data-lucide="lightbulb" class="w-4 h-4"></i>
+          </div>
+          <div class="min-w-0 flex-1">
+            <h4 class="font-display text-2xl font-bold leading-none">Progressive Article</h4>
+            <p class="text-xs text-gray-400 mt-1">Stuck? Start here - beginner-friendly explanation</p>
+            <p class="text-lg font-semibold mt-4 text-cyan-300">LLM Tracing Explained</p>
+            <a href="https://glassbrain.dev/blog/llm-tracing-explained" target="_blank" rel="noopener noreferrer" class="resource-cta" title="LLM Tracing Explained">
+              <i data-lucide="external-link" class="w-4 h-4"></i> Read Article
+            </a>
+          </div>
+        </div>
+      </article>
+      <article class="resource-card">
+        <div class="flex items-start gap-3">
+          <div class="resource-icon">
+            <i data-lucide="file-text" class="w-4 h-4"></i>
+          </div>
+          <div class="min-w-0 flex-1">
+            <h4 class="font-display text-2xl font-bold leading-none">Canonical Article</h4>
+            <p class="text-xs text-gray-400 mt-1">Authoritative source - official docs or research</p>
+            <p class="text-lg font-semibold mt-4 text-cyan-300">LangChain - Trace with OpenTelemetry</p>
+            <a href="https://docs.langchain.com/langsmith/trace-with-opentelemetry" target="_blank" rel="noopener noreferrer" class="resource-cta" title="LangChain - Trace with OpenTelemetry">
+              <i data-lucide="external-link" class="w-4 h-4"></i> Read Canonical
+            </a>
+          </div>
+        </div>
+      </article>
+      <article class="resource-card repo">
+        <div class="flex items-start gap-3">
+          <div class="resource-icon">
+            <i data-lucide="github" class="w-4 h-4"></i>
+          </div>
+          <div class="min-w-0 flex-1">
+            <h4 class="font-display text-2xl font-bold leading-none">GitHub Repository</h4>
+            <p class="text-xs text-gray-400 mt-1">Hands-on - reference implementation & examples</p>
+            <p class="text-lg font-semibold mt-4 text-pink-400">Langfuse</p>
+            <a href="https://github.com/langfuse/langfuse" target="_blank" rel="noopener noreferrer" class="resource-cta" title="Langfuse">
+              <i data-lucide="external-link" class="w-4 h-4"></i> Explore Repo
+            </a>
+          </div>
+        </div>
+      </article>
+      <article class="resource-card repo">
+        <div class="flex items-start gap-3">
+          <div class="resource-icon">
+            <i data-lucide="github" class="w-4 h-4"></i>
+          </div>
+          <div class="min-w-0 flex-1">
+            <h4 class="font-display text-2xl font-bold leading-none">GitHub Repository</h4>
+            <p class="text-xs text-gray-400 mt-1">Hands-on - reference implementation & examples</p>
+            <p class="text-lg font-semibold mt-4 text-pink-400">OpenLLMetry</p>
+            <a href="https://github.com/traceloop/openllmetry" target="_blank" rel="noopener noreferrer" class="resource-cta" title="OpenLLMetry">
+              <i data-lucide="external-link" class="w-4 h-4"></i> Explore Repo
+            </a>
+          </div>
+        </div>
+      </article>
+      <article class="resource-card repo">
+        <div class="flex items-start gap-3">
+          <div class="resource-icon">
+            <i data-lucide="github" class="w-4 h-4"></i>
+          </div>
+          <div class="min-w-0 flex-1">
+            <h4 class="font-display text-2xl font-bold leading-none">GitHub Repository</h4>
+            <p class="text-xs text-gray-400 mt-1">Hands-on - reference implementation & examples</p>
+            <p class="text-lg font-semibold mt-4 text-pink-400">Arize Phoenix</p>
+            <a href="https://github.com/Arize-ai/phoenix" target="_blank" rel="noopener noreferrer" class="resource-cta" title="Arize Phoenix">
+              <i data-lucide="external-link" class="w-4 h-4"></i> Explore Repo
+            </a>
+          </div>
+        </div>
+      </article>
+    </div>
+  </div>
+</section>
+
+<section id="checkpoint" class="relative py-24 px-6 z-10">
+  <div class="max-w-5xl mx-auto">
+    <div class="checkpoint-glow holo-card p-10 md:p-16 reveal text-center">
+      <div class="inline-flex items-center justify-center w-20 h-20 rounded-full mb-6" style="background: linear-gradient(135deg, #00f0ff, #b86bff); box-shadow: 0 0 60px rgba(0,240,255,0.5);">
+        <i data-lucide="flag" class="w-9 h-9 text-black"></i>
+      </div>
+
+      <span class="pill mb-4"><i data-lucide="check-circle" class="w-3 h-3"></i> Module 7.2 · Checkpoint</span>
+      <h2 class="font-display text-3xl md:text-5xl font-bold mt-4 mb-4">
+        <span class="gradient-multi">Mission 7.2 Complete</span>
+      </h2>
+      <p class="text-gray-300 max-w-2xl mx-auto mb-8">
+        You can instrument any RAG with logs, metrics, and traces — and build dashboards and alerts that catch real problems without crying wolf.
+      </p>
+
+      <div class="grid md:grid-cols-3 gap-4 text-left mb-10">
+        <div class="holo-card p-5">
+          <div class="font-mono text-xs text-cyan-300 mb-2">CHECK 01</div>
+          <p class="text-sm text-gray-300">Can you explain the <span class="text-cyan-300 font-semibold">3 pillars</span> and what question each answers?</p>
+        </div>
+        <div class="holo-card p-5">
+          <div class="font-mono text-xs text-purple-300 mb-2">CHECK 02</div>
+          <p class="text-sm text-gray-300">Can you instrument a RAG call with <span class="text-purple-300 font-semibold">OpenTelemetry</span> spans and attributes?</p>
+        </div>
+        <div class="holo-card p-5">
+          <div class="font-mono text-xs text-pink-300 mb-2">CHECK 03</div>
+          <p class="text-sm text-gray-300">Can you list the <span class="text-pink-300 font-semibold">5 alert principles</span> and why each one matters?</p>
+        </div>
+      </div>
+
+      <div class="flex flex-wrap gap-4 justify-center mb-8">
+        <button class="btn-primary flex items-center gap-2" onclick="completeModule()">
+          <i data-lucide="check" class="w-4 h-4"></i> Mark Module Complete
+        </button>
+        <button class="btn-ghost flex items-center gap-2">
+          <i data-lucide="arrow-right" class="w-4 h-4"></i> Module 7.3 · Caching Strategies
+        </button>
+      </div>
+
+      <div class="max-w-md mx-auto">
+        <div class="flex justify-between text-xs text-gray-400 mb-2 font-mono">
+          <span>TRACK 7 PROGRESS</span>
+          <span id="progressText">3 / 7 modules</span>
+        </div>
+        <div class="progress-bar"><div class="progress-fill" id="courseProgress" style="width: 28%;"></div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer class="relative py-12 px-6 z-10 border-t border-cyan-500/10">
+  <div class="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4 text-sm text-gray-500">
+    <div class="flex items-center gap-3">
+      <i data-lucide="orbit" class="w-4 h-4 text-cyan-400"></i>
+      <span class="font-display tracking-wider">RAG ACADEMY · GENAI GALAXY</span>
+    </div>
+    <div class="font-mono text-xs">v1.0.0 · Module 7.2 · Stardate 2026.05</div>
+  </div>
+</footer>
+
+<script>
+  function safeCreateIcons() {
+    try { if (typeof lucide !== 'undefined' && lucide.createIcons) lucide.createIcons(); } catch(e) {}
+  }
+  safeCreateIcons();
+
+  // ===== STARFIELD =====
+  const canvas = document.getElementById('starfield');
+  const ctx = canvas.getContext('2d');
+  let stars = [];
+
+  function resizeCanvas() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    initStars();
+  }
+  function initStars() {
+    stars = [];
+    const count = Math.floor((canvas.width * canvas.height) / 8000);
+    for (let i = 0; i < count; i++) {
+      stars.push({
+        x: Math.random() * canvas.width,
+        y: Math.random() * canvas.height,
+        z: Math.random() * 1.5 + 0.3,
+        size: Math.random() * 1.5,
+        twinkle: Math.random() * Math.PI * 2
+      });
+    }
+  }
+  function drawStars() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const now = Date.now() * 0.001;
+    stars.forEach(s => {
+      const alpha = 0.4 + 0.6 * Math.abs(Math.sin(s.twinkle + now * s.z));
+      ctx.beginPath();
+      ctx.fillStyle = `rgba(${180 + s.z*30}, ${220 + s.z*20}, 255, ${alpha})`;
+      ctx.arc(s.x, s.y, s.size * s.z, 0, Math.PI * 2);
+      ctx.fill();
+      s.y += s.z * 0.08;
+      if (s.y > canvas.height) { s.y = 0; s.x = Math.random() * canvas.width; }
+    });
+    requestAnimationFrame(drawStars);
+  }
+  window.addEventListener('resize', resizeCanvas);
+  resizeCanvas(); drawStars();
+
+  // ===== REVEAL =====
+  document.documentElement.classList.add('js-reveal');
+  const revealEls = document.querySelectorAll('.reveal');
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('in');
+        observer.unobserve(entry.target);
+      }
+    });
+  }, { threshold: 0.05, rootMargin: '0px 0px -50px 0px' });
+  revealEls.forEach(el => observer.observe(el));
+
+  function revealVisibleNow() {
+    revealEls.forEach(el => {
+      const rect = el.getBoundingClientRect();
+      if (rect.top < window.innerHeight && rect.bottom > 0) el.classList.add('in');
+    });
+  }
+  revealVisibleNow();
+  setTimeout(revealVisibleNow, 100);
+  setTimeout(revealVisibleNow, 500);
+  setTimeout(() => revealEls.forEach(el => el.classList.add('in')), 2000);
+
+  // ===== COUNTERS =====
+  function animateCounters() {
+    document.querySelectorAll('[data-count]').forEach(el => {
+      const target = parseInt(el.dataset.count);
+      let current = 0;
+      const step = Math.max(1, Math.ceil(target / 40));
+      const timer = setInterval(() => {
+        current += step;
+        if (current >= target) { current = target; clearInterval(timer); }
+        el.textContent = current;
+      }, 40);
+    });
+  }
+  setTimeout(animateCounters, 600);
+
+  // ===== LATENCY CHART =====
+  const ctx2 = document.getElementById('latencyChart').getContext('2d');
+  const labels = [];
+  const p50 = [], p95 = [], p99 = [];
+  for (let i = 0; i < 24; i++) {
+    labels.push(`${i.toString().padStart(2,'0')}:00`);
+    p50.push(420 + Math.random() * 150);
+    p95.push(1400 + Math.random() * 400);
+    p99.push(2100 + Math.random() * 700);
+  }
+
+  const g1 = ctx2.createLinearGradient(0, 0, 0, 280);
+  g1.addColorStop(0, 'rgba(0, 240, 255, 0.4)');
+  g1.addColorStop(1, 'rgba(0, 240, 255, 0)');
+  const g2 = ctx2.createLinearGradient(0, 0, 0, 280);
+  g2.addColorStop(0, 'rgba(184, 107, 255, 0.4)');
+  g2.addColorStop(1, 'rgba(184, 107, 255, 0)');
+  const g3 = ctx2.createLinearGradient(0, 0, 0, 280);
+  g3.addColorStop(0, 'rgba(255, 77, 207, 0.4)');
+  g3.addColorStop(1, 'rgba(255, 77, 207, 0)');
+
+  new Chart(ctx2, {
+    type: 'line',
+    data: {
+      labels: labels,
+      datasets: [
+        {
+          label: 'P50',
+          data: p50,
+          borderColor: '#00f0ff',
+          backgroundColor: g1,
+          tension: 0.4, fill: true, borderWidth: 2.5,
+          pointBackgroundColor: '#00f0ff', pointRadius: 2, pointHoverRadius: 6
+        },
+        {
+          label: 'P95',
+          data: p95,
+          borderColor: '#b86bff',
+          backgroundColor: g2,
+          tension: 0.4, fill: true, borderWidth: 2.5,
+          pointBackgroundColor: '#b86bff', pointRadius: 2, pointHoverRadius: 6
+        },
+        {
+          label: 'P99',
+          data: p99,
+          borderColor: '#ff4dcf',
+          backgroundColor: g3,
+          tension: 0.4, fill: true, borderWidth: 2.5,
+          pointBackgroundColor: '#ff4dcf', pointRadius: 2, pointHoverRadius: 6
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { labels: { color: '#8a96b8', font: { family: 'Inter', size: 12 }, usePointStyle: true, padding: 20 } },
+        tooltip: {
+          backgroundColor: 'rgba(2, 3, 10, 0.95)',
+          borderColor: 'rgba(0, 240, 255, 0.3)',
+          borderWidth: 1,
+          titleFont: { family: 'Orbitron' },
+          bodyFont: { family: 'JetBrains Mono' }
+        }
+      },
+      scales: {
+        x: { grid: { color: 'rgba(0, 240, 255, 0.05)' }, ticks: { color: '#8a96b8', font: { family: 'JetBrains Mono', size: 10 }, maxTicksLimit: 12 } },
+        y: { grid: { color: 'rgba(0, 240, 255, 0.05)' }, ticks: { color: '#8a96b8', font: { family: 'JetBrains Mono', size: 10 }, callback: v => v + 'ms' } }
+      }
+    }
+  });
+
+  // ===== QUIZ =====
+  const quizQs = [
+    {
+      q: 'Your dashboard shows the average latency is 800ms — looks fine. But users are complaining about slow responses. What signal is missing?',
+      opts: [
+        'Total request count',
+        'Latency percentiles — P95 and P99 reveal the slow tail that averages hide',
+        'Memory usage of the server',
+        'The version of the LLM being called'
+      ],
+      ans: 1,
+      exp: 'Averages hide tails. If P50 is 600ms but P95 is 4s, average looks ok while 5% of users are miserable. Always track percentiles, never just averages.'
+    },
+    {
+      q: 'You need to know "where in this RAG call did the 3 seconds go?" Which pillar gives you that answer?',
+      opts: [
+        'Logs',
+        'Metrics',
+        'Traces — they show a request as a tree of timed spans (embed, retrieve, generate)',
+        'A profiler attached to production'
+      ],
+      ans: 2,
+      exp: 'Traces are the flame graph of a request. Spans nest under each other showing exactly where time went. Logs are event-level; metrics are aggregate. Only traces give per-request structure.'
+    },
+    {
+      q: 'You\'re building on raw OpenAI + Qdrant (no LangChain). You want LLM-aware observability without vendor lock-in. What\'s the best pick?',
+      opts: [
+        'LangSmith — it\'s the standard',
+        'Datadog APM only — it covers everything',
+        'OpenTelemetry SDK + Langfuse (or any OTel-compatible backend)',
+        'Hand-rolled logging to stdout'
+      ],
+      ans: 2,
+      exp: 'OTel gives you vendor-neutral instrumentation. Langfuse is framework-agnostic and accepts OTel format. You can switch backends by changing an env var — no rewrite.'
+    },
+    {
+      q: 'Your team is getting 30+ alerts per day; on-call is exhausted. What\'s the FIRST principle to apply?',
+      opts: [
+        'Hire more on-call engineers',
+        'Alert on symptoms (P95 latency, error rate) not causes (CPU%) — and split into PAGE vs WARN tiers',
+        'Suppress all alerts and rely on user reports',
+        'Move to a different observability vendor'
+      ],
+      ans: 1,
+      exp: 'Most alert fatigue comes from alerting on causes (CPU high) that don\'t always mean user impact, plus treating everything as a page. Symptom-based + two-tier (PAGE/WARN) usually cuts noise 5-10×.'
+    }
+  ];
+
+  let qIdx = 0, qScore = 0;
+
+  function renderQ() {
+    const q = quizQs[qIdx];
+    document.getElementById('qNum').textContent = qIdx + 1;
+    document.getElementById('qScore').textContent = qScore;
+    document.getElementById('qText').textContent = q.q;
+    document.getElementById('qFeedback').classList.add('hidden');
+    document.getElementById('qNext').classList.add('hidden');
+
+    const opts = document.getElementById('qOptions');
+    opts.innerHTML = '';
+    q.opts.forEach((o, i) => {
+      const btn = document.createElement('button');
+      btn.className = 'quiz-option';
+      btn.textContent = o;
+      btn.onclick = () => answerQ(i);
+      opts.appendChild(btn);
+    });
+  }
+
+  function answerQ(picked) {
+    const q = quizQs[qIdx];
+    const opts = document.querySelectorAll('#qOptions .quiz-option');
+    opts.forEach((o, i) => {
+      o.classList.add('disabled');
+      if (i === q.ans) o.classList.add('correct');
+      if (i === picked && picked !== q.ans) o.classList.add('wrong');
+    });
+
+    const fb = document.getElementById('qFeedback');
+    fb.classList.remove('hidden');
+    if (picked === q.ans) {
+      qScore++;
+      fb.innerHTML = `<div class="callout-cyan"><strong class="text-cyan-300">✓ Correct.</strong> <span class="text-gray-300">${q.exp}</span></div>`;
+    } else {
+      fb.innerHTML = `<div class="callout-pink"><strong class="text-pink-300">✗ Not quite.</strong> <span class="text-gray-300">${q.exp}</span></div>`;
+    }
+    document.getElementById('qScore').textContent = qScore;
+    document.getElementById('qNext').classList.remove('hidden');
+    if (qIdx >= quizQs.length - 1) {
+      document.getElementById('qNext').innerHTML = 'Finish <i data-lucide="check" class="w-4 h-4 inline ml-1"></i>';
+      safeCreateIcons();
+    }
+  }
+
+  function nextQuestion() {
+    if (qIdx >= quizQs.length - 1) {
+      document.getElementById('quizCard').innerHTML = `
+        <div class="text-center py-6">
+          <div class="inline-flex items-center justify-center w-16 h-16 rounded-full mb-4" style="background: linear-gradient(135deg, #4dffb8, #00f0ff); box-shadow: 0 0 40px rgba(77,255,184,0.4);">
+            <i data-lucide="award" class="w-8 h-8 text-black"></i>
+          </div>
+          <h3 class="font-display font-bold text-2xl gradient-cyan mb-2">Quiz Complete</h3>
+          <p class="text-gray-400">You scored <span class="text-cyan-300 font-bold">${qScore} / ${quizQs.length}</span></p>
+          <p class="text-sm text-gray-500 mt-2">${qScore === quizQs.length ? 'Perfect run. Ready for Module 7.3 — Caching.' : 'Review the pillars and alert principles, then retry.'}</p>
+        </div>`;
+      safeCreateIcons();
+      return;
+    }
+    qIdx++;
+    renderQ();
+  }
+  renderQ();
+
+  // ===== SIDE NAV =====
+  const sections = ['hero','pillars','tools','otel','what-to-log','dashboards','alerts','checkpoint'];
+  const dots = document.querySelectorAll('.dot');
+  dots.forEach(dot => {
+    dot.addEventListener('click', () => {
+      document.getElementById(dot.dataset.target).scrollIntoView({ behavior: 'smooth' });
+    });
+  });
+  window.addEventListener('scroll', () => {
+    const scrollPos = window.scrollY + window.innerHeight / 2;
+    sections.forEach((id, i) => {
+      const el = document.getElementById(id);
+      if (el && el.offsetTop <= scrollPos && el.offsetTop + el.offsetHeight > scrollPos) {
+        dots.forEach(d => d.classList.remove('active'));
+        dots[i]?.classList.add('active');
+      }
+    });
+  });
+
+  // ===== COMPLETION =====
+  function completeModule() {
+    document.getElementById('courseProgress').style.width = '42%';
+    document.getElementById('progressText').textContent = '3 / 7 modules ✓';
+
+    try {
+      const saved = JSON.parse(localStorage.getItem('rag_academy_progress') || '{}');
+      saved.completed = saved.completed || [];
+      if (!saved.completed.includes('7.2')) saved.completed.push('7.2');
+      saved.lastModule = '7.2';
+      localStorage.setItem('rag_academy_progress', JSON.stringify(saved));
+    } catch(e) {}
+
+    const burst = document.createElement('div');
+    burst.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);font-family:Orbitron,sans-serif;font-size:2rem;font-weight:900;color:#00f0ff;text-shadow:0 0 30px #00f0ff;z-index:9999;pointer-events:none;opacity:0;transition:all 0.8s ease;';
+    burst.textContent = '✦ MISSION COMPLETE ✦';
+    document.body.appendChild(burst);
+    requestAnimationFrame(() => {
+      burst.style.opacity = '1';
+      burst.style.transform = 'translate(-50%, -50%) scale(1.2)';
+    });
+    setTimeout(() => { burst.style.opacity = '0'; setTimeout(() => burst.remove(), 800); }, 1800);
+  }
+  window.completeModule = completeModule;
+
+  try {
+    const saved = JSON.parse(localStorage.getItem('rag_academy_progress') || '{}');
+    if (saved.completed && saved.completed.includes('7.2')) {
+      document.getElementById('courseProgress').style.width = '42%';
+      document.getElementById('progressText').textContent = '3 / 7 modules ✓';
+    }
+  } catch(e) {}
+</script>
+
+</body>
+</html>

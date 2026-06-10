@@ -1,0 +1,733 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Network Delay Time (Dijkstra) - Visualization</title>
+    <style>
+        :root {
+            --bg-page: #000000;
+            --bg-surface: #161b22;
+            --bg-input: #000000;
+            --border-main: #30363d;
+            --btn-bg: #21262d;
+            --btn-hover: #2d333b;
+            --text-main: #c9d1d9;
+            --text-dim: #8b949e;
+            --text-log: #58a6ff;
+            --accent-orange: #e3b341;
+            --accent-blue: #388bfd;
+            --accent-green: #3fb950;
+            --accent-red: #f85149;
+            --accent-purple: #a371f7;
+        }
+
+        * { box-sizing: border-box; }
+        body {
+            background-color: var(--bg-page);
+            color: var(--text-main);
+            font-family: system-ui, -apple-system, sans-serif;
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            padding-bottom: 40px;
+        }
+
+        /* ROW 1: INPUT BAR */
+        .input-bar {
+            width: 100%;
+            background-color: var(--bg-surface);
+            padding: 12px 16px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 8px;
+            border-bottom: 1px solid var(--border-main);
+            flex-wrap: wrap;
+        }
+        label.ui-label { font-family: 'Courier New', monospace; font-size: 13px; color: var(--text-dim); }
+        input[type="text"] {
+            background: var(--bg-input);
+            border: 1px solid var(--border-main);
+            color: var(--text-main);
+            height: 32px;
+            border-radius: 6px;
+            padding: 0 10px;
+            font-size: 13px;
+        }
+        .small-input { width: 50px; text-align: center; }
+        .med-input { width: 350px; font-family: monospace; font-size: 12px;}
+
+        button {
+            height: 32px; border-radius: 6px; padding: 0 14px; background: var(--btn-bg);
+            border: 1px solid var(--border-main); color: var(--text-main); font-size: 13px; cursor: pointer;
+            transition: background 0.2s ease;
+        }
+        button:hover { background: var(--btn-hover); }
+
+        /* ROW 2: GRAPH AREA & ARRAYS */
+        .visual-container { margin-top: 20px; display: flex; align-items: flex-start; gap: 30px; width: 100%; justify-content: center; flex-wrap: wrap; }
+        
+        .graph-area {
+            position: relative;
+            width: 450px;
+            height: 380px;
+            background: var(--bg-surface);
+            border: 1px solid var(--border-main);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        #edges-svg {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none; z-index: 0;
+        }
+
+        .nodes-container {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            z-index: 1;
+        }
+
+        .node {
+            position: absolute;
+            width: 44px; height: 44px; border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            background: #21262d; border: 2px solid var(--border-main);
+            color: var(--text-main); font-weight: bold; font-size: 16px;
+            font-family: 'Courier New', monospace;
+            transform: translate(-50%, -50%);
+            transition: all 0.3s ease;
+        }
+        
+        .node.source { border-color: var(--accent-blue); box-shadow: 0 0 10px rgba(56,139,253,0.3); }
+        .node.active-u { transform: translate(-50%, -50%) scale(1.2); box-shadow: 0 0 15px var(--accent-orange); border-color: var(--accent-orange); z-index: 3; color: var(--accent-orange); }
+        .node.active-v { transform: translate(-50%, -50%) scale(1.15); box-shadow: 0 0 10px var(--accent-purple); border-color: var(--accent-purple); z-index: 2; color: var(--accent-purple); }
+        .node.visited { background: #0f2a1a; border-color: var(--accent-green); color: var(--accent-green); }
+
+        .arrays-col { display: flex; flex-direction: column; gap: 16px; min-width: 250px; max-width: 320px; }
+        .array-section { display: flex; flex-direction: column; gap: 8px; background: var(--bg-surface); padding: 12px; border-radius: 8px; border: 1px solid var(--border-main); min-height: 100px;}
+        .tiles-wrapper { display: flex; gap: 8px; flex-wrap: wrap; align-content: flex-start;}
+        
+        .tile-container { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+        .tile-index { font-size: 11px; color: var(--text-dim); font-family: monospace; }
+        
+        .tile {
+            min-width: 44px; height: 44px; display: flex; align-items: center; justify-content: center;
+            border-radius: 6px; font-size: 15px; font-weight: bold; font-family: 'Courier New', monospace;
+            transition: all 0.3s ease; background: #21262d; border: 1px solid var(--border-main);
+            color: var(--text-main);
+        }
+        
+        .tile.dist-tile { background: #0d213f; border-color: var(--accent-blue); color: var(--accent-blue); }
+        .tile.pq-tile { background: #1a150b; border-color: var(--accent-orange); color: var(--text-main); padding: 0 8px; width: auto; font-size: 13px;}
+        
+        .tile.highlight-update { animation: highlightFlash 0.6s ease; background: #0f2a1a; border-color: var(--accent-green); color: var(--accent-green); }
+        .tile.pushing { animation: pushAnim 0.3s ease; }
+        .tile.popping { transform: scale(1.1); opacity: 0; }
+
+        @keyframes highlightFlash { 0% { transform: scale(1); filter: brightness(1); } 50% { transform: scale(1.2); filter: brightness(1.5); box-shadow: 0 0 10px currentColor; } 100% { transform: scale(1); filter: brightness(1); } }
+        @keyframes pushAnim { 0%{transform:scale(0.5); opacity:0;} 100%{transform:scale(1); opacity:1;} }
+
+        /* ROW 3: PANEL */
+        .action-panel {
+            margin-top: 14px; background: var(--bg-surface); border: 1px solid var(--border-main);
+            border-radius: 6px; padding: 12px 20px; width: 800px; text-align: center; font-family: monospace; min-height: 80px;
+            display: flex; flex-direction: column; justify-content: center; font-size: 14px; line-height: 1.5;
+        }
+
+        /* ROW 4: INFO PANEL */
+        .info-panel { margin-top: 10px; display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; width: 800px;}
+        .info-cell {
+            background: var(--bg-surface); border: 1px solid var(--border-main); border-radius: 6px;
+            padding: 8px 14px; display: flex; flex-direction: column; align-items: center; min-width: 120px; gap: 4px; flex: 1;
+        }
+        .info-label { font-size: 11px; color: var(--text-dim); }
+        .info-value { font-family: monospace; font-size: 15px; font-weight: 700; text-align: center; word-break: break-all;}
+
+        /* ROW 5: RESULT DISPLAY */
+        .result-display { margin-top: 10px; display: flex; flex-direction: column; align-items: center; }
+        #res-val { font-size: 22px; color: var(--text-dim); font-family: monospace; transition: all 0.3s; font-weight: bold; margin-top: 4px; }
+        .pop { animation: popAnim 400ms ease; color: var(--accent-green) !important; text-shadow: 0 0 15px var(--accent-green); transform: scale(1.1); }
+        .pop-false { animation: popAnim 400ms ease; color: var(--accent-red) !important; text-shadow: 0 0 15px var(--accent-red); transform: scale(1.1); }
+
+        @keyframes popAnim { 0%{transform:scale(1)} 50%{transform:scale(1.2)} 100%{transform:scale(1.1)} }
+
+        /* ROW 6: STATUS BAR */
+        .status-bar { margin-top: 8px; font-size: 13px; color: var(--text-dim); height: 1.2em; text-align: center; width: 600px;}
+
+        /* ROW 7: CONTROLS */
+        .controls { margin-top: 24px; display: flex; align-items: center; gap: 8px; }
+        input[type="range"] { accent-color: var(--accent-blue); width: 100px; cursor: pointer; }
+
+        /* ROW 8: LEGEND */
+        .legend { margin-top: 12px; display: flex; gap: 16px; flex-wrap: wrap; justify-content: center; max-width: 800px; }
+        .legend-item { display: flex; align-items: center; font-size: 12px; color: var(--text-dim); }
+        .dot { width: 12px; height: 12px; border-radius: 2px; margin-right: 6px; display: inline-block; border: 1px solid var(--border-main);}
+
+        /* ROW 9: LOG PANEL */
+        .log-panel {
+            margin-top: 12px; background: var(--bg-page); border: 1px solid var(--border-main);
+            border-radius: 6px; padding: 12px 16px; width: 800px; max-width: 90%; height: 130px;
+            overflow-y: auto; font-family: 'Courier New', monospace; font-size: 13px;
+        }
+
+        .line-anim { stroke-dasharray: 6; animation: dash 1s linear infinite; }
+        @keyframes dash { to { stroke-dashoffset: -12; } }
+
+        .edge-label { font-family: monospace; font-weight: bold; font-size: 14px; text-anchor: middle; dominant-baseline: central; }
+        .edge-bg { fill: var(--bg-surface); stroke: var(--border-main); stroke-width: 1px; rx: 4px; }
+        .edge-active .edge-bg { stroke: var(--accent-purple); }
+        .edge-active .edge-label { fill: var(--accent-purple); }
+    </style>
+</head>
+<body>
+
+    <div class="input-bar">
+        <label class="ui-label">n =</label>
+        <input type="text" id="n-input" class="small-input" placeholder="4">
+        <label class="ui-label">k (src) =</label>
+        <input type="text" id="k-input" class="small-input" placeholder="2">
+        <label class="ui-label">times =</label>
+        <input type="text" id="t-input" class="med-input" placeholder="[[2,1,1],[2,3,1],[3,4,1]]">
+        <button onclick="loadCustom()">Load</button>
+        <button onclick="loadExample(4, 2, '[[2,1,1],[2,3,1],[3,4,1]]')">Ex 1</button>
+        <button onclick="loadExample(2, 1, '[[1,2,1]]')">Ex 2</button>
+    </div>
+
+    <div class="visual-container">
+        <div class="graph-area" id="graph-area">
+            <svg id="edges-svg">
+                <defs>
+                    <marker id="arrow-normal" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                        <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--border-main)" />
+                    </marker>
+                    <marker id="arrow-active" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                        <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--accent-purple)" />
+                    </marker>
+                    <marker id="arrow-path" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                        <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--accent-green)" />
+                    </marker>
+                </defs>
+            </svg>
+            <div class="nodes-container" id="nodes-container"></div>
+        </div>
+        <div class="arrays-col">
+            <div class="array-section">
+                <div class="ui-label" style="color: var(--accent-blue);">minTime Array:</div>
+                <div class="tiles-wrapper" id="dist-tiles"></div>
+                <div style="font-size: 11px; color: var(--text-dim); margin-top: 4px;">Minimum signal arrival time.</div>
+            </div>
+            <div class="array-section">
+                <div class="ui-label" style="color: var(--accent-orange);">Priority Queue (Min-Heap):</div>
+                <div class="tiles-wrapper" id="pq-tiles"></div>
+                <div style="font-size: 11px; color: var(--text-dim); margin-top: 4px;">Format: [time, node]</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="action-panel" id="main-panel">—</div>
+
+    <div class="info-panel">
+        <div class="info-cell">
+            <span class="info-label">Active Node (u)</span>
+            <span class="info-value" id="val-u" style="color: var(--accent-orange);">—</span>
+        </div>
+        <div class="info-cell">
+            <span class="info-label">Evaluating Neighbor (v)</span>
+            <span class="info-value" id="val-v" style="color: var(--accent-purple);">—</span>
+        </div>
+        <div class="info-cell">
+            <span class="info-label">Relaxation Check</span>
+            <span class="info-value" id="val-eq" style="color: var(--text-main); font-size:13px;">time[u] + w < minTime[v]</span>
+        </div>
+    </div>
+
+    <div class="result-display">
+        <span class="ui-label">maximum delay time =</span>
+        <span id="res-val">—</span>
+    </div>
+
+    <div class="status-bar" id="status-text"></div>
+
+    <div class="controls">
+        <button onclick="reset()">↺ Reset</button>
+        <button onclick="back()">← Back</button>
+        <button onclick="togglePlay()" id="play-btn">Play</button>
+        <button onclick="next()">Next →</button>
+        <div class="controls" style="margin-top:0">
+            <span class="ui-label" style="margin-right:4px; font-size:11px">Speed</span>
+            <input type="range" id="speed-slider" min="0" max="2" value="1">
+        </div>
+    </div>
+
+    <div class="legend">
+        <div class="legend-item"><span class="dot" style="background:transparent; border-color:var(--accent-orange); border-width:2px;"></span> Popped Node</div>
+        <div class="legend-item"><span class="dot" style="background:transparent; border-color:var(--accent-purple); border-width:2px;"></span> Evaluating Signal</div>
+        <div class="legend-item"><span class="dot" style="background:#0f2a1a; border-color:var(--accent-green)"></span> Finalized Time</div>
+        <div class="legend-item"><span class="dot" style="background:var(--accent-green)"></span> Optimal Path Edge</div>
+    </div>
+
+    <div class="log-panel" id="log"></div>
+
+    <script>
+        let N_count = 4;
+        let sourceNode = 2;
+        let edgesList = [[2,1,1],[2,3,1],[3,4,1]];
+        let nodeCoords = {};
+        
+        let steps = [];
+        let stepIndex = 0;
+        let timer = null;
+        const delays = [2800, 1400, 700];
+        const INF = Infinity;
+
+        function init() { loadExample(4, 2, '[[2,1,1],[2,3,1],[3,4,1]]'); }
+
+        function loadExample(n, k, eStr) {
+            document.getElementById('n-input').value = n;
+            document.getElementById('k-input').value = k;
+            document.getElementById('t-input').value = eStr;
+            parseAndGenerate();
+        }
+
+        function loadCustom() {
+            parseAndGenerate();
+        }
+
+        function parseAndGenerate() {
+            try {
+                N_count = parseInt(document.getElementById('n-input').value);
+                sourceNode = parseInt(document.getElementById('k-input').value);
+                edgesList = JSON.parse(document.getElementById('t-input').value);
+                
+                if (isNaN(N_count) || isNaN(sourceNode) || !Array.isArray(edgesList)) {
+                    throw "Invalid inputs";
+                }
+                
+                setupGraph();
+                generateSteps();
+                reset();
+            } catch(e) {
+                alert("Invalid format. Ensure N and k are integers, and times is a valid array of [u, v, w].");
+            }
+        }
+
+        function setupGraph() {
+            const container = document.getElementById('nodes-container');
+            container.innerHTML = '';
+            nodeCoords = {};
+
+            const cx = 225;
+            const cy = 190;
+            const radius = 130;
+
+            for (let i = 1; i <= N_count; i++) {
+                const angle = (Math.PI * 2 * (i - 1)) / N_count - Math.PI / 2;
+                const x = cx + radius * Math.cos(angle);
+                const y = cy + radius * Math.sin(angle);
+                nodeCoords[i] = {x, y};
+
+                const node = document.createElement('div');
+                node.className = 'node';
+                node.id = `node-${i}`;
+                node.style.left = `${x}px`;
+                node.style.top = `${y}px`;
+                node.innerText = i;
+                container.appendChild(node);
+            }
+        }
+
+        function formatDist(val) { return val === INF ? 'INF' : val; }
+        function clonePQ(pq) { return pq.map(item => ({...item})); }
+
+        function generateSteps() {
+            steps = [];
+            
+            // Note: Nodes are 1-indexed (1 to n)
+            let dist = new Array(N_count + 1).fill(INF);
+            let visited = new Array(N_count + 1).fill(false);
+            let parents = new Array(N_count + 1).fill(-1);
+            let pq = []; // Array of {d: time, u: node}
+            let sptEdges = new Set(); 
+
+            let adj = {};
+            for(let i=1; i<=N_count; i++) adj[i] = [];
+            for(let [u,v,w] of edgesList) {
+                if (adj[u]) adj[u].push({v, w});
+            }
+
+            if (!adj[sourceNode]) {
+                // Invalid source
+                steps.push({
+                    type: 'error', dist: [...dist], visited: [...visited], pq: clonePQ(pq), spt: new Set(sptEdges),
+                    u: null, v: null, w: null, updatedIdx: null, poppedItem: null, pushedItem: null,
+                    panel: `Source Node <b>${sourceNode}</b> is invalid or disconnected.`,
+                    complete: true, result: -1,
+                    statusText: `Error`, log: `Invalid source node.`
+                });
+                return;
+            }
+
+            dist[sourceNode] = 0;
+            pq.push({d: 0, u: sourceNode});
+
+            steps.push({
+                type: 'init', dist: [...dist], visited: [...visited], pq: clonePQ(pq), spt: new Set(sptEdges),
+                u: null, v: null, w: null, updatedIdx: null, poppedItem: null, pushedItem: null,
+                panel: `<b>Network Delay Time (Dijkstra)</b><br>Signal starts at Node <b>${sourceNode}</b>. Set <code>minTime[${sourceNode}] = 0</code>, all other times to <code>INF</code>.<br>Push <code>[0, ${sourceNode}]</code> to the Priority Queue.`,
+                statusText: `Initialization complete.`,
+                log: `Initialized minTime array and Priority Queue. Source = ${sourceNode}.`
+            });
+
+            while (pq.length > 0) {
+                pq.sort((a,b) => a.d - b.d);
+                let curr = pq.shift();
+                let u = curr.u;
+                let d = curr.d;
+
+                steps.push({
+                    type: 'pop', dist: [...dist], visited: [...visited], pq: clonePQ(pq), spt: new Set(sptEdges),
+                    u: u, v: null, w: null, updatedIdx: null, poppedItem: curr, pushedItem: null,
+                    panel: `<b>Pop Min-Heap:</b> Extract Node <b>${u}</b> at signal time <b>${d}</b>.<br>Checking if this path is valid or stale...`,
+                    statusText: `Processing Node ${u}...`,
+                    log: `\nPopped [${d}, ${u}] from heap.`
+                });
+
+                if (d > dist[u]) {
+                    steps.push({
+                        type: 'stale', dist: [...dist], visited: [...visited], pq: clonePQ(pq), spt: new Set(sptEdges),
+                        u: u, v: null, w: null, updatedIdx: null, poppedItem: null, pushedItem: null,
+                        panel: `Extracted time <b>${d}</b> > current known <code>minTime[${u}] = ${dist[u]}</code>.<br>This is a stale entry. <b style="color:var(--accent-red)">Skip.</b>`,
+                        statusText: `Skipped stale entry.`,
+                        log: `  -> Stale entry (${d} > ${dist[u]}). Skipped.`
+                    });
+                    continue;
+                }
+
+                visited[u] = true;
+                if (parents[u] !== -1) {
+                    sptEdges.add(`${parents[u]}-${u}`);
+                }
+
+                steps.push({
+                    type: 'process', dist: [...dist], visited: [...visited], pq: clonePQ(pq), spt: new Set(sptEdges),
+                    u: u, v: null, w: null, updatedIdx: null, poppedItem: null, pushedItem: null,
+                    panel: `Signal officially reaches Node <b>${u}</b> at time <b>${d}</b>. Marked as Visited.<br>Now broadcasting signal to all its neighbors.`,
+                    statusText: `Broadcasting from Node ${u}...`,
+                    log: `  Node ${u} reached at time ${d}. Relaying signal...`
+                });
+
+                let neighbors = adj[u] || [];
+                if (neighbors.length === 0) {
+                    steps.push({
+                        type: 'no_neighbors', dist: [...dist], visited: [...visited], pq: clonePQ(pq), spt: new Set(sptEdges),
+                        u: u, v: null, w: null, updatedIdx: null, poppedItem: null, pushedItem: null,
+                        panel: `Node <b>${u}</b> has no outgoing connections. Signal stops here.`,
+                        statusText: `No neighbors to relay to.`,
+                        log: `    No outgoing edges.`
+                    });
+                }
+
+                for (let neighbor of neighbors) {
+                    let v = neighbor.v;
+                    let w = neighbor.w;
+                    let new_time = dist[u] + w;
+
+                    steps.push({
+                        type: 'check', dist: [...dist], visited: [...visited], pq: clonePQ(pq), spt: new Set(sptEdges),
+                        u: u, v: v, w: w, updatedIdx: null, poppedItem: null, pushedItem: null,
+                        panel: `Signal travels <b>${u} ➔ ${v}</b> (delay ${w}).<br>Arrival time = <code>minTime[${u}] + ${w}</code> = <b>${new_time}</b>.<br>Is <code>${new_time} < minTime[${v}] (${formatDist(dist[v])})</code>?`,
+                        statusText: `Evaluating signal to ${v}...`,
+                        log: `    Check neighbor ${v}: ${dist[u]} + ${w} < ${formatDist(dist[v])}?`
+                    });
+
+                    if (new_time < dist[v]) {
+                        dist[v] = new_time;
+                        parents[v] = u;
+                        let newItem = {d: new_time, u: v};
+                        pq.push(newItem);
+
+                        steps.push({
+                            type: 'relax', dist: [...dist], visited: [...visited], pq: clonePQ(pq), spt: new Set(sptEdges),
+                            u: u, v: v, w: w, updatedIdx: v, poppedItem: null, pushedItem: newItem,
+                            panel: `<b style="color:var(--accent-green)">Yes!</b> Signal reaches <b>${v}</b> faster this way.<br>Update <code>minTime[${v}] = ${new_time}</code> and push <code>[${new_time}, ${v}]</code> to Heap.`,
+                            statusText: `Updated time for Node ${v}.`,
+                            log: `      -> Yes! Update minTime[${v}] = ${new_time}. Pushed [${new_time}, ${v}].`,
+                            logColor: 'var(--accent-green)'
+                        });
+                    } else {
+                        steps.push({
+                            type: 'skip_relax', dist: [...dist], visited: [...visited], pq: clonePQ(pq), spt: new Set(sptEdges),
+                            u: u, v: v, w: w, updatedIdx: null, poppedItem: null, pushedItem: null,
+                            panel: `<b style="color:var(--accent-red)">No.</b> Signal already reached <b>${v}</b> at an equal or faster time.<br>Ignore this path.`,
+                            statusText: `No update for ${v}.`,
+                            log: `      -> No. Slower or equal path. Ignored.`
+                        });
+                    }
+                }
+            }
+
+            let maxSignalTime = 0;
+            let unreachable = false;
+            for (let i = 1; i <= N_count; i++) {
+                if (dist[i] === INF) unreachable = true;
+                else maxSignalTime = Math.max(maxSignalTime, dist[i]);
+            }
+
+            let finalAns = unreachable ? -1 : maxSignalTime;
+
+            steps.push({
+                type: 'final', dist: [...dist], visited: [...visited], pq: clonePQ(pq), spt: new Set(sptEdges),
+                u: null, v: null, w: null, updatedIdx: null, poppedItem: null, pushedItem: null,
+                panel: unreachable ? 
+                    `<b>Algorithm Complete.</b><br>Not all nodes were reached! Returning <b style="color:var(--accent-red); font-size:18px;">-1</b>.` :
+                    `<b>Algorithm Complete.</b><br>All nodes reached! The max time taken among all nodes is <b style="color:var(--accent-green); font-size:18px;">${maxSignalTime}</b>.`,
+                complete: true, result: finalAns,
+                statusText: `Algorithm Finished.`,
+                log: `\nHeap empty. Algorithm complete.\nFinal minTimes: [${dist.slice(1).map(formatDist).join(', ')}]\nResult: ${finalAns}`,
+                logColor: unreachable ? 'var(--accent-red)' : 'var(--accent-blue)'
+            });
+        }
+
+        function drawEdges(step) {
+            const svg = document.getElementById('edges-svg');
+            svg.innerHTML = '';
+            const nodeRadius = 22;
+
+            edgesList.forEach(e => {
+                const u = e[0], v = e[1], w = e[2];
+                const p1 = nodeCoords[u];
+                const p2 = nodeCoords[v];
+                if(!p1 || !p2) return;
+
+                let isChecking = step.u === u && step.v === v;
+                let isSPT = step.spt.has(`${u}-${v}`);
+
+                const dx = p2.x - p1.x;
+                const dy = p2.y - p1.y;
+                const len = Math.hypot(dx, dy);
+                const shrinkTarget = nodeRadius + 5; 
+                const shrinkSource = nodeRadius + 2; 
+                
+                const x1 = p1.x + (dx/len)*shrinkSource; 
+                const y1 = p1.y + (dy/len)*shrinkSource;
+                const x2 = p2.x - (dx/len)*shrinkTarget; 
+                const y2 = p2.y - (dy/len)*shrinkTarget;
+
+                const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+                if (isChecking) g.classList.add('edge-active');
+
+                const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                line.setAttribute('x1', x1); line.setAttribute('y1', y1);
+                line.setAttribute('x2', x2); line.setAttribute('y2', y2);
+
+                if (isChecking) {
+                    line.setAttribute('stroke', 'var(--accent-purple)');
+                    line.setAttribute('stroke-width', '4');
+                    line.setAttribute('marker-end', 'url(#arrow-active)');
+                    line.classList.add('line-anim');
+                    setTimeout(() => svg.appendChild(line), 0);
+                } else if (isSPT) {
+                    line.setAttribute('stroke', 'var(--accent-green)');
+                    line.setAttribute('stroke-width', '3');
+                    line.setAttribute('marker-end', 'url(#arrow-path)');
+                } else {
+                    line.setAttribute('stroke', 'var(--border-main)');
+                    line.setAttribute('stroke-width', '2');
+                    line.setAttribute('marker-end', 'url(#arrow-normal)');
+                }
+
+                g.appendChild(line);
+
+                const midX = (x1 + x2) / 2;
+                const midY = (y1 + y2) / 2 - 10;
+                
+                const bg = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+                bg.setAttribute('x', midX - 12);
+                bg.setAttribute('y', midY - 8);
+                bg.setAttribute('width', 24);
+                bg.setAttribute('height', 16);
+                bg.setAttribute('class', 'edge-bg');
+                
+                const txt = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                txt.setAttribute('x', midX);
+                txt.setAttribute('y', midY);
+                txt.setAttribute('class', 'edge-label');
+                if (!isChecking) txt.setAttribute('fill', 'var(--text-dim)');
+                if (isSPT && !isChecking) txt.setAttribute('fill', 'var(--accent-green)');
+                txt.textContent = w;
+
+                g.appendChild(bg);
+                g.appendChild(txt);
+
+                if (isChecking) {
+                    setTimeout(() => svg.appendChild(g), 0);
+                } else {
+                    svg.appendChild(g);
+                }
+            });
+        }
+
+        function renderPQ(step) {
+            const container = document.getElementById('pq-tiles');
+            container.innerHTML = '';
+            
+            if (step.pq.length === 0 && !step.poppedItem) {
+                container.innerHTML = '<span style="color:var(--text-dim); font-size:13px; font-family:monospace; margin-top:8px;">{ empty }</span>';
+                return;
+            }
+
+            if (step.poppedItem && step.type === 'pop') {
+                const pTile = document.createElement('div');
+                pTile.className = `tile pq-tile popping`;
+                pTile.innerText = `[${step.poppedItem.d}, ${step.poppedItem.u}]`;
+                container.appendChild(pTile);
+            }
+
+            let dispPq = [...step.pq].sort((a,b) => a.d - b.d);
+
+            dispPq.forEach(item => {
+                const tile = document.createElement('div');
+                tile.className = 'tile pq-tile';
+                tile.innerText = `[${item.d}, ${item.u}]`;
+                
+                if (step.pushedItem && step.pushedItem.u === item.u && step.pushedItem.d === item.d) {
+                    tile.classList.add('pushing');
+                }
+                container.appendChild(tile);
+            });
+        }
+
+        function renderArray(step) {
+            const container = document.getElementById('dist-tiles');
+            container.innerHTML = '';
+            
+            // 1-indexed to N
+            for (let i = 1; i <= N_count; i++) {
+                let val = step.dist[i];
+                const wrapper = document.createElement('div');
+                wrapper.className = 'tile-container';
+                
+                const tile = document.createElement('div');
+                tile.className = `tile dist-tile`;
+                
+                if (step.updatedIdx === i) {
+                    tile.classList.add('highlight-update');
+                }
+                
+                tile.innerText = formatDist(val);
+                
+                const idxLabel = document.createElement('div');
+                idxLabel.className = 'tile-index';
+                idxLabel.innerText = `[${i}]`;
+
+                wrapper.appendChild(tile);
+                wrapper.appendChild(idxLabel);
+                container.appendChild(wrapper);
+            }
+        }
+
+        function renderStep(idx) {
+            const step = steps[idx];
+            if (!step) return;
+
+            // Render Nodes
+            for(let i=1; i<=N_count; i++) {
+                const el = document.getElementById(`node-${i}`);
+                if(!el) continue;
+                
+                el.className = 'node';
+                if (i === sourceNode) el.classList.add('source');
+                
+                if (step.visited[i]) el.classList.add('visited');
+                
+                if (step.u === i) el.classList.add('active-u');
+                if (step.v === i) el.classList.add('active-v');
+            }
+
+            drawEdges(step);
+            renderArray(step);
+            renderPQ(step);
+
+            // Update Info Panel
+            document.getElementById('main-panel').innerHTML = step.panel;
+            
+            document.getElementById('val-u').innerText = step.u !== null ? step.u : '—';
+            document.getElementById('val-v').innerText = step.v !== null ? step.v : '—';
+            
+            let eqStr = 'time[u] + w < minTime[v]';
+            if (step.type === 'check' || step.type === 'relax' || step.type === 'skip_relax') {
+                eqStr = `${formatDist(step.dist[step.u])} + ${step.w} < ${formatDist(step.dist[step.v])}`;
+            }
+            document.getElementById('val-eq').innerText = eqStr;
+
+            const resVal = document.getElementById('res-val');
+            resVal.innerText = step.complete ? step.result : '—';
+            if (step.complete) {
+                resVal.className = step.result === -1 ? 'pop-false' : 'pop';
+            } else {
+                resVal.className = '';
+            }
+
+            document.getElementById('status-text').innerText = step.statusText;
+
+            // Update Log
+            const logPanel = document.getElementById('log');
+            logPanel.innerHTML = '';
+            for (let k = 0; k <= idx; k++) {
+                if (steps[k].log) {
+                    const line = document.createElement('div');
+                    line.style.marginBottom = '2px';
+                    line.style.whiteSpace = 'pre-wrap';
+                    if (steps[k].logColor) line.style.color = steps[k].logColor;
+                    line.innerText = steps[k].log;
+                    logPanel.appendChild(line);
+                }
+            }
+            logPanel.scrollTop = logPanel.scrollHeight;
+        }
+
+        function next() {
+            if (stepIndex < steps.length - 1) {
+                stepIndex++;
+                renderStep(stepIndex);
+            } else pause();
+        }
+
+        function back() {
+            if (stepIndex > 0) {
+                stepIndex--;
+                renderStep(stepIndex);
+            }
+        }
+
+        function reset() {
+            pause();
+            stepIndex = 0;
+            renderStep(0);
+        }
+
+        function togglePlay() {
+            const btn = document.getElementById('play-btn');
+            if (timer) pause();
+            else {
+                btn.innerText = 'Pause';
+                if (stepIndex >= steps.length - 1) stepIndex = 0;
+                timer = setInterval(next, delays[document.getElementById('speed-slider').value]);
+            }
+        }
+
+        function pause() {
+            clearInterval(timer);
+            timer = null;
+            document.getElementById('play-btn').innerText = 'Play';
+        }
+
+        window.onload = () => { setTimeout(init, 100); };
+    </script>
+</body>
+</html>

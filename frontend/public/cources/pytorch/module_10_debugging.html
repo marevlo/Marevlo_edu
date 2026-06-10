@@ -1,0 +1,2203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PyTorch Academy • Module 10 — Model Debugging</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Source+Serif+4:ital,opsz,wght@0,8..60,300;0,8..60,400;0,8..60,500;0,8..60,600;1,8..60,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.47.0/tabler-icons.min.css">
+<style>
+:root{
+  --bg:#08090b;
+  --bg-2:#0b0f1a;
+  --bg-3:#111827;
+  --panel:#0d1117;
+  --panel-2:#111827;
+  --line:#1e2330;
+  --line-2:#2a3142;
+  --ink:#e8eaed;
+  --ink-2:#a8aeb8;
+  --ink-3:#6b7280;
+  --ink-4:#454b58;
+  --accent:#6366f1;       /* indigo — primary accent */
+  --accent-2:#818cf8;
+  --accent-glow:rgba(99,102,241,0.18);
+  --plan:#f59e0b;        /* planning / cognition */
+  --tool:#10b981;        /* tool execution */
+  --observe:#8b5cf6;     /* observation */
+  --fail:#f7768e;
+  --success:#10b981;
+  --serif:'Source Serif 4', Georgia, serif;
+  --sans:'Outfit', -apple-system, sans-serif;
+  --mono:'JetBrains Mono', monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{
+  background:var(--bg);
+  color:var(--ink);
+  font-family:var(--sans);
+  font-weight:400;
+  line-height:1.6;
+  -webkit-font-smoothing:antialiased;
+  overflow-x:hidden;
+  min-height:100vh;
+  position:relative;
+}
+body::before{
+  content:'';position:fixed;inset:0;
+  background:
+    radial-gradient(ellipse 80% 50% at 42% -15%, rgba(99,102,241,0.1), transparent 60%),
+    radial-gradient(ellipse 60% 40% at 100% 100%, rgba(99,102,241,0.04), transparent 60%);
+  pointer-events:none;z-index:0;
+}
+body::after{
+  content:'';position:fixed;inset:0;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='300' height='300' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E");
+  background-size:300px 300px;
+  opacity:0.025;
+  pointer-events:none;z-index:0;
+}
+
+/* ============ STARFIELD ============ */
+.starfield {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  pointer-events: none;
+  z-index: -2;
+}
+.stars {
+  position: fixed;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  z-index: -1;
+  pointer-events: none;
+}
+.star {
+  position: absolute;
+  background: #fff;
+  border-radius: 50%;
+  opacity: 0.3;
+  animation: twinkle var(--dur, 4s) ease-in-out infinite;
+}
+@keyframes twinkle {
+  0%, 100% { opacity: 0.1; }
+  50% { opacity: 0.6; }
+}
+
+/* ============== LAYOUT ============== */
+.shell{position:relative;z-index:1;display:grid;grid-template-columns:280px 1fr;min-height:100vh}
+.sidebar{
+  position:sticky;top:0;height:100vh;
+  border-right:1px solid transparent;
+  background:linear-gradient(180deg, rgba(13,17,23,0.92) 0%, rgba(8,9,11,0.96) 100%);
+  backdrop-filter:blur(20px) saturate(1.4);
+  -webkit-backdrop-filter:blur(20px) saturate(1.4);
+  padding:36px 22px 28px;
+  overflow-y:auto;
+  box-shadow:inset -1px 0 0 rgba(255,255,255,0.04), 1px 0 32px rgba(0,0,0,0.5);
+  display:flex;flex-direction:column;
+}
+/* Left accent spine as pseudo */
+.sidebar::before{
+  position:absolute;left:0;top:0;bottom:0;width:2px;
+  background:linear-gradient(180deg,
+    transparent 0%,
+    rgba(99,102,241,0.5) 20%,
+    rgba(99,102,241,0.3) 60%,
+    transparent 100%);
+  pointer-events:none;z-index:2;
+}
+.sidebar::-webkit-scrollbar{width:3px}
+.sidebar::-webkit-scrollbar-track{background:transparent}
+.sidebar::-webkit-scrollbar-thumb{background:linear-gradient(180deg, var(--accent), transparent);border-radius:3px;opacity:0.5}
+.brand{
+  display:flex;align-items:center;gap:10px;margin-bottom:8px;
+  position:relative;
+}
+/* #3 — top glow arc behind brand */
+.brand::before{
+  content:'';
+  position:absolute;top:-28px;left:-22px;right:-22px;height:90px;
+  background:radial-gradient(ellipse 70% 60% at 40% 0%, rgba(99,102,241,0.18), transparent 70%);
+  pointer-events:none;z-index:0;
+  border-radius:50%;
+}
+.brand > *{position:relative;z-index:1}
+.brand-mark{
+  width:36px;height:36px;border-radius:8px;
+  background:transparent;
+  display:grid;place-items:center;
+  overflow:hidden;
+  flex-shrink:0;
+}
+.brand-mark img, .brand-mark i{
+  font-size:24px;
+  color:var(--accent-2);
+  display:block;
+}
+.brand-name{font-size:13px;font-weight:600;letter-spacing:0.02em}
+.brand-sub{font-size:11px;color:var(--ink-3);margin-top:2px;letter-spacing:0.04em}
+/* #6 — brand divider hairline */
+.brand-divider{
+  height:1px;
+  margin:18px 0 4px;
+  background:linear-gradient(90deg, transparent 0%, rgba(99,102,241,0.25) 40%, rgba(99,102,241,0.25) 60%, transparent 100%);
+}
+.module-tag{
+  margin-top:24px;padding:13px 15px;
+  background:linear-gradient(135deg, rgba(99,102,241,0.06) 0%, rgba(13,17,23,0.9) 100%);
+  border:1px solid rgba(99,102,241,0.18);
+  border-radius:9px;
+  box-shadow:0 1px 12px rgba(0,0,0,0.25);
+}
+.module-tag-label{font-size:10px;color:var(--ink-3);letter-spacing:0.04em;margin-bottom:4px}
+.module-tag-title{font-family:var(--serif);font-size:13px;color:var(--ink);font-weight:400}
+.toc{margin-top:24px}
+.toc-label{font-size:10px;color:var(--ink-3);letter-spacing:0.05em;margin-bottom:12px;padding-left:10px}
+.toc a{
+  display:flex;align-items:center;gap:10px;
+  padding:9px 11px;color:var(--ink-2);text-decoration:none;font-size:13px;
+  border-radius:6px;border-left:2px solid transparent;
+  transition:background 0.18s ease, color 0.18s ease, border-color 0.18s ease;
+  position:relative;
+}
+.toc a:hover{
+  background:rgba(255,255,255,0.03);
+  color:var(--ink);
+}
+.toc a.active{
+  background:linear-gradient(90deg, rgba(99,102,241,0.12) 0%, transparent 100%);
+  color:var(--accent);
+  border-left-color:var(--accent);
+  box-shadow:inset 0 0 0 1px rgba(99,102,241,0.08);
+}
+/* #7 — past TOC items fade */
+.toc a.past{
+  opacity:0.38;
+  color:var(--ink-4);
+}
+.toc a.past .toc-num{color:var(--ink-4)}
+.toc-num{font-family:var(--mono);font-size:11px;color:var(--ink-4);width:24px;transition:color 0.18s}
+.toc a.active .toc-num{color:var(--accent-2)}
+.progress-rail{
+  margin-top:28px;padding:15px 16px;
+  background:linear-gradient(135deg, rgba(99,102,241,0.05) 0%, rgba(13,17,23,0.8) 100%);
+  border:1px solid rgba(99,102,241,0.14);
+  border-radius:9px;
+  box-shadow:0 1px 10px rgba(0,0,0,0.2);
+}
+.progress-bar{
+  height:3px;background:rgba(255,255,255,0.05);border-radius:2px;overflow:hidden;margin-top:10px;
+  box-shadow:inset 0 1px 2px rgba(0,0,0,0.4);
+}
+.progress-fill{
+  height:100%;width:0%;
+  background:linear-gradient(90deg, var(--accent), var(--accent-2));
+  transition:width 0.5s cubic-bezier(0.4,0,0.2,1);
+  box-shadow:0 0 8px rgba(99,102,241,0.5);
+}
+.progress-text{font-size:11px;color:var(--ink-3);font-family:var(--serif)}
+
+.main{padding:80px 80px 200px;max-width:980px}
+@media (max-width: 1100px){
+  .shell{grid-template-columns:1fr}
+  .sidebar{position:relative;height:auto;border-right:none;border-bottom:1px solid var(--line)}
+  .main{padding:48px 32px 120px}
+}
+
+/* ============== HERO ============== */
+.hero{margin-bottom:80px;position:relative;text-align:left;padding:0;max-width:100%}
+.hero-meta{
+  display:inline-flex;align-items:center;gap:0;
+  margin-bottom:36px;
+  font-family:var(--mono);font-size:11px;color:var(--ink-3);letter-spacing:0.05em;
+  background:linear-gradient(135deg, rgba(99,102,241,0.07) 0%, rgba(13,17,23,0.6) 100%);
+  border:1px solid rgba(99,102,241,0.2);
+  border-radius:100px;
+  padding:7px 16px;
+  backdrop-filter:blur(8px);
+  box-shadow:0 0 0 1px rgba(255,255,255,0.03), 0 4px 24px rgba(0,0,0,0.3), 0 0 32px rgba(99,102,241,0.06);
+}
+.hero-meta span{white-space:nowrap;padding:0 2px}
+.hero-meta .dot{
+  width:5px;height:5px;border-radius:50%;
+  background:var(--accent);
+  box-shadow:0 0 6px rgba(99,102,241,0.8), 0 0 12px rgba(99,102,241,0.4);
+  flex-shrink:0;margin:0 10px;
+}
+.hero-meta .sep{
+  width:1px;height:10px;
+  background:rgba(255,255,255,0.08);
+  flex-shrink:0;margin:0 12px;
+}
+.hero-meta .track-label{color:var(--accent-2);font-weight:500}
+.hero-meta .level-badge{
+  padding:2px 9px;
+  background:rgba(99,102,241,0.12);
+  border:1px solid rgba(99,102,241,0.25);
+  border-radius:100px;
+  color:var(--accent-2);
+  font-weight:600;
+  font-size:10px;
+  letter-spacing:0.08em;
+  margin-left:4px;
+}
+.hero h1{
+  font-family:var(--serif);font-weight:400;font-size:clamp(40px, 5.5vw, 68px);
+  line-height:1.05;letter-spacing:-0.022em;margin-bottom:24px;
+}
+.hero h1 em, .hero h1 .accent{font-style:italic;color:var(--accent);font-weight:300;background:none;-webkit-text-fill-color:initial;text-fill-color:initial}
+.hero-lede, .hero .subtitle{
+  font-family:var(--serif);font-size:21px;line-height:1.55;color:var(--ink-2);
+  max-width:680px;font-weight:300;margin: 0;
+}
+.hero-stats{
+  display:grid;grid-template-columns:repeat(4,1fr);gap:2px;
+  margin-top:48px;background:var(--line);border:1px solid var(--line);border-radius:9px;overflow:hidden;
+}
+.hero-stat{background:var(--panel);padding:20px 22px;text-align:left}
+.hero-stat-num{font-family:var(--serif);font-size:28px;font-weight:500;color:var(--accent);line-height:1}
+.hero-stat-label{font-size:11px;color:var(--ink-3);margin-top:6px;letter-spacing:0.03em}
+@media (max-width:700px){.hero-stats{grid-template-columns:repeat(2,1fr)}}
+
+/* ============== SECTIONS ============== */
+.section{margin-bottom:88px;scroll-margin-top:100px}
+section:nth-child(3n){margin-bottom:104px}
+section:nth-child(2n){margin-bottom:96px}
+.section-head{margin-bottom:28px;padding-bottom:18px;border-bottom:1px solid var(--line)}
+.section-num{font-family:var(--mono);font-size:11px;color:var(--accent);letter-spacing:0.15em}
+.section-title, .section h2{
+  font-family:var(--serif);font-size:36px;font-weight:400;line-height:1.15;
+  letter-spacing:-0.01em;margin-top:8px;margin-bottom:8px;
+  display:flex;align-items:center;gap:14px;color:var(--ink);
+}
+.section h2::before{
+  content:'';
+  width:4px;
+  height:28px;
+  background:linear-gradient(180deg, var(--accent), var(--accent-2));
+  border-radius:2px;
+}
+.section-sub{font-size:15px;color:var(--ink-3);margin-top:12px;max-width:680px}
+
+p{font-family:var(--serif);font-size:17px;line-height:1.73;color:var(--ink-2);margin-bottom:20px;font-weight:300}
+p strong{color:var(--ink);font-weight:500}
+p em{color:var(--accent);font-style:italic}
+
+/* Goal Callout matches Marevlo callout standard */
+.goal-callout {
+  max-width: 980px;
+  margin: 20px 0 60px;
+  padding: 22px 28px;
+  background: linear-gradient(135deg, rgba(99,102,241,0.06), rgba(99,102,241,0.02));
+  border-left: 2px solid var(--accent);
+  border-radius: 0 7px 7px 0;
+  position: relative;
+}
+.goal-callout::before {
+  display:none;
+}
+.goal-callout h3 {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+  font-weight:600;
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.goal-callout p {
+  margin: 0;
+  font-size: 16px;
+  color: var(--ink);
+}
+
+.callout{
+  margin:32px 0;padding:22px 28px;
+  background:linear-gradient(135deg, rgba(99,102,241,0.06), rgba(99,102,241,0.02));
+  border-left:2px solid var(--accent);border-radius:0 7px 7px 0;
+  display:flex;
+  gap:16px;
+  align-items:flex-start;
+}
+.callout i{
+  font-size:20px;
+  margin-top:2px;
+  flex-shrink:0;
+}
+.callout-content{flex:1}
+.callout-title{
+  font-family:var(--mono);font-size:11px;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:8px;
+  font-weight:600;
+}
+.callout p{margin:0;font-size:16px;color:var(--ink)}
+
+/* Callout variants */
+.callout-tip{
+  background:linear-gradient(135deg, rgba(16,185,129,0.06), rgba(16,185,129,0.02));
+  border-left-color:var(--success);
+}
+.callout-tip i, .callout-tip .callout-title{color:var(--success)}
+
+.callout-warn{
+  background:linear-gradient(135deg, rgba(245,158,11,0.06), rgba(245,158,11,0.02));
+  border-left-color:var(--plan);
+}
+.callout-warn i, .callout-warn .callout-title{color:var(--plan)}
+
+.callout-info{
+  background:linear-gradient(135deg, rgba(99,102,241,0.06), rgba(99,102,241,0.02));
+  border-left-color:var(--accent);
+}
+.callout-info i, .callout-info .callout-title{color:var(--accent)}
+
+.callout-danger{
+  background:linear-gradient(135deg, rgba(247,118,142,0.06), rgba(247,118,142,0.02));
+  border-left-color:var(--fail);
+}
+.callout-danger i, .callout-danger .callout-title{color:var(--fail)}
+
+h3{font-family:var(--sans);font-size:20px;font-weight:600;margin:48px 0 16px;letter-spacing:-0.005em;color:var(--ink)}
+h4{font-family:var(--sans);font-size:15px;font-weight:600;margin:24px 0 12px;color:var(--ink);text-transform:uppercase;letter-spacing:0.06em}
+
+ul,ol{margin:16px 0 20px 0;padding-left:24px}
+li{font-family:var(--serif);font-size:17px;line-height:1.68;color:var(--ink-2);margin-bottom:10px;font-weight:300}
+li strong{color:var(--ink);font-weight:500}
+
+/* ============== CODE BLOCKS ============== */
+.code-block {
+  background:#06070a;
+  border:1px solid var(--line);
+  border-radius:8px;
+  margin:20px 0;
+  overflow:hidden;
+  position:relative;
+}
+.code-header {
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  padding:10px 18px;
+  background:rgba(255,255,255,0.02);
+  border-bottom:1px solid var(--line);
+}
+.code-lang {
+  font-size:11px;
+  color:var(--accent-2);
+  font-family:var(--mono);
+  letter-spacing:1px;
+  text-transform:uppercase;
+  font-weight:600;
+}
+.code-copy {
+  background:transparent;
+  border:1px solid var(--line-2);
+  color:var(--ink-2);
+  padding:4px 10px;
+  border-radius:5px;
+  font-size:11px;
+  cursor:pointer;
+  display:flex;
+  align-items:center;
+  gap:4px;
+  transition:all 0.15s;
+}
+.code-copy:hover {
+  background:rgba(255,255,255,0.04);
+  color:var(--ink);
+  border-color:var(--accent);
+}
+.code-block pre {
+  padding:18px 20px;
+  overflow-x:auto;
+  font-family:var(--mono);
+  font-size:13px;
+  line-height:1.65;
+}
+.code-block pre code {
+  color:#c8d3e0;
+  background:none;
+  padding:0;
+  border:none;
+}
+.section code:not(pre code) {
+  background: rgba(99, 102, 241, 0.08);
+  color: var(--accent-2);
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-family: var(--mono);
+  font-size: 13px;
+  border: 1px solid rgba(99, 102, 241, 0.18);
+}
+.kw{color:#8b5cf6}
+.fn{color:#818cf8}
+.st{color:#10b981}
+.co{color:#6b7280;font-style:italic}
+.cls{color:#f59e0b}
+.op{color:#67e8f9}
+
+/* === Output Blocks === */
+.output {
+  background:rgba(0,0,0,0.4);
+  border-left:3px solid var(--accent);
+  padding:14px 18px;
+  margin:8px 0 20px;
+  font-family:var(--mono);
+  font-size:12.5px;
+  color:var(--ink-2);
+  border-radius:0 8px 8px 0;
+  white-space:pre-wrap;
+  overflow-x:auto;
+}
+.output::before {
+  content:'output';
+  display:block;
+  font-size:10px;
+  color:var(--accent-2);
+  letter-spacing:1.5px;
+  margin-bottom:6px;
+  text-transform:uppercase;
+  font-weight:600;
+}
+
+/* === Tables === */
+.table-wrap{overflow-x:auto;margin:24px 0}
+table{
+  width:100%;
+  border-collapse:collapse;
+  background:var(--bg-2);
+  border:1px solid var(--line);
+  border-radius:9px;
+  overflow:hidden;
+  font-size:14px;
+}
+thead{
+  background:rgba(99,102,241,0.06);
+}
+th{
+  text-align:left;
+  padding:12px 14px;
+  color:var(--accent-2);
+  font-weight:600;
+  letter-spacing:0.02em;
+  border-bottom:1px solid var(--line-2);
+  font-size:13px;
+  font-family:var(--sans);
+}
+td{
+  padding:11px 14px;
+  border-bottom:1px solid var(--line);
+  color:var(--ink-2);
+  vertical-align:top;
+  font-family:var(--serif);
+  font-weight:300;
+}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:rgba(99,102,241,0.02)}
+td code{font-size:12px}
+
+/* ============== INTERACTIVE WIDGETS ============== */
+.widget {
+  margin:40px 0;
+  background:var(--panel);
+  border:1px solid var(--line);
+  border-radius:11px;
+  padding:28px;
+  position:relative;
+}
+.widget::before {
+  content: 'INTERACTIVE';
+  position: absolute;
+  top: -10px;
+  left: 20px;
+  background: var(--bg);
+  padding: 2px 10px;
+  font-size: 10px;
+  letter-spacing: 2px;
+  color: var(--accent-2);
+  border: 1px solid var(--accent);
+  border-radius: 10px;
+  font-weight: 600;
+  font-family:var(--mono);
+}
+.widget-title {
+  font-family:var(--sans);
+  font-size:16px;
+  font-weight:600;
+  color:var(--ink);
+  margin-bottom:6px;
+  letter-spacing:0.02em;
+  display:flex;
+  align-items:center;
+  gap:10px;
+}
+.widget-title::before {
+  content:'';
+  width:6px;
+  height:6px;
+  border-radius:50%;
+  background:var(--accent);
+  box-shadow:0 0 8px var(--accent-glow);
+}
+.widget-subtitle {
+  font-size:13px;
+  color:var(--ink-3);
+  margin-bottom:18px;
+}
+.controls {
+  display:flex;
+  flex-direction:column;
+  gap:14px;
+  margin-bottom:18px;
+}
+.ctrl-row {
+  display:flex;
+  align-items:center;
+  gap:14px;
+  flex-wrap:wrap;
+}
+.ctrl-label {
+  font-family:var(--sans);
+  font-size:12px;
+  color:var(--ink-2);
+  min-width:130px;
+  letter-spacing:0.02em;
+  text-transform:uppercase;
+  font-weight:500;
+}
+.ctrl-value {
+  font-size:13px;
+  color:var(--accent-2);
+  font-family:var(--mono);
+  min-width:70px;
+  text-align:right;
+  font-weight:600;
+}
+input[type="range"] {
+  flex:1;
+  accent-color:var(--accent);
+  height:4px;
+  background:var(--line-2);
+  border-radius:2px;
+  appearance:none;
+  outline:none;
+}
+input[type="range"]::-webkit-slider-thumb {
+  appearance:none;
+  width:16px;
+  height:16px;
+  border-radius:50%;
+  background:var(--accent-2);
+  cursor:pointer;
+  box-shadow:0 0 12px var(--accent-glow);
+}
+input[type="range"]::-moz-range-thumb {
+  width:16px;
+  height:16px;
+  border-radius:50%;
+  background:var(--accent-2);
+  cursor:pointer;
+  border:none;
+}
+.btn-row { display:flex; gap:8px; flex-wrap:wrap; }
+.pill-btn {
+  background:var(--bg-3);
+  color:var(--ink-2);
+  border:1px solid var(--line-2);
+  padding:7px 16px;
+  border-radius:8px;
+  font-size:12px;
+  cursor:pointer;
+  font-family:var(--mono);
+  font-weight:500;
+  transition:all 0.15s;
+}
+.pill-btn:hover {
+  background:var(--panel-2);
+  color:var(--ink);
+  border-color:var(--accent);
+}
+.pill-btn.active {
+  background:var(--accent);
+  color:#ffffff;
+  border-color:var(--accent);
+  box-shadow:0 0 15px var(--accent-glow);
+  font-weight:600;
+}
+.tensor-grid {
+  display:inline-grid;
+  gap:4px;
+  padding:16px;
+  background:rgba(0,0,0,0.3);
+  border-radius:10px;
+  border:1px solid var(--line);
+}
+.tcell {
+  width:36px;
+  height:36px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-size:10px;
+  font-family:var(--mono);
+  border-radius:4px;
+  font-weight:500;
+  transition:all 0.3s;
+}
+.viz-out {
+  margin-top:16px;
+  font-family:var(--mono);
+  font-size:13px;
+  color:var(--ink-2);
+  padding:14px 18px;
+  background:var(--bg-3);
+  border-radius:6px;
+  border-left:2px solid var(--accent);
+  white-space:pre-wrap;
+}
+.chart-box {
+  position:relative;
+  height:260px;
+  margin:16px 0 8px;
+  background:rgba(0,0,0,0.2);
+  border-radius:8px;
+  padding:8px;
+  border:1px solid var(--line);
+}
+.legend {
+  display:flex;
+  gap:18px;
+  font-size:11px;
+  color:var(--ink-3);
+  margin-top:10px;
+  flex-wrap:wrap;
+  font-family:var(--mono);
+}
+.legend-dot {
+  display:inline-block;
+  width:10px;
+  height:10px;
+  border-radius:50%;
+  margin-right:6px;
+  vertical-align:middle;
+}
+.graph-svg-wrap {
+  background:rgba(0,0,0,0.3);
+  border-radius:10px;
+  padding:16px;
+  margin:12px 0;
+  border:1px solid var(--line);
+}
+.metric-grid {
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(110px,1fr));
+  gap:10px;
+  margin:14px 0;
+}
+.metric {
+  background:rgba(0,0,0,0.3);
+  border:1px solid var(--line);
+  border-radius:8px;
+  padding:12px;
+}
+.metric-label {
+  font-family:var(--mono);
+  font-size:10px;
+  color:var(--ink-3);
+  text-transform:uppercase;
+  letter-spacing:1px;
+}
+.metric-value {
+  font-family:var(--mono);
+  font-size:18px;
+  color:var(--accent-2);
+  margin-top:4px;
+  font-weight:600;
+}
+
+/* ============ REFERENCES SECTION ============ */
+.references {
+  max-width:980px;
+  margin:80px auto 60px;
+  padding:0;
+}
+.refs-header {
+  text-align:center;
+  margin-bottom:40px;
+}
+.refs-header h2 {
+  font-family:var(--serif);
+  font-size:48px;
+  font-weight:400;
+  margin-bottom:12px;
+}
+.refs-header h2 .cyan-text { color:var(--ink) }
+.refs-header h2 .accent {
+  color:var(--accent);
+}
+.refs-header p {
+  color:var(--ink-3);
+  font-size:15px;
+  font-family:var(--serif);
+}
+.ref-card {
+  background:var(--panel);
+  border:1px solid var(--line);
+  border-radius:12px;
+  padding:24px 28px;
+  margin-bottom:22px;
+  display:flex;
+  gap:24px;
+  align-items:flex-start;
+  transition:all 0.2s;
+}
+.ref-card:hover {
+  border-color:var(--accent);
+  box-shadow:0 4px 24px var(--accent-glow);
+}
+.ref-card.pink-card { border-color:var(--line); }
+.ref-card.pink-card:hover {
+  border-color:var(--observe);
+  box-shadow:0 4px 24px rgba(139,92,246,0.12);
+}
+.ref-icon {
+  width:56px;
+  height:56px;
+  border-radius:12px;
+  background:rgba(99,102,241,0.08);
+  border:1px solid rgba(99,102,241,0.2);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-size:24px;
+  color:var(--accent-2);
+  flex-shrink:0;
+}
+.ref-card.pink-card .ref-icon {
+  background:rgba(139,92,246,0.08);
+  border-color:rgba(139,92,246,0.2);
+  color:var(--observe);
+}
+.ref-body { flex:1 }
+.ref-type {
+  font-family:var(--mono);
+  font-size:10px;
+  color:var(--ink-3);
+  font-weight:600;
+  letter-spacing:0.1em;
+  text-transform:uppercase;
+  margin-bottom:6px;
+}
+.ref-tagline {
+  font-size:14px;
+  color:var(--ink-2);
+  margin-bottom:12px;
+  font-family:var(--serif);
+  font-weight:300;
+}
+.ref-title {
+  font-family:var(--sans);
+  font-size:17px;
+  color:var(--ink);
+  font-weight:600;
+  margin-bottom:16px;
+}
+.ref-btn {
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  padding:8px 18px;
+  background:var(--bg-3);
+  border:1px solid var(--line-2);
+  color:var(--ink-2);
+  border-radius:6px;
+  font-size:12px;
+  font-weight:600;
+  letter-spacing:0.02em;
+  text-decoration:none;
+  transition:all 0.15s;
+  text-transform:uppercase;
+  font-family:var(--mono);
+}
+.ref-btn:hover {
+  background:var(--panel-2);
+  color:var(--ink);
+  border-color:var(--accent);
+}
+.ref-card.pink-card .ref-btn:hover {
+  border-color:var(--observe);
+}
+
+/* ============ SUMMARY TABLE ============ */
+.summary-box {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  padding: 24px;
+  margin: 20px 0;
+}
+
+/* ============ NEXT MODULE ============ */
+.module-nav{
+  margin-top:80px;padding:32px;
+  background:linear-gradient(135deg, var(--panel), var(--panel-2));
+  border:1px solid var(--line);border-radius:14px;
+  display:flex;justify-content:space-between;align-items:center;gap:24px;
+}
+.module-nav-label{font-family:var(--mono);font-size:10px;color:var(--ink-3);letter-spacing:0.15em;text-transform:uppercase}
+.module-nav-title{font-family:var(--serif);font-size:24px;font-weight:400;margin-top:6px}
+.module-nav-cta{
+  padding:12px 22px;background:var(--accent);color:#ffffff;
+  border-radius:8px;text-decoration:none;font-weight:600;font-size:13px;
+  white-space:nowrap;transition:all 0.15s;
+}
+.module-nav-cta:hover{background:var(--accent-2);transform:translateX(2px)}
+
+
+
+/* Sticky badge — moved to sidebar footer */
+.sidebar-footer{
+  margin-top:auto;
+  padding-top:24px;
+  border-top:1px solid rgba(255,255,255,0.04);
+}
+.depth-badge{
+  display:flex;align-items:center;gap:9px;
+  padding:11px 13px;
+  background:linear-gradient(135deg, rgba(99,102,241,0.06) 0%, rgba(13,17,23,0.8) 100%);
+  border:1px solid rgba(99,102,241,0.14);
+  border-radius:9px;
+  font-size:11px;font-family:var(--mono);
+  color:var(--ink-3);letter-spacing:0.03em;
+  box-shadow:0 1px 10px rgba(0,0,0,0.2);
+}
+.depth-badge .pulse{
+  width:5px;height:5px;flex-shrink:0;border-radius:50%;background:var(--accent);
+  box-shadow:0 0 6px rgba(99,102,241,0.7);
+  animation:pulse 2s infinite;
+}
+.depth-badge .badge-text{color:var(--ink-3);line-height:1.4}
+.depth-badge .badge-text strong{display:block;color:var(--ink-2);font-weight:500;font-size:11px;margin-bottom:1px}
+@keyframes pulse{0%,100%{opacity:0.5;transform:scale(1)}50%{opacity:1;transform:scale(1.3)}}
+
+/* Selection */
+::selection{background:var(--accent);color:#1a1a1a}
+
+/* Animation utilities */
+@keyframes fadeIn{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
+.fade-in{animation:fadeIn 0.6s ease forwards}
+
+/* Responsive type */
+@media(max-width:680px){
+  .hero h1{font-size:36px}
+  .hero-lede, .hero .subtitle{font-size:17px}
+  .section-title{font-size:26px}
+  p,li{font-size:16px}
+  .main{padding:40px 20px 80px}
+}
+</style>
+</head>
+<body>
+
+<div class="starfield"></div>
+<div class="stars" id="stars"></div>
+
+<div class="shell">
+<!-- ============ SIDEBAR ============ -->
+<aside class="sidebar">
+  <div class="brand">
+    <div class="brand-mark"><i class="ti ti-atom-2"></i></div>
+    <div>
+      <div class="brand-name">PyTorch Academy</div>
+      <div class="brand-sub">Data Science Track</div>
+    </div>
+  </div>
+  <div class="brand-divider"></div>
+  <div class="module-tag">
+    <div class="module-tag-label">Track 1 · Module 10.0</div>
+    <div class="module-tag-title">Model Debugging</div>
+  </div>
+  <nav class="toc">
+    <div class="toc-label">In this module</div>
+    <a href="#sec-1" class="toc-link active"><span class="toc-num">01</span>Gradients</a>
+    <a href="#sec-2" class="toc-link"><span class="toc-num">02</span>Activations</a>
+    <a href="#sec-3" class="toc-link"><span class="toc-num">03</span>LR Finder</a>
+    <a href="#sec-4" class="toc-link"><span class="toc-num">04</span>Sanity Checks</a>
+    <a href="#sec-lab" class="toc-link"><span class="toc-num">05</span>Lab</a>
+  </nav>
+  <div class="progress-rail">
+    <div class="progress-text">Reading progress</div>
+    <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+  </div>
+  <div class="sidebar-footer">
+    <div class="depth-badge">
+      <span class="pulse"></span>
+      <div class="badge-text">
+        <strong>Marevlo &middot; Premium Track</strong>
+        Track 1 · Module 10.0
+      </div>
+    </div>
+  </div>
+</aside>
+
+<!-- ============ MAIN CONTENT AREA ============ -->
+<main class="main">
+
+<!-- HERO -->
+<header class="hero">
+  <div class="hero-meta">
+    <span class="track-label">Track 1 · Data Science</span>
+    <span class="sep"></span>
+    <span>Module 10.0</span>
+    <span class="sep"></span>
+    <span>Course 01</span>
+    <span class="sep"></span>
+    <span class="level-badge">Core Bedrock</span>
+  </div>
+  <h1>Model <em>Debugging.</em></h1>
+  <p class="subtitle">Find and fix broken models systematically — gradient diagnostics, activation histograms, the LR finder, and a hands-on debugging lab.</p>
+  <div class="hero-stats">
+    <div class="hero-stat"><div class="hero-stat-num">5</div><div class="hero-stat-label">Module sections</div></div>
+    <div class="hero-stat"><div class="hero-stat-num">5</div><div class="hero-stat-label">Interactive widgets</div></div>
+    <div class="hero-stat"><div class="hero-stat-num">1</div><div class="hero-stat-label">Mini projects</div></div>
+    <div class="hero-stat"><div class="hero-stat-num">100%</div><div class="hero-stat-label">Vectorised code</div></div>
+  </div>
+</header>
+
+<div class="goal-callout">
+  <h3><i class="ti ti-target"></i> MODULE GOAL</h3>
+  <p>Develop a systematic debugging toolkit. Learn to detect vanishing/exploding gradients, plot activation and gradient histograms, find the right learning rate, and fix common shape and pipeline bugs. This module ends with a pre-broken model that you debug from scratch.</p>
+</div>
+
+<div class="content">
+
+  <!-- ============ SECTION 1 ============ -->
+  <section class="section" id="sec-1">
+    <div class="section-num">SECTION 01</div>
+    <h2>Detecting Vanishing &amp; Exploding Gradients</h2>
+
+    <h3>The Problem</h3>
+    <ul>
+      <li><strong style="color:var(--warn);">Vanishing gradients:</strong> gradients become extremely small in early layers → model stops learning.</li>
+      <li><strong style="color:var(--danger);">Exploding gradients:</strong> gradients grow exponentially → loss becomes NaN.</li>
+    </ul>
+
+    <!-- INTERACTIVE WIDGET 1: Gradient Monitor -->
+    <div class="widget">
+      <div class="widget-title">Gradient Norm Monitor</div>
+      <div class="widget-subtitle">Backprop through a deep network and inspect the gradient norm at every layer. Switch initialisation strategy and activation to see vanishing, exploding, or healthy gradients.</div>
+      <div class="controls">
+        <div class="ctrl-row">
+          <span class="ctrl-label">Initialisation</span>
+          <div class="btn-row">
+            <button class="pill-btn active" data-init="kaiming">Kaiming (good)</button>
+            <button class="pill-btn" data-init="small">Small uniform</button>
+            <button class="pill-btn" data-init="large">Uniform(-5, 5)</button>
+          </div>
+        </div>
+        <div class="ctrl-row">
+          <span class="ctrl-label">Activation</span>
+          <div class="btn-row">
+            <button class="pill-btn active" data-act="relu">ReLU</button>
+            <button class="pill-btn" data-act="tanh">Tanh</button>
+            <button class="pill-btn" data-act="sigmoid">Sigmoid</button>
+          </div>
+        </div>
+        <div class="ctrl-row">
+          <span class="ctrl-label">Depth</span>
+          <input type="range" id="grad-depth" min="3" max="12" value="8" step="1">
+          <span class="ctrl-value" id="grad-depth-v">8</span>
+        </div>
+      </div>
+      <div class="layer-stat-list" id="layer-stats"></div>
+      <div class="metric-grid">
+        <div class="metric"><div class="metric-label">Layers vanishing</div><div class="metric-value" id="g-van" style="color:var(--warn);">0</div></div>
+        <div class="metric"><div class="metric-label">Layers exploding</div><div class="metric-value" id="g-exp" style="color:var(--danger);">0</div></div>
+        <div class="metric"><div class="metric-label">Layers healthy</div><div class="metric-value" id="g-ok" style="color:var(--success);">0</div></div>
+        <div class="metric"><div class="metric-label">Ratio first/last</div><div class="metric-value" id="g-ratio">1.0×</div></div>
+      </div>
+      <div class="viz-out" id="grad-out"></div>
+    </div>
+
+    <div class="code-block">
+      <div class="code-header"><span class="code-lang">python</span><button class="code-copy"><i class="ti ti-copy"></i> Copy</button></div>
+<pre><code><span class="kw">import</span> torch
+<span class="kw">import</span> torch.nn <span class="kw">as</span> nn
+<span class="kw">import</span> numpy <span class="kw">as</span> np
+<span class="kw">import</span> matplotlib
+matplotlib.<span class="fn">use</span>(<span class="st">'Agg'</span>)
+<span class="kw">import</span> matplotlib.pyplot <span class="kw">as</span> plt
+
+torch.<span class="fn">manual_seed</span>(<span class="st">42</span>)
+
+<span class="kw">def</span> <span class="fn">monitor_gradients</span>(model: nn.Module, verbose: <span class="cls">bool</span> = <span class="kw">True</span>) -&gt; <span class="cls">dict</span>:
+    <span class="st">"""
+    After loss.backward(), inspect gradient statistics for each layer.
+    """</span>
+    stats = {}
+    <span class="kw">for</span> name, param <span class="kw">in</span> model.<span class="fn">named_parameters</span>():
+        <span class="kw">if</span> param.grad <span class="kw">is</span> <span class="kw">not</span> <span class="kw">None</span>:
+            g = param.grad.data
+            stats[name] = {
+                <span class="st">'mean'</span>: g.<span class="fn">mean</span>().<span class="fn">item</span>(),
+                <span class="st">'std'</span>:  g.<span class="fn">std</span>().<span class="fn">item</span>(),
+                <span class="st">'max'</span>:  g.<span class="fn">abs</span>().<span class="fn">max</span>().<span class="fn">item</span>(),
+                <span class="st">'norm'</span>: g.<span class="fn">norm</span>().<span class="fn">item</span>()
+            }
+            <span class="kw">if</span> verbose:
+                status = <span class="st">''</span>
+                <span class="kw">if</span> g.<span class="fn">norm</span>().<span class="fn">item</span>() &lt; <span class="st">1e-7</span>: status = <span class="st">' ← VANISHING'</span>
+                <span class="kw">if</span> g.<span class="fn">norm</span>().<span class="fn">item</span>() &gt; <span class="st">100</span>:   status = <span class="st">' ← EXPLODING'</span>
+                <span class="fn">print</span>(<span class="st">f"  {name:30s} norm={g.norm().item():.2e}  "</span>
+                      <span class="st">f"max={g.abs().max().item():.2e}{status}"</span>)
+    <span class="kw">return</span> stats
+
+
+<span class="co"># Demo: deep network with no initialisation care (can vanish)</span>
+<span class="kw">class</span> <span class="cls">DeepNet</span>(nn.Module):
+    <span class="kw">def</span> <span class="fn">__init__</span>(self, depth=<span class="st">10</span>, bad_init=<span class="kw">False</span>):
+        <span class="fn">super</span>().<span class="fn">__init__</span>()
+        layers = []
+        <span class="kw">for</span> _ <span class="kw">in</span> <span class="fn">range</span>(depth):
+            l = nn.<span class="fn">Linear</span>(<span class="st">32</span>, <span class="st">32</span>)
+            <span class="kw">if</span> bad_init:
+                nn.init.<span class="fn">uniform_</span>(l.weight, -<span class="st">5</span>, <span class="st">5</span>)   <span class="co"># Terrible init → exploding</span>
+            layers.<span class="fn">extend</span>([l, nn.<span class="fn">Tanh</span>()])
+        self.net = nn.<span class="cls">Sequential</span>(*layers, nn.<span class="fn">Linear</span>(<span class="st">32</span>, <span class="st">1</span>))
+
+    <span class="kw">def</span> <span class="fn">forward</span>(self, x):
+        <span class="kw">return</span> self.<span class="fn">net</span>(x)
+
+
+<span class="co"># Good init</span>
+model_good = <span class="fn">DeepNet</span>(depth=<span class="st">6</span>, bad_init=<span class="kw">False</span>)
+x = torch.<span class="fn">randn</span>(<span class="st">16</span>, <span class="st">32</span>)
+loss = <span class="fn">model_good</span>(x).<span class="fn">sum</span>()
+loss.<span class="fn">backward</span>()
+<span class="fn">print</span>(<span class="st">"=== Good initialisation ==="</span>)
+<span class="fn">monitor_gradients</span>(model_good)</code></pre>
+    </div>
+    <div class="output">=== Good initialisation ===
+  net.0.weight                   norm=5.07e-01   max=9.33e-02
+  net.0.bias                     norm=3.08e-01   max=1.23e-01
+  net.2.weight                   norm=6.26e-01   max=9.39e-02
+  net.2.bias                     norm=7.69e-01   max=2.53e-01
+  net.4.weight                   norm=6.94e-01   max=1.05e-01
+  net.4.bias                     norm=1.07e+00   max=3.88e-01
+  net.6.weight                   norm=1.40e+00   max=1.76e-01
+  net.6.bias                     norm=1.86e+00   max=6.78e-01
+  net.8.weight                   norm=2.99e+00   max=5.98e-01
+  net.8.bias                     norm=4.34e+00   max=2.15e+00
+  net.10.weight                  norm=5.60e+00   max=5.87e-01
+  net.10.bias                    norm=8.72e+00   max=2.70e+00
+  net.12.weight                  norm=1.02e+01   max=3.63e+00
+  net.12.bias                    norm=1.60e+01   max=1.60e+01</div>
+
+    <div class="code-block">
+      <div class="code-header"><span class="code-lang">python</span><button class="code-copy"><i class="ti ti-copy"></i> Copy</button></div>
+<pre><code><span class="co"># Bad init</span>
+model_bad = <span class="fn">DeepNet</span>(depth=<span class="st">6</span>, bad_init=<span class="kw">True</span>)
+<span class="kw">try</span>:
+    loss = <span class="fn">model_bad</span>(x).<span class="fn">sum</span>()
+    loss.<span class="fn">backward</span>()
+    <span class="fn">print</span>(<span class="st">"\n=== Bad initialisation ==="</span>)
+    <span class="fn">monitor_gradients</span>(model_bad)
+<span class="kw">except</span> Exception <span class="kw">as</span> e:
+    <span class="fn">print</span>(<span class="st">f"\nError with bad init: {e}"</span>)</code></pre>
+    </div>
+    <div class="output">=== Bad initialisation ===
+  net.0.weight                   norm=3.41e+02   max=7.29e+01 ← EXPLODING
+  net.0.bias                     norm=6.52e+01   max=3.62e+01
+  net.2.weight                   norm=8.66e+01   max=2.29e+01
+  net.2.bias                     norm=2.44e+01   max=2.29e+01
+  net.4.weight                   norm=2.52e+01   max=4.50e+00
+  net.4.bias                     norm=5.47e+00   max=4.49e+00
+  net.6.weight                   norm=5.76e+00   max=7.11e-01
+  net.6.bias                     norm=9.53e-01   max=5.78e-01
+  net.8.weight                   norm=3.28e+00   max=5.28e-01
+  net.8.bias                     norm=5.63e-01   max=3.61e-01
+  net.10.weight                  norm=1.38e+00   max=1.79e-01
+  net.10.bias                    norm=3.50e-01   max=1.81e-01
+  net.12.weight                  norm=2.05e+01   max=6.52e+00
+  net.12.bias                    norm=1.60e+01   max=1.60e+01</div>
+  </section>
+
+  <!-- ============ SECTION 2 ============ -->
+  <section class="section" id="sec-2">
+    <div class="section-num">SECTION 02</div>
+    <h2>Activation &amp; Gradient Histograms</h2>
+
+    <p>Visualising the distribution of activations and gradients helps you see:</p>
+    <ul>
+      <li><strong style="color:var(--danger);">Dead neurons</strong> (ReLU activations always zero)</li>
+      <li><strong style="color:var(--warn);">Saturation</strong> (tanh/sigmoid always at ±1)</li>
+      <li><strong style="color:var(--warn);">Vanishing/exploding</strong> gradients</li>
+    </ul>
+
+    <!-- INTERACTIVE WIDGET 2: Activation Histograms -->
+    <div class="widget">
+      <div class="widget-title">Per-Layer Activation Histograms</div>
+      <div class="widget-subtitle">Forward-pass histograms across 6 hidden layers. Healthy networks show wide, roughly Gaussian distributions. Dead neurons, saturation, and collapse jump out immediately.</div>
+      <div class="controls">
+        <div class="ctrl-row">
+          <span class="ctrl-label">Scenario</span>
+          <div class="btn-row">
+            <button class="pill-btn active" data-scen="healthy">Healthy</button>
+            <button class="pill-btn" data-scen="dead-relu">Dead ReLU</button>
+            <button class="pill-btn" data-scen="saturated">Saturated Tanh</button>
+            <button class="pill-btn" data-scen="collapse">Activation collapse</button>
+          </div>
+        </div>
+      </div>
+      <div class="act-grid" id="act-grid"></div>
+      <div class="viz-out" id="act-out"></div>
+    </div>
+
+    <div class="code-block">
+      <div class="code-header"><span class="code-lang">python</span><button class="code-copy"><i class="ti ti-copy"></i> Copy</button></div>
+<pre><code><span class="kw">class</span> <span class="cls">ActivationMonitor</span>:
+    <span class="st">"""Hook-based activation and gradient recorder."""</span>
+
+    <span class="kw">def</span> <span class="fn">__init__</span>(self):
+        self.activations = {}
+        self.gradients   = {}
+        self.hooks       = []
+
+    <span class="kw">def</span> <span class="fn">register</span>(self, model: nn.Module):
+        <span class="kw">for</span> name, layer <span class="kw">in</span> model.<span class="fn">named_modules</span>():
+            <span class="kw">if</span> <span class="fn">isinstance</span>(layer, (nn.Linear, nn.Conv2d)):
+                self.hooks.<span class="fn">append</span>(
+                    layer.<span class="fn">register_forward_hook</span>(self.<span class="fn">_make_act_hook</span>(name))
+                )
+                self.hooks.<span class="fn">append</span>(
+                    layer.<span class="fn">register_backward_hook</span>(self.<span class="fn">_make_grad_hook</span>(name))
+                )
+
+    <span class="kw">def</span> <span class="fn">_make_act_hook</span>(self, name):
+        <span class="kw">def</span> <span class="fn">hook</span>(module, <span class="cls">input</span>, output):
+            self.activations[name] = output.<span class="fn">detach</span>().<span class="fn">cpu</span>()
+        <span class="kw">return</span> hook
+
+    <span class="kw">def</span> <span class="fn">_make_grad_hook</span>(self, name):
+        <span class="kw">def</span> <span class="fn">hook</span>(module, grad_input, grad_output):
+            self.gradients[name] = grad_output[<span class="st">0</span>].<span class="fn">detach</span>().<span class="fn">cpu</span>() <span class="kw">if</span> grad_output[<span class="st">0</span>] <span class="kw">is</span> <span class="kw">not</span> <span class="kw">None</span> <span class="kw">else</span> <span class="kw">None</span>
+        <span class="kw">return</span> hook
+
+    <span class="kw">def</span> <span class="fn">remove</span>(self):
+        <span class="kw">for</span> h <span class="kw">in</span> self.hooks: h.<span class="fn">remove</span>()
+
+    <span class="kw">def</span> <span class="fn">summary</span>(self):
+        <span class="fn">print</span>(<span class="st">"Layer activation statistics:"</span>)
+        <span class="kw">for</span> name, act <span class="kw">in</span> self.activations.<span class="fn">items</span>():
+            dead = (act == <span class="st">0</span>).<span class="fn">float</span>().<span class="fn">mean</span>().<span class="fn">item</span>()
+            <span class="fn">print</span>(<span class="st">f"  {name:20s}: mean={act.mean():.3f}  std={act.std():.3f}  "</span>
+                  <span class="st">f"dead_ratio={dead:.2f}"</span>)
+
+
+monitor = <span class="fn">ActivationMonitor</span>()
+model   = <span class="fn">DeepNet</span>(depth=<span class="st">4</span>)
+monitor.<span class="fn">register</span>(model)
+
+x    = torch.<span class="fn">randn</span>(<span class="st">32</span>, <span class="st">32</span>)
+out  = <span class="fn">model</span>(x)
+loss = out.<span class="fn">sum</span>()
+loss.<span class="fn">backward</span>()
+monitor.<span class="fn">summary</span>()
+monitor.<span class="fn">remove</span>()</code></pre>
+    </div>
+    <div class="output">Layer activation statistics:
+  net.0               : mean=0.041   std=0.562   dead_ratio=0.00
+  net.2               : mean=0.018   std=0.258   dead_ratio=0.00
+  net.4               : mean=0.012   std=0.170   dead_ratio=0.00
+  net.6               : mean=-0.047  std=0.144   dead_ratio=0.00
+  net.8               : mean=-0.132  std=0.046   dead_ratio=0.00</div>
+  </section>
+
+  <!-- ============ SECTION 3 ============ -->
+  <section class="section" id="sec-3">
+    <div class="section-num">SECTION 03</div>
+    <h2>Learning Rate Finder</h2>
+
+    <p>The LR finder sweeps the learning rate from very small to very large over a few iterations, recording the loss. The optimal LR is just before the loss starts climbing.</p>
+
+    <!-- INTERACTIVE WIDGET 3: LR Finder -->
+    <div class="widget">
+      <div class="widget-title">Learning Rate Finder</div>
+      <div class="widget-subtitle">Sweep LR from 10⁻⁷ to 10¹ on a log scale. The model trains for one step per LR. The optimal LR is at the steepest downward slope — just before the loss explodes.</div>
+      <div class="controls">
+        <div class="ctrl-row">
+          <span class="ctrl-label">Suggestion method</span>
+          <div class="btn-row">
+            <button class="pill-btn active" data-lrm="steepest">Steepest gradient</button>
+            <button class="pill-btn" data-lrm="min">Min loss / 10</button>
+            <button class="pill-btn" data-lrm="elbow">Last stable</button>
+          </div>
+        </div>
+        <div class="ctrl-row">
+          <span class="ctrl-label">Task difficulty</span>
+          <input type="range" id="lr-diff" min="1" max="5" value="3" step="1">
+          <span class="ctrl-value" id="lr-diff-v">3</span>
+        </div>
+        <div class="btn-row" style="justify-content:flex-end;">
+          <button class="pill-btn" id="lr-rerun"><i class="ti ti-refresh"></i> Re-run sweep</button>
+        </div>
+      </div>
+      <div class="chart-box" style="height:280px;"><canvas id="lrf-chart"></canvas></div>
+      <div class="metric-grid">
+        <div class="metric"><div class="metric-label">Suggested LR</div><div class="metric-value" id="lrf-best" style="color:var(--success);">—</div></div>
+        <div class="metric"><div class="metric-label">Min loss seen</div><div class="metric-value" id="lrf-minloss">—</div></div>
+        <div class="metric"><div class="metric-label">LR at explosion</div><div class="metric-value" id="lrf-explode" style="color:var(--danger);">—</div></div>
+      </div>
+      <div class="viz-out" id="lrf-out"></div>
+    </div>
+
+    <div class="code-block">
+      <div class="code-header"><span class="code-lang">python</span><button class="code-copy"><i class="ti ti-copy"></i> Copy</button></div>
+<pre><code><span class="kw">def</span> <span class="fn">lr_finder</span>(model: nn.Module, X: torch.Tensor, y: torch.Tensor,
+              criterion, start_lr: <span class="cls">float</span> = <span class="st">1e-7</span>, end_lr: <span class="cls">float</span> = <span class="st">10.0</span>,
+              n_steps: <span class="cls">int</span> = <span class="st">100</span>) -&gt; <span class="cls">tuple</span>:
+    <span class="st">"""
+    Sweeps LR from start_lr to end_lr over n_steps.
+    Returns: (lrs, losses)
+    """</span>
+    <span class="co"># Save original state</span>
+    orig_state = {k: v.<span class="fn">clone</span>() <span class="kw">for</span> k, v <span class="kw">in</span> model.<span class="fn">state_dict</span>().<span class="fn">items</span>()}
+
+    opt = torch.optim.<span class="fn">SGD</span>(model.<span class="fn">parameters</span>(), lr=start_lr)
+    lrs, losses = [], []
+    best_loss   = <span class="fn">float</span>(<span class="st">'inf'</span>)
+    lr          = start_lr
+
+    multiplier = (end_lr / start_lr) ** (<span class="st">1.0</span> / n_steps)
+
+    <span class="kw">for</span> step <span class="kw">in</span> <span class="fn">range</span>(n_steps):
+        opt.<span class="fn">zero_grad</span>()
+        loss = <span class="fn">criterion</span>(<span class="fn">model</span>(X), y)
+        loss.<span class="fn">backward</span>()
+        opt.<span class="fn">step</span>()
+
+        lrs.<span class="fn">append</span>(lr)
+        losses.<span class="fn">append</span>(loss.<span class="fn">item</span>())
+
+        <span class="kw">if</span> loss.<span class="fn">item</span>() &lt; best_loss:
+            best_loss = loss.<span class="fn">item</span>()
+        <span class="kw">if</span> loss.<span class="fn">item</span>() &gt; <span class="st">4</span> * best_loss:       <span class="co"># Stop if loss explodes</span>
+            <span class="kw">break</span>
+
+        lr *= multiplier
+        <span class="kw">for</span> pg <span class="kw">in</span> opt.param_groups:
+            pg[<span class="st">'lr'</span>] = lr
+
+    <span class="co"># Restore original state</span>
+    model.<span class="fn">load_state_dict</span>(orig_state)
+    <span class="kw">return</span> lrs, losses
+
+
+<span class="co"># Run it</span>
+X_lr = torch.<span class="fn">randn</span>(<span class="st">128</span>, <span class="st">10</span>)
+y_lr = torch.<span class="fn">randint</span>(<span class="st">0</span>, <span class="st">3</span>, (<span class="st">128</span>,))
+
+model_lr = nn.<span class="cls">Sequential</span>(
+    nn.<span class="fn">Linear</span>(<span class="st">10</span>, <span class="st">64</span>), nn.<span class="fn">ReLU</span>(),
+    nn.<span class="fn">Linear</span>(<span class="st">64</span>, <span class="st">32</span>), nn.<span class="fn">ReLU</span>(),
+    nn.<span class="fn">Linear</span>(<span class="st">32</span>, <span class="st">3</span>)
+)
+
+lrs, losses = <span class="fn">lr_finder</span>(model_lr, X_lr, y_lr, nn.<span class="fn">CrossEntropyLoss</span>())
+
+<span class="co"># Find suggested LR (steepest gradient)</span>
+losses_arr = np.<span class="fn">array</span>(losses)
+lrs_arr    = np.<span class="fn">array</span>(lrs)
+grad       = np.<span class="fn">gradient</span>(losses_arr)
+best_idx   = np.<span class="fn">argmin</span>(grad[:-<span class="st">5</span>])   <span class="co"># Avoid end instability</span>
+<span class="fn">print</span>(<span class="st">f"LR range explored: {lrs_arr[0]:.2e} → {lrs_arr[-1]:.2e}"</span>)
+<span class="fn">print</span>(<span class="st">f"Suggested LR: {lrs_arr[best_idx]:.2e}"</span>)</code></pre>
+    </div>
+    <div class="output">LR range explored: 1.00e-07 → 4.79e+00
+Suggested LR: 1.91e+00</div>
+  </section>
+
+  <!-- ============ SECTION 4 ============ -->
+  <section class="section" id="sec-4">
+    <div class="section-num">SECTION 04</div>
+    <h2>Sanity Checks</h2>
+
+    <h3>Overfit a Tiny Batch — The First Test You Should Always Run</h3>
+
+    <!-- INTERACTIVE WIDGET 4: Sanity Check Simulator -->
+    <div class="widget">
+      <div class="widget-title">"Overfit a Tiny Batch" Sanity Check</div>
+      <div class="widget-subtitle">A correctly-implemented model should be able to drive the loss to ≈0 on just 4 samples. If it can't, something is fundamentally wrong — and you should fix it before scaling up.</div>
+      <div class="controls">
+        <div class="ctrl-row">
+          <span class="ctrl-label">Model state</span>
+          <div class="btn-row">
+            <button class="pill-btn active" data-scn="ok">Correct model</button>
+            <button class="pill-btn" data-scn="lr-low">LR too low</button>
+            <button class="pill-btn" data-scn="lr-high">LR too high</button>
+            <button class="pill-btn" data-scn="missing-zero">Missing zero_grad()</button>
+            <button class="pill-btn" data-scn="softmax-ce">Softmax + CE</button>
+          </div>
+        </div>
+        <div class="btn-row" style="justify-content:flex-end;">
+          <button class="pill-btn" id="sanity-run"><i class="ti ti-player-play"></i> Run sanity check</button>
+        </div>
+      </div>
+      <div class="sanity-term" id="sanity-term">
+        <div class="sanity-line head">$ python sanity_check.py</div>
+        <div class="sanity-line">Click "Run sanity check" to start.</div>
+      </div>
+      <div class="metric-grid">
+        <div class="metric"><div class="metric-label">Final loss</div><div class="metric-value" id="san-final">—</div></div>
+        <div class="metric"><div class="metric-label">Steps run</div><div class="metric-value" id="san-steps">—</div></div>
+        <div class="metric"><div class="metric-label">Verdict</div><div class="metric-value" id="san-verdict" style="font-size:14px;">—</div></div>
+      </div>
+    </div>
+
+    <div class="code-block">
+      <div class="code-header"><span class="code-lang">python</span><button class="code-copy"><i class="ti ti-copy"></i> Copy</button></div>
+<pre><code><span class="kw">def</span> <span class="fn">sanity_check_overfit</span>(model: nn.Module, n_samples: <span class="cls">int</span> = <span class="st">4</span>,
+                          n_steps: <span class="cls">int</span> = <span class="st">200</span>, lr: <span class="cls">float</span> = <span class="st">1e-2</span>) -&gt; <span class="cls">bool</span>:
+    <span class="st">"""
+    A model should be able to overfit to a tiny batch.
+    If it can't, something is fundamentally wrong.
+    """</span>
+    X = torch.<span class="fn">randn</span>(n_samples, <span class="st">10</span>)
+    y = torch.<span class="fn">randint</span>(<span class="st">0</span>, <span class="st">3</span>, (n_samples,))
+
+    opt  = torch.optim.<span class="fn">Adam</span>(model.<span class="fn">parameters</span>(), lr=lr)
+    crit = nn.<span class="fn">CrossEntropyLoss</span>()
+
+    <span class="kw">for</span> step <span class="kw">in</span> <span class="fn">range</span>(n_steps):
+        opt.<span class="fn">zero_grad</span>()
+        loss = <span class="fn">crit</span>(<span class="fn">model</span>(X), y)
+        loss.<span class="fn">backward</span>()
+        opt.<span class="fn">step</span>()
+
+    final_loss = loss.<span class="fn">item</span>()
+    passed     = final_loss &lt; <span class="st">0.05</span>
+    <span class="fn">print</span>(<span class="st">f"Overfit test: final_loss={final_loss:.5f}  {'PASS ✓' if passed else 'FAIL ✗'}"</span>)
+    <span class="kw">return</span> passed
+
+
+model_sanity = nn.<span class="cls">Sequential</span>(nn.<span class="fn">Linear</span>(<span class="st">10</span>, <span class="st">64</span>), nn.<span class="fn">ReLU</span>(), nn.<span class="fn">Linear</span>(<span class="st">64</span>, <span class="st">3</span>))
+<span class="fn">sanity_check_overfit</span>(model_sanity)</code></pre>
+    </div>
+    <div class="output">Overfit test: final_loss=0.00011   PASS ✓
+
+True</div>
+  </section>
+
+  <!-- ============ LAB ============ -->
+  <section class="section" id="sec-lab">
+    <div class="section-num">HANDS-ON LAB</div>
+    <h2>Debug a Pre-Broken Model</h2>
+
+    <p>Below is a model with 5 deliberate bugs. Find and fix them all.</p>
+
+    <!-- INTERACTIVE WIDGET 5: Bug Fixer -->
+    <div class="widget">
+      <div class="widget-title">Broken Model — Bug Fixer</div>
+      <div class="widget-subtitle">Five bugs in the same training script. Click "Fix" on each one to see the diff, then watch the loss curve respond as you fix them in any order.</div>
+      <div class="bug-list" id="bug-list"></div>
+      <div class="chart-box" style="height:240px;"><canvas id="bug-chart"></canvas></div>
+      <div class="legend" style="justify-content:center;">
+        <span><span class="legend-dot" style="background:var(--danger);"></span>current state</span>
+        <span><span class="legend-dot" style="background:var(--success);"></span>fully fixed</span>
+      </div>
+      <div class="metric-grid">
+        <div class="metric"><div class="metric-label">Bugs fixed</div><div class="metric-value" id="bug-count">0 / 5</div></div>
+        <div class="metric"><div class="metric-label">Loss after 5 steps</div><div class="metric-value" id="bug-loss">—</div></div>
+        <div class="metric"><div class="metric-label">Trend</div><div class="metric-value" id="bug-trend" style="font-size:14px;">—</div></div>
+      </div>
+      <div class="viz-out" id="bug-out"></div>
+    </div>
+
+    <div class="code-block">
+      <div class="code-header"><span class="code-lang">python — broken</span><button class="code-copy"><i class="ti ti-copy"></i> Copy</button></div>
+<pre><code><span class="co"># === BROKEN MODEL — DO NOT TRAIN YET ===</span>
+<span class="co"># There are 5 bugs in this code. Find them before reading the solutions.</span>
+
+<span class="kw">class</span> <span class="cls">BrokenModel</span>(nn.Module):
+    <span class="kw">def</span> <span class="fn">__init__</span>(self):
+        <span class="fn">super</span>().<span class="fn">__init__</span>()
+        self.fc1 = nn.<span class="fn">Linear</span>(<span class="st">10</span>, <span class="st">64</span>)
+        self.fc2 = nn.<span class="fn">Linear</span>(<span class="st">64</span>, <span class="st">32</span>)
+        self.fc3 = nn.<span class="fn">Linear</span>(<span class="st">32</span>, <span class="st">3</span>)
+        self.dropout = nn.<span class="fn">Dropout</span>(<span class="st">0.5</span>)
+        <span class="co"># BUG 1: Using plain Python list — parameters won't be tracked</span>
+        self.extra_layers = [nn.<span class="fn">Linear</span>(<span class="st">64</span>, <span class="st">64</span>), nn.<span class="fn">Linear</span>(<span class="st">64</span>, <span class="st">64</span>)]
+
+    <span class="kw">def</span> <span class="fn">forward</span>(self, x):
+        x = torch.<span class="fn">sigmoid</span>(self.<span class="fn">fc1</span>(x))          <span class="co"># BUG 2: Sigmoid → vanishing gradients in deep networks</span>
+        x = self.<span class="fn">fc2</span>(x)
+        x = torch.<span class="fn">relu</span>(x)
+        x = self.<span class="fn">dropout</span>(x)
+        x = self.<span class="fn">fc3</span>(x)
+        x = torch.<span class="fn">softmax</span>(x, dim=<span class="st">1</span>)             <span class="co"># BUG 3: Softmax before CrossEntropyLoss = numerical issues</span>
+        <span class="kw">return</span> x
+
+
+<span class="kw">def</span> <span class="fn">broken_training</span>():
+    model = <span class="fn">BrokenModel</span>()
+    X = torch.<span class="fn">randn</span>(<span class="st">32</span>, <span class="st">10</span>)
+    y = torch.<span class="fn">randint</span>(<span class="st">0</span>, <span class="st">3</span>, (<span class="st">32</span>,))
+
+    <span class="co"># BUG 4: Using Adam with default weight_decay=0 (no regularisation)</span>
+    <span class="co"># Should use AdamW with weight_decay</span>
+    opt = torch.optim.<span class="fn">Adam</span>(model.<span class="fn">parameters</span>(), lr=<span class="st">0.1</span>)    <span class="co"># BUG 5: LR way too high</span>
+
+    criterion = nn.<span class="fn">CrossEntropyLoss</span>()
+
+    <span class="kw">for</span> step <span class="kw">in</span> <span class="fn">range</span>(<span class="st">5</span>):
+        output = <span class="fn">model</span>(X)
+        loss   = <span class="fn">criterion</span>(output, y)
+        loss.<span class="fn">backward</span>()   <span class="co"># BUG: missing optimizer.zero_grad()!</span>
+        opt.<span class="fn">step</span>()
+        <span class="fn">print</span>(<span class="st">f"Step {step}: loss={loss.item():.4f}"</span>)
+
+
+<span class="fn">print</span>(<span class="st">"=== BROKEN version ==="</span>)
+<span class="fn">broken_training</span>()</code></pre>
+    </div>
+    <div class="output">=== BROKEN version ===
+Step 0: loss=1.0938
+Step 1: loss=1.1265
+Step 2: loss=1.1777
+Step 3: loss=1.2561
+Step 4: loss=1.1563</div>
+
+    <div class="code-block">
+      <div class="code-header"><span class="code-lang">python — fixed</span><button class="code-copy"><i class="ti ti-copy"></i> Copy</button></div>
+<pre><code><span class="co"># === FIXED MODEL ===</span>
+<span class="kw">class</span> <span class="cls">FixedModel</span>(nn.Module):
+    <span class="kw">def</span> <span class="fn">__init__</span>(self):
+        <span class="fn">super</span>().<span class="fn">__init__</span>()
+        self.fc1 = nn.<span class="fn">Linear</span>(<span class="st">10</span>, <span class="st">64</span>)
+        self.fc2 = nn.<span class="fn">Linear</span>(<span class="st">64</span>, <span class="st">32</span>)
+        self.fc3 = nn.<span class="fn">Linear</span>(<span class="st">32</span>, <span class="st">3</span>)
+        self.dropout = nn.<span class="fn">Dropout</span>(<span class="st">0.3</span>)
+        <span class="co"># FIX 1: Use nn.ModuleList</span>
+        self.extra_layers = nn.<span class="fn">ModuleList</span>([nn.<span class="fn">Linear</span>(<span class="st">64</span>, <span class="st">64</span>), nn.<span class="fn">Linear</span>(<span class="st">64</span>, <span class="st">64</span>)])
+
+    <span class="kw">def</span> <span class="fn">forward</span>(self, x):
+        <span class="co"># FIX 2: Use ReLU, not Sigmoid</span>
+        x = torch.<span class="fn">relu</span>(self.<span class="fn">fc1</span>(x))
+        x = torch.<span class="fn">relu</span>(self.<span class="fn">fc2</span>(x))
+        x = self.<span class="fn">dropout</span>(x)
+        <span class="co"># FIX 3: Return raw logits — CrossEntropyLoss handles softmax internally</span>
+        <span class="kw">return</span> self.<span class="fn">fc3</span>(x)
+
+
+<span class="kw">def</span> <span class="fn">fixed_training</span>():
+    model = <span class="fn">FixedModel</span>()
+    X = torch.<span class="fn">randn</span>(<span class="st">32</span>, <span class="st">10</span>)
+    y = torch.<span class="fn">randint</span>(<span class="st">0</span>, <span class="st">3</span>, (<span class="st">32</span>,))
+
+    <span class="co"># FIX 4 + 5: AdamW with sensible LR and weight decay</span>
+    opt = torch.optim.<span class="fn">AdamW</span>(model.<span class="fn">parameters</span>(), lr=<span class="st">1e-3</span>, weight_decay=<span class="st">1e-2</span>)
+    criterion = nn.<span class="fn">CrossEntropyLoss</span>(label_smoothing=<span class="st">0.05</span>)
+
+    <span class="kw">for</span> step <span class="kw">in</span> <span class="fn">range</span>(<span class="st">5</span>):
+        opt.<span class="fn">zero_grad</span>()   <span class="co"># FIX: zero gradients before backward</span>
+        loss = <span class="fn">criterion</span>(<span class="fn">model</span>(X), y)
+        loss.<span class="fn">backward</span>()
+        torch.nn.utils.<span class="fn">clip_grad_norm_</span>(model.<span class="fn">parameters</span>(), max_norm=<span class="st">1.0</span>)
+        opt.<span class="fn">step</span>()
+        <span class="fn">print</span>(<span class="st">f"Step {step}: loss={loss.item():.4f}"</span>)
+
+
+<span class="fn">print</span>(<span class="st">"\n=== FIXED version ==="</span>)
+<span class="fn">fixed_training</span>()</code></pre>
+    </div>
+    <div class="output">=== FIXED version ===
+Step 0: loss=1.0948
+Step 1: loss=1.0857
+Step 2: loss=1.0670
+Step 3: loss=1.0737
+Step 4: loss=1.0536</div>
+  </section>
+
+  <!-- ============ SUMMARY ============ -->
+  <section class="section" id="sec-summary">
+    <div class="section-num">RECAP</div>
+    <h2>Module Summary</h2>
+    <div class="summary-box">
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Bug</th><th>Symptom</th><th>Fix</th></tr></thead>
+          <tbody>
+            <tr><td>Plain Python list for modules</td><td>Parameters not updated</td><td>Use <code>nn.ModuleList</code></td></tr>
+            <tr><td>Sigmoid in deep networks</td><td>Loss stalls, vanishing grads</td><td>Use ReLU / GELU</td></tr>
+            <tr><td>Softmax before CE loss</td><td>Numerical instability</td><td>Return raw logits</td></tr>
+            <tr><td>Missing <code>zero_grad()</code></td><td>Gradient accumulation, exploding updates</td><td>Call before every <code>loss.backward()</code></td></tr>
+            <tr><td>LR too high</td><td>Loss oscillates / NaN</td><td>Use LR finder; start at 1e-3</td></tr>
+            <tr><td>Adam instead of AdamW</td><td>Poor generalisation</td><td>Switch to AdamW with <code>weight_decay</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <h3>What's Next</h3>
+    <p>Module 11 — Distributed &amp; Acceleration covers GPU mastery: CUDA fundamentals, mixed precision, multi-GPU training with DDP, memory optimisation, and profiling to find bottlenecks.</p>
+  </section>
+</div>
+
+<!-- ============ REFERENCES ============ -->
+<section class="references">
+  <div class="refs-header">
+    <h2><span class="cyan-text">Learn &amp;</span> <span class="accent">Practice</span></h2>
+    <p>Explore curated resources and practice with real code</p>
+  </div>
+
+  <div class="ref-card">
+    <div class="ref-icon"><i class="ti ti-bulb"></i></div>
+    <div class="ref-body">
+      <div class="ref-type">Progressive Article</div>
+      <div class="ref-tagline">Stuck? Start here — beginner-friendly explanation</div>
+      <div class="ref-title">A Recipe for Training Neural Networks — Karpathy</div>
+      <a href="https://karpathy.github.io/2019/04/25/recipe/" target="_blank" rel="noopener" class="ref-btn"><i class="ti ti-external-link"></i> Read Article</a>
+    </div>
+  </div>
+
+  <div class="ref-card">
+    <div class="ref-icon"><i class="ti ti-file-text"></i></div>
+    <div class="ref-body">
+      <div class="ref-type">Canonical Article</div>
+      <div class="ref-tagline">Authoritative source — official docs and tutorials</div>
+      <div class="ref-title">PyTorch Profiler &amp; Debugging Tools — Official Reference</div>
+      <a href="https://docs.pytorch.org/docs/stable/torch_cuda_memory.html" target="_blank" rel="noopener" class="ref-btn"><i class="ti ti-external-link"></i> Read Canonical</a>
+    </div>
+  </div>
+
+  <div class="ref-card pink-card">
+    <div class="ref-icon"><i class="ti ti-brand-github"></i></div>
+    <div class="ref-body">
+      <div class="ref-type">GitHub Repository</div>
+      <div class="ref-tagline">Hands-on — reference implementation &amp; examples</div>
+      <div class="ref-title">davidtvs / pytorch-lr-finder — LR range test implementation</div>
+      <a href="https://github.com/davidtvs/pytorch-lr-finder" target="_blank" rel="noopener" class="ref-btn"><i class="ti ti-external-link"></i> Explore Repo</a>
+    </div>
+  </div>
+
+  <div class="ref-card">
+    <div class="ref-icon"><i class="ti ti-book-2"></i></div>
+    <div class="ref-body">
+      <div class="ref-type">API Reference</div>
+      <div class="ref-tagline">Forward and backward hooks — official tutorial</div>
+      <div class="ref-title">PyTorch Hooks &amp; Anomaly Detection Tutorial</div>
+      <a href="https://docs.pytorch.org/tutorials/beginner/saving_loading_models.html" target="_blank" rel="noopener" class="ref-btn"><i class="ti ti-external-link"></i> Open Docs</a>
+    </div>
+  </div>
+</section>
+
+<!-- =================== NEXT MODULE =================== -->
+<div class="module-nav">
+  <div>
+    <div class="module-nav-label">Next up · Module 11.0</div>
+    <div class="module-nav-title">Module 11.0 — Distributed Training &amp; Hardware Acceleration</div>
+    <p style="font-size:14px;color:var(--ink-3);margin:10px 0 0;max-width:520px">Scale training across multiple GPUs with DistributedDataParallel, mixed-precision training, and optimization.</p>
+    <div style="display:flex;flex-wrap:wrap;gap:18px;margin-top:14px;font-family:var(--mono);font-size:11px;color:var(--ink-3)">
+      <span>ESTIMATED · <span style="color:var(--ink-2)">~90 min</span></span>
+      <span>TYPE · <span style="color:var(--ink-2)">Advanced</span></span>
+      <span>CODE · <span style="color:var(--ink-2)">Python</span></span>
+      <span>DIFFICULTY · <span style="color:var(--accent)">★★★★★</span>
+    </div>
+  </div>
+  <a class="module-nav-cta" href="module_11_distributed_&_acceleration.html">Begin Module 11.0 →</a>
+</div>
+
+<div style="margin-top:32px;text-align:center;font-family:var(--mono);font-size:10px;color:var(--ink-4);letter-spacing:0.15em">
+  AGENTIC AI ACADEMY // COURSE 02 — AUTONOMOUS SYSTEMS // MODULE 10.0 — END OF TRANSMISSION
+</div>
+</main>
+</div>
+
+<div class="scroll-dots" id="scroll-dots">
+  <div class="scroll-dot active" data-target="sec-1" data-label="Gradients"></div>
+  <div class="scroll-dot" data-target="sec-2" data-label="Activations"></div>
+  <div class="scroll-dot" data-target="sec-3" data-label="LR Finder"></div>
+  <div class="scroll-dot" data-target="sec-4" data-label="Sanity Checks"></div>
+  <div class="scroll-dot" data-target="sec-lab" data-label="Lab"></div>
+  <div class="scroll-dot" data-target="sec-summary" data-label="Summary"></div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+/* Starfield */
+(function(){
+  const sf = document.getElementById('stars');
+  for (let i = 0; i < 120; i++) {
+    const s = document.createElement('div');
+    s.className = 'star';
+    const sz = Math.random() * 2 + 0.5;
+    s.style.width = sz + 'px'; s.style.height = sz + 'px';
+    s.style.left = Math.random() * 100 + '%';
+    s.style.top = Math.random() * 100 + '%';
+    s.style.setProperty('--dur', (2 + Math.random() * 4) + 's');
+    s.style.animationDelay = Math.random() * 4 + 's';
+    sf.appendChild(s);
+  }
+})();
+
+/* Nav + scroll dots */
+/* ============ SCROLL DOTS + TOC NAV ACTIVE + PROGRESS ============ */
+(function(){
+  const dots = document.querySelectorAll('.scroll-dot');
+  const tocLinks = document.querySelectorAll('.toc-link');
+  const sections = document.querySelectorAll('.section');
+  const progressFill = document.getElementById('progressFill');
+
+  dots.forEach(d => {
+    d.addEventListener('click', () => {
+      const target = document.getElementById(d.dataset.target);
+      if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  });
+
+  tocLinks.forEach(a => {
+    a.addEventListener('click', (e) => {
+      e.preventDefault();
+      const id = a.getAttribute('href').slice(1);
+      const t = document.getElementById(id);
+      if (t) t.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  });
+
+  function updateActive() {
+    let current = sections[0].id;
+    let currentIndex = -1;
+    sections.forEach((s, i) => {
+      const rect = s.getBoundingClientRect();
+      if (rect.top < window.innerHeight * 0.35) {
+        current = s.id;
+        currentIndex = i;
+      }
+    });
+
+    dots.forEach(d => d.classList.toggle('active', d.dataset.target === current));
+    tocLinks.forEach((l, i) => {
+      const isActive = l.getAttribute('href') === '#' + current;
+      const isPast = currentIndex > -1 && i < currentIndex;
+      l.classList.toggle('active', isActive);
+      l.classList.toggle('past', isPast && !isActive);
+    });
+
+    const docHeight = document.documentElement.scrollHeight - window.innerHeight;
+    const scrolled = window.scrollY / docHeight * 100;
+    if (progressFill) progressFill.style.width = Math.min(100, scrolled) + '%';
+  }
+
+  window.addEventListener('scroll', updateActive, { passive: true });
+  updateActive();
+})();
+
+/* Copy */
+document.querySelectorAll('.code-copy').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const code = btn.closest('.code-block').querySelector('pre').innerText;
+    navigator.clipboard.writeText(code).then(() => {
+      const orig = btn.innerHTML;
+      btn.innerHTML = '<i class="ti ti-check"></i> Copied';
+      setTimeout(() => btn.innerHTML = orig, 1200);
+    });
+  });
+});
+
+/* WIDGET 1: Gradient Monitor */
+(function(){
+  const initEl = 'kaiming';
+  let initType = 'kaiming', actType = 'relu';
+  const depthEl = document.getElementById('grad-depth');
+  const depthV = document.getElementById('grad-depth-v');
+  const list = document.getElementById('layer-stats');
+
+  // Estimate gradient norm per layer based on activation derivative product
+  function actDeriv(name) {
+    if (name === 'relu') return 0.5; // expected derivative at random input ~0.5
+    if (name === 'tanh') return 0.45; // average |tanh'| ~ 0.45 in tanh-friendly regime
+    if (name === 'sigmoid') return 0.18; // average sigmoid' ~ 0.18 — vanishing prone
+    return 0.5;
+  }
+  function initStd(name) {
+    if (name === 'kaiming') return 0.5;
+    if (name === 'small') return 0.05;
+    return 5; // 'large': uniform(-5,5) → std ≈ 2.9, square growth
+  }
+
+  function update() {
+    const depth = +depthEl.value;
+    depthV.textContent = depth;
+    list.innerHTML = '';
+    // Gradient norm propagates as product of layer Jacobian magnitudes
+    // From last layer (norm=1) backward to first
+    const layerNorm = new Array(depth);
+    const dAct = actDeriv(actType);
+    const wStd = initStd(initType);
+    // Per-layer multiplier
+    let mult;
+    if (initType === 'large') mult = wStd * dAct * 0.8;
+    else if (initType === 'small') mult = wStd * dAct * 5; // each layer's grad shrinks
+    else mult = wStd * dAct * 1.6; // healthy growth/decay roughly 1
+    // We compute the norm at layer i as starting=1 at output and multiplying going back
+    let cur = 1.0;
+    const norms = [];
+    for (let i = depth - 1; i >= 0; i--) {
+      norms[i] = cur;
+      cur *= mult;
+    }
+    // Render
+    let vanCount = 0, expCount = 0, okCount = 0;
+    norms.forEach((n, i) => {
+      let cls = 'ok', tag = 'ok', barCls = 'ok';
+      if (n < 1e-5) { cls = 'vanishing'; tag = 'vanish'; barCls = 'warn'; vanCount++; }
+      else if (n > 50) { cls = 'exploding'; tag = 'explode'; barCls = 'bad'; expCount++; }
+      else okCount++;
+      // bar width scaled in log space
+      const logN = Math.log10(Math.max(n, 1e-12));
+      // map -10..3 to 0..100
+      const pct = Math.max(2, Math.min(100, ((logN + 10) / 13) * 100));
+      const statusCls = tag === 'ok' ? 'ok' : (tag === 'vanish' ? 'warn' : 'bad');
+      const row = document.createElement('div');
+      row.className = 'layer-stat-row ' + cls;
+      row.innerHTML =
+        '<div class="layer-name-c">layer ' + i + '</div>' +
+        '<div class="layer-bar-wrap"><div class="layer-bar-fill ' + barCls + '" style="width:' + pct + '%;"></div></div>' +
+        '<div class="layer-stat-val">' + n.toExponential(2) + '</div>' +
+        '<div class="layer-stat-status ' + statusCls + '">' + tag + '</div>';
+      list.appendChild(row);
+    });
+    document.getElementById('g-van').textContent = vanCount;
+    document.getElementById('g-exp').textContent = expCount;
+    document.getElementById('g-ok').textContent = okCount;
+    const ratio = norms[0] / norms[norms.length - 1];
+    document.getElementById('g-ratio').textContent = ratio < 1e-3 ? ratio.toExponential(1) : ratio.toFixed(2) + '×';
+    let advice;
+    if (vanCount > 0) advice = '>>> VANISHING GRADIENTS detected\n    Earlier layers receive almost no gradient → won\'t learn.\n    Fix: switch to ReLU/GELU activation, use Kaiming init, add residual/skip connections.';
+    else if (expCount > 0) advice = '>>> EXPLODING GRADIENTS detected\n    Loss will likely become NaN.\n    Fix: use Kaiming/Xavier init, gradient clipping (max_norm=1.0), LayerNorm/BatchNorm.';
+    else advice = '>>> Healthy gradient flow.\n    Gradient norms are similar across layers — model can learn everywhere.\n    First/last ratio: ' + ratio.toFixed(2) + ' (ideal ≈ 1.0).';
+    document.getElementById('grad-out').textContent = advice;
+  }
+  document.querySelectorAll('[data-init]').forEach(b => b.addEventListener('click', () => {
+    document.querySelectorAll('[data-init]').forEach(x => x.classList.remove('active'));
+    b.classList.add('active');
+    initType = b.dataset.init;
+    update();
+  }));
+  document.querySelectorAll('[data-act]').forEach(b => b.addEventListener('click', () => {
+    document.querySelectorAll('[data-act]').forEach(x => x.classList.remove('active'));
+    b.classList.add('active');
+    actType = b.dataset.act;
+    update();
+  }));
+  depthEl.addEventListener('input', update);
+  update();
+})();
+
+/* WIDGET 2: Activation Histograms */
+(function(){
+  let scenario = 'healthy';
+  const grid = document.getElementById('act-grid');
+
+  function genHist(scenario, layerIdx) {
+    const bins = 16;
+    const hist = new Array(bins).fill(0);
+    let mean, std, deadFrac = 0;
+    // Generate 200 samples per layer based on scenario
+    let samples = [];
+    if (scenario === 'healthy') {
+      for (let i = 0; i < 200; i++) {
+        // Gaussian centered on slight positive drift
+        const u = (Math.random() + Math.random() + Math.random()) / 3 - 0.5;
+        samples.push(u * 1.6);
+      }
+    } else if (scenario === 'dead-relu') {
+      // most are zero
+      const deadProb = 0.4 + layerIdx * 0.12;
+      for (let i = 0; i < 200; i++) {
+        if (Math.random() < deadProb) samples.push(0);
+        else samples.push(Math.random() * 1.5);
+      }
+      deadFrac = deadProb;
+    } else if (scenario === 'saturated') {
+      // tanh-like, mostly ±1
+      const satProb = 0.3 + layerIdx * 0.13;
+      for (let i = 0; i < 200; i++) {
+        const r = Math.random();
+        if (r < satProb / 2) samples.push(-0.95 - Math.random() * 0.05);
+        else if (r < satProb) samples.push(0.95 + Math.random() * 0.05);
+        else samples.push((Math.random() - 0.5) * 1.8);
+      }
+    } else { // collapse
+      // each layer narrower than the last
+      const scale = 1.2 * Math.pow(0.65, layerIdx);
+      for (let i = 0; i < 200; i++) {
+        const u = (Math.random() + Math.random() + Math.random()) / 3 - 0.5;
+        samples.push(u * scale);
+      }
+    }
+    // Compute mean & std
+    let s = 0; samples.forEach(v => s += v);
+    mean = s / samples.length;
+    let ss = 0; samples.forEach(v => ss += (v - mean) ** 2);
+    std = Math.sqrt(ss / samples.length);
+    // Build hist
+    const minV = -2, maxV = 2;
+    const binW = (maxV - minV) / bins;
+    samples.forEach(v => {
+      let b = Math.floor((v - minV) / binW);
+      if (b < 0) b = 0;
+      if (b >= bins) b = bins - 1;
+      hist[b]++;
+    });
+    return { hist, mean, std, deadFrac };
+  }
+
+  function render() {
+    grid.innerHTML = '';
+    const N_LAYERS = 6;
+    for (let i = 0; i < N_LAYERS; i++) {
+      const { hist, mean, std, deadFrac } = genHist(scenario, i);
+      const max = Math.max(...hist);
+      const card = document.createElement('div');
+      const dead = deadFrac > 0.5 || (scenario === 'collapse' && i >= 4);
+      card.className = 'act-card' + (dead ? ' dead' : '');
+      let bars = '';
+      hist.forEach(v => {
+        bars += '<div class="act-bar" style="height:' + (v / max * 100).toFixed(0) + '%;"></div>';
+      });
+      card.innerHTML =
+        '<div class="act-card-title">layer ' + i + '<span>' + (dead ? '⚠' : '✓') + '</span></div>' +
+        '<div class="act-hist">' + bars + '</div>' +
+        '<div class="act-stats">μ <span>' + mean.toFixed(2) + '</span></div>' +
+        '<div class="act-stats">σ <span>' + std.toFixed(2) + '</span>' + (deadFrac > 0 ? '   dead <span>' + (deadFrac * 100).toFixed(0) + '%</span>' : '') + '</div>';
+      grid.appendChild(card);
+    }
+    let advice;
+    if (scenario === 'healthy') advice = '>>> Healthy activation distributions.\n    Each layer shows a wide, roughly Gaussian spread.\n    Means stay near 0, stds stay near 1 — model is learning well.';
+    else if (scenario === 'dead-relu') advice = '>>> Dead ReLU problem.\n    A growing fraction of neurons output exactly 0.\n    Fix: switch to LeakyReLU/GELU, reduce learning rate, fix initialisation.';
+    else if (scenario === 'saturated') advice = '>>> Saturated Tanh / Sigmoid.\n    Activations pile up at the extremes (±1).\n    Gradients near the saturated region are ≈ 0 → no learning.\n    Fix: use ReLU/GELU, or LayerNorm before the activation.';
+    else advice = '>>> Activation collapse.\n    Each deeper layer has smaller std than the previous.\n    Information gets squeezed out of the network.\n    Fix: Kaiming init, residual connections, BatchNorm or LayerNorm.';
+    document.getElementById('act-out').textContent = advice;
+  }
+  document.querySelectorAll('[data-scen]').forEach(b => b.addEventListener('click', () => {
+    document.querySelectorAll('[data-scen]').forEach(x => x.classList.remove('active'));
+    b.classList.add('active');
+    scenario = b.dataset.scen;
+    render();
+  }));
+  render();
+})();
+
+/* WIDGET 3: LR Finder */
+(function(){
+  const ctx = document.getElementById('lrf-chart').getContext('2d');
+  const diffEl = document.getElementById('lr-diff');
+  const diffV = document.getElementById('lr-diff-v');
+  let method = 'steepest';
+  let seed = 5;
+  function rnd() { seed = (seed * 9301 + 49297) % 233280; return seed / 233280; }
+
+  const chart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: [],
+      datasets: [
+        { label: 'loss', data: [], borderColor: '#00e5ff', backgroundColor: 'rgba(0,229,255,0.1)', fill: true, pointRadius: 0, borderWidth: 2, tension: 0.2 },
+        { label: 'suggested', data: [], borderColor: '#6bff9d', backgroundColor: '#6bff9d', pointRadius: 0, borderWidth: 0 }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: { duration: 250 },
+      plugins: { legend: { display: false }, title: { display: true, text: 'Loss vs learning rate (log scale)', color: '#9aa8c4', font: { size: 11 } } },
+      scales: {
+        x: { type: 'logarithmic', grid: { color: 'rgba(0,229,255,0.07)' }, ticks: { color: '#6b7896', maxTicksLimit: 8 }, title: { display: true, text: 'learning rate', color: '#9aa8c4', font: { size: 10 } } },
+        y: { grid: { color: 'rgba(0,229,255,0.07)' }, ticks: { color: '#6b7896' }, title: { display: true, text: 'loss', color: '#9aa8c4', font: { size: 10 } } }
+      }
+    }
+  });
+
+  function run() {
+    seed = Math.floor(Math.random() * 1000) + 1;
+    const diff = +diffEl.value;
+    diffV.textContent = diff;
+    // Generate LRs and losses
+    const N = 100;
+    const startLr = 1e-7, endLr = 10.0;
+    const mult = Math.pow(endLr / startLr, 1 / N);
+    const lrs = [], losses = [];
+    let lr = startLr;
+    const initLoss = 1.0986; // ln(3)
+    // sweet spot around 1e-3 to 1e-1 depending on difficulty
+    const sweetLogLr = -3 + (diff - 3) * 0.4;
+    const explodeLogLr = sweetLogLr + 2;
+    for (let i = 0; i < N; i++) {
+      const logLr = Math.log10(lr);
+      let loss = initLoss;
+      // tiny noise
+      const noise = (rnd() - 0.5) * 0.04;
+      if (logLr < sweetLogLr - 2) {
+        // flat initial
+        loss = initLoss + noise;
+      } else if (logLr < sweetLogLr) {
+        // dropping
+        const progress = (logLr - (sweetLogLr - 2)) / 2;
+        loss = initLoss - 0.7 * progress + noise;
+      } else if (logLr < explodeLogLr) {
+        // bottom
+        const dist = Math.abs(logLr - sweetLogLr);
+        loss = (initLoss - 0.7) + dist * 0.3 + noise;
+      } else {
+        // exploding
+        loss = initLoss + (logLr - explodeLogLr) * 1.5 + noise;
+      }
+      lrs.push(lr);
+      losses.push(loss);
+      if (loss > initLoss + 2.5) break;
+      lr *= mult;
+    }
+    // Find suggestion based on method
+    let bestIdx;
+    if (method === 'steepest') {
+      // discrete gradient, find min
+      let bestSlope = Infinity, idx = 0;
+      for (let i = 5; i < losses.length - 5; i++) {
+        const slope = losses[i + 3] - losses[i - 3];
+        if (slope < bestSlope) { bestSlope = slope; idx = i; }
+      }
+      bestIdx = idx;
+    } else if (method === 'min') {
+      // min loss / 10 in log space: find min loss point, suggest LR 10x smaller
+      let minIdx = 0, minLoss = Infinity;
+      losses.forEach((l, i) => { if (l < minLoss) { minLoss = l; minIdx = i; } });
+      // step back ~10 indices (one decade in log space, given mult ≈ 1.18)
+      bestIdx = Math.max(0, minIdx - 10);
+    } else {
+      // last stable: find first point where loss starts climbing fast
+      let climbIdx = losses.length - 1;
+      for (let i = 5; i < losses.length - 1; i++) {
+        if (losses[i] > losses[i - 5] * 1.5 && losses[i] > initLoss - 0.5) {
+          climbIdx = i;
+          break;
+        }
+      }
+      bestIdx = Math.max(0, climbIdx - 5);
+    }
+    chart.data.labels = lrs;
+    chart.data.datasets[0].data = losses.map((l, i) => ({ x: lrs[i], y: l }));
+    chart.data.datasets[1].data = lrs.map((lr, i) => i === bestIdx ? { x: lr, y: losses[i] } : null).filter(p => p !== null);
+    chart.data.datasets[1].pointRadius = 8;
+    chart.data.datasets[1].pointBackgroundColor = '#6bff9d';
+    chart.data.datasets[1].pointBorderColor = '#fff';
+    chart.data.datasets[1].pointBorderWidth = 2;
+    chart.update('none');
+    document.getElementById('lrf-best').textContent = lrs[bestIdx].toExponential(1);
+    document.getElementById('lrf-minloss').textContent = Math.min(...losses).toFixed(3);
+    // explosion
+    let explodeLr = '—';
+    for (let i = 0; i < losses.length; i++) {
+      if (losses[i] > initLoss + 1) { explodeLr = lrs[i].toExponential(1); break; }
+    }
+    document.getElementById('lrf-explode').textContent = explodeLr;
+    document.getElementById('lrf-out').textContent =
+      method === 'steepest' ? '>>> Steepest gradient method: pick the LR where loss decreases fastest.\n    Empirically the most reliable choice for an unknown task.' :
+      method === 'min' ? '>>> Min-loss / 10 method: take 1/10 of the LR that hits min loss.\n    Conservative — safer for stable training but slower.' :
+      '>>> Last stable LR: pick just before the loss starts climbing.\n    Most aggressive — fastest training but risky.';
+  }
+  diffEl.addEventListener('input', run);
+  document.querySelectorAll('[data-lrm]').forEach(b => b.addEventListener('click', () => {
+    document.querySelectorAll('[data-lrm]').forEach(x => x.classList.remove('active'));
+    b.classList.add('active');
+    method = b.dataset.lrm;
+    run();
+  }));
+  document.getElementById('lr-rerun').addEventListener('click', run);
+  run();
+})();
+
+/* WIDGET 4: Sanity Check Simulator */
+(function(){
+  const term = document.getElementById('sanity-term');
+  let scn = 'ok';
+
+  const scenarios = {
+    'ok': {
+      head: '$ python sanity_check.py  (correct model)',
+      curve: [0.83, 0.27, 0.045, 0.008, 0.0028, 0.0011, 0.0003, 0.00011],
+      verdict: 'PASS ✓',
+      verdictCls: 'pass',
+      advice: '>>> Model can overfit 4 samples to ≈ 0 loss.\n    Architecture, loss, and optimizer are all working.\n    Safe to scale up to the full dataset.'
+    },
+    'lr-low': {
+      head: '$ python sanity_check.py  (lr=1e-6 — too low)',
+      curve: [1.099, 1.098, 1.097, 1.097, 1.096, 1.096, 1.095, 1.095],
+      verdict: 'FAIL ✗',
+      verdictCls: 'fail',
+      advice: '>>> Loss barely moves. LR is too small.\n    Even on 4 samples, the model can\'t reduce loss.\n    Fix: run the LR finder, or just try lr=1e-3.'
+    },
+    'lr-high': {
+      head: '$ python sanity_check.py  (lr=1.0 — too high)',
+      curve: [1.1, 8.4, 142.3, 8420, NaN, NaN, NaN, NaN],
+      verdict: 'FAIL ✗',
+      verdictCls: 'fail',
+      advice: '>>> Loss explodes to NaN after a few steps.\n    LR is too high — gradient updates overshoot.\n    Fix: lower LR by 10× or 100×, add gradient clipping.'
+    },
+    'missing-zero': {
+      head: '$ python sanity_check.py  (missing opt.zero_grad())',
+      curve: [1.09, 2.34, 8.71, 47.2, 312, 2480, NaN, NaN],
+      verdict: 'FAIL ✗',
+      verdictCls: 'fail',
+      advice: '>>> Loss diverges. Gradients are accumulating across steps.\n    Without zero_grad(), each step\'s gradient adds to the previous → effective LR explodes.\n    Fix: call optimizer.zero_grad() before every loss.backward().'
+    },
+    'softmax-ce': {
+      head: '$ python sanity_check.py  (softmax then CrossEntropyLoss)',
+      curve: [1.099, 1.099, 1.099, 1.099, 1.099, 1.099, 1.099, 1.099],
+      verdict: 'FAIL ✗',
+      verdictCls: 'fail',
+      advice: '>>> Loss frozen at log(3) ≈ 1.099.\n    Softmax was applied before CrossEntropyLoss — but CE expects raw logits.\n    The double-softmax flattens gradients to ~0.\n    Fix: return raw logits from forward(); CE handles softmax internally.'
+    }
+  };
+
+  function run() {
+    const s = scenarios[scn];
+    term.innerHTML = '';
+    const head = document.createElement('div');
+    head.className = 'sanity-line head';
+    head.textContent = s.head;
+    term.appendChild(head);
+    document.getElementById('san-steps').textContent = '—';
+    document.getElementById('san-final').textContent = '—';
+    document.getElementById('san-verdict').textContent = '—';
+    let i = 0;
+    function step() {
+      if (i >= s.curve.length) {
+        const verd = document.createElement('div');
+        verd.className = 'sanity-line ' + s.verdictCls;
+        verd.textContent = 'Overfit test: ' + s.verdict;
+        term.appendChild(verd);
+        // metrics
+        const final = s.curve[s.curve.length - 1];
+        document.getElementById('san-final').textContent = isFinite(final) ? final.toFixed(4) : 'NaN';
+        document.getElementById('san-steps').textContent = s.curve.length;
+        const v = document.getElementById('san-verdict');
+        v.textContent = s.verdict;
+        v.style.color = s.verdictCls === 'pass' ? 'var(--success)' : 'var(--danger)';
+        return;
+      }
+      const line = document.createElement('div');
+      line.className = 'sanity-line epoch';
+      const lossStr = isFinite(s.curve[i]) ? s.curve[i].toFixed(5).padStart(10) : '       NaN';
+      line.textContent = '  Epoch ' + String(i * 25).padStart(3) + ': loss=' + lossStr;
+      term.appendChild(line);
+      term.scrollTop = term.scrollHeight;
+      i++;
+      setTimeout(step, 180);
+    }
+    document.getElementById('san-verdict').style.color = 'var(--cyan)';
+    setTimeout(step, 100);
+  }
+
+  document.querySelectorAll('[data-scn]').forEach(b => b.addEventListener('click', () => {
+    document.querySelectorAll('[data-scn]').forEach(x => x.classList.remove('active'));
+    b.classList.add('active');
+    scn = b.dataset.scn;
+  }));
+  document.getElementById('sanity-run').addEventListener('click', run);
+})();
+
+/* WIDGET 5: Bug Fixer */
+(function(){
+  const bugs = [
+    { id: 'list', name: 'Plain Python list of layers', loc: 'self.extra_layers = [...]', fix: 'self.extra_layers = nn.ModuleList([...])', symptom: 'params not in optimizer', fixed: false, impact: 0.05 },
+    { id: 'sigmoid', name: 'Sigmoid activation in hidden layers', loc: 'torch.sigmoid(self.fc1(x))', fix: 'torch.relu(self.fc1(x))', symptom: 'vanishing gradients', fixed: false, impact: 0.18 },
+    { id: 'softmax', name: 'Softmax before CrossEntropyLoss', loc: 'torch.softmax(x, dim=1)', fix: 'return logits directly', symptom: 'double softmax — gradients ≈ 0', fixed: false, impact: 0.22 },
+    { id: 'zerograd', name: 'Missing optimizer.zero_grad()', loc: '— (between steps)', fix: 'opt.zero_grad() before backward', symptom: 'gradient accumulation → explodes', fixed: false, impact: 0.25 },
+    { id: 'lr', name: 'Learning rate too high (0.1)', loc: 'opt = Adam(..., lr=0.1)', fix: 'opt = AdamW(..., lr=1e-3, weight_decay=1e-2)', symptom: 'loss oscillates upward', fixed: false, impact: 0.30 }
+  ];
+  const list = document.getElementById('bug-list');
+
+  const ctx = document.getElementById('bug-chart').getContext('2d');
+  const chart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: [0, 1, 2, 3, 4],
+      datasets: [
+        { label: 'fully fixed', data: [1.099, 1.084, 1.069, 1.054, 1.038], borderColor: '#6bff9d', backgroundColor: 'transparent', pointRadius: 3, borderWidth: 2, borderDash: [4, 3] },
+        { label: 'current state', data: [1.099, 1.094, 1.087, 1.080, 1.073], borderColor: '#ff6b6b', backgroundColor: 'rgba(255,107,107,0.1)', pointRadius: 3, borderWidth: 2.5, fill: true }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: { duration: 250 },
+      plugins: { legend: { display: false }, title: { display: true, text: 'Loss across 5 steps', color: '#9aa8c4', font: { size: 11 } } },
+      scales: {
+        x: { grid: { color: 'rgba(0,229,255,0.07)' }, ticks: { color: '#6b7896' }, title: { display: true, text: 'step', color: '#9aa8c4', font: { size: 10 } } },
+        y: { grid: { color: 'rgba(0,229,255,0.07)' }, ticks: { color: '#6b7896' }, min: 0.95 }
+      }
+    }
+  });
+
+  function render() {
+    list.innerHTML = '';
+    bugs.forEach((b, idx) => {
+      const row = document.createElement('div');
+      row.className = 'bug-row' + (b.fixed ? ' fixed' : '');
+      row.innerHTML =
+        '<div class="bug-num">#' + (idx + 1) + '</div>' +
+        '<div class="bug-desc"><strong>' + b.name + '</strong>' +
+          '<small>' + (b.fixed ? '→ ' + b.fix : b.loc + '  // ' + b.symptom) + '</small>' +
+        '</div>' +
+        '<div class="bug-tag">' + (b.fixed ? '<i class="ti ti-check"></i> Fixed' : '<i class="ti ti-x"></i> Bug') + '</div>' +
+        '<div class="bug-action">' + (b.fixed ? 'Undo' : 'Apply fix') + '</div>';
+      row.addEventListener('click', () => {
+        b.fixed = !b.fixed;
+        render();
+        updateChart();
+      });
+      list.appendChild(row);
+    });
+    const fixedCount = bugs.filter(b => b.fixed).length;
+    document.getElementById('bug-count').textContent = fixedCount + ' / 5';
+  }
+
+  function updateChart() {
+    // The broken version diverges; each fix moves the loss curve closer to the fully-fixed reference
+    const fixedCount = bugs.filter(b => b.fixed).length;
+    const totalImpact = bugs.filter(b => b.fixed).reduce((a, b) => a + b.impact, 0);
+    // baseline broken curve: increases over steps
+    const brokenCurve = [1.094, 1.127, 1.178, 1.256, 1.156];
+    const fixedCurve = [1.095, 1.086, 1.067, 1.074, 1.054];
+    const cur = brokenCurve.map((b, i) => b + (fixedCurve[i] - b) * totalImpact);
+    chart.data.datasets[1].data = cur;
+    chart.update('none');
+    document.getElementById('bug-loss').textContent = cur[4].toFixed(3);
+    let trend;
+    if (cur[4] > cur[0]) {
+      trend = 'increasing ✗';
+      document.getElementById('bug-trend').style.color = 'var(--danger)';
+    } else if (cur[4] > cur[0] - 0.02) {
+      trend = 'flat';
+      document.getElementById('bug-trend').style.color = 'var(--warn)';
+    } else {
+      trend = 'decreasing ✓';
+      document.getElementById('bug-trend').style.color = 'var(--success)';
+    }
+    document.getElementById('bug-trend').textContent = trend;
+    let advice;
+    if (fixedCount === 0) advice = '>>> Loss is INCREASING with every step.\n    Click "Apply fix" on each bug to see which one matters most.';
+    else if (fixedCount === 5) advice = '>>> All 5 bugs fixed! Loss is now decreasing as expected.\n    Compare with the green dashed reference — the curve matches.';
+    else if (totalImpact > 0.6) advice = '>>> Most critical bugs fixed. Loss is now monotonically decreasing.\n    The remaining bugs are smaller but still worth fixing.';
+    else advice = '>>> Some fixes applied but loss still misbehaves.\n    The remaining bugs are blocking training. Look for: missing zero_grad, high LR, softmax-before-CE.';
+    document.getElementById('bug-out').textContent = advice;
+  }
+  render();
+  updateChart();
+})();
+</script>
+</body>
+</html>

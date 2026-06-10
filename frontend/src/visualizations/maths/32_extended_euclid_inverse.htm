@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Extended Euclid Inverse - Visualization</title>
+    <style>
+        :root {
+            --bg-page: #070b14;
+            --bg-surface: rgba(255, 255, 255, 0.045);
+            --bg-input: rgba(255, 255, 255, 0.04);
+            --border-main: rgba(255, 255, 255, 0.10);
+            --btn-bg: rgba(255, 255, 255, 0.05);
+            --btn-hover: rgba(255, 255, 255, 0.10);
+            --text-main: #e8eefb;
+            --text-dim: #8b98b3;
+            --accent-orange: #f5a524;   /* quotient / answer reveal       */
+            --accent-blue:   #06b6d4;    /* remainder / chrome             */
+            --accent-green:  #22c55e;    /* gcd / inverse found            */
+            --accent-red:    #f43f5e;    /* division highlight             */
+            --accent-purple: #a855f7;    /* current row / Bezout coeffs    */
+            --mono: ui-monospace, 'SF Mono', 'Cascadia Code', 'Courier New', monospace;
+            --sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+            --shell: 900px;
+        }
+
+        * { box-sizing: border-box; }
+        html, body { overflow-x: hidden; }
+        body {
+            background:
+                radial-gradient(1100px 600px at 15% -10%, rgba(168, 85, 247, 0.10), transparent 60%),
+                radial-gradient(900px 600px at 100% 10%, rgba(6, 182, 212, 0.10), transparent 55%),
+                linear-gradient(160deg, #070b14 0%, #0b1120 55%, #0a0f1c 100%);
+            background-attachment: fixed;
+            color: var(--text-main); font-family: var(--sans); margin: 0;
+            display: flex; flex-direction: column; align-items: center; min-height: 100vh;
+            padding-bottom: 48px; -webkit-font-smoothing: antialiased;
+        }
+        body::before, body::after { content: ''; position: fixed; border-radius: 50%; filter: blur(70px); pointer-events: none; z-index: 0; opacity: 0.45; }
+        body::before { width: 380px; height: 380px; top: 8%; left: -120px; background: radial-gradient(circle, rgba(168,85,247,0.30), transparent 70%); }
+        body::after  { width: 420px; height: 420px; bottom: 4%; right: -140px; background: radial-gradient(circle, rgba(6,182,212,0.22), transparent 70%); }
+        body > * { position: relative; z-index: 1; }
+
+        .input-bar {
+            width: 100%; background: rgba(10, 15, 28, 0.55);
+            backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+            padding: 14px 16px; display: flex; justify-content: center; align-items: center; gap: 10px;
+            border-bottom: 1px solid var(--border-main); flex-wrap: wrap; position: sticky; top: 0; z-index: 50;
+        }
+        label.ui-label, .ui-label { font-family: var(--mono); font-size: 13px; color: var(--text-dim); letter-spacing: 0.2px; }
+        input[type="number"] {
+            background: var(--bg-input); border: 1px solid var(--border-main); color: var(--text-main);
+            height: 34px; border-radius: 9px; padding: 0 12px; font-size: 13px; font-family: var(--mono); width: 90px;
+            transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+        }
+        input[type="number"]:focus { outline: none; border-color: var(--accent-purple); box-shadow: 0 0 0 3px rgba(168, 85, 247, 0.18); background: rgba(168, 85, 247, 0.06); }
+
+        button {
+            height: 34px; border-radius: 9px; padding: 0 14px; background: var(--btn-bg);
+            border: 1px solid var(--border-main); color: var(--text-main); font-size: 13px; font-weight: 600; cursor: pointer;
+            transition: transform 0.15s ease, background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+        }
+        button:hover { background: var(--btn-hover); border-color: rgba(6, 182, 212, 0.5); box-shadow: 0 0 18px rgba(6, 182, 212, 0.18); transform: translateY(-1px); }
+        button:active { transform: translateY(0); }
+        #play-btn { background: linear-gradient(135deg, rgba(6,182,212,0.22), rgba(6,182,212,0.10)); border-color: rgba(6, 182, 212, 0.45); color: #a5f3fc; min-width: 80px; }
+
+        .shell { width: var(--shell); max-width: 95%; margin: 24px auto 0; display: flex; flex-direction: column; gap: 16px; }
+
+        .title-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+        .title-row h1 { font-size: 18px; font-weight: 800; margin: 0; letter-spacing: 0.2px; }
+        .title-row .sub { color: var(--text-dim); font-weight: 500; font-size: 13px; }
+        .step-badge { font-family: var(--mono); font-size: 12px; font-weight: 700; color: #a5f3fc; background: rgba(6,182,212,0.12); border: 1px solid rgba(6,182,212,0.3); padding: 4px 10px; border-radius: 999px; white-space: nowrap; }
+        .progress-track { height: 4px; width: 100%; background: rgba(255,255,255,0.07); border-radius: 999px; overflow: hidden; margin-top: -6px; }
+        .progress-fill { height: 100%; width: 0%; border-radius: 999px; background: linear-gradient(90deg, var(--accent-blue), var(--accent-purple)); box-shadow: 0 0 12px rgba(6,182,212,0.5); transition: width 0.45s cubic-bezier(0.34,1.1,0.64,1); }
+
+        .narration { background: var(--bg-surface); border: 1px solid rgba(6,182,212,0.22); border-radius: 12px; padding: 12px 18px; font-family: var(--mono); font-size: 14px; line-height: 1.5; color: #cfe9f5; min-height: 48px; display: flex; align-items: center; gap: 10px; transition: border-color 0.3s, background 0.3s; }
+        .narration::before { content: '\25B8'; color: var(--accent-blue); font-size: 13px; }
+        .narration.done { border-color: rgba(34,197,94,0.4); background: rgba(34,197,94,0.06); }
+        .narration.done::before { content: '\2713'; color: var(--accent-green); }
+        .narration code { background: rgba(6,182,212,0.14); color: #7dd3fc; padding: 1px 6px; border-radius: 5px; font-size: 12.5px; }
+        .narration b { color: #fff; }
+
+        .stage-card { background: var(--bg-surface); border: 1px solid var(--border-main); border-radius: 18px; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); box-shadow: 0 12px 38px rgba(0,0,0,0.4); overflow: hidden; }
+        .stage-screen { position: relative; margin: 14px; border-radius: 14px; background: radial-gradient(700px 300px at 50% -10%, rgba(6,182,212,0.08), transparent 70%), #090d18; border: 1px solid rgba(255,255,255,0.06); }
+        .grid-stage { position: relative; width: 100%; overflow: auto; scrollbar-width: thin; padding: 22px; display: flex; flex-direction: column; align-items: center; gap: 18px; }
+        .grid-stage::-webkit-scrollbar { height: 8px; width: 8px; }
+        .grid-stage::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 8px; }
+
+        /* EEA TABLE */
+        .eea-grid { display: grid; gap: 6px; }
+        .cell {
+            display: flex; align-items: center; justify-content: center;
+            border-radius: 9px; font-family: var(--mono); font-weight: 800; font-size: 16px;
+            border: 2px solid var(--border-main); background: rgba(255,255,255,0.04); color: var(--text-main);
+            min-width: 60px; height: 44px; padding: 0 6px; will-change: transform;
+            transition: background 0.35s, border-color 0.35s, color 0.35s, box-shadow 0.35s, transform 0.3s, opacity 0.35s;
+        }
+        .cell.head { border: none; background: transparent; color: var(--text-dim); font-size: 12px; font-weight: 800; letter-spacing: 1px; text-transform: uppercase; height: 26px; }
+        .cell.rownum { border: none; background: transparent; color: #4b5772; font-size: 12px; min-width: 26px; }
+        .cell.empty { opacity: 0.18; }
+        .cell.filled { color: #e8eefb; }
+        .cell.qcol.filled { color: #ffd591; border-color: rgba(245,165,36,0.35); background: rgba(245,165,36,0.08); }
+        .cell.rcol.filled { color: #a5f3fc; border-color: rgba(6,182,212,0.35); background: rgba(6,182,212,0.08); }
+        .cell.xcol.filled, .cell.ycol.filled { color: #e9d5ff; border-color: rgba(168,85,247,0.35); background: rgba(168,85,247,0.08); }
+        .cell.past { opacity: 0.42; }
+        .cell.current { border-color: var(--accent-purple); background: rgba(168,85,247,0.16); color: #e9d5ff; box-shadow: 0 0 20px rgba(168,85,247,0.55), inset 0 0 12px rgba(168,85,247,0.12); transform: scale(1.05); z-index: 2; }
+        .cell.divide { border-color: var(--accent-red); background: rgba(244,63,94,0.16); color: #fecdd3; box-shadow: 0 0 16px rgba(244,63,94,0.4); }
+        .cell.gcd { border-color: var(--accent-green); background: linear-gradient(180deg, rgba(47,224,143,0.85), rgba(33,194,117,0.85)); color: #06251a; box-shadow: 0 0 16px rgba(34,197,94,0.5); }
+        .cell.bezout { border-color: var(--accent-orange); background: rgba(245,165,36,0.20); color: #ffd591; box-shadow: 0 0 18px rgba(245,165,36,0.5); }
+
+        /* IDENTITY / INVERSE READOUT */
+        .action-stage { position: relative; min-height: 92px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; }
+        .identity-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: center; font-family: var(--mono); font-weight: 800; font-size: 17px; min-height: 26px; color: var(--text-dim); }
+        .id-a { color: #ffd591; } .id-m { color: #a5f3fc; } .id-eq { color: var(--accent-green); }
+        .answer-track { display: flex; gap: 6px; align-items: center; min-height: 40px; }
+        .ans-tile { min-width: 40px; padding: 0 10px; height: 44px; border-radius: 9px; display: flex; align-items: center; justify-content: center; font-family: var(--mono); font-size: 20px; font-weight: 800; border: 2px solid var(--accent-green); background: rgba(34,197,94,0.16); color: #bbf7d0; box-shadow: 0 0 14px rgba(34,197,94,0.4); }
+        .action-word { font-family: var(--mono); font-weight: 800; font-size: 18px; letter-spacing: 0.4px; min-height: 22px; text-align: center; transition: color 0.3s; }
+        #confetti { position: absolute; inset: 0; overflow: visible; pointer-events: none; }
+        .confetti-piece { position: absolute; top: 0; left: 50%; width: 8px; height: 13px; border-radius: 2px; opacity: 0; animation: confettiFall ease-out forwards; }
+
+        .controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: center; }
+        .controls .kbd-hint { font-size: 11px; color: var(--text-dim); font-family: var(--mono); margin-left: 4px; }
+        .kbd { background: rgba(255,255,255,0.07); border: 1px solid var(--border-main); border-radius: 5px; padding: 1px 6px; font-size: 10px; }
+        input[type="range"] { accent-color: var(--accent-blue); width: 110px; cursor: pointer; }
+
+        .details-toggle { align-self: center; height: 32px; padding: 0 16px; border-radius: 999px; cursor: pointer; background: rgba(255,255,255,0.04); border: 1px solid var(--border-main); color: var(--text-dim); font-family: var(--mono); font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; gap: 8px; transition: color 0.2s, border-color 0.2s, background 0.2s; }
+        .details-toggle:hover { color: var(--text-main); border-color: rgba(6,182,212,0.4); background: rgba(6,182,212,0.06); }
+        .details-toggle .chev { transition: transform 0.3s ease; }
+        .details-wrap.open .details-toggle .chev { transform: rotate(180deg); }
+        .details-body { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.4s ease; }
+        .details-wrap.open .details-body { grid-template-rows: 1fr; }
+        .details-inner { overflow: hidden; min-height: 0; }
+        .details-grid { display: flex; flex-direction: column; gap: 14px; padding-top: 14px; }
+
+        .panel-card { background: var(--bg-surface); border: 1px solid var(--border-main); border-radius: 16px; backdrop-filter: blur(10px); box-shadow: 0 8px 30px rgba(0,0,0,0.35); }
+        .panel-head { display: flex; align-items: center; gap: 8px; padding: 11px 16px; border-bottom: 1px solid var(--border-main); font-size: 11px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; color: var(--text-dim); }
+        .panel-head .pip { width: 7px; height: 7px; border-radius: 50%; background: var(--accent-blue); box-shadow: 0 0 8px var(--accent-blue); }
+        .code-body { padding: 12px 6px 14px; font-family: var(--mono); font-size: 12.5px; line-height: 1.7; }
+        .code-line { display: flex; gap: 12px; padding: 1px 16px; border-left: 2px solid transparent; transition: background 0.3s, border-color 0.3s; white-space: pre; }
+        .code-line .lno { color: #4b5772; width: 16px; text-align: right; user-select: none; }
+        .code-line .src { color: #c4cee0; }
+        .code-line .kw { color: #c792ea; }
+        .code-line .fn { color: #82aaff; }
+        .code-line.active { background: rgba(6,182,212,0.12); border-left-color: var(--accent-blue); }
+        .code-line.active .src, .code-line.active .lno { color: #e8eefb; }
+
+        .state-strip { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 0 2px; }
+        .pill { display: inline-flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 12px; color: var(--text-dim); background: rgba(255,255,255,0.04); border: 1px solid var(--border-main); border-radius: 999px; padding: 4px 11px; }
+        .pill b { color: var(--text-main); font-weight: 800; }
+        .pill.c b { color: var(--accent-purple); } .pill.b b { color: var(--accent-orange); } .pill.g b { color: var(--accent-green); } .pill.r b { color: var(--accent-blue); }
+
+        .log-panel { border-radius: 14px; padding: 12px 16px; height: 110px; overflow-y: auto; font-family: var(--mono); font-size: 12.5px; line-height: 1.5; background: var(--bg-surface); border: 1px solid var(--border-main); }
+        .log-panel::-webkit-scrollbar { width: 8px; }
+        .log-panel::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 8px; }
+
+        @keyframes confettiFall { 0%{ opacity:1; transform: translate(-50%, 0) rotate(0deg); } 100%{ opacity:0; transform: translate(calc(-50% + var(--x)), 220px) rotate(var(--rot)); } }
+        @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; } }
+    </style>
+</head>
+<body>
+
+    <div class="input-bar">
+        <label class="ui-label">a =</label>
+        <input type="number" id="a-input" value="3">
+        <label class="ui-label">m =</label>
+        <input type="number" id="m-input" value="7">
+        <button onclick="loadCustom()">Load</button>
+        <span class="ui-label" style="opacity:.5">|</span>
+        <button onclick="loadExample(0)">Ex 1 &middot; 3&#8315;&#185; mod 7</button>
+        <button onclick="loadExample(1)">Ex 2 &middot; 4&#8315;&#185; mod 5</button>
+    </div>
+
+    <div class="shell">
+        <div class="title-row">
+            <h1>Extended Euclid &middot; Modular Inverse <span class="sub">&middot; solve a&middot;x + m&middot;y = gcd &middot; inverse = x mod m</span></h1>
+            <span class="step-badge" id="step-badge">Step 1 / 1</span>
+        </div>
+        <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+
+        <div class="narration" id="main-panel">&mdash;</div>
+
+        <div class="stage-card">
+            <div class="stage-screen">
+                <div class="grid-stage" id="grid-stage">
+                    <div class="eea-grid" id="eea-grid"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="action-stage">
+            <div id="confetti"></div>
+            <div class="identity-row" id="identity-row"></div>
+            <div class="answer-track" id="answer-track"></div>
+            <div class="action-word" id="action-word"></div>
+        </div>
+
+        <div class="controls">
+            <button onclick="resetSim()">&#8634; Reset</button>
+            <button onclick="prevStep()">&#8592; Back</button>
+            <button onclick="togglePlay()" id="play-btn">Play</button>
+            <button onclick="nextStep()">Next &#8594;</button>
+            <span class="ui-label" style="margin-left:6px; font-size:11px">Speed</span>
+            <input type="range" id="speed" min="0" max="2" value="1">
+            <span class="kbd-hint"><span class="kbd">&#8592;</span> <span class="kbd">&#8594;</span> step &middot; <span class="kbd">space</span> play</span>
+        </div>
+
+        <div class="details-wrap" id="details-wrap">
+            <button class="details-toggle" onclick="toggleDetails()" aria-expanded="false">
+                <span id="details-label">Show code, state &amp; log</span> <span class="chev">&#9662;</span>
+            </button>
+            <div class="details-body">
+                <div class="details-inner">
+                    <div class="details-grid">
+                        <div class="state-strip">
+                            <span class="pill c">a, b <b id="st-ab">&mdash;</b></span>
+                            <span class="pill b">q = a&divide;b <b id="st-q">&mdash;</b></span>
+                            <span class="pill r">r = a mod b <b id="st-r">&mdash;</b></span>
+                            <span class="pill">x, y <b id="st-xy">&mdash;</b></span>
+                            <span class="pill g">inverse <b id="st-inv">&mdash;</b></span>
+                        </div>
+                        <div class="panel-card">
+                            <div class="panel-head"><span class="pip"></span> Algorithm</div>
+                            <div class="code-body" id="code-panel"></div>
+                        </div>
+                        <div class="log-panel" id="log"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        'use strict';
+
+        // ───────── Motion engine (spring pop, zero deps) ─────────
+        const REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        const FRAME = 1000 / 60;
+        function sampleSpring(stiffness, damping, mass) {
+            const dt = 1 / 60; let x = 1, v = 0; const out = [];
+            for (let i = 0; i < 240; i++) { const a = (-stiffness * x - damping * v) / mass; v += a * dt; x += v * dt; out.push(1 - x); if (Math.abs(x) < 0.0015 && Math.abs(v) < 0.0015) break; }
+            out.push(1); return out;
+        }
+        const SPRING_POP = sampleSpring(520, 17, 1);
+        const durOf = (a) => a.length * FRAME;
+        const Motion = {
+            pop(el) {
+                if (REDUCED) return;
+                const kf = SPRING_POP.map(p => ({ transform: `scale(${(0.4 + 0.66 * p).toFixed(3)})` }));
+                el.animate(kf, { duration: durOf(SPRING_POP), easing: 'linear' });
+            },
+        };
+
+        // ───────── State ─────────
+        let A = 3, M = 7;
+        let steps = [];
+        let stepIdx = 0;
+        let timer = null;
+        let confettiArmed = true;
+        const delays = [1450, 720, 330];
+        const cellEls = {};   // 'r,c' -> element
+
+        // table column layout: row#, a, b, q, r, x, y
+        const COLS = [
+            { key: 'num', label: '' },
+            { key: 'a',   label: 'a' },
+            { key: 'b',   label: 'b' },
+            { key: 'q',   label: 'q=a÷b' },
+            { key: 'r',   label: 'r=a%b' },
+            { key: 'x',   label: 'x' },
+            { key: 'y',   label: 'y' },
+        ];
+
+        const CODE = [
+            [['kw','def '],['fn','modinv'],['src','(a, m):']],
+            [['src','  old = (a, 1, 0); cur = (m, 0, 1)']],
+            [['kw','  while '],['src','cur[0] != 0:']],
+            [['src','    q = old[0] // cur[0]']],
+            [['src','    r = old[0] %  cur[0]']],
+            [['src','    nxt = old - q*cur   # per column']],
+            [['src','    old, cur = cur, nxt']],
+            [['kw','  g'],['src',', x, y = old        # a*x + m*y = g']],
+            [['kw','  return '],['src','x % m            # x mod m']],
+        ];
+        function buildCodePanel() {
+            const panel = document.getElementById('code-panel'); panel.innerHTML = '';
+            CODE.forEach((tokens, i) => {
+                const line = document.createElement('div'); line.className = 'code-line'; line.dataset.line = i;
+                const lno = document.createElement('span'); lno.className = 'lno'; lno.textContent = i + 1; line.appendChild(lno);
+                const src = document.createElement('span');
+                tokens.forEach(([cls, txt]) => { const s = document.createElement('span'); s.className = cls; s.textContent = txt; src.appendChild(s); });
+                line.appendChild(src); panel.appendChild(line);
+            });
+        }
+        function highlightCode(arr) { document.querySelectorAll('.code-line').forEach(el => el.classList.toggle('active', arr && arr.includes(+el.dataset.line))); }
+        function toggleDetails() {
+            const wrap = document.getElementById('details-wrap'); const open = wrap.classList.toggle('open');
+            wrap.querySelector('.details-toggle').setAttribute('aria-expanded', open ? 'true' : 'false');
+            document.getElementById('details-label').textContent = open ? 'Hide code, state & log' : 'Show code, state & log';
+        }
+
+        // ───────── step generation (genuine EEA simulation) ─────────
+        // Each table row holds (a, b, q, r) and the running Bezout coeffs (x, y) for the
+        // row's 'a', i.e.  A*x + M*y = a.  The final row (b=0) carries gcd & Bezout x.
+        function deepRows(rows) { return rows.map(r => Object.assign({}, r)); }
+        function generateSteps() {
+            steps = [];
+            const a0 = A, m0 = M;
+            // build the full table by genuine simulation
+            const table = [];   // committed rows
+            let a = a0, b = m0;
+            let xa = 1, ya = 0;   // A*xa + M*ya = a
+            let xb = 0, yb = 1;   // A*xb + M*yb = b
+
+            const snap = (extra) => Object.assign({
+                rows: deepRows(table), activeRow: -1, mode: null,
+                a: a0, m: m0, gcd: null, bezX: null, bezY: null, inverse: null
+            }, extra);
+
+            steps.push(snap({
+                code: [0, 1], mode: 'init', action: 'SET UP TABLE', actionColor: 'var(--accent-blue)',
+                panel: `Find <code>${a0}&#8315;&#185; mod ${m0}</code>. The Extended Euclidean Algorithm solves <code>${a0}&middot;x + ${m0}&middot;y = gcd</code>; if gcd is <b>1</b> the inverse is <code>x mod ${m0}</code>. Track <code>(a, b, q, r)</code> and the coefficients <code>(x, y)</code> per row.`,
+                log: `init  a=${a0}, m=${m0}  →  seek x with (${a0}·x) mod ${m0} = 1`
+            }));
+
+            while (b !== 0) {
+                const q = Math.floor(a / b);
+                const r = a % b;
+                // commit a row describing this division with the CURRENT a's coeffs (xa, ya)
+                const rowIdx = table.length;
+                table.push({ a, b, q, r, x: xa, y: ya });
+
+                // step: highlight the division a = q*b + r
+                steps.push(snap({
+                    rows: deepRows(table), activeRow: rowIdx, mode: 'divide',
+                    code: [3, 4], action: `${a} = ${q} × ${b} + ${r}`, actionColor: 'var(--accent-red)',
+                    panel: `Divide: <code>${a} &divide; ${b}</code> gives quotient <code>q = ${q}</code> and remainder <code>r = ${a} &minus; ${q}&middot;${b} = ${r}</code>.`,
+                    log: `row ${rowIdx}:  ${a} = ${q}·${b} + ${r}   (q=${q}, r=${r})`
+                }));
+
+                // compute coeffs for r:  A*xr + M*yr = r  since r = a - q*b
+                const xr = xa - q * xb;
+                const yr = ya - q * yb;
+
+                // step: carry coefficients & descend (old b becomes new a, r becomes new b)
+                steps.push(snap({
+                    rows: deepRows(table), activeRow: rowIdx, mode: 'coeff',
+                    code: [5, 6], action: r === 0 ? 'gcd reached' : `descend → a=${b}, b=${r}`, actionColor: 'var(--accent-purple)',
+                    panel: r === 0
+                        ? `Remainder is <code>0</code>, so the algorithm stops &#8594; <code>gcd = ${b}</code>. The previous row's coefficients carry the B&eacute;zout identity.`
+                        : `Carry coefficients: row keeps <code>x=${xa}, y=${ya}</code> (so <code>${a0}&middot;${xa} + ${m0}&middot;${ya} = ${a}</code>). Descend &#8594; next row uses <code>a=${b}, b=${r}</code>.`,
+                    log: `      coeffs x=${xa}, y=${ya}   ${a0}·${xa}+${m0}·${ya}=${a}` + (r === 0 ? `\n      remainder 0 → gcd = ${b}` : '')
+                }));
+
+                // advance the iteration
+                a = b; b = r;
+                xa = xb; ya = yb;
+                xb = xr; yb = yr;
+            }
+
+            // a now holds gcd, with coeffs (xa, ya): A*xa + M*ya = gcd
+            const gcd = a;
+            const bezX = xa, bezY = ya;
+            const finalRowIdx = table.length;
+            table.push({ a: gcd, b: 0, q: '—', r: '—', x: bezX, y: bezY, isGcd: true });
+
+            // step: reveal Bezout identity / gcd
+            steps.push(snap({
+                rows: deepRows(table), activeRow: finalRowIdx, mode: 'bezout', gcd, bezX, bezY,
+                code: [7], action: `${a0}·(${bezX}) + ${m0}·(${bezY}) = ${gcd}`, actionColor: 'var(--accent-orange)',
+                panel: `B&eacute;zout identity: <code>${a0}&middot;(${bezX}) + ${m0}&middot;(${bezY}) = ${gcd}</code>. Since <code>gcd = ${gcd}</code>, the coefficient <b>x = ${bezX}</b> is the inverse (mod ${m0}).`,
+                log: `bezout  ${a0}·(${bezX}) + ${m0}·(${bezY}) = ${gcd}`
+            }));
+
+            const inverse = ((bezX % m0) + m0) % m0;
+            const valid = (gcd === 1);
+
+            steps.push(snap({
+                rows: deepRows(table), activeRow: finalRowIdx, mode: 'final', gcd, bezX, bezY,
+                inverse: valid ? inverse : null, complete: true, confetti: valid,
+                code: [8], action: valid ? `✓ inverse = ${inverse}` : `✗ gcd ${gcd} ≠ 1`,
+                actionColor: valid ? 'var(--accent-green)' : 'var(--accent-red)',
+                panel: valid
+                    ? `Reduce <code>x mod ${m0}</code>: <code>(${bezX} mod ${m0} + ${m0}) mod ${m0} = ${inverse}</code>. So <code>${a0}&#8315;&#185; &equiv; <b>${inverse}</b> (mod ${m0})</code> &#8594; check <code>${a0}&middot;${inverse} = ${a0 * inverse} &equiv; 1 (mod ${m0})</code>.`
+                    : `<code>gcd(${a0}, ${m0}) = ${gcd} &ne; 1</code>, so <code>${a0}</code> has <b>no inverse</b> modulo <code>${m0}</code>.`,
+                log: valid
+                    ? `done   inverse = (${bezX} mod ${m0}+${m0}) mod ${m0} = ${inverse}\n       verify (${a0}·${inverse}) mod ${m0} = ${(a0 * inverse) % m0}`
+                    : `done   gcd ${gcd} ≠ 1 → no inverse`
+            }));
+        }
+
+        // ───────── render (persistent DOM) ─────────
+        function cellText(row, key) {
+            if (key === 'a') return String(row.a);
+            if (key === 'b') return String(row.b);
+            if (key === 'q') return String(row.q);
+            if (key === 'r') return String(row.r);
+            if (key === 'x') return String(row.x);
+            if (key === 'y') return String(row.y);
+            return '';
+        }
+        function renderStep(idx) {
+            stepIdx = idx; const step = steps[idx]; if (!step) return;
+            const grid = document.getElementById('eea-grid');
+            grid.style.gridTemplateColumns = `26px repeat(${COLS.length - 1}, minmax(60px, auto))`;
+
+            // total table capacity = number of division rows + 1 gcd row, known from full sim.
+            // We render header row (gr=0) + one row per FINAL-table row so the skeleton is stable.
+            const totalRows = (steps[steps.length - 1].rows || []).length;
+            const used = new Set();
+
+            // header row
+            for (let gc = 0; gc < COLS.length; gc++) {
+                const key = '0,' + gc; used.add(key);
+                let el = cellEls[key];
+                if (!el) { el = document.createElement('div'); cellEls[key] = el; }
+                el.className = 'cell head';
+                el.textContent = COLS[gc].label;
+                grid.appendChild(el);
+            }
+
+            for (let ri = 0; ri < totalRows; ri++) {
+                const gr = ri + 1;
+                const row = step.rows[ri];      // may be undefined if not yet committed this step
+                const isActive = step.activeRow === ri;
+                const committed = !!row;
+                for (let gc = 0; gc < COLS.length; gc++) {
+                    const colKey = COLS[gc].key;
+                    const key = gr + ',' + gc; used.add(key);
+                    let el = cellEls[key];
+                    const wasEmpty = !el || el.classList.contains('empty');
+                    if (!el) { el = document.createElement('div'); cellEls[key] = el; }
+                    let cls = 'cell', txt = '';
+
+                    if (colKey === 'num') {
+                        cls += ' rownum';
+                        txt = committed ? String(ri) : '';
+                        if (!committed) cls += ' empty';
+                    } else if (!committed) {
+                        cls += ' empty';
+                        txt = '';
+                    } else {
+                        txt = cellText(row, colKey);
+                        cls += ' filled';
+                        if (colKey === 'q') cls += ' qcol';
+                        else if (colKey === 'r') cls += ' rcol';
+                        else if (colKey === 'x') cls += ' xcol';
+                        else if (colKey === 'y') cls += ' ycol';
+
+                        // emphasis layers
+                        if (ri < step.activeRow) cls += ' past';
+                        if (isActive) {
+                            if (step.mode === 'divide' && (colKey === 'a' || colKey === 'b' || colKey === 'q' || colKey === 'r')) cls += ' divide';
+                            else if (step.mode === 'coeff' && (colKey === 'x' || colKey === 'y')) cls += ' current';
+                            else if (step.mode === 'bezout' || step.mode === 'final') {
+                                if (row.isGcd && colKey === 'a') cls += ' gcd';
+                                else if (row.isGcd && (colKey === 'x' || colKey === 'y')) cls += ' bezout';
+                                else cls += ' current';
+                            } else cls += ' current';
+                        }
+                    }
+
+                    el.className = cls; el.textContent = txt;
+                    if (committed && wasEmpty && txt !== '') Motion.pop(el);
+                    grid.appendChild(el);
+                }
+            }
+            Object.keys(cellEls).forEach(k => { if (!used.has(k)) { cellEls[k].remove(); delete cellEls[k]; } });
+
+            // identity readout
+            const idr = document.getElementById('identity-row'); idr.innerHTML = '';
+            if (step.bezX !== null && step.bezX !== undefined) {
+                idr.innerHTML = `<span class="id-a">${step.a}&middot;(${step.bezX})</span> <span>+</span> <span class="id-m">${step.m}&middot;(${step.bezY})</span> <span class="id-eq">= ${step.gcd}</span>`;
+            }
+
+            const at = document.getElementById('answer-track'); at.innerHTML = '';
+            if (step.complete && step.inverse !== null && step.inverse !== undefined) {
+                const t = document.createElement('div'); t.className = 'ans-tile';
+                t.textContent = `${step.a}⁻¹ ≡ ${step.inverse} (mod ${step.m})`;
+                at.appendChild(t); Motion.pop(t);
+            }
+
+            const mp = document.getElementById('main-panel');
+            mp.innerHTML = step.panel || '&mdash;';
+            mp.classList.toggle('done', !!step.complete);
+            const aw = document.getElementById('action-word'); aw.textContent = step.action || ''; aw.style.color = step.actionColor || 'var(--text-dim)';
+            highlightCode(step.code);
+
+            if (step.confetti) { if (confettiArmed) { fireConfetti(); confettiArmed = false; } } else confettiArmed = true;
+
+            // state pills
+            const ar = step.rows[step.activeRow];
+            document.getElementById('st-ab').textContent = ar ? `${ar.a}, ${ar.b}` : '—';
+            document.getElementById('st-q').textContent = ar ? String(ar.q) : '—';
+            document.getElementById('st-r').textContent = ar ? String(ar.r) : '—';
+            document.getElementById('st-xy').textContent = ar ? `${ar.x}, ${ar.y}` : '—';
+            document.getElementById('st-inv').textContent = step.inverse !== null && step.inverse !== undefined ? String(step.inverse) : (step.gcd !== null && step.gcd !== 1 ? 'none' : '…');
+
+            document.getElementById('step-badge').textContent = `Step ${idx + 1} / ${steps.length}`;
+            document.getElementById('progress-fill').style.width = `${(idx / Math.max(1, steps.length - 1)) * 100}%`;
+
+            const logEl = document.getElementById('log');
+            logEl.innerHTML = steps.slice(0, idx + 1).map(s => `<div style="margin:3px 0;white-space:pre-wrap;">${s.log}</div>`).join('');
+            logEl.scrollTop = logEl.scrollHeight;
+        }
+
+        function fireConfetti() {
+            const host = document.getElementById('confetti'); if (!host || REDUCED) return;
+            const colors = ['#22c55e', '#06b6d4', '#a855f7', '#f5a524', '#f43f5e'];
+            for (let i = 0; i < 38; i++) {
+                const p = document.createElement('div'); p.className = 'confetti-piece';
+                p.style.setProperty('--x', ((Math.random() * 2 - 1) * 220) + 'px');
+                p.style.setProperty('--rot', ((Math.random() * 720 - 360)) + 'deg');
+                p.style.background = colors[i % colors.length];
+                p.style.animationDuration = (0.9 + Math.random() * 0.8) + 's';
+                p.style.animationDelay = (Math.random() * 0.15) + 's';
+                host.appendChild(p); setTimeout(() => p.remove(), 1900);
+            }
+        }
+
+        // ───────── controls ─────────
+        function nextStep() { if (stepIdx < steps.length - 1) renderStep(stepIdx + 1); else pause(); }
+        function prevStep() { if (stepIdx > 0) renderStep(stepIdx - 1); }
+        function resetSim() { pause(); renderStep(0); }
+        function togglePlay() {
+            const btn = document.getElementById('play-btn');
+            if (timer) { pause(); return; }
+            btn.textContent = 'Pause';
+            if (stepIdx >= steps.length - 1) renderStep(0);
+            timer = setInterval(() => { if (stepIdx < steps.length - 1) nextStep(); else pause(); }, delays[document.getElementById('speed').value]);
+        }
+        function pause() { clearInterval(timer); timer = null; document.getElementById('play-btn').textContent = 'Play'; }
+
+        function clearDom() { Object.keys(cellEls).forEach(k => { cellEls[k].remove(); delete cellEls[k]; }); confettiArmed = true; }
+        function loadPair(a, m) { pause(); A = a; M = m; clearDom(); generateSteps(); renderStep(0); }
+        function loadCustom() {
+            const a = parseInt(document.getElementById('a-input').value, 10);
+            const m = parseInt(document.getElementById('m-input').value, 10);
+            if (!isNaN(a) && !isNaN(m) && m > 1 && a > 0) loadPair(a, m);
+            else alert('Enter integers with m > 1 and a > 0.');
+        }
+        function loadExample(n) {
+            const ex = [[3, 7], [4, 5]][n];
+            document.getElementById('a-input').value = ex[0];
+            document.getElementById('m-input').value = ex[1];
+            loadPair(ex[0], ex[1]);
+        }
+
+        document.addEventListener('keydown', (e) => {
+            const tag = (e.target.tagName || '').toLowerCase(); if (tag === 'input' || tag === 'textarea') return;
+            if (e.key === 'ArrowRight') { e.preventDefault(); pause(); nextStep(); }
+            else if (e.key === 'ArrowLeft') { e.preventDefault(); pause(); prevStep(); }
+            else if (e.key === ' ') { e.preventDefault(); togglePlay(); }
+        });
+        ['a-input', 'm-input'].forEach(id => document.getElementById(id).addEventListener('keydown', (e) => { if (e.key === 'Enter') loadCustom(); }));
+        window.addEventListener('resize', () => { if (steps.length) renderStep(stepIdx); });
+
+        buildCodePanel();
+        window.onload = () => loadExample(0);
+    </script>
+</body>
+</html>

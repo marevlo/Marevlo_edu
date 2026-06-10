@@ -1,0 +1,1026 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Session Cookie Authentication — API Security in Action</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;0,9..144,900;1,9..144,500&family=Spline+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#15140f; --ink-soft:#403c33; --paper:#f4efe4; --paper-2:#ece4d3;
+    --card:#fbf8f0; --line:#d9cfb8; --rule:#c7bca0;
+    --accent:#b5471f; --accent-2:#1d6b5a; --gold:#c08a2e; --shield:#2f4858; --plum:#7a4ba3; --warn:#9a3b12;
+    --shadow:0 1px 0 rgba(0,0,0,.04), 0 8px 28px -12px rgba(40,30,10,.35);
+    --mono:'JetBrains Mono',monospace; --serif:'Fraunces',Georgia,serif; --sans:'Spline Sans',system-ui,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    margin:0;
+    background:
+      radial-gradient(1200px 600px at 80% -5%, rgba(181,71,31,.07), transparent 60%),
+      radial-gradient(900px 500px at -10% 20%, rgba(29,107,90,.06), transparent 55%),
+      var(--paper);
+    color:var(--ink); font-family:var(--sans); font-size:18px; line-height:1.72; -webkit-font-smoothing:antialiased;
+  }
+  body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:0;opacity:.5;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E");}
+  .wrap{position:relative;z-index:1;max-width:880px;margin:0 auto;padding:0 26px}
+
+  .ribbon{max-width:880px;margin:0 auto;padding:18px 26px 0;display:flex;justify-content:space-between;align-items:center;
+    font-family:var(--mono);font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:var(--ink-soft)}
+  .ribbon .dot{width:8px;height:8px;border-radius:50%;background:var(--accent);display:inline-block;margin-right:8px;vertical-align:middle}
+
+  header.hero{max-width:880px;margin:0 auto;padding:34px 26px 18px;position:relative}
+  .kicker{font-family:var(--mono);font-size:12.5px;letter-spacing:.3em;text-transform:uppercase;color:var(--accent);margin-bottom:18px;display:flex;align-items:center;gap:12px}
+  .kicker::after{content:"";flex:1;height:1px;background:linear-gradient(90deg,var(--rule),transparent)}
+  h1.title{font-family:var(--serif);font-weight:900;font-size:clamp(40px,8vw,76px);line-height:.98;letter-spacing:-.02em;margin:0 0 8px;color:var(--ink)}
+  h1.title em{font-style:italic;color:var(--accent);font-weight:500}
+  .sub{font-family:var(--serif);font-style:italic;font-size:clamp(19px,3vw,24px);color:var(--ink-soft);max-width:60ch;margin:14px 0 0;font-weight:400}
+  .meta-row{display:flex;flex-wrap:wrap;gap:10px;margin-top:26px}
+  .chip{font-family:var(--mono);font-size:11.5px;letter-spacing:.08em;text-transform:uppercase;background:var(--card);border:1px solid var(--line);border-radius:100px;padding:7px 14px;color:var(--ink-soft);box-shadow:var(--shadow)}
+
+  nav.toc{margin:36px auto 0;background:var(--card);border:1px solid var(--line);border-radius:18px;padding:26px 30px;box-shadow:var(--shadow)}
+  nav.toc h4{font-family:var(--mono);font-size:12px;letter-spacing:.2em;text-transform:uppercase;color:var(--accent);margin:0 0 16px}
+  nav.toc ol{margin:0;padding:0;list-style:none;counter-reset:toc;display:grid;grid-template-columns:1fr 1fr;gap:4px 30px}
+  nav.toc li{counter-increment:toc;border-bottom:1px dotted var(--rule)}
+  nav.toc a{display:flex;align-items:baseline;gap:12px;text-decoration:none;color:var(--ink);padding:9px 0;font-size:16px;transition:color .2s,padding .2s}
+  nav.toc a::before{content:counter(toc,decimal-leading-zero);font-family:var(--mono);font-size:12px;color:var(--accent);flex:none}
+  nav.toc a:hover{color:var(--accent);padding-left:6px}
+  @media(max-width:640px){nav.toc ol{grid-template-columns:1fr}}
+
+  section{margin:64px auto 0}
+  .sec-head{display:flex;align-items:flex-start;gap:18px;margin-bottom:8px}
+  .sec-num{font-family:var(--serif);font-weight:900;font-size:54px;line-height:.8;color:var(--accent);flex:none;margin-top:4px}
+  h2{font-family:var(--serif);font-weight:600;font-size:clamp(28px,5vw,38px);line-height:1.05;letter-spacing:-.015em;margin:0;color:var(--ink)}
+  h2 em{font-style:italic;color:var(--accent);font-weight:500}
+  h3{font-family:var(--serif);font-weight:600;font-size:24px;letter-spacing:-.01em;margin:38px 0 6px;color:var(--ink)}
+  h3 .tag{font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--accent-2);vertical-align:middle;margin-left:10px;border:1px solid var(--accent-2);padding:2px 8px;border-radius:6px}
+  p{margin:16px 0}
+  .lead{font-size:20px;color:var(--ink-soft)}
+  strong{font-weight:700;color:var(--ink)}
+  em.term{font-style:normal;font-weight:600;color:var(--accent);border-bottom:2px solid rgba(181,71,31,.25)}
+  hr.rule{border:none;height:1px;background:linear-gradient(90deg,transparent,var(--rule),transparent);margin:54px 0}
+
+  .callout{border-radius:14px;padding:20px 22px 20px 54px;margin:26px 0;position:relative;background:var(--card);border:1px solid var(--line);box-shadow:var(--shadow);font-size:16.5px}
+  .callout .ic{position:absolute;left:18px;top:20px;width:24px;height:24px}
+  .callout .lab{font-family:var(--mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;display:block;margin-bottom:4px}
+  .callout.def{border-left:4px solid var(--accent-2)} .callout.def .lab{color:var(--accent-2)}
+  .callout.eg{border-left:4px solid var(--gold);background:linear-gradient(180deg,#fdf8ea,var(--card))} .callout.eg .lab{color:var(--gold)}
+  .callout.real{border-left:4px solid var(--accent);background:linear-gradient(180deg,#fbf0ea,var(--card))} .callout.real .lab{color:var(--accent)}
+  .callout.tip{border-left:4px solid var(--shield)} .callout.tip .lab{color:var(--shield)}
+  .callout p{margin:6px 0} .callout p:first-of-type{margin-top:0}
+
+  .analogy{background:linear-gradient(135deg,#2f4858,#23363f);color:#f0e9d8;border-radius:18px;padding:30px 32px;margin:30px 0;position:relative;overflow:hidden;box-shadow:0 20px 40px -22px rgba(20,30,40,.7)}
+  .analogy::after{content:"\201C";position:absolute;right:18px;top:-20px;font-family:var(--serif);font-size:160px;color:rgba(255,255,255,.06);font-weight:900}
+  .analogy .lab{font-family:var(--mono);font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--gold);display:block;margin-bottom:10px}
+  .analogy p{margin:8px 0;color:#ece4d3} .analogy strong{color:#fff}
+
+  .grid{display:grid;gap:16px;margin:26px 0}
+  .grid.c3{grid-template-columns:repeat(3,1fr)} .grid.c2{grid-template-columns:repeat(2,1fr)}
+  @media(max-width:680px){.grid.c3,.grid.c2{grid-template-columns:1fr}}
+  .mini{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px;box-shadow:var(--shadow);position:relative;overflow:hidden}
+  .mini .n{font-family:var(--serif);font-weight:900;font-size:30px;color:var(--accent);line-height:1}
+  .mini h5{font-family:var(--sans);font-weight:700;font-size:17px;margin:8px 0 4px;color:var(--ink)}
+  .mini p{font-size:14.5px;margin:0;color:var(--ink-soft);line-height:1.55}
+
+  .cia{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin:24px 0}
+  .cia .c{border-radius:14px;padding:20px;color:#fff;position:relative;overflow:hidden;box-shadow:var(--shadow)}
+  .cia .c .l{font-family:var(--serif);font-weight:900;font-size:42px;opacity:.25;position:absolute;right:14px;top:6px}
+  .cia .c h5{margin:0 0 4px;font-size:18px;font-weight:700} .cia .c p{margin:0;font-size:14px;opacity:.95;line-height:1.5}
+  .cia .conf{background:linear-gradient(135deg,#b5471f,#8a3416)} .cia .integ{background:linear-gradient(135deg,#1d6b5a,#13473c)} .cia .avail{background:linear-gradient(135deg,#c08a2e,#8f6418)}
+  @media(max-width:680px){.cia{grid-template-columns:1fr}}
+
+  .stride{margin:24px 0;border-radius:14px;overflow:hidden;border:1px solid var(--line);box-shadow:var(--shadow)}
+  .stride .row{display:grid;grid-template-columns:64px 1fr;align-items:center;border-bottom:1px solid var(--line);background:var(--card)}
+  .stride .row:last-child{border-bottom:none}
+  .stride .let{font-family:var(--serif);font-weight:900;font-size:30px;color:#fff;height:100%;display:flex;align-items:center;justify-content:center;padding:16px 0}
+  .stride .row:nth-child(1) .let{background:#b5471f} .stride .row:nth-child(2) .let{background:#1d6b5a} .stride .row:nth-child(3) .let{background:#c08a2e}
+  .stride .row:nth-child(4) .let{background:#7a4ba3} .stride .row:nth-child(5) .let{background:#2f4858} .stride .row:nth-child(6) .let{background:#9a3b12}
+  .stride .txt{padding:12px 18px} .stride .txt b{font-weight:700} .stride .txt span{display:block;font-size:14.5px;color:var(--ink-soft)}
+
+  .quiz{background:#fff7e6;border:1px dashed var(--gold);border-radius:16px;padding:24px 26px;margin:30px 0}
+  .quiz .lab{font-family:var(--mono);font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--gold);display:block;margin-bottom:12px}
+  .quiz details{border-top:1px solid #e8d9b0;padding:12px 0} .quiz details:first-of-type{border-top:none}
+  .quiz summary{cursor:pointer;font-weight:600;list-style:none;display:flex;gap:10px;align-items:flex-start}
+  .quiz summary::-webkit-details-marker{display:none}
+  .quiz summary::before{content:"?";font-family:var(--mono);background:var(--gold);color:#fff;width:22px;height:22px;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;font-size:13px;flex:none;margin-top:2px}
+  .quiz details[open] summary::before{content:"\2713";background:var(--accent-2)}
+  .quiz .ans{margin:10px 0 0 32px;font-size:15.5px;color:var(--ink-soft)}
+
+  .takeaways{background:var(--ink);color:var(--paper);border-radius:20px;padding:32px 34px;margin:50px 0}
+  .takeaways h3{color:var(--gold);margin-top:0}
+  .takeaways ul{margin:14px 0 0;padding:0;list-style:none}
+  .takeaways li{padding:11px 0 11px 32px;position:relative;border-bottom:1px solid rgba(255,255,255,.1);font-size:16px}
+  .takeaways li:last-child{border-bottom:none}
+  .takeaways li::before{content:"\2192";position:absolute;left:0;color:var(--accent);font-weight:700}
+  .takeaways strong{color:#fff}
+
+  footer{max-width:880px;margin:60px auto 40px;padding:30px 26px;border-top:1px solid var(--rule);font-family:var(--mono);font-size:12.5px;color:var(--ink-soft);letter-spacing:.04em;display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px}
+  code{font-family:var(--mono);font-size:.86em;background:var(--paper-2);border:1px solid var(--line);padding:1px 6px;border-radius:6px;color:var(--accent-2)}
+  .pull{font-family:var(--serif);font-style:italic;font-size:clamp(22px,4vw,30px);line-height:1.3;color:var(--ink);border-left:4px solid var(--accent);padding:6px 0 6px 24px;margin:40px 0}
+  .pull span{color:var(--accent)}
+  ::selection{background:var(--accent);color:#fff}
+
+  /* ============ INTERACTIVE DIAGRAM SYSTEM ============ */
+  .diagram{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:24px 24px 18px;margin:30px 0;box-shadow:var(--shadow);position:relative}
+  .diagram .dlabel{font-family:var(--mono);font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--accent);display:flex;align-items:center;gap:8px;margin-bottom:4px}
+  .diagram .dtitle{font-family:var(--serif);font-size:21px;font-weight:600;color:var(--ink);margin:0 0 4px}
+  .diagram .dhint{font-size:13.5px;color:var(--ink-soft);font-style:italic;margin:0 0 18px}
+  .diagram .dhint b{color:var(--accent);font-style:normal;font-weight:600}
+
+  .node{background:#fff;border:2px solid var(--ink);border-radius:12px;position:relative;transition:transform .25s cubic-bezier(.2,.8,.2,1),box-shadow .25s,border-color .25s}
+  .node:hover{transform:translateY(-3px);box-shadow:0 14px 28px -14px rgba(40,30,10,.5)}
+
+  @keyframes floatPkt{0%{transform:translateX(0);opacity:0}8%{opacity:1}92%{opacity:1}100%{transform:translateX(var(--travel,200px));opacity:0}}
+
+  .stepper{display:flex;flex-wrap:wrap;gap:8px;margin:18px 0 4px;align-items:center}
+  .stepper button{font-family:var(--mono);font-size:12px;letter-spacing:.04em;border:1.5px solid var(--line);background:var(--card);color:var(--ink-soft);
+    padding:8px 14px;border-radius:100px;cursor:pointer;transition:all .2s}
+  .stepper button:hover{border-color:var(--accent);color:var(--accent)}
+  .stepper button.active{background:var(--accent);border-color:var(--accent);color:#fff;box-shadow:0 6px 14px -6px var(--accent)}
+  .step-readout{background:var(--paper-2);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-top:14px;font-size:15px;min-height:54px;color:var(--ink)}
+  .step-readout b{color:var(--accent)}
+
+  .legend{display:flex;flex-wrap:wrap;gap:14px;margin-top:16px;padding-top:14px;border-top:1px dashed var(--rule);font-family:var(--mono);font-size:11.5px;color:var(--ink-soft)}
+  .legend .k{display:flex;align-items:center;gap:6px}
+  .legend .sw{width:16px;height:10px;border-radius:3px;display:inline-block}
+  .legend .sw.dash{background:none;border:2px dashed var(--accent);height:6px}
+
+  .dexplain{background:var(--paper-2);border:1px solid var(--line);border-left:4px solid var(--accent-2);border-radius:0 12px 12px 0;padding:18px 22px;margin:6px 0 30px;font-size:15.5px}
+  .dexplain h4{font-family:var(--mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--accent-2);margin:0 0 10px}
+  .dexplain ol{margin:8px 0 0;padding-left:20px} .dexplain li{margin:7px 0;padding-left:4px}
+  .dexplain b{color:var(--ink)}
+
+  .stage{flex:1;min-width:0;text-align:center;padding:16px 8px;border-radius:12px;border:2px solid var(--ink);background:#fff;
+    font-weight:600;font-size:14px;position:relative;transition:all .25s;cursor:pointer}
+  .stage small{display:block;font-family:var(--mono);font-size:9.5px;letter-spacing:.05em;color:var(--ink-soft);margin-top:4px;font-weight:400}
+  .stage:hover{transform:translateY(-3px)}
+  .stage.dim{opacity:.35;filter:grayscale(.4)}
+  .stage.on{box-shadow:0 0 0 4px rgba(181,71,31,.18);border-color:var(--accent)}
+
+  @media(max-width:680px){.diagram{padding:18px 14px}}
+
+  /* ===== Chapter 2 additions ===== */
+  /* code blocks */
+  .code{background:#1c1a16;border-radius:14px;margin:24px 0;box-shadow:var(--shadow);overflow:hidden;border:1px solid #2c2922}
+  .code .bar{display:flex;align-items:center;gap:7px;padding:11px 16px;background:#23201a;border-bottom:1px solid #2c2922}
+  .code .bar .dot{width:11px;height:11px;border-radius:50%}
+  .code .bar .t{margin-left:8px;font-family:var(--mono);font-size:11.5px;color:#9a9484;letter-spacing:.04em}
+  .code pre{margin:0;padding:18px 20px;overflow-x:auto;font-family:var(--mono);font-size:13.5px;line-height:1.7;color:#e8e2d4}
+  .code .cm{color:#7c8a6b;font-style:italic}      /* comment */
+  .code .kw{color:#e0995e}                          /* keyword */
+  .code .st{color:#9ec88a}                          /* string */
+  .code .fn{color:#6fb3c9}                          /* function/type */
+  .code .nm{color:#d98b7a}                          /* number */
+  .code .bad{color:#ff8a7a;background:rgba(255,80,60,.13);border-radius:3px;padding:0 2px}
+  .code .good{color:#9ee6a8;background:rgba(60,200,90,.12);border-radius:3px;padding:0 2px}
+  .codecap{font-family:var(--mono);font-size:12px;color:var(--ink-soft);margin:-14px 0 26px;padding-left:4px}
+  .codecap b{color:var(--accent)}
+
+  /* danger / attack callout */
+  .callout.danger{border-left:4px solid #b5471f;background:linear-gradient(180deg,#fbe9e3,var(--card))} .callout.danger .lab{color:#b5471f}
+  .callout.principle{border-left:4px solid var(--plum);background:linear-gradient(180deg,#f3ecf7,var(--card))} .callout.principle .lab{color:var(--plum)}
+
+  /* OWASP list */
+  .owasp{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:24px 0}
+  @media(max-width:680px){.owasp{grid-template-columns:1fr}}
+  .owasp .col h5{font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);margin:0 0 8px}
+  .owasp .it{display:flex;gap:8px;align-items:baseline;font-size:13.5px;padding:5px 0;border-bottom:1px dotted var(--rule);color:var(--ink-soft)}
+  .owasp .it b{font-family:var(--mono);font-size:11px;color:var(--accent);flex:none}
+  .owasp .it.hot b{color:#b5471f} .owasp .it.hot{font-weight:600;color:var(--ink)}
+
+  /* token stream for SQLi anatomy */
+  .tok{display:inline-block;padding:3px 7px;border-radius:6px;font-family:var(--mono);font-size:12.5px;margin:2px;border:1px solid transparent;white-space:nowrap}
+  .tok.sql{background:#e7e0cf;color:#3a352a;border-color:#d2c8b0}
+  .tok.inj{background:#fbe0d6;color:#9a3b12;border-color:#e8b9a8;font-weight:700}
+  .tok.cmt{background:#dfe9df;color:#3c5c3c;border-color:#c2d6c2}
+
+  /* security header table */
+  .hdrtbl{margin:24px 0;border:1px solid var(--line);border-radius:14px;overflow:hidden;box-shadow:var(--shadow)}
+  .hdrtbl .hrow{display:grid;grid-template-columns:minmax(140px,1fr) 1.4fr;gap:0;border-bottom:1px solid var(--line)}
+  .hdrtbl .hrow:last-child{border-bottom:none}
+  .hdrtbl .hrow:nth-child(even){background:#f7f1e3}
+  .hdrtbl .hk{padding:13px 16px;font-family:var(--mono);font-size:12.5px;color:var(--accent-2);font-weight:500;border-right:1px solid var(--line);word-break:break-word}
+  .hdrtbl .hv{padding:13px 16px;font-size:14px;color:var(--ink-soft)}
+  .hdrtbl .hhead{background:var(--ink)!important;color:var(--paper)}
+  .hdrtbl .hhead .hk,.hdrtbl .hhead .hv{color:var(--paper);font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;border-color:#333}
+
+
+  /* ===== Chapter 3 additions ===== */
+  /* the 5-control pipeline lab */
+  .pipelab{display:flex;gap:6px;align-items:stretch;flex-wrap:nowrap;overflow-x:auto;padding:6px 2px 10px}
+  .pipelab .pstage{flex:1;min-width:96px;text-align:center;padding:14px 8px;border-radius:12px;border:2px solid var(--ink);background:#fff;cursor:pointer;transition:all .25s;position:relative}
+  .pipelab .pstage .ico{font-size:20px;line-height:1}
+  .pipelab .pstage .nm{font-weight:700;font-size:12.5px;margin-top:5px}
+  .pipelab .pstage .st{display:block;font-family:var(--mono);font-size:8.5px;letter-spacing:.04em;color:var(--ink-soft);margin-top:3px}
+  .pipelab .pstage:hover{transform:translateY(-3px)}
+  .pipelab .pstage.dim{opacity:.32;filter:grayscale(.4)}
+  .pipelab .pstage.on{box-shadow:0 0 0 4px rgba(181,71,31,.18);border-color:var(--accent)}
+  .pipelab .pstage.reject{border-color:#b5471f;background:linear-gradient(180deg,#fbe9e3,#fff)}
+  .pipelab .arrow{display:flex;align-items:center;color:var(--ink-soft);font-size:15px;flex:none}
+  .pipelab .pstage.logic{flex:1.4;border-color:var(--shield);background:var(--paper-2)}
+
+  /* STRIDE → control mapping */
+  .map{display:grid;grid-template-columns:1fr;gap:8px;margin:22px 0}
+  .map .mrow{display:grid;grid-template-columns:minmax(150px,200px) 28px 1fr;align-items:center;gap:10px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 14px;box-shadow:var(--shadow)}
+  .map .threat{font-weight:700;font-size:14px}
+  .map .threat small{display:block;font-family:var(--mono);font-size:9px;color:var(--ink-soft);font-weight:400;letter-spacing:.04em}
+  .map .ar{text-align:center;color:var(--accent);font-size:16px}
+  .map .ctrl{font-size:14px;color:var(--ink-soft)} .map .ctrl b{color:var(--accent-2)}
+  .map .mrow.s{border-left:4px solid #b5471f} .map .mrow.t{border-left:4px solid #1d6b5a}
+  .map .mrow.r{border-left:4px solid #c08a2e} .map .mrow.i{border-left:4px solid #7a4ba3}
+  .map .mrow.d{border-left:4px solid #2f4858} .map .mrow.e{border-left:4px solid #9a3b12}
+
+  /* status code compare */
+  .codes{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:24px 0}
+  @media(max-width:680px){.codes{grid-template-columns:1fr}}
+  .codes .cc{border-radius:14px;padding:18px 20px;color:#fff;box-shadow:var(--shadow)}
+  .codes .cc.c401{background:linear-gradient(135deg,#c08a2e,#8f6418)}
+  .codes .cc.c403{background:linear-gradient(135deg,#b5471f,#8a3416)}
+  .codes .cc .num{font-family:var(--serif);font-weight:900;font-size:38px;line-height:1}
+  .codes .cc .ti{font-weight:700;font-size:16px;margin:2px 0 8px} .codes .cc p{margin:0;font-size:14px;opacity:.96;line-height:1.55}
+
+  /* ACL permission chips */
+  .perm{display:inline-flex;gap:3px;font-family:var(--mono);font-size:12px}
+  .perm span{width:22px;height:22px;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;font-weight:700;color:#fff}
+  .perm .r{background:#1d6b5a} .perm .w{background:#c08a2e} .perm .d{background:#b5471f} .perm .off{background:#cfc6b2;color:#fff}
+
+
+  /* ===== Chapter 4 additions ===== */
+  /* origin checker rows */
+  .originlist{display:flex;flex-direction:column;gap:8px;margin:18px 0}
+  .originlist .orow{display:grid;grid-template-columns:1fr auto;align-items:center;gap:12px;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 14px;cursor:pointer;transition:all .2s;box-shadow:var(--shadow)}
+  .originlist .orow:hover{transform:translateX(3px)}
+  .originlist .url{font-family:var(--mono);font-size:12.5px;color:var(--ink);word-break:break-all}
+  .originlist .verdict{font-family:var(--mono);font-size:11px;font-weight:700;padding:4px 10px;border-radius:100px;white-space:nowrap}
+  .originlist .verdict.same{background:#d9efe0;color:#1d6b5a} .originlist .verdict.diff{background:#fbe0d6;color:#b5471f} .originlist .verdict.idle{background:var(--paper-2);color:var(--ink-soft)}
+
+  /* timeline attack steps (stacked) */
+  .tl{display:flex;flex-direction:column;gap:0;margin:8px 0}
+  .tl .tlstep{display:grid;grid-template-columns:34px 1fr;gap:14px;position:relative}
+  .tl .tlstep .dotcol{display:flex;flex-direction:column;align-items:center}
+  .tl .tlstep .num{width:30px;height:30px;border-radius:50%;background:var(--accent);color:#fff;font-family:var(--mono);font-weight:700;font-size:13px;display:flex;align-items:center;justify-content:center;flex:none;z-index:1}
+  .tl .tlstep .line{width:2px;flex:1;background:var(--rule);margin:2px 0}
+  .tl .tlstep:last-child .line{display:none}
+  .tl .tlstep .body{padding-bottom:18px}
+  .tl .tlstep .body h6{margin:4px 0 4px;font-size:15px;font-weight:700;color:var(--ink);font-family:var(--sans)}
+  .tl .tlstep .body p{margin:0;font-size:14px;color:var(--ink-soft);line-height:1.55}
+  .tl .tlstep.evil .num{background:#9a3b12} .tl .tlstep.fix .num{background:#1d6b5a}
+  .tl .tlstep.dimmed{opacity:.3}
+
+  /* cookie attribute cards */
+  .cookieattr{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:22px 0}
+  @media(max-width:680px){.cookieattr{grid-template-columns:1fr}}
+  .cookieattr .ca{background:var(--card);border:1px solid var(--line);border-left:4px solid var(--accent-2);border-radius:0 12px 12px 0;padding:14px 16px;box-shadow:var(--shadow)}
+  .cookieattr .ca code{font-family:var(--mono);font-size:13px;color:var(--accent);background:none;border:none;padding:0;font-weight:700}
+  .cookieattr .ca p{margin:6px 0 0;font-size:13.5px;color:var(--ink-soft);line-height:1.5}
+
+  /* drawback list */
+  .draw{display:flex;flex-direction:column;gap:10px;margin:22px 0}
+  .draw .di{display:grid;grid-template-columns:36px 1fr;gap:12px;align-items:start;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:13px 16px;box-shadow:var(--shadow)}
+  .draw .di .ic2{font-size:20px}
+  .draw .di b{font-weight:700} .draw .di p{margin:3px 0 0;font-size:14px;color:var(--ink-soft);line-height:1.5}
+
+  /* cookie jar visual */
+  .jar{background:#1c1a16;border-radius:12px;padding:14px 16px;font-family:var(--mono);font-size:12.5px;color:#e8e2d4;margin:6px 0;line-height:1.7}
+  .jar .ck{display:flex;gap:8px;align-items:center;padding:4px 0}
+  .jar .ck .nm{color:#6fb3c9}
+  .jar .badge{font-size:9px;padding:1px 6px;border-radius:4px;background:#3a352a;color:#cbb98f}
+  .jar .badge.http{background:#2d4a3a;color:#9ee6a8}
+  .jar .badge.js{background:#4a3a2d;color:#e0995e}
+
+</style></head>
+<body>
+
+<div class="ribbon">
+  <div><span class="dot"></span>API Security · In Action</div>
+  <div>Chapter 04</div>
+</div>
+
+<header class="hero">
+  <div class="kicker">Chapter Four · Login That Feels Like Login</div>
+  <h1 class="title">Session Cookie <em>Authentication</em></h1>
+  <p class="sub">We stop sending passwords on every request, hand out short-lived tokens instead, store them in cookies &mdash; and then defend those cookies against the two attacks they invite: session fixation and CSRF.</p>
+  <div class="meta-row">
+    <span class="chip">⏱ ~30 min read</span>
+    <span class="chip">Level · Hands-on</span>
+    <span class="chip">Tokens · Cookies · SOP · CSRF</span>
+  </div>
+</header>
+
+<div class="wrap">
+
+<nav class="toc">
+  <h4>On this page</h4>
+  <ol>
+    <li><a href="#browser">Auth in the browser</a></li>
+    <li><a href="#sop">The same-origin policy</a></li>
+    <li><a href="#drawbacks">Why Basic auth hurts</a></li>
+    <li><a href="#tokens">Token-based authentication</a></li>
+    <li><a href="#cookies">Session cookies</a></li>
+    <li><a href="#fixation">Session fixation attack</a></li>
+    <li><a href="#attrs">Cookie security attributes</a></li>
+    <li><a href="#csrf">Cross-Site Request Forgery</a></li>
+    <li><a href="#samesite">SameSite cookies</a></li>
+    <li><a href="#doublesubmit">Hash-based double-submit</a></li>
+    <li><a href="#logout">Logout &amp; revocation</a></li>
+    <li><a href="#takeaways">Key takeaways</a></li>
+    <li><a href="#quiz">Test yourself</a></li>
+  </ol>
+</nav>
+
+<!-- ===================== 1 ===================== -->
+<section id="browser">
+  <div class="sec-head"><span class="sec-num">1</span><div><h2>Authentication in a real browser</h2></div></div>
+  <p class="lead">So far, Natter has used HTTP Basic authentication &mdash; the client sends the username and password on <em>every single request</em>. That's fine for a command-line script, but the moment you put a real web UI in front of it, the cracks show. This chapter is the story of replacing it with something browsers actually enjoy using.</p>
+
+  <p>The trouble starts as soon as you build a UI. Browsers can't <code>POST</code> JSON from a plain HTML form, so Natter's UI uses JavaScript's <strong>Fetch API</strong> to call the API. And because Basic auth credentials aren't sent automatically by Fetch, you have to opt in with <code>credentials: 'include'</code>. The first time the API replies with <code>401 Unauthorized</code> and a <code>WWW-Authenticate</code> header, the browser does something jarring: it pops up its own ugly, uncustomisable login box.</p>
+
+  <div class="code">
+    <div class="bar"><span class="dot" style="background:#ff5f56"></span><span class="dot" style="background:#ffbd2e"></span><span class="dot" style="background:#27c93f"></span><span class="t">natter.js &mdash; calling the API from the browser</span></div>
+<pre><span class="kw">function</span> <span class="fn">createSpace</span>(name, owner) {
+  <span class="kw">let</span> data = {name: name, owner: owner};
+  fetch(apiUrl + <span class="st">'/spaces'</span>, {
+    method: <span class="st">'POST'</span>,
+    credentials: <span class="st">'include'</span>,            <span class="cm">// send cookies / Basic creds with the request</span>
+    body: <span class="fn">JSON</span>.stringify(data),
+    headers: { <span class="st">'Content-Type'</span>: <span class="st">'application/json'</span> }  <span class="cm">// required, or the API rejects it</span>
+  })
+  .then(response => response.ok ? response.json()
+                                : { <span class="kw">throw</span> <span class="fn">Error</span>(response.statusText); })
+  .then(json => console.log(<span class="st">'Created space:'</span>, json.name, json.uri))
+  .catch(error => console.error(<span class="st">'Error:'</span>, error));
+}</pre>
+  </div>
+  <p class="codecap">Fetch is asynchronous &mdash; it returns a <b>Promise</b>. The <code>.then()</code> block runs on success, <code>.catch()</code> on a network error. <code>response.ok</code> is true for any 2xx status.</p>
+
+  <p>But before any of this works, you hit a more fundamental wall: open that HTML file straight from disk and clicking "Create" does <em>nothing</em>. The browser silently blocks the request. The reason is the single most important rule in browser security &mdash; the <strong>same-origin policy</strong> &mdash; and you can't understand cookies, CSRF, or any of this chapter without it.</p>
+</section>
+
+<hr class="rule">
+
+<!-- ===================== 2 ===================== -->
+<section id="sop">
+  <div class="sec-head"><span class="sec-num">2</span><div><h2>The same-origin policy</h2></div></div>
+  <p class="lead">The <em class="term">same-origin policy (SOP)</em> is the browser's core defence: by default, JavaScript loaded from one <em>origin</em> can freely talk to that same origin, but is heavily restricted when talking to a <em>different</em> one. Get comfortable with what counts as "the same origin" &mdash; almost everything later depends on it.</p>
+
+  <div class="callout def">
+    <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="#1d6b5a" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15 15 0 0 1 0 20M12 2a15 15 0 0 0 0 20"/></svg>
+    <span class="lab">Definition · Origin</span>
+    <p>An <strong>origin</strong> is the combination of three things: the <strong>protocol</strong> (http vs https), the <strong>host</strong> (e.g. <code>api.example.com</code>), and the <strong>port</strong> (80 for HTTP, 443 for HTTPS by default). Two URLs share an origin only if <em>all three</em> match exactly. The path (<code>/test/1</code>) is <strong>not</strong> part of the origin.</p>
+  </div>
+
+  <p>That "all three must match" rule trips everyone up, so let's make it concrete. Below, the reference origin is <code>https://api.example.com:8443</code>. Tap each candidate URL to see whether the browser treats it as the same origin &mdash; and <em>why</em>.</p>
+
+  <!-- INTERACTIVE DIAGRAM 1 : origin checker -->
+  <div class="diagram" id="dg-origin">
+    <div class="dlabel">Interactive · Origin checker</div>
+    <div class="dtitle">Same origin, or not?</div>
+    <p class="dhint">Reference: <code style="color:var(--accent)">https://api.example.com:8443/test/1</code> &nbsp;&mdash;&nbsp; <b>tap each row</b> to reveal the verdict and the reason.</p>
+
+    <div class="originlist" id="origin-rows">
+      <div class="orow" onclick="originCheck(0,this)"><span class="url">http://api.example.com/test/1</span><span class="verdict idle">tap to check</span></div>
+      <div class="orow" onclick="originCheck(1,this)"><span class="url">https://api.example.com/test/2</span><span class="verdict idle">tap to check</span></div>
+      <div class="orow" onclick="originCheck(2,this)"><span class="url">http://api.example.com:8443/test/2</span><span class="verdict idle">tap to check</span></div>
+      <div class="orow" onclick="originCheck(3,this)"><span class="url">https://api.example.com:8443/test/2</span><span class="verdict idle">tap to check</span></div>
+      <div class="orow" onclick="originCheck(4,this)"><span class="url">https://www.example.com:8443/test/2</span><span class="verdict idle">tap to check</span></div>
+    </div>
+    <div class="step-readout" id="origin-readout">Tap any URL above. Remember the rule: <b>protocol + host + port must all match exactly</b>; the path is ignored. Only one of these five is genuinely the same origin &mdash; can you guess which before tapping?</div>
+  </div>
+
+  <div class="dexplain">
+    <h4>Reading the checker</h4>
+    <p>Walking through each one cements the rule &mdash; notice how a single mismatched component is enough to make it a <i>different</i> origin:</p>
+    <ol>
+      <li><code>http://&hellip;/test/1</code> &mdash; <b>different</b>: the protocol is <code>http</code>, not <code>https</code> (and the port implicitly changes to 80).</li>
+      <li><code>https://&hellip;/test/2</code> with no port &mdash; <b>different</b>: no port means the default 443, but our reference uses 8443.</li>
+      <li><code>http://&hellip;:8443/test/2</code> &mdash; <b>different</b>: same port number, but the protocol is <code>http</code> not <code>https</code>.</li>
+      <li><code>https://&hellip;:8443/test/2</code> &mdash; <b>SAME</b>: protocol, host, and port all match. The different path doesn't matter.</li>
+      <li><code>https://www.example.com:8443/&hellip;</code> &mdash; <b>different</b>: the host is <code>www.example.com</code>, not <code>api.example.com</code>.</li>
+    </ol>
+  </div>
+
+  <div class="callout tip">
+    <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="#2f4858" stroke-width="2"><path d="M12 2 4 6v6c0 5 3.5 8 8 10 4.5-2 8-5 8-10V6z"/></svg>
+    <span class="lab">What the SOP actually blocks</span>
+    <p>The SOP is more subtle than "blocks everything cross-origin." It generally lets a request <em>be sent</em> to another origin, but stops your script from <em>reading the response</em>. Only simple requests are allowed cross-origin at all: <code>GET</code>, <code>POST</code>, or <code>HEAD</code>, with a tiny set of headers, and a Content-Type limited to <code>application/x-www-form-urlencoded</code>, <code>multipart/form-data</code>, or <code>text/plain</code>. Anything fancier gets blocked outright. <strong>Hold onto that fact &mdash; it's exactly what makes CSRF possible later, and also what some defences rely on.</strong></p>
+  </div>
+
+  <p>The quick fix for development is to have the server serve the UI from the <em>same</em> origin as the API, with one line: <code>Spark.staticFiles.location("/public")</code>. Now the HTML, the JavaScript, and the API all live at <code>https://localhost:4567</code>, so the SOP is satisfied. (Chapter 5 covers the proper cross-origin solution, CORS.)</p>
+</section>
+
+<hr class="rule">
+
+<!-- ===================== 3 ===================== -->
+<section id="drawbacks">
+  <div class="sec-head"><span class="sec-num">3</span><div><h2>Why Basic auth hurts</h2></div></div>
+  <p class="lead">With the UI working, the pain of HTTP Basic authentication becomes obvious &mdash; and it hurts in two directions at once: it's bad for users, and it's bad for engineering. Understanding exactly <em>why</em> motivates everything that follows.</p>
+
+  <div class="draw">
+    <div class="di"><div class="ic2">&#128273;</div><div><b>The password rides along on every request.</b><p>Each API call carries the raw password, multiplying the chances a bug leaks it. In a microservice architecture, <em>every</em> service then has to handle that password carefully.</p></div></div>
+    <div class="di"><div class="ic2">&#128012;</div><div><b>Verifying a password is deliberately slow.</b><p>Remember from chapter 3 that a secure hash like Scrypt takes ~100ms on purpose. Doing that on <em>every</em> request caps you at roughly 10 operations per CPU core per second &mdash; brutal for scaling.</p></div></div>
+    <div class="di"><div class="ic2">&#128533;</div><div><b>The login box is ugly and unbrandable.</b><p>The browser's built-in Basic auth dialog can't be styled. Your carefully designed product suddenly shows a generic system prompt.</p></div></div>
+    <div class="di"><div class="ic2">&#128274;</div><div><b>There's no real way to log out.</b><p>Browsers cache Basic credentials and resend them automatically. On a shared computer, the next person can hit Back and they're still logged in as you &mdash; a serious problem.</p></div></div>
+  </div>
+
+  <p>None of these are fatal for a script or a service-to-service call where there's no human and the password is strong. But for a browser-facing API, they're disqualifying. What we actually want is for the user to <strong>log in once</strong> and then be trusted for a while &mdash; which is exactly what token-based authentication gives us.</p>
+</section>
+
+<hr class="rule">
+
+<!-- ===================== 4 ===================== -->
+<section id="tokens">
+  <div class="sec-head"><span class="sec-num">4</span><div><h2>Token-based authentication</h2></div></div>
+  <p class="lead">The idea is simple and decades old. Instead of proving who you are on every request, you prove it <em>once</em> to a dedicated login endpoint, which hands you a short, random <em class="term">token</em>. You then present that token on subsequent requests. The server looks it up to see who you are. When it expires or you log out, it's deleted, and you log in again.</p>
+
+  <div class="callout def">
+    <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="#1d6b5a" stroke-width="2"><path d="M15 7h3a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2h-3m-6 0H6a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h3m-1 5h8"/></svg>
+    <span class="lab">Definition · Token-based authentication</span>
+    <p>The user's real credentials are presented <strong>once</strong>; the client then receives a short-lived <strong>token</strong> &mdash; typically a short, random string &mdash; that authenticates subsequent API calls until it expires.</p>
+  </div>
+
+  <!-- INTERACTIVE DIAGRAM 2 : token flow -->
+  <div class="diagram" id="dg-tokenflow">
+    <div class="dlabel">Interactive · Figure 4.4</div>
+    <div class="dtitle">The token-based login flow</div>
+    <p class="dhint"><b>Step through the three moves</b>: log in once for a token, then reuse the token. Notice the password appears exactly <em>once</em>.</p>
+
+    <div style="display:grid;grid-template-columns:auto 1fr auto;gap:14px;align-items:center">
+      <div class="node tf" data-tf="client" style="text-align:center;padding:16px;font-weight:700;font-size:13px;border-color:var(--accent-2);width:110px">&#128187;<br>Client</div>
+      <div style="text-align:center;min-height:80px;display:flex;flex-direction:column;justify-content:center;gap:6px" id="tf-mid">
+        <div style="font-family:var(--mono);font-size:11px;color:var(--ink-soft)">tap a step below</div>
+      </div>
+      <div class="node tf" data-tf="api" style="text-align:center;padding:16px;font-weight:700;font-size:13px;border-color:var(--accent);width:110px">&#9881;<br>API server</div>
+    </div>
+    <div style="text-align:center;margin-top:10px">
+      <div class="node tf" data-tf="store" style="display:inline-block;padding:10px 18px;font-weight:600;font-size:12px;border-color:var(--shield)">&#128451; Token store</div>
+    </div>
+
+    <div class="stepper" id="tf-steps">
+      <button onclick="tfStep(0,this)" class="active">Overview</button>
+      <button onclick="tfStep(1,this)">1 · Login</button>
+      <button onclick="tfStep(2,this)">2 · Get token</button>
+      <button onclick="tfStep(3,this)">3 · Reuse token</button>
+    </div>
+    <div class="step-readout" id="tf-readout">The client sends credentials to a dedicated login endpoint, gets a time-limited token, and then presents that token (not the password) on every later request. The API validates the token by looking it up in a shared token store. Step through to see each move.</div>
+  </div>
+
+  <div class="dexplain">
+    <h4>Reading the diagram</h4>
+    <p>Compare this to Basic auth and the win is clear: the expensive, sensitive password step happens once instead of on every call.</p>
+    <ol>
+      <li><b>Login.</b> The client sends the username and password &mdash; just this once &mdash; to a dedicated login endpoint (in Natter, <code>POST /sessions</code>).</li>
+      <li><b>Get token.</b> The endpoint verifies the credentials, creates a time-limited token, saves it in the token store, and returns the token ID to the client.</li>
+      <li><b>Reuse token.</b> On every subsequent request the client sends the cheap, disposable token instead of the password. The API looks it up in the store to find out who's calling &mdash; no expensive password hashing required.</li>
+    </ol>
+    <p style="margin-top:10px">A short-lived token used while a user is actively on a site is usually called a <b>session token</b> or just a <b>session</b>.</p>
+  </div>
+
+  <p>Natter implements this with a clean <code>TokenStore</code> interface (just <code>create</code> and <code>read</code> for now, with <code>revoke</code> added at logout). Keeping it an interface matters: across this chapter and the next two we'll swap in three different backends &mdash; session cookies here, database tokens and encrypted client-side tokens later &mdash; without touching the controller.</p>
+
+  <div class="code">
+    <div class="bar"><span class="dot" style="background:#ff5f56"></span><span class="dot" style="background:#ffbd2e"></span><span class="dot" style="background:#27c93f"></span><span class="t">TokenController.java &mdash; the login endpoint</span></div>
+<pre><span class="kw">public</span> <span class="fn">JSONObject</span> login(<span class="fn">Request</span> request, <span class="fn">Response</span> response) {
+  <span class="cm">// UserController already verified the password via HTTP Basic, and set "subject"</span>
+  <span class="fn">String</span> subject = request.attribute(<span class="st">"subject"</span>);
+  <span class="kw">var</span> expiry  = now().plus(<span class="nm">10</span>, ChronoUnit.MINUTES);   <span class="cm">// controls re-login frequency</span>
+
+  <span class="kw">var</span> token   = <span class="kw">new</span> TokenStore.Token(expiry, subject);
+  <span class="kw">var</span> tokenId = tokenStore.create(request, token);         <span class="cm">// store backend decides the ID</span>
+
+  response.status(<span class="nm">201</span>);
+  <span class="kw">return new</span> <span class="fn">JSONObject</span>().put(<span class="st">"token"</span>, tokenId);
+}</pre>
+  </div>
+  <p class="codecap">Elegantly, login <b>reuses</b> the existing Basic-auth filter to verify the password &mdash; so this method just reads the already-authenticated <code>subject</code> and mints a token. Logging in is modelled RESTfully as creating a session resource (<code>POST /sessions</code>).</p>
+</section>
+
+<hr class="rule">
+
+<!-- ===================== 5 ===================== -->
+<section id="cookies">
+  <div class="sec-head"><span class="sec-num">5</span><div><h2>Session cookies</h2></div></div>
+  <p class="lead">Now we need somewhere to keep that token in the browser. The oldest and most battle-tested answer is the <strong>session cookie</strong>. After login, the server sends a <code>Set-Cookie</code> header; the browser stores the token and automatically attaches it as a <code>Cookie</code> header on every later request to the same site. The server looks it up to know who you are.</p>
+
+  <!-- INTERACTIVE DIAGRAM 3 : cookie round trip -->
+  <div class="diagram" id="dg-cookie">
+    <div class="dlabel">Interactive · Figure 4.7</div>
+    <div class="dtitle">How a session cookie travels</div>
+    <p class="dhint"><b>Step through the round trip</b> &mdash; the cookie is set once, then ridden along automatically on everything afterward. That automatic part is both its superpower and, later, its weakness.</p>
+
+    <div style="display:grid;grid-template-columns:auto 1fr auto;gap:14px;align-items:center">
+      <div class="node ckn" data-ck="browser" style="text-align:center;padding:16px;font-weight:700;font-size:13px;border-color:var(--accent-2);width:120px">&#127760;<br>Browser</div>
+      <div style="text-align:center;min-height:70px;display:flex;flex-direction:column;justify-content:center;gap:4px" id="ck-mid">
+        <div style="font-family:var(--mono);font-size:11px;color:var(--ink-soft)">tap a step below</div>
+      </div>
+      <div class="node ckn" data-ck="server" style="text-align:center;padding:16px;font-weight:700;font-size:13px;border-color:var(--accent);width:120px">&#9881;<br>Server</div>
+    </div>
+
+    <div class="stepper" id="ck-steps">
+      <button onclick="ckStep(0,this)" class="active">Overview</button>
+      <button onclick="ckStep(1,this)">1 · Login</button>
+      <button onclick="ckStep(2,this)">2 · Set-Cookie</button>
+      <button onclick="ckStep(3,this)">3 · Auto-sent</button>
+    </div>
+    <div class="step-readout" id="ck-readout">Cookies are wonderfully convenient: once set, the browser remembers them and sends them automatically, scoped to the right domain and protectable with security flags. Step through the round trip below.</div>
+  </div>
+
+  <div class="dexplain">
+    <h4>Reading the diagram</h4>
+    <p>The key thing to notice is step 3 &mdash; the browser sends the cookie <i>by itself</i>, with no work from your JavaScript.</p>
+    <ol>
+      <li><b>Login.</b> The client posts credentials to the login endpoint.</li>
+      <li><b>Set-Cookie.</b> The server creates a session, stores the token's attributes server-side, and returns a <code>Set-Cookie: JSESSIONID=&hellip;</code> header. The browser tucks the cookie away.</li>
+      <li><b>Auto-sent.</b> On every later request to the same site, the browser <b>automatically</b> attaches the cookie. The server looks up the session to recover who the user is and what their token allows.</li>
+    </ol>
+    <p style="margin-top:10px">Cookies bring real security benefits for free: they're scoped to a domain (so they won't leak to other sites), and can be flagged <code>Secure</code> (HTTPS-only) and <code>HttpOnly</code> (hidden from JavaScript). That's why they remain a great choice for a first-party UI served from the same origin as its API.</p>
+  </div>
+
+  <p>Because Spark has built-in session support, the cookie-backed <code>TokenStore</code> is almost trivial &mdash; <code>request.session(true)</code> creates a session and the <code>Set-Cookie</code> header; <code>request.session(false)</code> reads an existing one. But the obvious implementation hides a subtle, dangerous bug.</p>
+</section>
+
+<hr class="rule">
+
+<!-- ===================== 6 ===================== -->
+<section id="fixation">
+  <div class="sec-head"><span class="sec-num">6</span><div><h2>The session fixation attack</h2></div></div>
+  <p class="lead">Here's the flaw, and it affects <em>every</em> form of token-based auth, not just cookies. If you call <code>request.session(true)</code> and a session cookie already exists, Spark reuses it instead of making a new one. That sounds harmless &mdash; until you realise an attacker can <em>plant</em> a session cookie in a victim's browser <em>before</em> they log in.</p>
+
+  <div class="callout def">
+    <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="#1d6b5a" stroke-width="2"><path d="M12 2 4 6v6c0 5 3.5 8 8 10 4.5-2 8-5 8-10V6z"/><path d="m9 12 2 2 4-4"/></svg>
+    <span class="lab">Definition · Session fixation</span>
+    <p>A <strong>session fixation attack</strong> happens when an API fails to generate a <em>new</em> session token after a user authenticates. The attacker obtains a valid token on their own device, injects it into the victim's browser, and once the victim logs in, that same token is now tied to the victim's account &mdash; which the attacker still holds.</p>
+  </div>
+
+  <!-- INTERACTIVE DIAGRAM 4 : session fixation timeline -->
+  <div class="diagram" id="dg-fixation">
+    <div class="dlabel">Interactive · Figure 4.8</div>
+    <div class="dtitle">How session fixation works &mdash; and the fix</div>
+    <p class="dhint"><b>Step through the attack</b>, then reveal the one-line fix that defeats it. The whole exploit hinges on a session token that <em>doesn't change</em> at login.</p>
+
+    <div class="tl" id="fix-tl">
+      <!-- filled by JS -->
+    </div>
+
+    <div class="stepper" id="fix-steps">
+      <button onclick="fixStep(1,this)" class="active">1</button>
+      <button onclick="fixStep(2,this)">2</button>
+      <button onclick="fixStep(3,this)">3</button>
+      <button onclick="fixStep(4,this)">The fix</button>
+    </div>
+    <div class="step-readout" id="fix-readout">The attacker never steals the victim's password &mdash; they don't need to. They just make sure the victim logs in using a session the attacker already knows. Step through to see it, then the fix.</div>
+  </div>
+
+  <div class="dexplain">
+    <h4>Reading the diagram</h4>
+    <p>Notice that at no point does the attacker learn the victim's password. The vulnerability is purely that the <i>token stays the same</i> across the login boundary.</p>
+    <ol>
+      <li><b>Attacker logs in first</b> on their own device to obtain a valid session token from the API.</li>
+      <li><b>They plant that token</b> in the victim's browser &mdash; for example via an XSS flaw on a sub-domain, or by luring the victim to a link with the session ID embedded in the URL.</li>
+      <li><b>The victim logs in.</b> Because the server reuses the existing session instead of creating a fresh one, it simply flips the session's username from "attacker" to "victim" &mdash; and the attacker's token now opens the victim's account.</li>
+      <li><b>The fix:</b> always <b>invalidate any existing session and create a brand-new one</b> immediately after authentication. The new token is unguessable to the attacker, and their planted session is logged out.</li>
+    </ol>
+  </div>
+
+  <div class="code">
+    <div class="bar"><span class="dot" style="background:#ff5f56"></span><span class="dot" style="background:#ffbd2e"></span><span class="dot" style="background:#27c93f"></span><span class="t">CookieTokenStore.java &mdash; defeating session fixation</span></div>
+<pre><span class="kw">public</span> <span class="fn">String</span> create(<span class="fn">Request</span> request, Token token) {
+  <span class="kw">var</span> session = request.session(<span class="kw">false</span>);   <span class="cm">// is there an EXISTING session?</span>
+  <span class="kw">if</span> (session != <span class="kw">null</span>) {
+    session.invalidate();                  <span class="good">// kill it — this is the crucial line</span>
+  }
+  session = request.session(<span class="kw">true</span>);       <span class="cm">// now mint a FRESH, unguessable session</span>
+
+  session.attribute(<span class="st">"username"</span>, token.username);
+  session.attribute(<span class="st">"expiry"</span>,   token.expiry);
+  session.attribute(<span class="st">"attrs"</span>,    token.attributes);
+  <span class="kw">return</span> session.id();
+}</pre>
+  </div>
+  <p class="codecap">A related hardening step: make sure your servlet container's session tracking-mode is <b>COOKIE</b>, never URL. URL-based sessions (<code>;JSESSIONID=&hellip;</code> in the path) make fixation trivial because an attacker can just craft a link. Jetty &mdash; which Spark uses &mdash; defaults to cookies.</p>
+</section>
+
+<hr class="rule">
+
+<!-- ===================== 7 ===================== -->
+<section id="attrs">
+  <div class="sec-head"><span class="sec-num">7</span><div><h2>Cookie security attributes</h2></div></div>
+  <p class="lead">A cookie isn't just a value &mdash; it carries a set of attributes that control how the browser treats it. Setting these correctly is most of cookie security. The golden rule: <strong>always set the most restrictive attributes you can get away with.</strong></p>
+
+  <div class="cookieattr">
+    <div class="ca"><code>Secure</code><p>The cookie is only ever sent over HTTPS, so it can't be intercepted on an unencrypted connection. Essential for any auth cookie.</p></div>
+    <div class="ca"><code>HttpOnly</code><p>The cookie can't be read by JavaScript, making it much harder to steal via an XSS attack. Also essential for session cookies.</p></div>
+    <div class="ca"><code>SameSite</code><p>The cookie is only sent on requests originating from the same site &mdash; the core CSRF defence we'll dig into next.</p></div>
+    <div class="ca"><code>Domain</code><p>Without it, the cookie is "host-only" (sent only to the exact host that set it). Set it and the cookie spreads to <em>all</em> sub-domains &mdash; so <strong>don't</strong>, unless you truly need to.</p></div>
+    <div class="ca"><code>Path</code><p>Limits which URL paths receive the cookie. Weak as a security control (easy to bypass via a hidden iframe), so don't lean on it.</p></div>
+    <div class="ca"><code>Expires / Max-Age</code><p>Sets when the cookie dies. <strong>Omit these on auth cookies</strong> so the session ends when the browser closes &mdash; important on shared machines.</p></div>
+  </div>
+
+  <p>Spark already sets <code>Secure</code> and <code>HttpOnly</code> by default. Two extra hardening ideas are worth knowing. First, beware the <code>Domain</code> attribute: sharing a cookie across sub-domains means a single compromised sub-domain can steal your sessions &mdash; and <em class="term">sub-domain hijacking</em> (claiming an abandoned host that still has live DNS) is depressingly common. Second, modern browsers honour magic cookie-name <strong>prefixes</strong>:</p>
+
+  <div class="grid c2">
+    <div class="mini"><h5><code>__Secure-</code></h5><p>Forces the cookie to have been set with the <code>Secure</code> attribute by a secure origin. The browser rejects it otherwise.</p></div>
+    <div class="mini"><h5><code>__Host-</code></h5><p>Everything <code>__Secure-</code> does, <em>plus</em> requires it be host-only (no <code>Domain</code>). This stops a sub-domain overwriting the cookie &mdash; a strong defence against sub-domain hijacking.</p></div>
+  </div>
+
+  <div class="callout tip">
+    <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="#2f4858" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+    <span class="lab">Session vs persistent cookies</span>
+    <p>A cookie <em>with</em> <code>Expires</code>/<code>Max-Age</code> is <strong>persistent</strong> &mdash; it survives a browser restart. One <em>without</em> is a <strong>session cookie</strong>, deleted when the tab closes. Keep auth cookies as session cookies so closing the browser logs the user out. But never rely on this alone &mdash; some browsers restore tabs and cookies on restart, so always enforce a maximum session lifetime and an idle timeout on the <em>server</em>.</p>
+  </div>
+</section>
+
+<hr class="rule">
+
+<!-- ===================== 8 ===================== -->
+<section id="csrf">
+  <div class="sec-head"><span class="sec-num">8</span><div><h2>Cross-Site Request Forgery (CSRF)</h2></div></div>
+  <p class="lead">Here's the twist: the very thing that makes cookies convenient &mdash; the browser sends them <em>automatically</em> &mdash; is also their greatest weakness. The browser attaches your session cookie to requests your API receives even when those requests were triggered by a <em>completely different, malicious site</em>. That's <em class="term">CSRF</em>.</p>
+
+  <p>Picture it: you're logged into Natter, then you click a tempting link from "Polly in Marketing." The page that loads runs JavaScript that fires requests at the Natter API from your browser. Because you're still logged in, the browser cheerfully attaches your session cookie. To Natter, those forged requests look exactly like you &mdash; posting abuse to your friends, in your name.</p>
+
+  <div class="callout def">
+    <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="#1d6b5a" stroke-width="2"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4m0 4h.01"/></svg>
+    <span class="lab">Definition · Cross-Site Request Forgery</span>
+    <p><strong>CSRF</strong> (pronounced "sea-surf") occurs when an attacker makes a cross-origin request to your API and the browser <strong>automatically attaches the user's cookies</strong>. Unless you add specific defences, the request is processed as if the user genuinely made it.</p>
+  </div>
+
+  <!-- INTERACTIVE DIAGRAM 5 : CSRF timeline -->
+  <div class="diagram" id="dg-csrf">
+    <div class="dlabel">Interactive · Figure 4.9</div>
+    <div class="dtitle">A CSRF attack, step by step</div>
+    <p class="dhint"><b>Step through the attack.</b> The cruel detail: the same-origin policy blocks the attacker from <em>reading</em> the response &mdash; but it never stopped the damaging request from being <em>sent</em>.</p>
+
+    <div class="tl" id="csrf-tl">
+      <!-- filled by JS -->
+    </div>
+
+    <div class="stepper" id="csrf-steps">
+      <button onclick="csrfStep(1,this)" class="active">1</button>
+      <button onclick="csrfStep(2,this)">2</button>
+      <button onclick="csrfStep(3,this)">3</button>
+      <button onclick="csrfStep(4,this)">4</button>
+    </div>
+    <div class="step-readout" id="csrf-readout">CSRF weaponises the browser's automatic cookie behaviour. Step through to see how a malicious page makes the victim's browser act against the API on the attacker's behalf.</div>
+  </div>
+
+  <div class="dexplain">
+    <h4>Reading the diagram</h4>
+    <p>The mental trap is thinking "the same-origin policy protects me." It partly does &mdash; but only on the response, not the request.</p>
+    <ol>
+      <li><b>Legitimate login.</b> The user logs into Natter and gets a session cookie, stored happily in the browser.</li>
+      <li><b>Victim visits a malicious site</b> &mdash; tricked by an enticing link &mdash; whose page contains hostile JavaScript.</li>
+      <li><b>The malicious script fires a request at the Natter API.</b> The browser, seeing a request to Natter's domain, <b>automatically attaches the session cookie</b>. The API sees a perfectly authenticated request and acts on it.</li>
+      <li><b>The SOP blocks only the response.</b> The attacker's script can't <i>read</i> what came back &mdash; but it didn't need to. The damage (posting, deleting, transferring) was done by sending the request.</li>
+    </ol>
+  </div>
+
+  <div class="callout tip">
+    <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="#2f4858" stroke-width="2"><path d="M9 11l3 3L22 4M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+    <span class="lab">A free first line of defence</span>
+    <p>Requiring an <code>application/json</code> Content-Type and a custom header (like <code>X-CSRF-Token</code>) already helps, because those trip the SOP's "simple request" limits and force the browser to block them cross-origin. But clever attackers have bypassed such tricks (e.g. via old Flash bugs), so you need a <strong>dedicated</strong> defence. And one ironclad rule: <strong>never change state in response to a <code>GET</code> request</strong> &mdash; browsers allow cross-origin GETs freely, and every CSRF defence assumes GETs are safe.</p>
+  </div>
+</section>
+
+<hr class="rule">
+
+<!-- ===================== 9 ===================== -->
+<section id="samesite">
+  <div class="sec-head"><span class="sec-num">9</span><div><h2>First defence: SameSite cookies</h2></div></div>
+  <p class="lead">The most direct fix, when your UI and API share a domain, is the <strong>SameSite</strong> cookie attribute. Mark a cookie <code>SameSite</code> and the browser only sends it on requests that <em>originate from the same site</em>. So when Polly's malicious page fires its request, the browser sends it <em>without</em> the session cookie &mdash; and the API rejects it as unauthenticated.</p>
+
+  <!-- INTERACTIVE DIAGRAM 6 : SameSite blocks CSRF -->
+  <div class="diagram" id="dg-samesite">
+    <div class="dlabel">Interactive · Figure 4.10</div>
+    <div class="dtitle">SameSite stops the forged request at the door</div>
+    <p class="dhint"><b>Toggle</b> between a same-site request and a cross-site one to see when the browser includes the cookie &mdash; and when it withholds it.</p>
+
+    <div class="stepper" id="ss-toggle">
+      <button onclick="ssMode('same',this)" class="active">&#9989; Request from Natter UI</button>
+      <button onclick="ssMode('cross',this)">&#10060; Request from malicious site</button>
+    </div>
+    <div id="ss-view" style="margin-top:6px"></div>
+    <div class="step-readout" id="ss-readout">A SameSite cookie is only attached to requests that originate from the same site that set it. Toggle above to watch the browser include the cookie for the legitimate UI but strip it from the attacker's cross-site request.</div>
+  </div>
+
+  <div class="dexplain">
+    <h4>Reading the diagram &mdash; and the two modes</h4>
+    <p>SameSite comes in two strengths, and the difference is about what happens when a user clicks a link from another site:</p>
+    <ol>
+      <li><b>SameSite=strict</b> &mdash; the cookie is withheld on <i>every</i> cross-site request, including when the user simply clicks a link to your site from elsewhere. Strongest, but can feel jarring (the user lands logged-out).</li>
+      <li><b>SameSite=lax</b> &mdash; the cookie is sent when the user directly clicks a link to your site, but withheld on most other cross-site requests (like background scripts and POSTs). A practical middle ground; many single-page apps work fine in strict mode anyway.</li>
+    </ol>
+  </div>
+
+  <div class="callout def">
+    <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="#1d6b5a" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/></svg>
+    <span class="lab">Definition · "Same site" &ne; "same origin"</span>
+    <p>SameSite uses the <strong>registerable domain</strong>, which is looser than an origin. <code>api.payments.example.com</code> and <code>www.example.com</code> are the <em>same site</em> (both reduce to <code>example.com</code>), even though they're different origins. Protocol and port are ignored. Working out the registerable domain relies on Mozilla's <strong>public suffix list</strong>, which catches tricky cases like <code>.co.uk</code> and <code>github.io</code>.</p>
+  </div>
+
+  <div class="callout tip">
+    <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="#2f4858" stroke-width="2"><path d="M12 2 4 6v6c0 5 3.5 8 8 10 4.5-2 8-5 8-10V6z"/></svg>
+    <span class="lab">Why SameSite isn't the whole answer</span>
+    <p>SameSite is excellent, but because "same site" includes <em>all</em> sub-domains, its protection is only as strong as your weakest sub-domain &mdash; one hijacked sub-domain and it collapses. Treat SameSite as a <strong>defense-in-depth</strong> layer, and add a more robust defence on top. That's the double-submit cookie.</p>
+  </div>
+</section>
+
+<hr class="rule">
+
+<!-- ===================== 10 ===================== -->
+<section id="doublesubmit">
+  <div class="sec-head"><span class="sec-num">10</span><div><h2>The robust defence: hash-based double-submit cookies</h2></div></div>
+  <p class="lead">The strongest CSRF defence forces the caller to <em>prove</em> they know something an attacker can't read &mdash; something tied to the session. Traditional web apps put a hidden random token in every form. An API can't do that, so we use a clever cookie trick instead. But the obvious version has a flaw, and watching it evolve is the best way to understand the final design.</p>
+
+  <h3>Step one: the plain double-submit cookie</h3>
+  <p>Store a second random token as a cookie that is <em>not</em> <code>HttpOnly</code>, so JavaScript on your own site can read it. On every request, the client reads that cookie and echoes it back in an <code>X-CSRF-Token</code> header. The server checks the cookie and header match. A cross-origin attacker can't <em>read</em> the cookie (SOP), so they can't produce the matching header.</p>
+
+  <div class="callout danger">
+    <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="#b5471f" stroke-width="2"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4m0 4h.01"/></svg>
+    <span class="lab">The flaw · the cookie can be overwritten</span>
+    <p>An attacker can't <em>read</em> the CSRF cookie &mdash; but they might be able to <strong>overwrite</strong> it with a value they choose (via an XSS flaw or a compromised sub-domain). Then they simply send that same known value in the header, and the two match. The defence collapses. The <code>__Host-</code> prefix helps, but we can do something fundamentally stronger.</p>
+  </div>
+
+  <h3>Step two: bind the token to the session with a hash</h3>
+  <p>Instead of a <em>random</em> second token, compute the CSRF token as a <strong>cryptographic hash (SHA-256) of the session cookie</strong>. Now the two are <em class="term">cryptographically bound</em>: changing either one breaks the match. The attacker can't read the session cookie, so they can't compute the correct hash &mdash; <em>and</em> they can't usefully overwrite the CSRF cookie either, because any value they pick won't be the hash of the real session.</p>
+
+  <!-- INTERACTIVE DIAGRAM 7 : double-submit evolution -->
+  <div class="diagram" id="dg-ds">
+    <div class="dlabel">Interactive · Figures 4.11 &amp; 4.12</div>
+    <div class="dtitle">Plain vs hash-based double-submit</div>
+    <p class="dhint"><b>Toggle</b> between the two designs and try the attacker's "overwrite the cookie" move against each. Only one survives it.</p>
+
+    <div class="stepper" id="ds-toggle">
+      <button onclick="dsMode('plain',this)" class="active">Plain (random token)</button>
+      <button onclick="dsMode('hash',this)" class="active">Hash-based (bound)</button>
+    </div>
+    <div id="ds-view" style="margin-top:6px"></div>
+    <div class="step-readout" id="ds-readout">Both designs block a basic CSRF attack. The difference shows only when the attacker can <b>overwrite</b> the CSRF cookie. Toggle above and watch what happens to each design under that attack.</div>
+  </div>
+
+  <div class="dexplain">
+    <h4>Reading the diagram</h4>
+    <p>The whole improvement is about removing the attacker's ability to <i>choose</i> a value that the server will accept.</p>
+    <ol>
+      <li><b>Plain double-submit:</b> the CSRF token is an independent random value. If the attacker can overwrite the CSRF cookie with <code>xyz</code> and also send <code>xyz</code> in the header, the server sees a match and is fooled.</li>
+      <li><b>Hash-based:</b> the server expects the CSRF token to equal <code>SHA-256(session cookie)</code>. The attacker doesn't know the session cookie (it's <code>HttpOnly</code>), so they can't compute the right hash. Any value they overwrite with simply won't match &mdash; the request is rejected.</li>
+      <li>Because the input (a high-entropy session ID) is unguessable, the hash needn't be slow like a password hash &mdash; SHA-256 is perfect: fast, preimage-resistant, and collision-resistant.</li>
+    </ol>
+  </div>
+
+  <div class="code">
+    <div class="bar"><span class="dot" style="background:#ff5f56"></span><span class="dot" style="background:#ffbd2e"></span><span class="dot" style="background:#27c93f"></span><span class="t">CookieTokenStore.java &mdash; the hash-based check</span></div>
+<pre><span class="cm">// On create: the token ID we hand the client is the HASH of the real session</span>
+<span class="kw">return</span> Base64url.encode(sha256(session.id()));
+
+<span class="cm">// On read: recompute and compare in CONSTANT TIME (see warning below)</span>
+<span class="kw">var</span> provided = Base64url.decode(tokenId);          <span class="cm">// from X-CSRF-Token header</span>
+<span class="kw">var</span> computed = sha256(session.id());               <span class="cm">// hash of the real session cookie</span>
+<span class="kw">if</span> (!<span class="fn">MessageDigest</span>.isEqual(computed, provided)) {  <span class="good">// constant-time equality</span>
+  <span class="kw">return</span> Optional.empty();                         <span class="cm">// mismatch → treat as unauthenticated</span>
+}</pre>
+  </div>
+  <p class="codecap">Bonus: the raw session ID is now <b>never</b> exposed to JavaScript &mdash; the client only ever sees the hash. The real session stays locked inside the <code>HttpOnly</code> cookie.</p>
+
+  <div class="callout danger">
+    <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="#b5471f" stroke-width="2"><path d="M12 6v6l4 2"/><circle cx="12" cy="12" r="9"/></svg>
+    <span class="lab">Critical · use constant-time comparison</span>
+    <p>Never compare the tokens with a normal <code>String.equals()</code>. Standard comparisons bail out at the first mismatched character, so they take <em>fractionally</em> longer the more leading characters match. A <strong>timing attack</strong> measures those tiny differences (yes, even over the internet) to recover the token one character at a time &mdash; turning ~64<sup>10</sup> guesses into ~640. Always use a <strong>constant-time</strong> comparison like Java's <code>MessageDigest.isEqual</code>, which checks every byte regardless.</p>
+  </div>
+
+  <p>The client side is small: after login, the JavaScript reads the returned token and stores it in a (non-<code>HttpOnly</code>) <code>csrfToken</code> cookie, then sends it as <code>X-CSRF-Token</code> on every request. Leave the token out, and the API treats the request as unauthenticated &mdash; CSRF defused.</p>
+</section>
+
+<hr class="rule">
+
+<!-- ===================== 11 ===================== -->
+<section id="logout">
+  <div class="sec-head"><span class="sec-num">11</span><div><h2>Logout and token revocation</h2></div></div>
+  <p class="lead">Remember one of the original complaints about Basic auth: you couldn't really log out. Token-based authentication fixes that &mdash; but only if you do it properly. Just deleting the cookie from the browser isn't enough, because that deletion can fail, or the cookie might linger in a misconfigured cache. The token must also be <strong>revoked on the server</strong>.</p>
+
+  <p>We add a third method to the <code>TokenStore</code> interface &mdash; <code>revoke</code> &mdash; alongside <code>create</code> and <code>read</code>. For session cookies, revocation is wonderfully simple: call Spark's <code>session.invalidate()</code>, which both removes the server-side session and sends a <code>Set-Cookie</code> header with an expiry in the past, so the browser deletes its copy too.</p>
+
+  <div class="code">
+    <div class="bar"><span class="dot" style="background:#ff5f56"></span><span class="dot" style="background:#ffbd2e"></span><span class="dot" style="background:#27c93f"></span><span class="t">CookieTokenStore.java &mdash; revoking a session</span></div>
+<pre><span class="kw">public void</span> revoke(<span class="fn">Request</span> request, <span class="fn">String</span> tokenId) {
+  <span class="kw">var</span> session = request.session(<span class="kw">false</span>);
+  <span class="kw">if</span> (session == <span class="kw">null</span>) <span class="kw">return</span>;
+
+  <span class="cm">// Even logout needs CSRF protection — or an attacker could log you out to annoy you</span>
+  <span class="kw">var</span> provided = Base64url.decode(tokenId);
+  <span class="kw">var</span> computed = sha256(session.id());
+  <span class="kw">if</span> (!<span class="fn">MessageDigest</span>.isEqual(computed, provided)) <span class="kw">return</span>;
+
+  session.invalidate();   <span class="good">// kills server session AND expires the browser cookie</span>
+}</pre>
+  </div>
+  <p class="codecap">Notice logout still verifies the anti-CSRF token. It's lower-stakes than other operations, but an attacker forcibly logging users out is still a nuisance worth preventing.</p>
+
+  <p>The endpoint itself follows the RESTful pattern: logging in created a session resource with <code>POST /sessions</code>, so logging out <strong>deletes</strong> it with <code>DELETE /sessions</code>. The token ID comes from the <code>X-CSRF-Token</code> header rather than the URL &mdash; deliberately, because putting tokens in URLs risks leaking them into browser history and server logs.</p>
+
+  <div class="callout tip">
+    <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="#2f4858" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4m7 14 5-5-5-5m5 5H9"/></svg>
+    <span class="lab">Never put tokens in the URL</span>
+    <p>A request to <code>DELETE /sessions/xyz</code> would leak the token <code>xyz</code> into browser history and server access logs. Keeping it in a header avoids that. This is a small habit with outsized payoff &mdash; URLs are logged and shared in far more places than people expect.</p>
+  </div>
+</section>
+
+<!-- ===================== takeaways ===================== -->
+<section id="takeaways">
+  <div class="takeaways">
+    <h3>Key takeaways</h3>
+    <ul>
+      <li>The <strong>same-origin policy</strong> is the foundation: origin = protocol + host + port, all matching exactly. It lets cross-origin requests be <em>sent</em> but blocks reading the <em>response</em>.</li>
+      <li>HTTP Basic auth is poor for browsers &mdash; it resends the password every call, is slow to verify, looks ugly, and can't truly log out.</li>
+      <li><strong>Token-based authentication</strong> trades the password once for a short-lived token, which is cheap to validate on each request.</li>
+      <li><strong>Session cookies</strong> are a great token store for same-origin first-party UIs &mdash; the browser sends them automatically and they support <code>Secure</code>/<code>HttpOnly</code>/<code>SameSite</code>.</li>
+      <li>Always <strong>invalidate the old session and create a new one at login</strong> to defeat <strong>session fixation</strong>.</li>
+      <li>Automatic cookie-sending enables <strong>CSRF</strong>. Defend with <strong>SameSite</strong> cookies (defense-in-depth) plus <strong>hash-based double-submit</strong> cookies (robust), and never change state on a <code>GET</code>.</li>
+      <li>Binding the CSRF token to the session via <strong>SHA-256</strong> stops cookie-overwrite attacks; compare tokens in <strong>constant time</strong> to block timing attacks.</li>
+      <li><strong>Logout must revoke server-side</strong>, not just delete the cookie &mdash; and keep tokens out of URLs.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ===================== quiz ===================== -->
+<section id="quiz">
+  <div class="sec-head"><span class="sec-num">&#9733;</span><div><h2>Test yourself</h2></div></div>
+  <div class="quiz">
+    <span class="lab">Pop quiz · tap to reveal</span>
+    <details><summary>For a request to <code>https://api.example.com:8443/test/1</code>, which URL is the <em>same origin</em>? (http&hellip;/test/1 · https&hellip;.com/test/2 · http&hellip;:8443/test/2 · https&hellip;:8443/test/2 · https://www&hellip;:8443/test/2)</summary><div class="ans"><strong>https://api.example.com:8443/test/2.</strong> Protocol, host, and port all match exactly; the differing path is irrelevant. Every other option changes the protocol, port, or host.</div></details>
+    <details><summary>What's the best way to avoid session fixation attacks?</summary><div class="ans"><strong>Invalidate any existing session and create a fresh one after the user authenticates.</strong> A new, unguessable token means the attacker's planted session is useless.</div></details>
+    <details><summary>Which cookie attribute prevents the cookie being read from JavaScript?</summary><div class="ans"><strong>HttpOnly.</strong> It hides the cookie from scripts, making it harder to steal via XSS.</div></details>
+    <details><summary>A cookie from <code>https://api.example.com:8443</code> is <code>SameSite=strict</code>. Which pages can send it? (http://www&hellip; · https://other.com&hellip; · https://www.example.com&hellip; · https://www.example.org&hellip; · https://api.example.com&hellip;)</summary><div class="ans"><strong>The example.com pages</strong> &mdash; <code>http://www.example.com</code>, <code>https://www.example.com</code>, and <code>https://api.example.com</code>. SameSite looks only at the registerable domain (<code>example.com</code>); protocol, port, and path don't matter. <code>other.com</code> and <code>example.org</code> are different sites.</div></details>
+    <details><summary>What problem with plain double-submit cookies does the hash-based approach solve?</summary><div class="ans"><strong>An attacker overwriting the second cookie</strong> with a value they know. Binding the token to the session via a hash means any overwritten value won't match <code>SHA-256(session)</code>, so it's rejected.</div></details>
+    <details><summary>Why must HTTP Basic credentials only be sent over HTTPS?</summary><div class="ans">Because they're only <strong>Base64-encoded</strong>, which anyone watching the network can trivially decode back to the plaintext password.</div></details>
+  </div>
+</section>
+
+</div>
+
+<footer>
+  <div>API Security in Action</div>
+  <div>Chapter 04 &mdash; Session Cookie Authentication</div>
+  <div>Next &#9656; Modern Token-Based Authentication</div>
+</footer>
+
+<script>
+/* ---------- Diagram 1: origin checker ---------- */
+const originData = [
+  {v:'diff', cls:'diff', why:"<b>Different origin.</b> The protocol is <code>http</code>, not <code>https</code> &mdash; and dropping HTTPS also changes the default port to 80. Two mismatches."},
+  {v:'diff', cls:'diff', why:"<b>Different origin.</b> No port is given, so it defaults to 443 &mdash; but our reference uses port 8443. The differing path (/test/2) is irrelevant."},
+  {v:'diff', cls:'diff', why:"<b>Different origin.</b> The port 8443 matches, but the protocol is <code>http</code> instead of <code>https</code>."},
+  {v:'SAME', cls:'same', why:"<b>SAME origin!</b> Protocol (https), host (api.example.com), and port (8443) all match exactly. The different path (/test/2) doesn't affect the origin."},
+  {v:'diff', cls:'diff', why:"<b>Different origin.</b> The host is <code>www.example.com</code>, not <code>api.example.com</code>. A different sub-domain is a different origin."}
+];
+function originCheck(i, row){
+  const badge = row.querySelector('.verdict');
+  const d = originData[i];
+  badge.className = 'verdict ' + d.cls;
+  badge.textContent = d.cls==='same' ? '✓ same origin' : '✗ different';
+  document.getElementById('origin-readout').innerHTML = d.why;
+}
+
+/* ---------- Diagram 2: token flow ---------- */
+const tfData = [
+  {mid:'<div style="font-family:var(--mono);font-size:11px;color:var(--ink-soft)">tap a step below</div>',
+   read:"The client sends credentials to a dedicated login endpoint, gets a time-limited token, then presents that token (not the password) on every later request. The API validates it against a shared token store. Step through to see each move."},
+  {mid:'<div style="font-family:var(--mono);font-size:11px;color:var(--accent)">&#10112; username + password &#10142;</div>',
+   read:"<b>Step 1 &mdash; Login.</b> The client sends the username and password &mdash; just this once &mdash; to the dedicated login endpoint (<code>POST /sessions</code>)."},
+  {mid:'<div style="font-family:var(--mono);font-size:11px;color:var(--accent-2)">&#10111; &#11013; time-limited token</div>',
+   read:"<b>Step 2 &mdash; Get token.</b> The endpoint verifies the password, creates a time-limited token, saves it in the token store, and returns the token ID to the client."},
+  {mid:'<div style="font-family:var(--mono);font-size:11px;color:var(--accent)">&#10113; token &#10142; (no password!)</div>',
+   read:"<b>Step 3 &mdash; Reuse token.</b> Every later request carries the cheap, disposable token instead of the password. The API looks it up in the store &mdash; no expensive password hashing needed."}
+];
+function tfStep(i, btn){
+  document.querySelectorAll('#tf-steps button').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('tf-mid').innerHTML = tfData[i].mid;
+  document.getElementById('tf-readout').innerHTML = tfData[i].read;
+  const store=document.querySelector('#dg-tokenflow [data-tf="store"]');
+  store.style.boxShadow = (i===2||i===3) ? '0 0 0 3px rgba(47,72,88,.3)' : '';
+}
+
+/* ---------- Diagram 3: cookie round trip ---------- */
+const ckData = [
+  {mid:'<div style="font-family:var(--mono);font-size:11px;color:var(--ink-soft)">tap a step below</div>',
+   read:"Cookies are wonderfully convenient: once set, the browser remembers them and sends them automatically, scoped to the right domain and protectable with security flags. Step through the round trip."},
+  {mid:'<div style="font-family:var(--mono);font-size:11px;color:var(--accent)">&#10112; login &#10142;</div>',
+   read:"<b>Step 1 &mdash; Login.</b> The client posts credentials to the login endpoint."},
+  {mid:'<div style="font-family:var(--mono);font-size:11px;color:var(--accent-2)">&#10111; &#11013; Set-Cookie: JSESSIONID=&hellip;</div>',
+   read:"<b>Step 2 &mdash; Set-Cookie.</b> The server creates a session, stores its attributes server-side, and returns a <code>Set-Cookie</code> header. The browser stores the cookie."},
+  {mid:'<div style="font-family:var(--mono);font-size:11px;color:var(--accent)">&#10113; Cookie sent AUTOMATICALLY &#10142;</div>',
+   read:"<b>Step 3 &mdash; Auto-sent.</b> On every later request to the same site, the browser <b>automatically</b> attaches the cookie &mdash; no JavaScript needed. The server looks up the session to recover the user. (This automatic behaviour is exactly what CSRF later abuses.)"}
+];
+function ckStep(i, btn){
+  document.querySelectorAll('#ck-steps button').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('ck-mid').innerHTML = ckData[i].mid;
+  document.getElementById('ck-readout').innerHTML = ckData[i].read;
+}
+
+/* ---------- Diagram 4: session fixation ---------- */
+const fixStages = [
+  {cls:'evil', n:'1', h:'Attacker logs in first', p:'On their own device, the attacker logs into the API and obtains a perfectly valid session token.'},
+  {cls:'evil', n:'2', h:'They plant that token in the victim&rsquo;s browser', p:'Via an XSS flaw on a sub-domain, or a crafted link with the session ID embedded, the attacker fixes their known token onto the victim.'},
+  {cls:'evil', n:'3', h:'The victim logs in', p:'The server reuses the existing session instead of making a new one &mdash; so it just flips the username from &ldquo;attacker&rdquo; to &ldquo;victim.&rdquo; The attacker&rsquo;s token now opens the victim&rsquo;s account.'},
+  {cls:'fix',  n:'&#10003;', h:'The fix: new session at login', p:'Invalidate any existing session and create a fresh, unguessable one the instant the user authenticates. The attacker&rsquo;s planted token is logged out and worthless.'}
+];
+function renderTL(containerId, stages, upto){
+  const c = document.getElementById(containerId);
+  c.innerHTML='';
+  stages.forEach((s,idx)=>{
+    if(idx>=upto) return;
+    c.innerHTML += '<div class="tlstep '+(s.cls||'')+'">'+
+      '<div class="dotcol"><div class="num">'+s.n+'</div><div class="line"></div></div>'+
+      '<div class="body"><h6>'+s.h+'</h6><p>'+s.p+'</p></div></div>';
+  });
+}
+function fixStep(n, btn){
+  document.querySelectorAll('#fix-steps button').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  renderTL('fix-tl', fixStages, n);
+  const readouts=[null,
+    "<b>Step 1.</b> The attacker gets a legitimate token of their own &mdash; no hacking required, they just log in normally.",
+    "<b>Step 2.</b> They inject that known token into the victim's browser. Crucially, they still know its value.",
+    "<b>Step 3.</b> The victim logs in, but the token <i>doesn't change</i> &mdash; so the attacker's token is now bound to the victim's account.",
+    "<b>The fix.</b> Generating a brand-new session at login makes the attacker's planted token obsolete the moment it would matter. One line: <code>session.invalidate()</code> before creating the new one."];
+  document.getElementById('fix-readout').innerHTML = readouts[n];
+}
+fixStep(1, document.querySelector('#fix-steps button'));
+
+/* ---------- Diagram 5: CSRF timeline ---------- */
+const csrfStages = [
+  {n:'1', h:'Legitimate login', p:'The user logs into Natter and the browser stores a valid session cookie. So far, everything is normal.'},
+  {n:'2', h:'Victim visits a malicious site', p:'Lured by a tempting link, the victim lands on an attacker-controlled page that contains hostile JavaScript.'},
+  {cls:'evil', n:'3', h:'The script fires a request at the Natter API', p:'The browser sees a request to Natter&rsquo;s domain and <b>automatically attaches the session cookie</b>. The API sees a fully authenticated request and acts on it &mdash; posting, deleting, whatever the attacker chose.'},
+  {n:'4', h:'The SOP blocks only the response', p:'The attacker&rsquo;s script can&rsquo;t <i>read</i> what came back &mdash; but it never needed to. The damage was done the moment the request was sent.'}
+];
+function csrfStep(n, btn){
+  document.querySelectorAll('#csrf-steps button').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  renderTL('csrf-tl', csrfStages, n);
+  const readouts=[null,
+    "<b>Step 1.</b> A normal, legitimate login. The session cookie now lives in the victim's browser.",
+    "<b>Step 2.</b> The victim is tricked into visiting an attacker's page &mdash; this is the only social-engineering the attack needs.",
+    "<b>Step 3.</b> Here's the heart of CSRF: the browser attaches the cookie to the forged request <i>automatically</i>, so it looks genuine to the API.",
+    "<b>Step 4.</b> The same-origin policy stops the attacker reading the response &mdash; but that's cold comfort, because the harmful action already happened."];
+  document.getElementById('csrf-readout').innerHTML = readouts[n];
+}
+csrfStep(1, document.querySelector('#csrf-steps button'));
+
+/* ---------- Diagram 6: SameSite ---------- */
+function ssMode(mode, btn){
+  document.querySelectorAll('#ss-toggle button').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  const v=document.getElementById('ss-view');
+  if(mode==='same'){
+    v.innerHTML='<div class="jar">'+
+      '<div style="color:#9a9484;font-size:10px;margin-bottom:8px">REQUEST ORIGINATES FROM: natter UI (same site)</div>'+
+      '<div class="ck"><span style="color:#9ee6a8">&#10003;</span> Browser attaches <span class="nm">JSESSIONID</span> <span class="badge http">SameSite</span></div>'+
+      '<div style="margin-top:10px;color:#9ee6a8">&rarr; API sees a valid session &mdash; request ALLOWED &#9989;</div>'+
+      '</div>';
+    document.getElementById('ss-readout').innerHTML="<b>Same-site request:</b> the request comes from the Natter UI itself, so the browser includes the SameSite cookie. The API authenticates it normally.";
+  } else {
+    v.innerHTML='<div class="jar">'+
+      '<div style="color:#9a9484;font-size:10px;margin-bottom:8px">REQUEST ORIGINATES FROM: evil.com (cross site)</div>'+
+      '<div class="ck"><span style="color:#ff8a7a">&#10007;</span> Browser WITHHOLDS <span class="nm">JSESSIONID</span> <span class="badge">SameSite blocks it</span></div>'+
+      '<div style="margin-top:10px;color:#ff8a7a">&rarr; API sees no session &mdash; request REJECTED as unauthenticated &#10060;</div>'+
+      '</div>';
+    document.getElementById('ss-readout').innerHTML="<b>Cross-site request:</b> the forged request comes from the attacker's site, so the browser strips the SameSite cookie. With no session, the API rejects it &mdash; CSRF blocked.";
+  }
+}
+ssMode('same', document.querySelector('#ss-toggle button'));
+
+/* ---------- Diagram 7: double-submit evolution ---------- */
+function dsMode(mode, btn){
+  document.querySelectorAll('#ds-toggle button').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  const v=document.getElementById('ds-view');
+  if(mode==='plain'){
+    v.innerHTML='<div class="jar">'+
+      '<div style="color:#9a9484;font-size:10px;margin-bottom:8px">PLAIN DOUBLE-SUBMIT &mdash; attacker overwrites the CSRF cookie:</div>'+
+      '<div class="ck"><span class="nm">csrfToken</span> cookie = <span style="color:#e0995e">xyz</span> <span class="badge js">attacker set this</span></div>'+
+      '<div class="ck"><span class="nm">X-CSRF-Token</span> header = <span style="color:#e0995e">xyz</span> <span class="badge js">attacker set this too</span></div>'+
+      '<div style="margin-top:10px;color:#ff8a7a">cookie === header &rarr; server is FOOLED &#10060; the values match!</div>'+
+      '</div>';
+    document.getElementById('ds-readout').innerHTML="<b>Plain double-submit under attack:</b> the CSRF token is just an independent random value. If the attacker can overwrite the cookie <i>and</i> set the matching header, the server sees a match and accepts the forged request. The defence fails.";
+  } else {
+    v.innerHTML='<div class="jar">'+
+      '<div style="color:#9a9484;font-size:10px;margin-bottom:8px">HASH-BASED &mdash; attacker overwrites the CSRF cookie:</div>'+
+      '<div class="ck"><span class="nm">session</span> cookie = <span style="color:#9ee6a8">secret123</span> <span class="badge http">HttpOnly &mdash; attacker can&rsquo;t read it</span></div>'+
+      '<div class="ck"><span class="nm">X-CSRF-Token</span> = <span style="color:#e0995e">xyz</span> <span class="badge js">attacker&rsquo;s guess</span></div>'+
+      '<div style="margin-top:6px;color:#cbb98f">server expects: SHA-256(secret123) = <span style="color:#9ee6a8">a91c4f&hellip;</span></div>'+
+      '<div style="margin-top:6px;color:#9ee6a8">xyz &ne; a91c4f&hellip; &rarr; REJECTED &#9989; attacker can&rsquo;t compute the hash</div>'+
+      '</div>';
+    document.getElementById('ds-readout').innerHTML="<b>Hash-based under the same attack:</b> the server expects the token to equal <code>SHA-256(session)</code>. The attacker can't read the HttpOnly session cookie, so they can't compute the right hash. Any value they overwrite with simply won't match &mdash; request rejected.";
+  }
+}
+dsMode('hash', document.querySelectorAll('#ds-toggle button')[1]);
+</script>
+
+</body>
+</html>

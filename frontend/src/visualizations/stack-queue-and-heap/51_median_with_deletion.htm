@@ -1,0 +1,782 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Find Median with Deletion (Two Heaps + Lazy Delete)</title>
+    <style>
+        :root {
+            --bg-page: #070b14;
+            --bg-surface: rgba(255, 255, 255, 0.045);
+            --bg-input: rgba(255, 255, 255, 0.04);
+            --border-main: rgba(255, 255, 255, 0.10);
+            --btn-bg: rgba(255, 255, 255, 0.05);
+            --btn-hover: rgba(255, 255, 255, 0.10);
+            --text-main: #e8eefb;
+            --text-dim: #8b98b3;
+            --accent-orange: #f5a524;   /* value in motion / sift path  */
+            --accent-blue:   #06b6d4;    /* min-heap (upper half) / chrome */
+            --accent-green:  #22c55e;    /* settled / median result        */
+            --accent-red:    #f43f5e;    /* removed / lazily deleted        */
+            --accent-purple: #a855f7;    /* max-heap (lower half) / current */
+            --mono: ui-monospace, 'SF Mono', 'Cascadia Code', 'Courier New', monospace;
+            --sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+            --shell: 940px;
+        }
+
+        * { box-sizing: border-box; }
+        html, body { overflow-x: hidden; }
+        body {
+            background:
+                radial-gradient(1100px 600px at 15% -10%, rgba(168, 85, 247, 0.12), transparent 60%),
+                radial-gradient(900px 600px at 100% 10%, rgba(6, 182, 212, 0.10), transparent 55%),
+                linear-gradient(160deg, #070b14 0%, #0b1120 55%, #0a0f1c 100%);
+            background-attachment: fixed;
+            color: var(--text-main); font-family: var(--sans); margin: 0;
+            display: flex; flex-direction: column; align-items: center; min-height: 100vh;
+            padding-bottom: 48px; -webkit-font-smoothing: antialiased;
+        }
+        body::before, body::after { content: ''; position: fixed; border-radius: 50%; filter: blur(70px); pointer-events: none; z-index: 0; opacity: 0.45; }
+        body::before { width: 380px; height: 380px; top: 8%; left: -120px; background: radial-gradient(circle, rgba(168,85,247,0.30), transparent 70%); }
+        body::after  { width: 420px; height: 420px; bottom: 4%; right: -140px; background: radial-gradient(circle, rgba(6,182,212,0.22), transparent 70%); }
+        body > * { position: relative; z-index: 1; }
+
+        .input-bar {
+            width: 100%; background: rgba(10, 15, 28, 0.55);
+            backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+            padding: 14px 16px; display: flex; justify-content: center; align-items: center; gap: 10px;
+            border-bottom: 1px solid var(--border-main); flex-wrap: wrap; position: sticky; top: 0; z-index: 50;
+        }
+        label.ui-label, .ui-label { font-family: var(--mono); font-size: 13px; color: var(--text-dim); letter-spacing: 0.2px; }
+        input[type="number"] {
+            background: var(--bg-input); border: 1px solid var(--border-main); color: var(--text-main);
+            height: 34px; border-radius: 9px; padding: 0 12px; font-size: 13px; font-family: var(--mono); width: 90px;
+            transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+        }
+        input:focus { outline: none; border-color: var(--accent-purple); box-shadow: 0 0 0 3px rgba(168,85,247,0.18); background: rgba(168,85,247,0.06); }
+
+        button {
+            height: 34px; border-radius: 9px; padding: 0 14px; background: var(--btn-bg);
+            border: 1px solid var(--border-main); color: var(--text-main); font-size: 13px; font-weight: 600; cursor: pointer;
+            transition: transform 0.15s ease, background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+        }
+        button:hover { background: var(--btn-hover); border-color: rgba(168, 85, 247, 0.5); box-shadow: 0 0 18px rgba(168, 85, 247, 0.18); transform: translateY(-1px); }
+        button:active { transform: translateY(0); }
+        #play-btn { background: linear-gradient(135deg, rgba(168,85,247,0.22), rgba(168,85,247,0.10)); border-color: rgba(168, 85, 247, 0.45); color: #e9d5ff; min-width: 80px; }
+        .op-btn.ins { border-color: rgba(245,165,36,0.4); color: #ffe2b0; font-family: var(--mono); }
+        .op-btn.del { border-color: rgba(244,63,94,0.4); color: #fecdd3; font-family: var(--mono); }
+        .op-btn.med { border-color: rgba(34,197,94,0.4); color: #bbf7d0; font-family: var(--mono); }
+
+        .shell { width: var(--shell); max-width: 95%; margin: 24px auto 0; display: flex; flex-direction: column; gap: 16px; }
+
+        .title-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+        .title-row h1 { font-size: 18px; font-weight: 800; margin: 0; letter-spacing: 0.2px; }
+        .title-row .sub { color: var(--text-dim); font-weight: 500; font-size: 13px; }
+        .step-badge { font-family: var(--mono); font-size: 12px; font-weight: 700; color: #e9d5ff; background: rgba(168,85,247,0.12); border: 1px solid rgba(168,85,247,0.3); padding: 4px 10px; border-radius: 999px; white-space: nowrap; }
+        .progress-track { height: 4px; width: 100%; background: rgba(255,255,255,0.07); border-radius: 999px; overflow: hidden; margin-top: -6px; }
+        .progress-fill { height: 100%; width: 0%; border-radius: 999px; background: linear-gradient(90deg, var(--accent-purple), var(--accent-blue)); box-shadow: 0 0 12px rgba(168,85,247,0.5); transition: width 0.45s cubic-bezier(0.34,1.1,0.64,1); }
+
+        .op-feed { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+        .op-chip { font-family: var(--mono); font-size: 11px; font-weight: 700; padding: 4px 9px; border-radius: 8px; border: 1px solid var(--border-main); color: var(--text-dim); background: rgba(255,255,255,0.03); transition: all 0.3s; white-space: nowrap; }
+        .op-chip.done { opacity: 0.45; }
+        .op-chip.current { color: #fff; border-color: rgba(168,85,247,0.6); background: rgba(168,85,247,0.16); box-shadow: 0 0 12px rgba(168,85,247,0.3); }
+
+        .narration { background: var(--bg-surface); border: 1px solid rgba(168,85,247,0.22); border-radius: 12px; padding: 12px 18px; font-family: var(--mono); font-size: 14px; line-height: 1.5; color: #ede9fe; min-height: 48px; display: flex; align-items: center; gap: 10px; transition: border-color 0.3s, background 0.3s; }
+        .narration::before { content: '\25B8'; color: var(--accent-purple); font-size: 13px; }
+        .narration.done { border-color: rgba(34,197,94,0.4); background: rgba(34,197,94,0.06); }
+        .narration.done::before { content: '\2713'; color: var(--accent-green); }
+        .narration code { background: rgba(168,85,247,0.14); color: #d8b4fe; padding: 1px 6px; border-radius: 5px; font-size: 12.5px; }
+        .narration b { color: #fff; }
+
+        .stage-card { background: var(--bg-surface); border: 1px solid var(--border-main); border-radius: 18px; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); box-shadow: 0 12px 38px rgba(0,0,0,0.4); overflow: hidden; }
+        .stage-screen { position: relative; margin: 14px; border-radius: 14px; background: radial-gradient(700px 300px at 50% -10%, rgba(168,85,247,0.08), transparent 70%), #090d18; border: 1px solid rgba(255,255,255,0.06); }
+
+        /* two heaps side by side */
+        .heaps-wrap { display: flex; gap: 0; align-items: stretch; }
+        .heap-col { flex: 1 1 0; min-width: 0; position: relative; padding: 4px 4px 0; }
+        .heap-col.left  { border-right: 1px dashed rgba(255,255,255,0.10); }
+        .heap-head { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 12px 8px 4px; font-family: var(--mono); font-size: 11px; font-weight: 800; letter-spacing: 1px; text-transform: uppercase; }
+        .heap-head.lo { color: #d8b4fe; }
+        .heap-head.hi { color: #a5f3fc; }
+        .heap-head .pip { width: 8px; height: 8px; border-radius: 50%; }
+        .heap-head.lo .pip { background: var(--accent-purple); box-shadow: 0 0 8px var(--accent-purple); }
+        .heap-head.hi .pip { background: var(--accent-blue); box-shadow: 0 0 8px var(--accent-blue); }
+        .heap-head .cnt { color: var(--text-dim); font-weight: 700; letter-spacing: 0; text-transform: none; }
+
+        .tree-stage { position: relative; width: 100%; height: 196px; overflow: auto; scrollbar-width: thin; }
+        .tree-stage::-webkit-scrollbar { height: 7px; width: 7px; }
+        .tree-stage::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 8px; }
+        .tree-canvas { position: relative; margin: 0 auto; }
+        .edges { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; z-index: 1; }
+        .edge-ln { stroke-width: 2.2; fill: none; opacity: 0.4; transition: stroke 0.3s, opacity 0.3s; }
+        .edge-ln.lo { stroke: var(--accent-purple); }
+        .edge-ln.hi { stroke: var(--accent-blue); }
+        .edge-ln.active { stroke: var(--accent-orange); opacity: 1; filter: drop-shadow(0 0 6px rgba(245,165,36,0.6)); }
+
+        .hnode { position: absolute; width: 42px; height: 42px; margin: -21px 0 0 -21px; display: flex; align-items: center; justify-content: center;
+            border-radius: 50%; font-family: var(--mono); font-weight: 800; font-size: 16px;
+            border: 2px solid var(--border-main); background: rgba(255,255,255,0.06); color: var(--text-main);
+            z-index: 2; will-change: transform; transition: background 0.35s, border-color 0.35s, color 0.35s, box-shadow 0.35s, opacity 0.35s; }
+        .hnode.root.lo { border-color: var(--accent-purple); }
+        .hnode.root.hi { border-color: var(--accent-blue); }
+        .hnode.cur { border-color: var(--accent-purple); background: rgba(168,85,247,0.16); color: #e9d5ff; box-shadow: 0 0 20px rgba(168,85,247,0.55); }
+        .hnode.cmp { border-color: var(--accent-blue); background: rgba(6,182,212,0.16); color: #a5f3fc; box-shadow: 0 0 20px rgba(6,182,212,0.5); }
+        .hnode.swap { border-color: var(--accent-orange); background: rgba(245,165,36,0.18); color: #ffd591; box-shadow: 0 0 22px rgba(245,165,36,0.6); }
+        .hnode.new { border-color: var(--accent-orange); background: rgba(245,165,36,0.16); color: #ffd591; box-shadow: 0 0 22px rgba(245,165,36,0.55); }
+        .hnode.median { border-color: var(--accent-green); background: rgba(34,197,94,0.18); color: #bbf7d0; box-shadow: 0 0 22px rgba(34,197,94,0.6); }
+        .hnode.ghost { opacity: 0.32; border-style: dashed; }
+        .hnode.evict { border-color: var(--accent-red); background: rgba(244,63,94,0.16); color: #fecdd3; box-shadow: 0 0 22px rgba(244,63,94,0.55); }
+        .hnode .idx { position: absolute; top: -8px; right: -8px; min-width: 14px; height: 14px; padding: 0 3px; border-radius: 8px; background: rgba(10,15,28,0.85); color: var(--text-dim); font-size: 9px; font-weight: 800; display: flex; align-items: center; justify-content: center; border: 1px solid var(--border-main); }
+        .hnode .strike { position: absolute; left: 4px; right: 4px; top: 50%; height: 2px; background: var(--accent-red); transform: scaleX(0); transform-origin: left; transition: transform 0.3s; }
+        .hnode.ghost .strike { transform: scaleX(1); }
+
+        .array-zone { padding: 2px 12px 10px; }
+        .array-label { font-family: var(--mono); font-size: 10px; font-weight: 700; letter-spacing: 0.6px; color: var(--text-dim); text-align: center; margin-bottom: 8px; }
+        .array-rail { display: flex; gap: 5px; justify-content: center; flex-wrap: wrap; min-height: 38px; }
+        .acell { width: 38px; height: 38px; border-radius: 9px; display: flex; align-items: center; justify-content: center; position: relative;
+            font-family: var(--mono); font-weight: 800; font-size: 14px; border: 2px solid var(--border-main); background: rgba(255,255,255,0.04); color: var(--text-main);
+            transition: background 0.35s, border-color 0.35s, color 0.35s, box-shadow 0.35s, opacity 0.35s; }
+        .acell.cur { border-color: var(--accent-purple); background: rgba(168,85,247,0.16); color: #e9d5ff; box-shadow: 0 0 14px rgba(168,85,247,0.45); }
+        .acell.cmp { border-color: var(--accent-blue); background: rgba(6,182,212,0.14); color: #a5f3fc; }
+        .acell.swap { border-color: var(--accent-orange); background: rgba(245,165,36,0.16); color: #ffd591; }
+        .acell.median { border-color: var(--accent-green); background: rgba(34,197,94,0.14); color: #bbf7d0; }
+        .acell.ghost { opacity: 0.3; border-style: dashed; }
+        .acell .ai { position: absolute; bottom: -15px; left: 0; right: 0; text-align: center; font-size: 9px; color: var(--text-dim); font-weight: 700; }
+        .empty-note { color: var(--text-dim); font-family: var(--mono); font-size: 12px; }
+
+        /* lazy-delete + median strip */
+        .strip { display: flex; gap: 12px; padding: 10px 16px 14px; border-top: 1px solid rgba(255,255,255,0.06); flex-wrap: wrap; align-items: center; justify-content: space-between; }
+        .lazy-box { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+        .lazy-cap { font-family: var(--mono); font-size: 11px; font-weight: 700; letter-spacing: 0.5px; color: var(--accent-red); }
+        .lazy-tile { min-width: 30px; height: 28px; padding: 0 7px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-family: var(--mono); font-size: 13px; font-weight: 800; border: 2px dashed var(--accent-red); background: rgba(244,63,94,0.10); color: #fecdd3; transition: all 0.3s; }
+        .lazy-empty { font-family: var(--mono); font-size: 12px; color: var(--text-dim); }
+        .median-box { display: flex; align-items: center; gap: 9px; }
+        .median-cap { font-family: var(--mono); font-size: 11px; font-weight: 700; letter-spacing: 0.5px; color: var(--text-dim); }
+        .median-val { min-width: 46px; height: 34px; padding: 0 10px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-family: var(--mono); font-size: 17px; font-weight: 800; border: 2px solid var(--border-main); background: rgba(255,255,255,0.04); color: var(--text-dim); transition: all 0.35s; }
+        .median-val.live { border-color: var(--accent-green); background: rgba(34,197,94,0.14); color: #bbf7d0; box-shadow: 0 0 16px rgba(34,197,94,0.4); }
+
+        .action-stage { position: relative; min-height: 46px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; }
+        .action-word { font-family: var(--mono); font-weight: 800; font-size: 18px; letter-spacing: 0.4px; min-height: 22px; text-align: center; transition: color 0.3s; }
+        #confetti { position: absolute; inset: 0; overflow: visible; pointer-events: none; }
+        .confetti-piece { position: absolute; top: 0; left: 50%; width: 8px; height: 13px; border-radius: 2px; opacity: 0; animation: confettiFall ease-out forwards; }
+
+        .controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: center; }
+        .controls .kbd-hint { font-size: 11px; color: var(--text-dim); font-family: var(--mono); margin-left: 4px; }
+        .kbd { background: rgba(255,255,255,0.07); border: 1px solid var(--border-main); border-radius: 5px; padding: 1px 6px; font-size: 10px; }
+        input[type="range"] { accent-color: var(--accent-purple); width: 110px; cursor: pointer; }
+
+        .details-toggle { align-self: center; height: 32px; padding: 0 16px; border-radius: 999px; cursor: pointer; background: rgba(255,255,255,0.04); border: 1px solid var(--border-main); color: var(--text-dim); font-family: var(--mono); font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; gap: 8px; transition: color 0.2s, border-color 0.2s, background 0.2s; }
+        .details-toggle:hover { color: var(--text-main); border-color: rgba(168,85,247,0.4); background: rgba(168,85,247,0.06); }
+        .details-toggle .chev { transition: transform 0.3s ease; }
+        .details-wrap.open .details-toggle .chev { transform: rotate(180deg); }
+        .details-body { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.4s ease; }
+        .details-wrap.open .details-body { grid-template-rows: 1fr; }
+        .details-inner { overflow: hidden; min-height: 0; }
+        .details-grid { display: flex; flex-direction: column; gap: 14px; padding-top: 14px; }
+
+        .panel-card { background: var(--bg-surface); border: 1px solid var(--border-main); border-radius: 16px; backdrop-filter: blur(10px); box-shadow: 0 8px 30px rgba(0,0,0,0.35); }
+        .panel-head { display: flex; align-items: center; gap: 8px; padding: 11px 16px; border-bottom: 1px solid var(--border-main); font-size: 11px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; color: var(--text-dim); }
+        .panel-head .pip { width: 7px; height: 7px; border-radius: 50%; background: var(--accent-purple); box-shadow: 0 0 8px var(--accent-purple); }
+        .code-body { padding: 12px 6px 14px; font-family: var(--mono); font-size: 12.5px; line-height: 1.7; }
+        .code-line { display: flex; gap: 12px; padding: 1px 16px; border-left: 2px solid transparent; transition: background 0.3s, border-color 0.3s; white-space: pre; }
+        .code-line .lno { color: #4b5772; width: 16px; text-align: right; user-select: none; }
+        .code-line .src { color: #c4cee0; }
+        .code-line .kw { color: #c792ea; }
+        .code-line .fn { color: #82aaff; }
+        .code-line.active { background: rgba(168,85,247,0.12); border-left-color: var(--accent-purple); }
+        .code-line.active .src, .code-line.active .lno { color: #e8eefb; }
+
+        .log-panel { border-radius: 14px; padding: 12px 16px; height: 110px; overflow-y: auto; font-family: var(--mono); font-size: 12.5px; line-height: 1.5; background: var(--bg-surface); border: 1px solid var(--border-main); }
+        .log-panel::-webkit-scrollbar { width: 8px; }
+        .log-panel::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 8px; }
+
+        @keyframes confettiFall { 0%{ opacity:1; transform: translate(-50%, 0) rotate(0deg); } 100%{ opacity:0; transform: translate(calc(-50% + var(--x)), 220px) rotate(var(--rot)); } }
+        @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; } }
+    </style>
+</head>
+<body>
+
+    <div class="input-bar">
+        <input type="number" id="val-input" placeholder="value" min="0" max="99">
+        <button class="op-btn ins" onclick="doOp('insert')">Insert</button>
+        <button class="op-btn del" onclick="doOp('delete')">Delete</button>
+        <button class="op-btn med" onclick="doOp('findMedian')">Find&nbsp;Median</button>
+        <span class="ui-label" style="opacity:.5">|</span>
+        <button onclick="loadExample(0)">Example 1</button>
+        <button onclick="loadExample(1)">Example 2</button>
+        <button onclick="resetSim()">&#8634; Reset</button>
+    </div>
+
+    <div class="shell">
+        <div class="title-row">
+            <h1>Median with Deletion <span class="sub">&middot; max-heap (lower half) + min-heap (upper half) &middot; lazy deletion &middot; median = heap tops</span></h1>
+            <span class="step-badge" id="step-badge">Step 1 / 1</span>
+        </div>
+        <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+
+        <div class="op-feed" id="op-feed"></div>
+
+        <div class="narration" id="main-panel">&mdash;</div>
+
+        <div class="stage-card">
+            <div class="stage-screen">
+                <div class="heaps-wrap">
+                    <div class="heap-col left" id="col-lo">
+                        <div class="heap-head lo"><span class="pip"></span> low &middot; max-heap <span class="cnt" id="cnt-lo">(0)</span></div>
+                        <div class="tree-stage" id="stage-lo">
+                            <div class="tree-canvas" id="canvas-lo"><svg class="edges" id="edges-lo"></svg></div>
+                        </div>
+                        <div class="array-zone">
+                            <div class="array-label">max-heap array &middot; top = largest of lower half</div>
+                            <div class="array-rail" id="rail-lo"></div>
+                        </div>
+                    </div>
+                    <div class="heap-col right" id="col-hi">
+                        <div class="heap-head hi"><span class="pip"></span> high &middot; min-heap <span class="cnt" id="cnt-hi">(0)</span></div>
+                        <div class="tree-stage" id="stage-hi">
+                            <div class="tree-canvas" id="canvas-hi"><svg class="edges" id="edges-hi"></svg></div>
+                        </div>
+                        <div class="array-zone">
+                            <div class="array-label">min-heap array &middot; top = smallest of upper half</div>
+                            <div class="array-rail" id="rail-hi"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="strip">
+                    <div class="lazy-box">
+                        <span class="lazy-cap">to-delete set</span>
+                        <span id="lazy-list" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"></span>
+                    </div>
+                    <div class="median-box">
+                        <span class="median-cap">median</span>
+                        <span class="median-val" id="median-val">&mdash;</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="action-stage">
+            <div id="confetti"></div>
+            <div class="action-word" id="action-word"></div>
+        </div>
+
+        <div class="controls">
+            <button onclick="resetSim()">&#8634; Reset</button>
+            <button onclick="prevStep()">&#8592; Back</button>
+            <button onclick="togglePlay()" id="play-btn">Play</button>
+            <button onclick="nextStep()">Next &#8594;</button>
+            <span class="ui-label" style="margin-left:6px; font-size:11px">Speed</span>
+            <input type="range" id="speed" min="0" max="2" value="1">
+            <span class="kbd-hint"><span class="kbd">&#8592;</span> <span class="kbd">&#8594;</span> step &middot; <span class="kbd">space</span> play</span>
+        </div>
+
+        <div class="details-wrap" id="details-wrap">
+            <button class="details-toggle" onclick="toggleDetails()" aria-expanded="false">
+                <span id="details-label">Show code &amp; log</span> <span class="chev">&#9662;</span>
+            </button>
+            <div class="details-body">
+                <div class="details-inner">
+                    <div class="details-grid">
+                        <div class="panel-card">
+                            <div class="panel-head"><span class="pip"></span> Algorithm</div>
+                            <div class="code-body" id="code-panel"></div>
+                        </div>
+                        <div class="log-panel" id="log"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        'use strict';
+
+        // ───────── Motion engine ─────────
+        const REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        const FRAME = 1000 / 60;
+        function sampleSpring(stiffness, damping, mass) {
+            const dt = 1 / 60; let x = 1, v = 0; const out = [];
+            for (let i = 0; i < 240; i++) { const a = (-stiffness * x - damping * v) / mass; v += a * dt; x += v * dt; out.push(1 - x); if (Math.abs(x) < 0.0015 && Math.abs(v) < 0.0015) break; }
+            out.push(1); return out;
+        }
+        const SPRING_POS = sampleSpring(320, 30, 1);
+        const SPRING_POP = sampleSpring(520, 17, 1);
+        const durOf = (a) => a.length * FRAME;
+        const Motion = {
+            move(el, x, y) {
+                const px = el._x, py = el._y;
+                const commit = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px)`;
+                if (REDUCED || px == null || (Math.abs(x - px) < 0.5 && Math.abs(y - py) < 0.5)) { el._x = x; el._y = y; el.style.transform = commit; return; }
+                const dx = x - px, dy = y - py;
+                const kf = SPRING_POS.map(p => ({ transform: `translate(${(px + dx * p).toFixed(1)}px, ${(py + dy * p).toFixed(1)}px)` }));
+                el.animate(kf, { duration: durOf(SPRING_POS), easing: 'linear' });
+                el._x = x; el._y = y; el.style.transform = commit;
+            },
+            pop(el) {
+                if (REDUCED) { el.style.opacity = '1'; return; }
+                const kf = SPRING_POP.map(p => ({ opacity: Math.min(1, p * 2).toFixed(3), transform: `translate(${el._x.toFixed(1)}px, ${el._y.toFixed(1)}px) scale(${(0.3 + 0.7 * p).toFixed(3)})` }));
+                const a = el.animate(kf, { duration: durOf(SPRING_POP), easing: 'linear' });
+                a.onfinish = () => { el.style.transform = `translate(${el._x.toFixed(1)}px, ${el._y.toFixed(1)}px)`; };
+            },
+        };
+
+        // ───────── State ─────────
+        let ops = [];          // [{type:'insert',value}|{type:'delete',value}|{type:'findMedian'}]
+        let steps = [];
+        let stepIdx = 0;
+        let timer = null;
+        let confettiArmed = true;
+        const delays = [1500, 820, 400];
+        // persistent DOM registries (keyed by stable ids), one map per heap side
+        const nodeEls = { lo: {}, hi: {} };
+        const edgeEls = { lo: {}, hi: {} };
+        const acellEls = { lo: {}, hi: {} };
+
+        const CODE = [
+            [['src','  lo = max-heap (lower half)   hi = min-heap (upper half)']],
+            [['src','  delayed = {}   # value -> pending-delete count']],
+            [['src','  def '],['fn','insert'],['src','(x):']],
+            [['kw','    if '],['src','not lo or x <= lo.top: lo.push(x)']],
+            [['kw','    else'],['src',': hi.push(x)']],
+            [['fn','    rebalance'],['src','()']],
+            [['src','  def '],['fn','delete'],['src','(x):  delayed[x] += 1  # lazy']],
+            [['kw','    if '],['src','x <= lo.top: loSize-- ; '],['fn','prune'],['src','(lo)']],
+            [['kw','    else'],['src',': hiSize-- ; '],['fn','prune'],['src','(hi)']],
+            [['fn','    rebalance'],['src','()']],
+            [['src','  def '],['fn','rebalance'],['src','():  keep loSize in {hiSize, hiSize+1}']],
+            [['src','  def '],['fn','prune'],['src','(h): while delayed[h.top]: pop & decrement']],
+            [['src','  def '],['fn','findMedian'],['src','():']],
+            [['kw','    return '],['src','lo.top if loSize>hiSize else (lo.top+hi.top)/2']],
+        ];
+        function buildCodePanel() {
+            const panel = document.getElementById('code-panel'); panel.innerHTML = '';
+            CODE.forEach((tokens, i) => {
+                const line = document.createElement('div'); line.className = 'code-line'; line.dataset.line = i;
+                const lno = document.createElement('span'); lno.className = 'lno'; lno.textContent = i + 1; line.appendChild(lno);
+                const src = document.createElement('span');
+                tokens.forEach(([cls, txt]) => { const s = document.createElement('span'); s.className = cls; s.textContent = txt; src.appendChild(s); });
+                line.appendChild(src); panel.appendChild(line);
+            });
+        }
+        function highlightCode(arr) { document.querySelectorAll('.code-line').forEach(el => el.classList.toggle('active', arr && arr.includes(+el.dataset.line))); }
+        function toggleDetails() {
+            const wrap = document.getElementById('details-wrap'); const open = wrap.classList.toggle('open');
+            wrap.querySelector('.details-toggle').setAttribute('aria-expanded', open ? 'true' : 'false');
+            document.getElementById('details-label').textContent = open ? 'Hide code & log' : 'Show code & log';
+        }
+
+        // ───────── heap helpers (lo = max-heap, hi = min-heap) ─────────
+        // Each heap is an array; we record steps as we sift. cmpLo: a should be ABOVE b when a > b (max-heap).
+        function parIdx(i){ return (i - 1) >> 1; }
+        function makeHeap(side){ return { side, a: [] }; }
+        // "better" = closer to the root for this heap's order
+        function better(side, x, y){ return side === 'lo' ? x > y : x < y; }
+
+        // ───────── step generation ─────────
+        // We model lazy deletion exactly: each heap holds raw values (including stale ones still pending delete);
+        // loSize/hiSize are the LOGICAL counts (valid elements only). delayed maps value->count of pending deletes.
+        function generateSteps() {
+            steps = [];
+            const lo = makeHeap('lo');   // max-heap of lower half
+            const hi = makeHeap('hi');   // min-heap of upper half
+            const delayed = {};          // value -> pending delete count
+            let loSize = 0, hiSize = 0;  // logical sizes (valid only)
+
+            // snapshot factory: deep-copies arrays + lazy set + median
+            const snap = (extra) => Object.assign({
+                lo: [...lo.a], hi: [...hi.a],
+                loSize, hiSize,
+                delayed: Object.assign({}, delayed),
+                curLo: -1, cmpLo: -1, swapLo: null, newLo: -1, medLo: -1, evictLo: -1,
+                curHi: -1, cmpHi: -1, swapHi: null, newHi: -1, medHi: -1, evictHi: -1,
+                opIdx: null, median: null, mover: null
+            }, extra);
+
+            // push: append + sift-up, emitting steps. `tag` marks the active heap's nodes.
+            function pushWithSteps(heap, x, oi, opLabel){
+                const side = heap.side; const A = heap.a;
+                A.push(x); let i = A.length - 1;
+                steps.push(snap({ opIdx: oi, code: side === 'lo' ? [3] : [4],
+                    [side === 'lo' ? 'newLo' : 'newHi']: i, [side === 'lo' ? 'curLo' : 'curHi']: i, mover: side,
+                    action: `${opLabel} ${x} → ${side === 'lo' ? 'max-heap' : 'min-heap'}`, actionColor: 'var(--accent-orange)',
+                    panel: `Route <code>${x}</code> into the <b>${side === 'lo' ? 'low max-heap' : 'high min-heap'}</b> at index <b>${i}</b>, then <b>sift up</b>.`,
+                    log: `  push ${x} -> ${side} @${i}` }));
+                while (i > 0){
+                    const p = parIdx(i);
+                    const ok = better(side, A[i], A[p]);
+                    steps.push(snap({ opIdx: oi, code: side === 'lo' ? [3] : [4],
+                        [side === 'lo' ? 'curLo' : 'curHi']: i, [side === 'lo' ? 'cmpLo' : 'cmpHi']: p,
+                        action: side === 'lo' ? `${A[i]} > ${A[p]} ?` : `${A[i]} < ${A[p]} ?`, actionColor: 'var(--accent-blue)',
+                        panel: `Sift-up: should <code>${A[i]}</code> rise above parent <code>${A[p]}</code>? ${ok ? '<span style="color:var(--accent-orange)">yes &#8594; swap.</span>' : '<span style="color:var(--accent-green)">no &#8594; settled.</span>'}`,
+                        log: `    cmp ${A[i]} vs ${A[p]}` }));
+                    if (!ok) break;
+                    [A[i], A[p]] = [A[p], A[i]];
+                    steps.push(snap({ opIdx: oi, code: side === 'lo' ? [3] : [4],
+                        [side === 'lo' ? 'swapLo' : 'swapHi']: [i, p], [side === 'lo' ? 'curLo' : 'curHi']: p,
+                        action: 'SWAP', actionColor: 'var(--accent-orange)',
+                        panel: `Swap up <code>${i}</code> &#8596; <code>${p}</code>, continue from <b>${p}</b>.`,
+                        log: `    swap ${i} <-> ${p}` }));
+                    i = p;
+                }
+            }
+
+            // siftDown after a root replacement (used by popTop)
+            function siftDownSteps(heap, oi){
+                const side = heap.side; const A = heap.a; let i = 0;
+                while (true){
+                    const l = 2*i+1, r = 2*i+2; let s = i;
+                    if (l < A.length && better(side, A[l], A[s])) s = l;
+                    if (r < A.length && better(side, A[r], A[s])) s = r;
+                    steps.push(snap({ opIdx: oi, code: [11],
+                        [side === 'lo' ? 'curLo' : 'curHi']: i, [side === 'lo' ? 'cmpLo' : 'cmpHi']: (s === i ? -1 : s),
+                        action: s === i ? 'settled' : `pick ${A[s]}`, actionColor: s === i ? 'var(--accent-green)' : 'var(--accent-blue)',
+                        panel: s === i ? `Node <b>${i}</b> (${A[i]}) is already in order &#8594; sift-down stops.` : `Sift-down: child <code>${A[s]}</code> belongs above <code>${A[i]}</code> &#8594; swap.`,
+                        log: `    sift ${side} i=${i} best=${s}` }));
+                    if (s === i) break;
+                    [A[i], A[s]] = [A[s], A[i]];
+                    steps.push(snap({ opIdx: oi, code: [11],
+                        [side === 'lo' ? 'swapLo' : 'swapHi']: [i, s], [side === 'lo' ? 'curLo' : 'curHi']: s,
+                        action: 'SWAP', actionColor: 'var(--accent-orange)',
+                        panel: `Swap down <code>${i}</code> &#8596; <code>${s}</code>.`, log: `    swap ${i} <-> ${s}` }));
+                    i = s;
+                }
+            }
+
+            // remove the physical root (top) of a heap: move last to root, sift down
+            function popTop(heap, oi){
+                const A = heap.a; if (A.length === 0) return;
+                const last = A.pop();
+                if (A.length > 0){ A[0] = last; siftDownSteps(heap, oi); }
+            }
+
+            // prune: while the top is a value pending lazy deletion, physically evict it.
+            function pruneSteps(heap, oi){
+                const side = heap.side; const A = heap.a;
+                while (A.length > 0 && delayed[A[0]] > 0){
+                    const v = A[0];
+                    delayed[v] -= 1; if (delayed[v] === 0) delete delayed[v];
+                    steps.push(snap({ opIdx: oi, code: [11],
+                        [side === 'lo' ? 'evictLo' : 'evictHi']: 0,
+                        action: `EVICT ${v}`, actionColor: 'var(--accent-red)',
+                        panel: `Top of the ${side === 'lo' ? 'max' : 'min'}-heap is <code>${v}</code>, which is in the <b>to-delete set</b> &#8594; physically pop it now (lazy eviction).`,
+                        log: `  evict ${v} from ${side} top` }));
+                    popTop(heap, oi);
+                }
+            }
+
+            // rebalance: keep loSize in {hiSize, hiSize+1}. Move a real element across, then prune both tops.
+            function rebalanceSteps(oi){
+                if (loSize > hiSize + 1){
+                    // move lo.top -> hi
+                    pruneSteps(lo, oi);
+                    const v = lo.a[0];
+                    steps.push(snap({ opIdx: oi, code: [10],
+                        curLo: 0, action: `BALANCE ${v} → hi`, actionColor: 'var(--accent-purple)',
+                        panel: `Low half has too many: move its top <code>${v}</code> over to the high min-heap so the halves stay even.`,
+                        log: `  rebalance ${v}: lo -> hi` }));
+                    popTop(lo, oi); loSize--;
+                    pushWithSteps(hi, v, oi, 'Move'); hiSize++;
+                } else if (hiSize > loSize){
+                    pruneSteps(hi, oi);
+                    const v = hi.a[0];
+                    steps.push(snap({ opIdx: oi, code: [10],
+                        curHi: 0, action: `BALANCE ${v} → lo`, actionColor: 'var(--accent-blue)',
+                        panel: `High half has too many: move its top <code>${v}</code> over to the low max-heap so the halves stay even.`,
+                        log: `  rebalance ${v}: hi -> lo` }));
+                    popTop(hi, oi); hiSize--;
+                    pushWithSteps(lo, v, oi, 'Move'); loSize++;
+                }
+                // always keep both tops valid
+                pruneSteps(lo, oi); pruneSteps(hi, oi);
+            }
+
+            function loTop(){ return lo.a.length ? lo.a[0] : null; }
+
+            // ---- intro ----
+            steps.push(snap({ code: [0, 1], action: 'TWO HEAPS', actionColor: 'var(--accent-purple)',
+                panel: `Keep the lower half in a <b>max-heap</b> (its top is the largest small value) and the upper half in a <b>min-heap</b> (its top is the smallest big value). The <b>median</b> sits at the heap tops. A <code>delayed</code> map lets <code>delete</code> mark values for <b>lazy</b> removal &#8594; we only evict them when they surface to a top.`,
+                log: `init  lo=[] hi=[] delayed={}` }));
+
+            ops.forEach((op, oi) => {
+                if (op.type === 'insert'){
+                    const x = op.value;
+                    steps.push(snap({ opIdx: oi, code: [2, 3, 4], action: 'INSERT ' + x, actionColor: 'var(--accent-orange)',
+                        panel: `<code>insert(${x})</code>: if the low max-heap is empty or <code>${x}</code> &#8804; its top, it joins the <b>low</b> half; otherwise the <b>high</b> half.`,
+                        log: `insert(${x})` }));
+                    const t = loTop();
+                    if (t === null || x <= t){ pushWithSteps(lo, x, oi, 'Insert'); loSize++; }
+                    else { pushWithSteps(hi, x, oi, 'Insert'); hiSize++; }
+                    steps.push(snap({ opIdx: oi, code: [5], action: 'rebalance', actionColor: 'var(--accent-purple)',
+                        panel: `Check balance: keep <code>loSize</code> equal to <code>hiSize</code> or one larger. <b>loSize=${loSize}</b>, <b>hiSize=${hiSize}</b>.`,
+                        log: `  rebalance? lo=${loSize} hi=${hiSize}` }));
+                    rebalanceSteps(oi);
+                } else if (op.type === 'delete'){
+                    const x = op.value;
+                    delayed[x] = (delayed[x] || 0) + 1;
+                    steps.push(snap({ opIdx: oi, code: [6], action: 'DELETE ' + x, actionColor: 'var(--accent-red)',
+                        panel: `<code>delete(${x})</code>: don't search the heaps &#8594; just add <code>${x}</code> to the <b>to-delete set</b> (lazy). We decide which half shrank by comparing to the low top.`,
+                        log: `delete(${x}) -> lazy mark` }));
+                    const t = loTop();
+                    if (t !== null && x <= t){
+                        loSize--;
+                        steps.push(snap({ opIdx: oi, code: [7], action: `${x} ≤ lo.top`, actionColor: 'var(--accent-purple)',
+                            panel: `<code>${x} &#8804; ${t}</code> (low top) &#8594; the value lived in the <b>low</b> half, so <code>loSize--</code> &#8594; <b>${loSize}</b>. Prune the low top if it is now stale.`,
+                            log: `  loSize-- = ${loSize}; prune lo` }));
+                        pruneSteps(lo, oi);
+                    } else {
+                        hiSize--;
+                        steps.push(snap({ opIdx: oi, code: [8], action: `${x} > lo.top`, actionColor: 'var(--accent-blue)',
+                            panel: `<code>${x} &gt; ${t === null ? '—' : t}</code> &#8594; the value lived in the <b>high</b> half, so <code>hiSize--</code> &#8594; <b>${hiSize}</b>. Prune the high top if it is now stale.`,
+                            log: `  hiSize-- = ${hiSize}; prune hi` }));
+                        pruneSteps(hi, oi);
+                    }
+                    steps.push(snap({ opIdx: oi, code: [9], action: 'rebalance', actionColor: 'var(--accent-purple)',
+                        panel: `After a deletion the halves may be uneven. Rebalance toward <code>loSize</code> &#8712; {<code>hiSize</code>, <code>hiSize</code>+1}. <b>loSize=${loSize}</b>, <b>hiSize=${hiSize}</b>.`,
+                        log: `  rebalance? lo=${loSize} hi=${hiSize}` }));
+                    rebalanceSteps(oi);
+                } else if (op.type === 'findMedian'){
+                    // ensure tops are valid before reading
+                    pruneSteps(lo, oi); pruneSteps(hi, oi);
+                    let median = null, medLo = -1, medHi = -1, txt;
+                    if (loSize === 0 && hiSize === 0){
+                        txt = `Both heaps are empty &#8594; no median.`;
+                    } else if (loSize > hiSize){
+                        median = lo.a[0]; medLo = 0;
+                        txt = `Odd count: <code>loSize ${loSize} &gt; hiSize ${hiSize}</code> &#8594; median is the <b>low max-heap top</b> = <b>${median}</b>.`;
+                    } else {
+                        median = (lo.a[0] + hi.a[0]) / 2; medLo = 0; medHi = 0;
+                        txt = `Even count: average the two tops &#8594; <code>(${lo.a[0]} + ${hi.a[0]}) / 2 = <b>${median}</b></code>.`;
+                    }
+                    steps.push(snap({ opIdx: oi, code: [12, 13], medLo, medHi, median,
+                        action: median === null ? 'EMPTY' : `MEDIAN = ${median}`, actionColor: median === null ? 'var(--accent-red)' : 'var(--accent-green)',
+                        panel: `<code>findMedian()</code>: ${txt}`,
+                        log: `findMedian() -> ${median === null ? 'None' : median}` }));
+                }
+            });
+
+            // final median for completion screen
+            let fm = null;
+            if (!(loSize === 0 && hiSize === 0)) fm = loSize > hiSize ? lo.a[0] : (lo.a[0] + hi.a[0]) / 2;
+            steps.push(snap({ complete: true, confetti: true, code: [12, 13], median: fm,
+                medLo: fm !== null && loSize > hiSize ? 0 : (fm !== null ? 0 : -1), medHi: fm !== null && loSize === hiSize ? 0 : -1,
+                action: '✓ DONE', actionColor: 'var(--accent-green)',
+                panel: `All operations done. lower half (max-heap) = <code>[${lo.a.join(', ') || ' '}]</code>, upper half (min-heap) = <code>[${hi.a.join(', ') || ' '}]</code>${fm !== null ? `. Current median = <b>${fm}</b>` : ''}. Each op stays O(log n) thanks to <b>lazy deletion</b>.`,
+                log: `done  lo=[${lo.a.join(', ')}] hi=[${hi.a.join(', ')}]` }));
+        }
+
+        // ───────── layout (complete binary tree by heap index) ─────────
+        const ROW = 50, PADY = 26;
+        function layout(n, width) {
+            if (n === 0) return { pos: [], height: 80 };
+            const pos = [];
+            for (let i = 0; i < n; i++) {
+                const L = Math.floor(Math.log2(i + 1));
+                const levelStart = Math.pow(2, L) - 1;
+                const posInLevel = i - levelStart;
+                const countInLevel = Math.pow(2, L);
+                const x = (posInLevel + 0.5) / countInLevel * width;
+                const y = L * ROW + PADY;
+                pos.push({ x, y });
+            }
+            const maxLevel = Math.floor(Math.log2(n));
+            const height = maxLevel * ROW + PADY * 2;
+            return { pos, height };
+        }
+
+        // ───────── render one heap side ─────────
+        function renderHeap(side, step) {
+            const arr = step[side];                       // value array
+            const n = arr.length;
+            const stage = document.getElementById('stage-' + side);
+            const canvas = document.getElementById('canvas-' + side);
+            const svg = document.getElementById('edges-' + side);
+            const width = Math.max(stage.clientWidth - 12, 200);
+            const { pos, height } = layout(n, width);
+            canvas.style.width = width + 'px';
+            canvas.style.height = Math.max(height, 80) + 'px';
+            svg.setAttribute('width', width); svg.setAttribute('height', Math.max(height, 80));
+
+            const cur = step['cur' + cap(side)], cmp = step['cmp' + cap(side)], nw = step['new' + cap(side)];
+            const med = step['med' + cap(side)], evi = step['evict' + cap(side)];
+            const swapSet = new Set(step['swap' + cap(side)] || []);
+            const delayed = step.delayed || {};
+
+            const reg = nodeEls[side];
+            const used = new Set();
+            for (let i = 0; i < n; i++) {
+                used.add('n:' + i);
+                let el = reg['n:' + i]; const fresh = !el;
+                if (!el) { el = document.createElement('div'); el.className = 'hnode'; el.innerHTML = `<span class="hv"></span><span class="idx"></span><span class="strike"></span>`; canvas.appendChild(el); reg['n:' + i] = el; }
+                el.querySelector('.hv').textContent = arr[i];
+                el.querySelector('.idx').textContent = i;
+                let cls = 'hnode ' + side + (i === 0 ? ' root' : '');
+                if (i === evi) cls += ' evict';
+                else if (swapSet.has(i)) cls += ' swap';
+                else if (i === med) cls += ' median';
+                else if (i === cur) cls += ' cur';
+                else if (i === cmp) cls += ' cmp';
+                if (i === nw) cls += ' new';
+                if (delayed[arr[i]] > 0 && i !== evi) cls += ' ghost';   // value is pending lazy delete
+                el.className = cls;
+                if (fresh) { el._x = pos[i].x; el._y = pos[i].y; el.style.transform = `translate(${pos[i].x}px, ${pos[i].y}px)`; el.style.opacity = '0'; Motion.pop(el); }
+                else Motion.move(el, pos[i].x, pos[i].y);
+            }
+            Object.keys(reg).forEach(k => { if (!used.has(k)) { reg[k].remove(); delete reg[k]; } });
+
+            // edges
+            const ereg = edgeEls[side]; const usedE = new Set();
+            for (let i = 1; i < n; i++) {
+                const p = (i - 1) >> 1; const key = 'e:' + i; usedE.add(key);
+                let ln = ereg[key];
+                if (!ln) { ln = document.createElementNS('http://www.w3.org/2000/svg', 'line'); svg.appendChild(ln); ereg[key] = ln; }
+                ln.setAttribute('x1', pos[p].x); ln.setAttribute('y1', pos[p].y); ln.setAttribute('x2', pos[i].x); ln.setAttribute('y2', pos[i].y);
+                const onPath = (swapSet.has(i) && swapSet.has(p)) || ((i === cur || i === cmp) && (p === cur || p === cmp));
+                ln.setAttribute('class', 'edge-ln ' + side + (onPath ? ' active' : ''));
+            }
+            Object.keys(ereg).forEach(k => { if (!usedE.has(k)) { ereg[k].remove(); delete ereg[k]; } });
+
+            // array rail
+            const rail = document.getElementById('rail-' + side);
+            const areg = acellEls[side]; const usedA = new Set();
+            if (n > 0) { const note = rail.querySelector('.empty-note'); if (note) note.remove(); }
+            for (let i = 0; i < n; i++) {
+                usedA.add('a:' + i);
+                let el = areg['a:' + i];
+                if (!el) { el = document.createElement('div'); el.className = 'acell'; el.innerHTML = `<span class="av"></span><span class="ai"></span>`; rail.appendChild(el); areg['a:' + i] = el; }
+                el.querySelector('.av').textContent = arr[i];
+                el.querySelector('.ai').textContent = i;
+                let cls = 'acell';
+                if (i === evi) cls += ' swap';
+                else if (swapSet.has(i)) cls += ' swap';
+                else if (i === med) cls += ' median';
+                else if (i === cur) cls += ' cur';
+                else if (i === cmp) cls += ' cmp';
+                if (delayed[arr[i]] > 0 && i !== evi) cls += ' ghost';
+                el.className = cls;
+            }
+            Object.keys(areg).forEach(k => { if (!usedA.has(k)) { areg[k].remove(); delete areg[k]; } });
+            if (n === 0 && !rail.querySelector('.empty-note')) rail.innerHTML = '<span class="empty-note">empty</span>';
+
+            document.getElementById('cnt-' + side).textContent = `(${side === 'lo' ? step.loSize : step.hiSize})`;
+        }
+        function cap(s){ return s === 'lo' ? 'Lo' : 'Hi'; }
+
+        // ───────── render ─────────
+        function renderStep(idx) {
+            stepIdx = idx; const step = steps[idx]; if (!step) return;
+
+            renderHeap('lo', step);
+            renderHeap('hi', step);
+
+            // lazy-delete set
+            const lazyList = document.getElementById('lazy-list'); lazyList.innerHTML = '';
+            const entries = Object.entries(step.delayed || {}).filter(([, c]) => c > 0);
+            if (entries.length === 0) { const e = document.createElement('span'); e.className = 'lazy-empty'; e.textContent = '∅ empty'; lazyList.appendChild(e); }
+            else entries.forEach(([v, c]) => { const t = document.createElement('div'); t.className = 'lazy-tile'; t.textContent = c > 1 ? `${v}×${c}` : v; lazyList.appendChild(t); });
+
+            // median display
+            const medEl = document.getElementById('median-val');
+            if (step.median !== null && step.median !== undefined) { medEl.textContent = step.median; medEl.classList.add('live'); }
+            else { medEl.textContent = '—'; medEl.classList.remove('live'); }
+
+            // narration / chrome
+            const mp = document.getElementById('main-panel');
+            mp.innerHTML = step.panel || '&mdash;';
+            mp.classList.toggle('done', !!step.complete);
+            const aw = document.getElementById('action-word'); aw.textContent = step.action || ''; aw.style.color = step.actionColor || 'var(--text-dim)';
+            highlightCode(step.code);
+
+            if (step.confetti) { if (confettiArmed) { fireConfetti(); confettiArmed = false; } } else confettiArmed = true;
+
+            renderOpFeed(step.opIdx);
+            document.getElementById('step-badge').textContent = `Step ${idx + 1} / ${steps.length}`;
+            document.getElementById('progress-fill').style.width = `${(idx / Math.max(1, steps.length - 1)) * 100}%`;
+
+            const logEl = document.getElementById('log');
+            logEl.innerHTML = steps.slice(0, idx + 1).map(s => `<div style="margin:3px 0;white-space:pre-wrap;">${s.log}</div>`).join('');
+            logEl.scrollTop = logEl.scrollHeight;
+        }
+
+        function renderOpFeed(currentOpIdx) {
+            const feed = document.getElementById('op-feed'); feed.innerHTML = '';
+            ops.forEach((op, i) => {
+                const chip = document.createElement('div');
+                const label = op.type === 'insert' ? 'ins ' + op.value : (op.type === 'delete' ? 'del ' + op.value : 'median');
+                chip.className = 'op-chip' + (currentOpIdx === i ? ' current' : (currentOpIdx != null && i < currentOpIdx ? ' done' : ''));
+                chip.textContent = label; feed.appendChild(chip);
+            });
+        }
+
+        function fireConfetti() {
+            const host = document.getElementById('confetti'); if (!host || REDUCED) return;
+            const colors = ['#22c55e', '#06b6d4', '#a855f7', '#f5a524', '#f43f5e'];
+            for (let i = 0; i < 38; i++) {
+                const p = document.createElement('div'); p.className = 'confetti-piece';
+                p.style.setProperty('--x', ((Math.random() * 2 - 1) * 220) + 'px');
+                p.style.setProperty('--rot', ((Math.random() * 720 - 360)) + 'deg');
+                p.style.background = colors[i % colors.length];
+                p.style.animationDuration = (0.9 + Math.random() * 0.8) + 's';
+                p.style.animationDelay = (Math.random() * 0.15) + 's';
+                host.appendChild(p); setTimeout(() => p.remove(), 1900);
+            }
+        }
+
+        // ───────── controls ─────────
+        function nextStep() { if (stepIdx < steps.length - 1) renderStep(stepIdx + 1); else pause(); }
+        function prevStep() { if (stepIdx > 0) renderStep(stepIdx - 1); }
+        function resetSim() { pause(); renderStep(0); }
+        function togglePlay() {
+            const btn = document.getElementById('play-btn');
+            if (timer) { pause(); return; }
+            btn.textContent = 'Pause';
+            if (stepIdx >= steps.length - 1) renderStep(0);
+            timer = setInterval(() => { if (stepIdx < steps.length - 1) nextStep(); else pause(); }, delays[document.getElementById('speed').value]);
+        }
+        function pause() { clearInterval(timer); timer = null; document.getElementById('play-btn').textContent = 'Play'; }
+
+        function clearDom() {
+            ['lo', 'hi'].forEach(side => {
+                Object.keys(nodeEls[side]).forEach(k => { nodeEls[side][k].remove(); delete nodeEls[side][k]; });
+                Object.keys(edgeEls[side]).forEach(k => { edgeEls[side][k].remove(); delete edgeEls[side][k]; });
+                Object.keys(acellEls[side]).forEach(k => { acellEls[side][k].remove(); delete acellEls[side][k]; });
+                document.getElementById('rail-' + side).innerHTML = '';
+            });
+            confettiArmed = true;
+        }
+        function loadOps(newOps) { pause(); ops = newOps; clearDom(); generateSteps(); renderStep(0); }
+        function doOp(type) {
+            const input = document.getElementById('val-input');
+            if (type === 'insert' || type === 'delete') {
+                const value = parseInt(input.value, 10);
+                if (isNaN(value)) { input.focus(); return; }
+                loadOps([...ops, { type, value }]);
+            } else {
+                loadOps([...ops, { type }]);
+            }
+            renderStep(steps.length - 1);
+            input.value = '';
+        }
+        function loadExample(n) {
+            const exs = [
+                // Example 1: insert(5), insert(3), findMedian(), delete(5), findMedian()
+                [ {type:'insert',value:5},{type:'insert',value:3},{type:'findMedian'},{type:'delete',value:5},{type:'findMedian'} ],
+                // Example 2: insert(10), insert(20), insert(30), delete(20), insert(5), findMedian()
+                [ {type:'insert',value:10},{type:'insert',value:20},{type:'insert',value:30},{type:'delete',value:20},{type:'insert',value:5},{type:'findMedian'} ],
+            ];
+            loadOps(exs[n]);
+        }
+
+        document.addEventListener('keydown', (e) => {
+            const tag = (e.target.tagName || '').toLowerCase(); if (tag === 'input' || tag === 'textarea') return;
+            if (e.key === 'ArrowRight') { e.preventDefault(); pause(); nextStep(); }
+            else if (e.key === 'ArrowLeft') { e.preventDefault(); pause(); prevStep(); }
+            else if (e.key === ' ') { e.preventDefault(); togglePlay(); }
+        });
+        document.getElementById('val-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') doOp('insert'); });
+        window.addEventListener('resize', () => renderStep(stepIdx));
+
+        buildCodePanel();
+        window.onload = () => loadExample(0);
+    </script>
+</body>
+</html>

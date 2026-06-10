@@ -1,0 +1,2425 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PyTorch Academy • Module 4 — The Training Loop</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Source+Serif+4:ital,opsz,wght@0,8..60,300;0,8..60,400;0,8..60,500;0,8..60,600;1,8..60,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.47.0/tabler-icons.min.css">
+<style>
+:root{
+  --bg:#08090b;
+  --bg-2:#0b0f1a;
+  --bg-3:#111827;
+  --panel:#0d1117;
+  --panel-2:#111827;
+  --line:#1e2330;
+  --line-2:#2a3142;
+  --ink:#e8eaed;
+  --ink-2:#a8aeb8;
+  --ink-3:#6b7280;
+  --ink-4:#454b58;
+  --accent:#6366f1;       /* indigo — primary accent */
+  --accent-2:#818cf8;
+  --accent-glow:rgba(99,102,241,0.18);
+  --plan:#f59e0b;        /* planning / cognition */
+  --tool:#10b981;        /* tool execution */
+  --observe:#8b5cf6;     /* observation */
+  --fail:#f7768e;
+  --success:#10b981;
+  --serif:'Source Serif 4', Georgia, serif;
+  --sans:'Outfit', -apple-system, sans-serif;
+  --mono:'JetBrains Mono', monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{
+  background:var(--bg);
+  color:var(--ink);
+  font-family:var(--sans);
+  font-weight:400;
+  line-height:1.6;
+  -webkit-font-smoothing:antialiased;
+  overflow-x:hidden;
+  min-height:100vh;
+  position:relative;
+}
+body::before{
+  content:'';position:fixed;inset:0;
+  background:
+    radial-gradient(ellipse 80% 50% at 42% -15%, rgba(99,102,241,0.1), transparent 60%),
+    radial-gradient(ellipse 60% 40% at 100% 100%, rgba(99,102,241,0.04), transparent 60%);
+  pointer-events:none;z-index:0;
+}
+body::after{
+  content:'';position:fixed;inset:0;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='300' height='300' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E");
+  background-size:300px 300px;
+  opacity:0.025;
+  pointer-events:none;z-index:0;
+}
+
+/* ============ STARFIELD ============ */
+.starfield {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  pointer-events: none;
+  z-index: -2;
+}
+.stars {
+  position: fixed;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  z-index: -1;
+  pointer-events: none;
+}
+.star {
+  position: absolute;
+  background: #fff;
+  border-radius: 50%;
+  opacity: 0.3;
+  animation: twinkle var(--dur, 4s) ease-in-out infinite;
+}
+@keyframes twinkle {
+  0%, 100% { opacity: 0.1; }
+  50% { opacity: 0.6; }
+}
+
+/* ============== LAYOUT ============== */
+.shell{position:relative;z-index:1;display:grid;grid-template-columns:280px 1fr;min-height:100vh}
+.sidebar{
+  position:sticky;top:0;height:100vh;
+  border-right:1px solid transparent;
+  background:linear-gradient(180deg, rgba(13,17,23,0.92) 0%, rgba(8,9,11,0.96) 100%);
+  backdrop-filter:blur(20px) saturate(1.4);
+  -webkit-backdrop-filter:blur(20px) saturate(1.4);
+  padding:36px 22px 28px;
+  overflow-y:auto;
+  box-shadow:inset -1px 0 0 rgba(255,255,255,0.04), 1px 0 32px rgba(0,0,0,0.5);
+  display:flex;flex-direction:column;
+}
+/* Left accent spine as pseudo */
+.sidebar::before{
+  position:absolute;left:0;top:0;bottom:0;width:2px;
+  background:linear-gradient(180deg,
+    transparent 0%,
+    rgba(99,102,241,0.5) 20%,
+    rgba(99,102,241,0.3) 60%,
+    transparent 100%);
+  pointer-events:none;z-index:2;
+}
+.sidebar::-webkit-scrollbar{width:3px}
+.sidebar::-webkit-scrollbar-track{background:transparent}
+.sidebar::-webkit-scrollbar-thumb{background:linear-gradient(180deg, var(--accent), transparent);border-radius:3px;opacity:0.5}
+.brand{
+  display:flex;align-items:center;gap:10px;margin-bottom:8px;
+  position:relative;
+}
+/* #3 — top glow arc behind brand */
+.brand::before{
+  content:'';
+  position:absolute;top:-28px;left:-22px;right:-22px;height:90px;
+  background:radial-gradient(ellipse 70% 60% at 40% 0%, rgba(99,102,241,0.18), transparent 70%);
+  pointer-events:none;z-index:0;
+  border-radius:50%;
+}
+.brand > *{position:relative;z-index:1}
+.brand-mark{
+  width:36px;height:36px;border-radius:8px;
+  background:transparent;
+  display:grid;place-items:center;
+  overflow:hidden;
+  flex-shrink:0;
+}
+.brand-mark img, .brand-mark i{
+  font-size:24px;
+  color:var(--accent-2);
+  display:block;
+}
+.brand-name{font-size:13px;font-weight:600;letter-spacing:0.02em}
+.brand-sub{font-size:11px;color:var(--ink-3);margin-top:2px;letter-spacing:0.04em}
+/* #6 — brand divider hairline */
+.brand-divider{
+  height:1px;
+  margin:18px 0 4px;
+  background:linear-gradient(90deg, transparent 0%, rgba(99,102,241,0.25) 40%, rgba(99,102,241,0.25) 60%, transparent 100%);
+}
+.module-tag{
+  margin-top:24px;padding:13px 15px;
+  background:linear-gradient(135deg, rgba(99,102,241,0.06) 0%, rgba(13,17,23,0.9) 100%);
+  border:1px solid rgba(99,102,241,0.18);
+  border-radius:9px;
+  box-shadow:0 1px 12px rgba(0,0,0,0.25);
+}
+.module-tag-label{font-size:10px;color:var(--ink-3);letter-spacing:0.04em;margin-bottom:4px}
+.module-tag-title{font-family:var(--serif);font-size:13px;color:var(--ink);font-weight:400}
+.toc{margin-top:24px}
+.toc-label{font-size:10px;color:var(--ink-3);letter-spacing:0.05em;margin-bottom:12px;padding-left:10px}
+.toc a{
+  display:flex;align-items:center;gap:10px;
+  padding:9px 11px;color:var(--ink-2);text-decoration:none;font-size:13px;
+  border-radius:6px;border-left:2px solid transparent;
+  transition:background 0.18s ease, color 0.18s ease, border-color 0.18s ease;
+  position:relative;
+}
+.toc a:hover{
+  background:rgba(255,255,255,0.03);
+  color:var(--ink);
+}
+.toc a.active{
+  background:linear-gradient(90deg, rgba(99,102,241,0.12) 0%, transparent 100%);
+  color:var(--accent);
+  border-left-color:var(--accent);
+  box-shadow:inset 0 0 0 1px rgba(99,102,241,0.08);
+}
+/* #7 — past TOC items fade */
+.toc a.past{
+  opacity:0.38;
+  color:var(--ink-4);
+}
+.toc a.past .toc-num{color:var(--ink-4)}
+.toc-num{font-family:var(--mono);font-size:11px;color:var(--ink-4);width:24px;transition:color 0.18s}
+.toc a.active .toc-num{color:var(--accent-2)}
+.progress-rail{
+  margin-top:28px;padding:15px 16px;
+  background:linear-gradient(135deg, rgba(99,102,241,0.05) 0%, rgba(13,17,23,0.8) 100%);
+  border:1px solid rgba(99,102,241,0.14);
+  border-radius:9px;
+  box-shadow:0 1px 10px rgba(0,0,0,0.2);
+}
+.progress-bar{
+  height:3px;background:rgba(255,255,255,0.05);border-radius:2px;overflow:hidden;margin-top:10px;
+  box-shadow:inset 0 1px 2px rgba(0,0,0,0.4);
+}
+.progress-fill{
+  height:100%;width:0%;
+  background:linear-gradient(90deg, var(--accent), var(--accent-2));
+  transition:width 0.5s cubic-bezier(0.4,0,0.2,1);
+  box-shadow:0 0 8px rgba(99,102,241,0.5);
+}
+.progress-text{font-size:11px;color:var(--ink-3);font-family:var(--serif)}
+
+.main{padding:80px 80px 200px;max-width:980px}
+@media (max-width: 1100px){
+  .shell{grid-template-columns:1fr}
+  .sidebar{position:relative;height:auto;border-right:none;border-bottom:1px solid var(--line)}
+  .main{padding:48px 32px 120px}
+}
+
+/* ============== HERO ============== */
+.hero{margin-bottom:80px;position:relative;text-align:left;padding:0;max-width:100%}
+.hero-meta{
+  display:inline-flex;align-items:center;gap:0;
+  margin-bottom:36px;
+  font-family:var(--mono);font-size:11px;color:var(--ink-3);letter-spacing:0.05em;
+  background:linear-gradient(135deg, rgba(99,102,241,0.07) 0%, rgba(13,17,23,0.6) 100%);
+  border:1px solid rgba(99,102,241,0.2);
+  border-radius:100px;
+  padding:7px 16px;
+  backdrop-filter:blur(8px);
+  box-shadow:0 0 0 1px rgba(255,255,255,0.03), 0 4px 24px rgba(0,0,0,0.3), 0 0 32px rgba(99,102,241,0.06);
+}
+.hero-meta span{white-space:nowrap;padding:0 2px}
+.hero-meta .dot{
+  width:5px;height:5px;border-radius:50%;
+  background:var(--accent);
+  box-shadow:0 0 6px rgba(99,102,241,0.8), 0 0 12px rgba(99,102,241,0.4);
+  flex-shrink:0;margin:0 10px;
+}
+.hero-meta .sep{
+  width:1px;height:10px;
+  background:rgba(255,255,255,0.08);
+  flex-shrink:0;margin:0 12px;
+}
+.hero-meta .track-label{color:var(--accent-2);font-weight:500}
+.hero-meta .level-badge{
+  padding:2px 9px;
+  background:rgba(99,102,241,0.12);
+  border:1px solid rgba(99,102,241,0.25);
+  border-radius:100px;
+  color:var(--accent-2);
+  font-weight:600;
+  font-size:10px;
+  letter-spacing:0.08em;
+  margin-left:4px;
+}
+.hero h1{
+  font-family:var(--serif);font-weight:400;font-size:clamp(40px, 5.5vw, 68px);
+  line-height:1.05;letter-spacing:-0.022em;margin-bottom:24px;
+}
+.hero h1 em, .hero h1 .accent{font-style:italic;color:var(--accent);font-weight:300;background:none;-webkit-text-fill-color:initial;text-fill-color:initial}
+.hero-lede, .hero .subtitle{
+  font-family:var(--serif);font-size:21px;line-height:1.55;color:var(--ink-2);
+  max-width:680px;font-weight:300;margin: 0;
+}
+.hero-stats{
+  display:grid;grid-template-columns:repeat(4,1fr);gap:2px;
+  margin-top:48px;background:var(--line);border:1px solid var(--line);border-radius:9px;overflow:hidden;
+}
+.hero-stat{background:var(--panel);padding:20px 22px;text-align:left}
+.hero-stat-num{font-family:var(--serif);font-size:28px;font-weight:500;color:var(--accent);line-height:1}
+.hero-stat-label{font-size:11px;color:var(--ink-3);margin-top:6px;letter-spacing:0.03em}
+@media (max-width:700px){.hero-stats{grid-template-columns:repeat(2,1fr)}}
+
+/* ============== SECTIONS ============== */
+.section{margin-bottom:88px;scroll-margin-top:100px}
+section:nth-child(3n){margin-bottom:104px}
+section:nth-child(2n){margin-bottom:96px}
+.section-head{margin-bottom:28px;padding-bottom:18px;border-bottom:1px solid var(--line)}
+.section-num{font-family:var(--mono);font-size:11px;color:var(--accent);letter-spacing:0.15em}
+.section-title, .section h2{
+  font-family:var(--serif);font-size:36px;font-weight:400;line-height:1.15;
+  letter-spacing:-0.01em;margin-top:8px;margin-bottom:8px;
+  display:flex;align-items:center;gap:14px;color:var(--ink);
+}
+.section h2::before{
+  content:'';
+  width:4px;
+  height:28px;
+  background:linear-gradient(180deg, var(--accent), var(--accent-2));
+  border-radius:2px;
+}
+.section-sub{font-size:15px;color:var(--ink-3);margin-top:12px;max-width:680px}
+
+p{font-family:var(--serif);font-size:17px;line-height:1.73;color:var(--ink-2);margin-bottom:20px;font-weight:300}
+p strong{color:var(--ink);font-weight:500}
+p em{color:var(--accent);font-style:italic}
+
+/* Goal Callout matches Marevlo callout standard */
+.goal-callout {
+  max-width: 980px;
+  margin: 20px 0 60px;
+  padding: 22px 28px;
+  background: linear-gradient(135deg, rgba(99,102,241,0.06), rgba(99,102,241,0.02));
+  border-left: 2px solid var(--accent);
+  border-radius: 0 7px 7px 0;
+  position: relative;
+}
+.goal-callout::before {
+  display:none;
+}
+.goal-callout h3 {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+  font-weight:600;
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.goal-callout p {
+  margin: 0;
+  font-size: 16px;
+  color: var(--ink);
+}
+
+.callout{
+  margin:32px 0;padding:22px 28px;
+  background:linear-gradient(135deg, rgba(99,102,241,0.06), rgba(99,102,241,0.02));
+  border-left:2px solid var(--accent);border-radius:0 7px 7px 0;
+  display:flex;
+  gap:16px;
+  align-items:flex-start;
+}
+.callout i{
+  font-size:20px;
+  margin-top:2px;
+  flex-shrink:0;
+}
+.callout-content{flex:1}
+.callout-title{
+  font-family:var(--mono);font-size:11px;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:8px;
+  font-weight:600;
+}
+.callout p{margin:0;font-size:16px;color:var(--ink)}
+
+/* Callout variants */
+.callout-tip{
+  background:linear-gradient(135deg, rgba(16,185,129,0.06), rgba(16,185,129,0.02));
+  border-left-color:var(--success);
+}
+.callout-tip i, .callout-tip .callout-title{color:var(--success)}
+
+.callout-warn{
+  background:linear-gradient(135deg, rgba(245,158,11,0.06), rgba(245,158,11,0.02));
+  border-left-color:var(--plan);
+}
+.callout-warn i, .callout-warn .callout-title{color:var(--plan)}
+
+.callout-info{
+  background:linear-gradient(135deg, rgba(99,102,241,0.06), rgba(99,102,241,0.02));
+  border-left-color:var(--accent);
+}
+.callout-info i, .callout-info .callout-title{color:var(--accent)}
+
+.callout-danger{
+  background:linear-gradient(135deg, rgba(247,118,142,0.06), rgba(247,118,142,0.02));
+  border-left-color:var(--fail);
+}
+.callout-danger i, .callout-danger .callout-title{color:var(--fail)}
+
+h3{font-family:var(--sans);font-size:20px;font-weight:600;margin:48px 0 16px;letter-spacing:-0.005em;color:var(--ink)}
+h4{font-family:var(--sans);font-size:15px;font-weight:600;margin:24px 0 12px;color:var(--ink);text-transform:uppercase;letter-spacing:0.06em}
+
+ul,ol{margin:16px 0 20px 0;padding-left:24px}
+li{font-family:var(--serif);font-size:17px;line-height:1.68;color:var(--ink-2);margin-bottom:10px;font-weight:300}
+li strong{color:var(--ink);font-weight:500}
+
+/* ============== CODE BLOCKS ============== */
+.code-block {
+  background:#06070a;
+  border:1px solid var(--line);
+  border-radius:8px;
+  margin:20px 0;
+  overflow:hidden;
+  position:relative;
+}
+.code-header {
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  padding:10px 18px;
+  background:rgba(255,255,255,0.02);
+  border-bottom:1px solid var(--line);
+}
+.code-lang {
+  font-size:11px;
+  color:var(--accent-2);
+  font-family:var(--mono);
+  letter-spacing:1px;
+  text-transform:uppercase;
+  font-weight:600;
+}
+.code-copy {
+  background:transparent;
+  border:1px solid var(--line-2);
+  color:var(--ink-2);
+  padding:4px 10px;
+  border-radius:5px;
+  font-size:11px;
+  cursor:pointer;
+  display:flex;
+  align-items:center;
+  gap:4px;
+  transition:all 0.15s;
+}
+.code-copy:hover {
+  background:rgba(255,255,255,0.04);
+  color:var(--ink);
+  border-color:var(--accent);
+}
+.code-block pre {
+  padding:18px 20px;
+  overflow-x:auto;
+  font-family:var(--mono);
+  font-size:13px;
+  line-height:1.65;
+}
+.code-block pre code {
+  color:#c8d3e0;
+  background:none;
+  padding:0;
+  border:none;
+}
+.section code:not(pre code) {
+  background: rgba(99, 102, 241, 0.08);
+  color: var(--accent-2);
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-family: var(--mono);
+  font-size: 13px;
+  border: 1px solid rgba(99, 102, 241, 0.18);
+}
+.kw{color:#8b5cf6}
+.fn{color:#818cf8}
+.st{color:#10b981}
+.co{color:#6b7280;font-style:italic}
+.cls{color:#f59e0b}
+.op{color:#67e8f9}
+
+/* === Output Blocks === */
+.output {
+  background:rgba(0,0,0,0.4);
+  border-left:3px solid var(--accent);
+  padding:14px 18px;
+  margin:8px 0 20px;
+  font-family:var(--mono);
+  font-size:12.5px;
+  color:var(--ink-2);
+  border-radius:0 8px 8px 0;
+  white-space:pre-wrap;
+  overflow-x:auto;
+}
+.output::before {
+  content:'output';
+  display:block;
+  font-size:10px;
+  color:var(--accent-2);
+  letter-spacing:1.5px;
+  margin-bottom:6px;
+  text-transform:uppercase;
+  font-weight:600;
+}
+
+/* === Tables === */
+.table-wrap{overflow-x:auto;margin:24px 0}
+table{
+  width:100%;
+  border-collapse:collapse;
+  background:var(--bg-2);
+  border:1px solid var(--line);
+  border-radius:9px;
+  overflow:hidden;
+  font-size:14px;
+}
+thead{
+  background:rgba(99,102,241,0.06);
+}
+th{
+  text-align:left;
+  padding:12px 14px;
+  color:var(--accent-2);
+  font-weight:600;
+  letter-spacing:0.02em;
+  border-bottom:1px solid var(--line-2);
+  font-size:13px;
+  font-family:var(--sans);
+}
+td{
+  padding:11px 14px;
+  border-bottom:1px solid var(--line);
+  color:var(--ink-2);
+  vertical-align:top;
+  font-family:var(--serif);
+  font-weight:300;
+}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:rgba(99,102,241,0.02)}
+td code{font-size:12px}
+
+/* ============== INTERACTIVE WIDGETS ============== */
+.widget {
+  margin:40px 0;
+  background:var(--panel);
+  border:1px solid var(--line);
+  border-radius:11px;
+  padding:28px;
+  position:relative;
+}
+.widget::before {
+  content: 'INTERACTIVE';
+  position: absolute;
+  top: -10px;
+  left: 20px;
+  background: var(--bg);
+  padding: 2px 10px;
+  font-size: 10px;
+  letter-spacing: 2px;
+  color: var(--accent-2);
+  border: 1px solid var(--accent);
+  border-radius: 10px;
+  font-weight: 600;
+  font-family:var(--mono);
+}
+.widget-title {
+  font-family:var(--sans);
+  font-size:16px;
+  font-weight:600;
+  color:var(--ink);
+  margin-bottom:6px;
+  letter-spacing:0.02em;
+  display:flex;
+  align-items:center;
+  gap:10px;
+}
+.widget-title::before {
+  content:'';
+  width:6px;
+  height:6px;
+  border-radius:50%;
+  background:var(--accent);
+  box-shadow:0 0 8px var(--accent-glow);
+}
+.widget-subtitle {
+  font-size:13px;
+  color:var(--ink-3);
+  margin-bottom:18px;
+}
+.controls {
+  display:flex;
+  flex-direction:column;
+  gap:14px;
+  margin-bottom:18px;
+}
+.ctrl-row {
+  display:flex;
+  align-items:center;
+  gap:14px;
+  flex-wrap:wrap;
+}
+.ctrl-label {
+  font-family:var(--sans);
+  font-size:12px;
+  color:var(--ink-2);
+  min-width:130px;
+  letter-spacing:0.02em;
+  text-transform:uppercase;
+  font-weight:500;
+}
+.ctrl-value {
+  font-size:13px;
+  color:var(--accent-2);
+  font-family:var(--mono);
+  min-width:70px;
+  text-align:right;
+  font-weight:600;
+}
+input[type="range"] {
+  flex:1;
+  accent-color:var(--accent);
+  height:4px;
+  background:var(--line-2);
+  border-radius:2px;
+  appearance:none;
+  outline:none;
+}
+input[type="range"]::-webkit-slider-thumb {
+  appearance:none;
+  width:16px;
+  height:16px;
+  border-radius:50%;
+  background:var(--accent-2);
+  cursor:pointer;
+  box-shadow:0 0 12px var(--accent-glow);
+}
+input[type="range"]::-moz-range-thumb {
+  width:16px;
+  height:16px;
+  border-radius:50%;
+  background:var(--accent-2);
+  cursor:pointer;
+  border:none;
+}
+.btn-row { display:flex; gap:8px; flex-wrap:wrap; }
+.pill-btn {
+  background:var(--bg-3);
+  color:var(--ink-2);
+  border:1px solid var(--line-2);
+  padding:7px 16px;
+  border-radius:8px;
+  font-size:12px;
+  cursor:pointer;
+  font-family:var(--mono);
+  font-weight:500;
+  transition:all 0.15s;
+}
+.pill-btn:hover {
+  background:var(--panel-2);
+  color:var(--ink);
+  border-color:var(--accent);
+}
+.pill-btn.active {
+  background:var(--accent);
+  color:#ffffff;
+  border-color:var(--accent);
+  box-shadow:0 0 15px var(--accent-glow);
+  font-weight:600;
+}
+.tensor-grid {
+  display:inline-grid;
+  gap:4px;
+  padding:16px;
+  background:rgba(0,0,0,0.3);
+  border-radius:10px;
+  border:1px solid var(--line);
+}
+.tcell {
+  width:36px;
+  height:36px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-size:10px;
+  font-family:var(--mono);
+  border-radius:4px;
+  font-weight:500;
+  transition:all 0.3s;
+}
+.viz-out {
+  margin-top:16px;
+  font-family:var(--mono);
+  font-size:13px;
+  color:var(--ink-2);
+  padding:14px 18px;
+  background:var(--bg-3);
+  border-radius:6px;
+  border-left:2px solid var(--accent);
+  white-space:pre-wrap;
+}
+.chart-box {
+  position:relative;
+  height:260px;
+  margin:16px 0 8px;
+  background:rgba(0,0,0,0.2);
+  border-radius:8px;
+  padding:8px;
+  border:1px solid var(--line);
+}
+.legend {
+  display:flex;
+  gap:18px;
+  font-size:11px;
+  color:var(--ink-3);
+  margin-top:10px;
+  flex-wrap:wrap;
+  font-family:var(--mono);
+}
+.legend-dot {
+  display:inline-block;
+  width:10px;
+  height:10px;
+  border-radius:50%;
+  margin-right:6px;
+  vertical-align:middle;
+}
+.graph-svg-wrap {
+  background:rgba(0,0,0,0.3);
+  border-radius:10px;
+  padding:16px;
+  margin:12px 0;
+  border:1px solid var(--line);
+}
+.metric-grid {
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(110px,1fr));
+  gap:10px;
+  margin:14px 0;
+}
+.metric {
+  background:rgba(0,0,0,0.3);
+  border:1px solid var(--line);
+  border-radius:8px;
+  padding:12px;
+}
+.metric-label {
+  font-family:var(--mono);
+  font-size:10px;
+  color:var(--ink-3);
+  text-transform:uppercase;
+  letter-spacing:1px;
+}
+.metric-value {
+  font-family:var(--mono);
+  font-size:18px;
+  color:var(--accent-2);
+  margin-top:4px;
+  font-weight:600;
+}
+
+/* ============ REFERENCES SECTION ============ */
+.references {
+  max-width:980px;
+  margin:80px auto 60px;
+  padding:0;
+}
+.refs-header {
+  text-align:center;
+  margin-bottom:40px;
+}
+.refs-header h2 {
+  font-family:var(--serif);
+  font-size:48px;
+  font-weight:400;
+  margin-bottom:12px;
+}
+.refs-header h2 .cyan-text { color:var(--ink) }
+.refs-header h2 .accent {
+  color:var(--accent);
+}
+.refs-header p {
+  color:var(--ink-3);
+  font-size:15px;
+  font-family:var(--serif);
+}
+.ref-card {
+  background:var(--panel);
+  border:1px solid var(--line);
+  border-radius:12px;
+  padding:24px 28px;
+  margin-bottom:22px;
+  display:flex;
+  gap:24px;
+  align-items:flex-start;
+  transition:all 0.2s;
+}
+.ref-card:hover {
+  border-color:var(--accent);
+  box-shadow:0 4px 24px var(--accent-glow);
+}
+.ref-card.pink-card { border-color:var(--line); }
+.ref-card.pink-card:hover {
+  border-color:var(--observe);
+  box-shadow:0 4px 24px rgba(139,92,246,0.12);
+}
+.ref-icon {
+  width:56px;
+  height:56px;
+  border-radius:12px;
+  background:rgba(99,102,241,0.08);
+  border:1px solid rgba(99,102,241,0.2);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-size:24px;
+  color:var(--accent-2);
+  flex-shrink:0;
+}
+.ref-card.pink-card .ref-icon {
+  background:rgba(139,92,246,0.08);
+  border-color:rgba(139,92,246,0.2);
+  color:var(--observe);
+}
+.ref-body { flex:1 }
+.ref-type {
+  font-family:var(--mono);
+  font-size:10px;
+  color:var(--ink-3);
+  font-weight:600;
+  letter-spacing:0.1em;
+  text-transform:uppercase;
+  margin-bottom:6px;
+}
+.ref-tagline {
+  font-size:14px;
+  color:var(--ink-2);
+  margin-bottom:12px;
+  font-family:var(--serif);
+  font-weight:300;
+}
+.ref-title {
+  font-family:var(--sans);
+  font-size:17px;
+  color:var(--ink);
+  font-weight:600;
+  margin-bottom:16px;
+}
+.ref-btn {
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  padding:8px 18px;
+  background:var(--bg-3);
+  border:1px solid var(--line-2);
+  color:var(--ink-2);
+  border-radius:6px;
+  font-size:12px;
+  font-weight:600;
+  letter-spacing:0.02em;
+  text-decoration:none;
+  transition:all 0.15s;
+  text-transform:uppercase;
+  font-family:var(--mono);
+}
+.ref-btn:hover {
+  background:var(--panel-2);
+  color:var(--ink);
+  border-color:var(--accent);
+}
+.ref-card.pink-card .ref-btn:hover {
+  border-color:var(--observe);
+}
+
+/* ============ SUMMARY TABLE ============ */
+.summary-box {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  padding: 24px;
+  margin: 20px 0;
+}
+
+/* ============ NEXT MODULE ============ */
+.module-nav{
+  margin-top:80px;padding:32px;
+  background:linear-gradient(135deg, var(--panel), var(--panel-2));
+  border:1px solid var(--line);border-radius:14px;
+  display:flex;justify-content:space-between;align-items:center;gap:24px;
+}
+.module-nav-label{font-family:var(--mono);font-size:10px;color:var(--ink-3);letter-spacing:0.15em;text-transform:uppercase}
+.module-nav-title{font-family:var(--serif);font-size:24px;font-weight:400;margin-top:6px}
+.module-nav-cta{
+  padding:12px 22px;background:var(--accent);color:#ffffff;
+  border-radius:8px;text-decoration:none;font-weight:600;font-size:13px;
+  white-space:nowrap;transition:all 0.15s;
+}
+.module-nav-cta:hover{background:var(--accent-2);transform:translateX(2px)}
+
+
+
+/* Sticky badge — moved to sidebar footer */
+.sidebar-footer{
+  margin-top:auto;
+  padding-top:24px;
+  border-top:1px solid rgba(255,255,255,0.04);
+}
+.depth-badge{
+  display:flex;align-items:center;gap:9px;
+  padding:11px 13px;
+  background:linear-gradient(135deg, rgba(99,102,241,0.06) 0%, rgba(13,17,23,0.8) 100%);
+  border:1px solid rgba(99,102,241,0.14);
+  border-radius:9px;
+  font-size:11px;font-family:var(--mono);
+  color:var(--ink-3);letter-spacing:0.03em;
+  box-shadow:0 1px 10px rgba(0,0,0,0.2);
+}
+.depth-badge .pulse{
+  width:5px;height:5px;flex-shrink:0;border-radius:50%;background:var(--accent);
+  box-shadow:0 0 6px rgba(99,102,241,0.7);
+  animation:pulse 2s infinite;
+}
+.depth-badge .badge-text{color:var(--ink-3);line-height:1.4}
+.depth-badge .badge-text strong{display:block;color:var(--ink-2);font-weight:500;font-size:11px;margin-bottom:1px}
+@keyframes pulse{0%,100%{opacity:0.5;transform:scale(1)}50%{opacity:1;transform:scale(1.3)}}
+
+/* Selection */
+::selection{background:var(--accent);color:#1a1a1a}
+
+/* Animation utilities */
+@keyframes fadeIn{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
+.fade-in{animation:fadeIn 0.6s ease forwards}
+
+/* Responsive type */
+@media(max-width:680px){
+  .hero h1{font-size:36px}
+  .hero-lede, .hero .subtitle{font-size:17px}
+  .section-title{font-size:26px}
+  p,li{font-size:16px}
+  .main{padding:40px 20px 80px}
+}
+</style>
+</head>
+<body>
+
+<div class="starfield"></div>
+<div class="stars" id="stars"></div>
+
+<div class="shell">
+<!-- ============ SIDEBAR ============ -->
+<aside class="sidebar">
+  <div class="brand">
+    <div class="brand-mark"><i class="ti ti-atom-2"></i></div>
+    <div>
+      <div class="brand-name">PyTorch Academy</div>
+      <div class="brand-sub">Data Science Track</div>
+    </div>
+  </div>
+  <div class="brand-divider"></div>
+  <div class="module-tag">
+    <div class="module-tag-label">Track 1 · Module 4.0</div>
+    <div class="module-tag-title">The Training Loop</div>
+  </div>
+  <nav class="toc">
+    <div class="toc-label">In this module</div>
+    <a href="#sec-1" class="toc-link active"><span class="toc-num">01</span>Loop</a>
+    <a href="#sec-2" class="toc-link"><span class="toc-num">02</span>Loss</a>
+    <a href="#sec-3" class="toc-link"><span class="toc-num">03</span>Optimisers</a>
+    <a href="#sec-4" class="toc-link"><span class="toc-num">04</span>LR Sched</a>
+    <a href="#sec-5" class="toc-link"><span class="toc-num">05</span>Grad Tricks</a>
+    <a href="#sec-6" class="toc-link"><span class="toc-num">06</span>Early Stop</a>
+    <a href="#sec-7" class="toc-link"><span class="toc-num">07</span>Debug</a>
+    <a href="#sec-project" class="toc-link"><span class="toc-num">08</span>Project</a>
+  </nav>
+  <div class="progress-rail">
+    <div class="progress-text">Reading progress</div>
+    <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+  </div>
+  <div class="sidebar-footer">
+    <div class="depth-badge">
+      <span class="pulse"></span>
+      <div class="badge-text">
+        <strong>Marevlo &middot; Premium Track</strong>
+        Track 1 · Module 4.0
+      </div>
+    </div>
+  </div>
+</aside>
+
+<!-- ============ MAIN CONTENT AREA ============ -->
+<main class="main">
+
+<!-- HERO -->
+<header class="hero">
+  <div class="hero-meta">
+    <span class="track-label">Track 1 · Data Science</span>
+    <span class="sep"></span>
+    <span>Module 4.0</span>
+    <span class="sep"></span>
+    <span>Course 01</span>
+    <span class="sep"></span>
+    <span class="level-badge">Core Bedrock</span>
+  </div>
+  <h1>The <em>Training Loop.</em></h1>
+  <p class="subtitle">Forward → Loss → Backward → Step, Done Right. The most important module — write a training loop you'd actually use in production.</p>
+  <div class="hero-stats">
+    <div class="hero-stat"><div class="hero-stat-num">8</div><div class="hero-stat-label">Module sections</div></div>
+    <div class="hero-stat"><div class="hero-stat-num">6</div><div class="hero-stat-label">Interactive widgets</div></div>
+    <div class="hero-stat"><div class="hero-stat-num">1</div><div class="hero-stat-label">Mini projects</div></div>
+    <div class="hero-stat"><div class="hero-stat-num">100%</div><div class="hero-stat-label">Vectorised code</div></div>
+  </div>
+</header>
+
+<div class="goal-callout">
+  <h3><i class="ti ti-target"></i> MODULE GOAL</h3>
+  <p>Write a training loop you'd actually use in production. Understand loss functions, optimisers, learning rate schedules, gradient clipping, mixed precision, and how to diagnose when training goes wrong. End with a full tabular DS model trained end-to-end.</p>
+</div>
+
+<div class="content">
+
+  <!-- ============ SECTION 1 ============ -->
+  <section class="section" id="sec-1">
+    <div class="section-num">SECTION 01</div>
+    <h2>The Canonical Training Loop</h2>
+
+    <h3>The Four Steps — Every Time, In Order</h3>
+    <p>This never changes. Every training loop you write, ever, follows this structure.</p>
+
+    <!-- INTERACTIVE WIDGET 1: Animated Step Walkthrough -->
+    <div class="widget">
+      <div class="widget-title">The Five-Step Loop Walkthrough</div>
+      <div class="widget-subtitle">Step through one iteration of the canonical training loop. Each card highlights what's happening at that step.</div>
+      <div class="steps-row">
+        <div class="step-card" data-step="0">
+          <div class="step-num">STEP 1</div>
+          <div class="step-name">zero_grad()</div>
+          <div class="step-desc">Clear old gradients</div>
+        </div>
+        <div class="step-card" data-step="1">
+          <div class="step-num">STEP 2</div>
+          <div class="step-name">forward</div>
+          <div class="step-desc">model(X) → output</div>
+        </div>
+        <div class="step-card" data-step="2">
+          <div class="step-num">STEP 3</div>
+          <div class="step-name">loss</div>
+          <div class="step-desc">criterion(out, y)</div>
+        </div>
+        <div class="step-card" data-step="3">
+          <div class="step-num">STEP 4</div>
+          <div class="step-name">backward()</div>
+          <div class="step-desc">Compute gradients</div>
+        </div>
+        <div class="step-card" data-step="4">
+          <div class="step-num">STEP 5</div>
+          <div class="step-name">step()</div>
+          <div class="step-desc">Update weights</div>
+        </div>
+      </div>
+      <div class="btn-row" style="justify-content:center;margin-top:10px;">
+        <button class="pill-btn" id="step-play"><i class="ti ti-player-play"></i> Play full loop</button>
+        <button class="pill-btn" id="step-next">Step forward</button>
+        <button class="pill-btn" id="step-reset">Reset</button>
+      </div>
+      <div class="viz-out" id="step-out">Click "Play full loop" or "Step forward" to walk through one iteration.</div>
+    </div>
+
+    <h4>Real-World Analogy: A Student Sitting Exams</h4>
+    <ol>
+      <li><strong style="color:var(--cyan-soft);">Zero grad</strong> — forget last week's exam feedback.</li>
+      <li><strong style="color:var(--cyan-soft);">Forward pass</strong> — sit the exam (make predictions).</li>
+      <li><strong style="color:var(--cyan-soft);">Loss</strong> — get your score (how wrong were you?).</li>
+      <li><strong style="color:var(--cyan-soft);">Backward pass</strong> — analyse which answers were wrong and why.</li>
+      <li><strong style="color:var(--cyan-soft);">Optimizer step</strong> — adjust your study approach based on feedback. Repeat until the exam score is good.</li>
+    </ol>
+
+    <div class="code-block">
+      <div class="code-header"><span class="code-lang">python</span><button class="code-copy"><i class="ti ti-copy"></i> Copy</button></div>
+<pre><code><span class="kw">import</span> torch
+<span class="kw">import</span> torch.nn <span class="kw">as</span> nn
+<span class="kw">import</span> torch.nn.functional <span class="kw">as</span> F
+
+torch.<span class="fn">manual_seed</span>(<span class="st">42</span>)
+
+<span class="co"># --- Minimal working training loop template ---</span>
+<span class="kw">def</span> <span class="fn">train_one_epoch</span>(model, loader, optimizer, criterion, device):
+    model.<span class="fn">train</span>()
+    total_loss = <span class="st">0.0</span>
+
+    <span class="kw">for</span> X_batch, y_batch <span class="kw">in</span> loader:
+        X_batch = X_batch.<span class="fn">to</span>(device)
+        y_batch = y_batch.<span class="fn">to</span>(device)
+
+        optimizer.<span class="fn">zero_grad</span>()                       <span class="co"># Step 1: clear gradients</span>
+        output = <span class="fn">model</span>(X_batch)                     <span class="co"># Step 2: forward pass</span>
+        loss   = <span class="fn">criterion</span>(output, y_batch)         <span class="co"># Step 3: compute loss</span>
+        loss.<span class="fn">backward</span>()                              <span class="co"># Step 4: backward pass</span>
+        optimizer.<span class="fn">step</span>()                             <span class="co"># Step 5: update weights</span>
+
+        total_loss += loss.<span class="fn">item</span>() * <span class="fn">len</span>(X_batch)
+
+    <span class="kw">return</span> total_loss / <span class="fn">len</span>(loader.dataset)
+
+
+<span class="kw">def</span> <span class="fn">evaluate</span>(model, loader, criterion, device):
+    model.<span class="fn">eval</span>()
+    total_loss, correct = <span class="st">0.0</span>, <span class="st">0</span>
+
+    <span class="kw">with</span> torch.<span class="fn">no_grad</span>():
+        <span class="kw">for</span> X_batch, y_batch <span class="kw">in</span> loader:
+            X_batch = X_batch.<span class="fn">to</span>(device)
+            y_batch = y_batch.<span class="fn">to</span>(device)
+            output = <span class="fn">model</span>(X_batch)
+            loss   = <span class="fn">criterion</span>(output, y_batch)
+            total_loss += loss.<span class="fn">item</span>() * <span class="fn">len</span>(X_batch)
+            correct    += (output.<span class="fn">argmax</span>(<span class="st">1</span>) == y_batch).<span class="fn">sum</span>().<span class="fn">item</span>()
+
+    n = <span class="fn">len</span>(loader.dataset)
+    <span class="kw">return</span> total_loss / n, correct / n
+
+<span class="fn">print</span>(<span class="st">"Training loop template defined."</span>)</code></pre>
+    </div>
+    <div class="output">Training loop template defined.</div>
+  </section>
+
+  <!-- ============ SECTION 2 ============ -->
+  <section class="section" id="sec-2">
+    <div class="section-num">SECTION 02</div>
+    <h2>Loss Functions</h2>
+
+    <h3>CrossEntropyLoss — Multi-Class Classification</h3>
+    <div class="code-block">
+      <div class="code-header"><span class="code-lang">python</span><button class="code-copy"><i class="ti ti-copy"></i> Copy</button></div>
+<pre><code><span class="co"># CrossEntropyLoss = LogSoftmax + NLLLoss in one step</span>
+<span class="co"># Input: logits of shape (N, C) — raw scores, NOT probabilities</span>
+<span class="co"># Target: class indices of shape (N,) — integers in [0, C-1]</span>
+
+criterion = nn.<span class="fn">CrossEntropyLoss</span>()
+
+logits = torch.<span class="fn">tensor</span>([[<span class="st">2.0</span>, <span class="st">1.0</span>, <span class="st">0.5</span>],      <span class="co"># Sample 0 → likely class 0</span>
+                       [<span class="st">0.1</span>, <span class="st">3.0</span>, <span class="st">0.2</span>],      <span class="co"># Sample 1 → likely class 1</span>
+                       [<span class="st">0.2</span>, <span class="st">0.1</span>, <span class="st">4.0</span>]])     <span class="co"># Sample 2 → likely class 2</span>
+targets = torch.<span class="fn">tensor</span>([<span class="st">0</span>, <span class="st">1</span>, <span class="st">2</span>])
+
+loss = <span class="fn">criterion</span>(logits, targets)
+<span class="fn">print</span>(<span class="st">"CrossEntropy loss:"</span>, loss.<span class="fn">item</span>())     <span class="co"># Should be low — correct predictions</span>
+
+<span class="co"># Wrong predictions → high loss</span>
+targets_wrong = torch.<span class="fn">tensor</span>([<span class="st">2</span>, <span class="st">0</span>, <span class="st">1</span>])
+loss_wrong = <span class="fn">criterion</span>(logits, targets_wrong)
+<span class="fn">print</span>(<span class="st">"Wrong prediction loss:"</span>, loss_wrong.<span class="fn">item</span>())</code></pre>
+    </div>
+    <div class="output">CrossEntropy loss: 0.20523333549499512
+Wrong prediction loss: 2.97189998626709</div>
+
+    <h3>BCEWithLogitsLoss — Binary Classification</h3>
+    <div class="code-block">
+      <div class="code-header"><span class="code-lang">python</span><button class="code-copy"><i class="ti ti-copy"></i> Copy</button></div>
+<pre><code><span class="co"># BCEWithLogitsLoss = Sigmoid + BCELoss in one step</span>
+<span class="co"># Numerically more stable than applying sigmoid manually then BCELoss</span>
+<span class="co"># Input: raw logits of shape (N,) or (N, 1)</span>
+<span class="co"># Target: float labels of shape (N,) — 0.0 or 1.0</span>
+
+criterion_bce = nn.<span class="fn">BCEWithLogitsLoss</span>()
+
+logits_bin  = torch.<span class="fn">tensor</span>([<span class="st">2.5</span>, -<span class="st">1.0</span>, <span class="st">0.3</span>, -<span class="st">2.0</span>])   <span class="co"># Raw scores</span>
+targets_bin = torch.<span class="fn">tensor</span>([<span class="st">1.0</span>, <span class="st">0.0</span>, <span class="st">1.0</span>, <span class="st">0.0</span>])    <span class="co"># True binary labels</span>
+
+loss_bce = <span class="fn">criterion_bce</span>(logits_bin, targets_bin)
+<span class="fn">print</span>(<span class="st">"BCEWithLogits loss:"</span>, loss_bce.<span class="fn">item</span>())</code></pre>
+    </div>
+    <div class="output">BCEWithLogits loss: 0.2683587074279785</div>
+
+    <h3>MSELoss and HuberLoss — Regression</h3>
+
+    <!-- INTERACTIVE WIDGET 2: MSE vs Huber Sensitivity -->
+    <div class="widget">
+      <div class="widget-title">MSE vs Huber — Outlier Sensitivity</div>
+      <div class="widget-subtitle">Drag the outlier slider to see how MSE blows up while Huber stays robust. Adjust delta to control where Huber transitions from quadratic to linear.</div>
+      <div class="controls">
+        <div class="ctrl-row">
+          <span class="ctrl-label">Outlier residual</span>
+          <input type="range" id="outlier" min="0" max="100" value="0" step="1">
+          <span class="ctrl-value" id="outlier-v">0</span>
+        </div>
+        <div class="ctrl-row">
+          <span class="ctrl-label">Huber δ (delta)</span>
+          <input type="range" id="hdelta" min="0.5" max="3" value="1" step="0.1">
+          <span class="ctrl-value" id="hdelta-v">1.0</span>
+        </div>
+      </div>
+      <div class="chart-box"><canvas id="huber-chart"></canvas></div>
+      <div class="legend">
+        <span><span class="legend-dot" style="background:var(--pink);"></span>MSE loss curve</span>
+        <span><span class="legend-dot" style="background:var(--cyan);"></span>Huber loss curve</span>
+      </div>
+      <div class="metric-grid">
+        <div class="metric"><div class="metric-label">MSE total</div><div class="metric-value" id="m-mse" style="color:var(--pink);">0.288</div></div>
+        <div class="metric"><div class="metric-label">Huber total</div><div class="metric-value" id="m-huber">0.144</div></div>
+        <div class="metric"><div class="metric-label">MSE / Huber ratio</div><div class="metric-value" id="m-ratio">2.0×</div></div>
+      </div>
+    </div>
+
+    <div class="code-block">
+      <div class="code-header"><span class="code-lang">python</span><button class="code-copy"><i class="ti ti-copy"></i> Copy</button></div>
+<pre><code>mse   = nn.<span class="fn">MSELoss</span>()
+huber = nn.<span class="fn">HuberLoss</span>(delta=<span class="st">1.0</span>)      <span class="co"># Less sensitive to outliers than MSE</span>
+
+predictions = torch.<span class="fn">tensor</span>([<span class="st">2.5</span>, <span class="st">0.0</span>, <span class="st">2.1</span>, <span class="st">7.8</span>])
+targets_reg = torch.<span class="fn">tensor</span>([<span class="st">3.0</span>, -<span class="st">0.5</span>, <span class="st">2.0</span>, <span class="st">7.0</span>])
+
+<span class="fn">print</span>(<span class="st">"MSE loss:  "</span>, <span class="fn">mse</span>(predictions, targets_reg).<span class="fn">item</span>())
+<span class="fn">print</span>(<span class="st">"Huber loss:"</span>, <span class="fn">huber</span>(predictions, targets_reg).<span class="fn">item</span>())
+
+<span class="co"># Why Huber > MSE for data science?</span>
+<span class="co"># Add an outlier</span>
+predictions_with_outlier = torch.<span class="fn">cat</span>([predictions, torch.<span class="fn">tensor</span>([<span class="st">100.0</span>])])
+targets_with_outlier     = torch.<span class="fn">cat</span>([targets_reg,    torch.<span class="fn">tensor</span>([<span class="st">1.0</span>])])
+
+<span class="fn">print</span>(<span class="st">"\nWith outlier:"</span>)
+<span class="fn">print</span>(<span class="st">"MSE:  "</span>, <span class="fn">mse</span>(predictions_with_outlier, targets_with_outlier).<span class="fn">item</span>())
+<span class="fn">print</span>(<span class="st">"Huber:"</span>, <span class="fn">huber</span>(predictions_with_outlier, targets_with_outlier).<span class="fn">item</span>())
+<span class="co"># MSE blows up; Huber stays reasonable</span></code></pre>
+    </div>
+    <div class="output">MSE loss:    0.2875000834465027
+Huber loss:  0.14375004172325134
+
+With outlier:
+MSE:    1960.429931640625
+Huber:  19.814998626708984</div>
+
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Loss</th><th>Use Case</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td><code>CrossEntropyLoss</code></td><td>Multi-class classification</td><td>Input = raw logits, not softmax</td></tr>
+          <tr><td><code>BCEWithLogitsLoss</code></td><td>Binary classification</td><td>Preferred over BCE + Sigmoid</td></tr>
+          <tr><td><code>MSELoss</code></td><td>Regression</td><td>Sensitive to outliers</td></tr>
+          <tr><td><code>HuberLoss</code></td><td>Robust regression</td><td>Best for real-world noisy targets</td></tr>
+          <tr><td><code>NLLLoss</code></td><td>Sequence models</td><td>Pair with <code>log_softmax</code></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ============ SECTION 3 ============ -->
+  <section class="section" id="sec-3">
+    <div class="section-num">SECTION 03</div>
+    <h2>Optimisers: SGD, Adam, AdamW</h2>
+
+    <h3>SGD — The Classic</h3>
+    <div class="code-block">
+      <div class="code-header"><span class="code-lang">python</span><button class="code-copy"><i class="ti ti-copy"></i> Copy</button></div>
+<pre><code>model_sgd = nn.<span class="fn">Linear</span>(<span class="st">10</span>, <span class="st">1</span>)
+<span class="co"># SGD with momentum — more stable than vanilla SGD</span>
+opt_sgd = torch.optim.<span class="fn">SGD</span>(
+    model_sgd.<span class="fn">parameters</span>(),
+    lr=<span class="st">0.01</span>,
+    momentum=<span class="st">0.9</span>,
+    weight_decay=<span class="st">1e-4</span>
+)
+<span class="fn">print</span>(<span class="st">"SGD:"</span>, opt_sgd)</code></pre>
+    </div>
+    <div class="output">SGD: SGD (
+Parameter Group 0
+    dampening: 0
+    differentiable: False
+    foreach: None
+    fused: None
+    lr: 0.01
+    maximize: False
+    momentum: 0.9
+    nesterov: False
+    weight_decay: 0.0001
+)</div>
+
+    <h3>Adam — Adaptive Learning Rates</h3>
+    <div class="code-block">
+      <div class="code-header"><span class="code-lang">python</span><button class="code-copy"><i class="ti ti-copy"></i> Copy</button></div>
+<pre><code>model_adam = nn.<span class="fn">Linear</span>(<span class="st">10</span>, <span class="st">1</span>)
+<span class="co"># Adam adapts the learning rate per parameter</span>
+opt_adam = torch.optim.<span class="fn">Adam</span>(
+    model_adam.<span class="fn">parameters</span>(),
+    lr=<span class="st">1e-3</span>,
+    betas=(<span class="st">0.9</span>, <span class="st">0.999</span>),      <span class="co"># Momentum for gradient and squared gradient</span>
+    eps=<span class="st">1e-8</span>,
+    weight_decay=<span class="st">0</span>           <span class="co"># ← Adam's weight decay is WRONG (see AdamW)</span>
+)</code></pre>
+    </div>
+
+    <h3>AdamW — The Default for Deep Learning</h3>
+    <div class="code-block">
+      <div class="code-header"><span class="code-lang">python</span><button class="code-copy"><i class="ti ti-copy"></i> Copy</button></div>
+<pre><code>model_adamw = nn.<span class="fn">Linear</span>(<span class="st">10</span>, <span class="st">1</span>)
+<span class="co"># AdamW fixes Adam's weight decay bug</span>
+<span class="co"># In Adam, weight decay is entangled with adaptive LR → doesn't regularise properly</span>
+<span class="co"># In AdamW, weight decay is applied directly to weights → correct L2 regularisation</span>
+opt_adamw = torch.optim.<span class="fn">AdamW</span>(
+    model_adamw.<span class="fn">parameters</span>(),
+    lr=<span class="st">1e-3</span>,
+    weight_decay=<span class="st">1e-2</span>        <span class="co"># Decoupled weight decay — typically 0.01</span>
+)
+
+<span class="fn">print</span>(<span class="st">"AdamW is the default choice for almost all deep learning tasks."</span>)</code></pre>
+    </div>
+    <div class="output">AdamW is the default choice for almost all deep learning tasks.</div>
+
+    <!-- INTERACTIVE WIDGET 3: Optimizer Race -->
+    <div class="widget">
+      <div class="widget-title">Optimiser Race</div>
+      <div class="widget-subtitle">Watch SGD, SGD+Momentum, and AdamW race down the loss surface of a 2D quadratic. Try different starting positions to see how each behaves.</div>
+      <div class="controls">
+        <div class="ctrl-row">
+          <span class="ctrl-label">Learning rate</span>
+          <input type="range" id="opt-lr" min="0.001" max="0.5" value="0.05" step="0.001">
+          <span class="ctrl-value" id="opt-lr-v">0.050</span>
+        </div>
+        <div class="ctrl-row">
+          <span class="ctrl-label">Starting point</span>
+          <div class="btn-row">
+            <button class="pill-btn active" data-start="-2.5,2.0">(-2.5, 2.0)</button>
+            <button class="pill-btn" data-start="3.0,-2.0">(3.0, -2.0)</button>
+            <button class="pill-btn" data-start="2.5,2.5">(2.5, 2.5)</button>
+          </div>
+        </div>
+        <div class="btn-row" style="justify-content:flex-end;">
+          <button class="pill-btn active" id="opt-race"><i class="ti ti-player-play"></i> Race</button>
+          <button class="pill-btn" id="opt-reset">Reset</button>
+        </div>
+      </div>
+      <div class="chart-box" style="height:300px;"><canvas id="opt-chart"></canvas></div>
+      <div class="legend">
+        <span><span class="legend-dot" style="background:#ffb547;"></span>SGD</span>
+        <span><span class="legend-dot" style="background:var(--pink);"></span>SGD + Momentum</span>
+        <span><span class="legend-dot" style="background:var(--cyan);"></span>AdamW</span>
+      </div>
+      <div class="viz-out" id="opt-status">Click "Race" to start. AdamW typically wins for ill-conditioned surfaces.</div>
+    </div>
+
+    <div class="callout callout-tip">
+      <i class="ti ti-bulb"></i>
+      <div class="callout-content">
+        <div class="callout-title">TIP — Which optimiser to use</div>
+        <strong style="color:var(--success);">AdamW</strong> — default for everything: MLPs, Transformers, CNNs. &nbsp;<strong style="color:var(--success);">SGD + momentum</strong> — CNNs, when you want to fine-tune a pretrained model. &nbsp;<strong style="color:var(--success);">Adam</strong> — quick experiments; switch to AdamW for production.
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ SECTION 4 ============ -->
+  <section class="section" id="sec-4">
+    <div class="section-num">SECTION 04</div>
+    <h2>Learning Rate Scheduling</h2>
+
+    <h3>Why Schedule the LR?</h3>
+    <p>A high LR early on helps explore the loss landscape quickly. A low LR later helps converge to a good minimum without overshooting. LR scheduling automates this.</p>
+
+    <!-- INTERACTIVE WIDGET 4: LR Scheduler Visualizer -->
+    <div class="widget">
+      <div class="widget-title">LR Scheduler Visualiser</div>
+      <div class="widget-subtitle">Compare CosineAnnealingLR, StepLR, OneCycleLR, and ExponentialLR side by side. Adjust hyperparameters and see the schedule live.</div>
+      <div class="controls">
+        <div class="ctrl-row">
+          <span class="ctrl-label">Scheduler</span>
+          <div class="btn-row">
+            <button class="pill-btn active" data-sched="cosine">CosineAnnealing</button>
+            <button class="pill-btn" data-sched="step">StepLR</button>
+            <button class="pill-btn" data-sched="onecycle">OneCycleLR</button>
+            <button class="pill-btn" data-sched="exp">Exponential</button>
+          </div>
+        </div>
+        <div class="ctrl-row">
+          <span class="ctrl-label">Base LR</span>
+          <input type="range" id="sched-lr" min="0.0001" max="0.01" value="0.001" step="0.0001">
+          <span class="ctrl-value" id="sched-lr-v">0.0010</span>
+        </div>
+        <div class="ctrl-row">
+          <span class="ctrl-label">Total epochs</span>
+          <input type="range" id="sched-ep" min="20" max="200" value="100" step="10">
+          <span class="ctrl-value" id="sched-ep-v">100</span>
+        </div>
+      </div>
+      <div class="chart-box"><canvas id="sched-chart"></canvas></div>
+      <div class="viz-out" id="sched-out"></div>
+    </div>
+
+    <h3>The Correct Scheduling Pattern</h3>
+    <div class="code-block">
+      <div class="code-header"><span class="code-lang">python</span><button class="code-copy"><i class="ti ti-copy"></i> Copy</button></div>
+<pre><code><span class="co"># CRITICAL: scheduler.step() goes AFTER optimizer.step()</span>
+
+model     = nn.<span class="fn">Linear</span>(<span class="st">10</span>, <span class="st">1</span>)
+opt       = torch.optim.<span class="fn">AdamW</span>(model.<span class="fn">parameters</span>(), lr=<span class="st">1e-3</span>)
+scheduler = torch.optim.lr_scheduler.<span class="fn">CosineAnnealingLR</span>(opt, T_max=<span class="st">50</span>)
+
+<span class="kw">for</span> epoch <span class="kw">in</span> <span class="fn">range</span>(<span class="st">5</span>):
+    <span class="co"># ... training ...</span>
+    opt.<span class="fn">step</span>()             <span class="co"># ← optimizer first</span>
+    scheduler.<span class="fn">step</span>()       <span class="co"># ← scheduler second</span>
+    <span class="fn">print</span>(<span class="st">f"Epoch {epoch}: LR = {opt.param_groups[0]['lr']:.6f}"</span>)</code></pre>
+    </div>
+    <div class="output">Epoch 0: LR = 0.000999
+Epoch 1: LR = 0.000996
+Epoch 2: LR = 0.000991
+Epoch 3: LR = 0.000984
+Epoch 4: LR = 0.000976</div>
+  </section>
+
+  <!-- ============ SECTION 5 ============ -->
+  <section class="section" id="sec-5">
+    <div class="section-num">SECTION 05</div>
+    <h2>Gradient Clipping, Mixed Precision, Accumulation</h2>
+
+    <h3>Gradient Clipping — Prevent Exploding Gradients</h3>
+
+    <!-- INTERACTIVE WIDGET 5: Gradient Clipping -->
+    <div class="widget">
+      <div class="widget-title">Gradient Clipping Visualiser</div>
+      <div class="widget-subtitle">A batch of raw gradients with a few outliers. Adjust <code style="background:rgba(0,229,255,0.1);color:var(--cyan-soft);padding:1px 5px;border-radius:3px;font-size:11px;">max_norm</code> to see how clipping rescales the whole vector to stay below the threshold.</div>
+      <div class="controls">
+        <div class="ctrl-row">
+          <span class="ctrl-label">max_norm</span>
+          <input type="range" id="clip-norm" min="0.1" max="5" value="1.0" step="0.1">
+          <span class="ctrl-value" id="clip-norm-v">1.0</span>
+        </div>
+        <div class="btn-row" style="justify-content:flex-end;">
+          <button class="pill-btn" id="clip-resample"><i class="ti ti-refresh"></i> Resample gradients</button>
+        </div>
+      </div>
+      <div class="chart-box" style="height:200px;"><canvas id="clip-chart"></canvas></div>
+      <div class="metric-grid">
+        <div class="metric"><div class="metric-label">Norm before</div><div class="metric-value" id="clip-before">—</div></div>
+        <div class="metric"><div class="metric-label">Norm after</div><div class="metric-value" id="clip-after">—</div></div>
+        <div class="metric"><div class="metric-label">Scale factor</div><div class="metric-value" id="clip-scale">1.000×</div></div>
+      </div>
+    </div>
+
+    <div class="code-block">
+      <div class="code-header"><span class="code-lang">python</span><button class="code-copy"><i class="ti ti-copy"></i> Copy</button></div>
+<pre><code>model = nn.<span class="cls">Sequential</span>(nn.<span class="fn">Linear</span>(<span class="st">10</span>, <span class="st">64</span>), nn.<span class="fn">ReLU</span>(), nn.<span class="fn">Linear</span>(<span class="st">64</span>, <span class="st">1</span>))
+opt   = torch.optim.<span class="fn">AdamW</span>(model.<span class="fn">parameters</span>())
+X     = torch.<span class="fn">randn</span>(<span class="st">32</span>, <span class="st">10</span>)
+y     = torch.<span class="fn">randn</span>(<span class="st">32</span>, <span class="st">1</span>)
+
+<span class="co"># Pass 1: measure norm before clipping</span>
+opt.<span class="fn">zero_grad</span>()
+loss = nn.<span class="fn">MSELoss</span>()(<span class="fn">model</span>(X), y)
+loss.<span class="fn">backward</span>()
+total_norm_before = torch.nn.utils.<span class="fn">clip_grad_norm_</span>(model.<span class="fn">parameters</span>(), max_norm=<span class="fn">float</span>(<span class="st">'inf'</span>))
+<span class="fn">print</span>(<span class="st">f"Gradient norm before clipping: {total_norm_before:.4f}"</span>)
+
+<span class="co"># Pass 2: fresh forward+backward, then clip to max_norm=1.0</span>
+opt.<span class="fn">zero_grad</span>()
+loss = nn.<span class="fn">MSELoss</span>()(<span class="fn">model</span>(X), y)   <span class="co"># Recompute — can't backward through freed graph</span>
+loss.<span class="fn">backward</span>()
+total_norm_after = torch.nn.utils.<span class="fn">clip_grad_norm_</span>(model.<span class="fn">parameters</span>(), max_norm=<span class="st">1.0</span>)
+<span class="fn">print</span>(<span class="st">f"Gradient norm after clipping: {min(total_norm_after.item(), 1.0):.4f}"</span>)
+opt.<span class="fn">step</span>()</code></pre>
+    </div>
+    <div class="output">Gradient norm before clipping: 0.9284
+Gradient norm after clipping: 0.9284</div>
+
+    <h3>Gradient Accumulation — Simulate Larger Batches</h3>
+    <div class="code-block">
+      <div class="code-header"><span class="code-lang">python</span><button class="code-copy"><i class="ti ti-copy"></i> Copy</button></div>
+<pre><code><span class="co"># When GPU memory is limited, accumulate gradients over N mini-batches</span>
+<span class="co"># before stepping — this simulates a batch size of N × mini_batch_size</span>
+
+model     = nn.<span class="cls">Sequential</span>(nn.<span class="fn">Linear</span>(<span class="st">10</span>, <span class="st">32</span>), nn.<span class="fn">ReLU</span>(), nn.<span class="fn">Linear</span>(<span class="st">32</span>, <span class="st">1</span>))
+opt       = torch.optim.<span class="fn">AdamW</span>(model.<span class="fn">parameters</span>())
+criterion = nn.<span class="fn">MSELoss</span>()
+
+accumulate_steps = <span class="st">4</span>   <span class="co"># Effective batch = 4 × 8 = 32</span>
+
+<span class="kw">for</span> step, (X_b, y_b) <span class="kw">in</span> <span class="fn">enumerate</span>([(torch.<span class="fn">randn</span>(<span class="st">8</span>,<span class="st">10</span>), torch.<span class="fn">randn</span>(<span class="st">8</span>,<span class="st">1</span>))]*<span class="st">8</span>):
+    loss = <span class="fn">criterion</span>(<span class="fn">model</span>(X_b), y_b)
+    loss = loss / accumulate_steps           <span class="co"># Scale loss so gradients are averaged</span>
+    loss.<span class="fn">backward</span>()
+
+    <span class="kw">if</span> (step + <span class="st">1</span>) % accumulate_steps == <span class="st">0</span>:
+        opt.<span class="fn">step</span>()
+        opt.<span class="fn">zero_grad</span>()
+        <span class="fn">print</span>(<span class="st">f"Optimizer step at step {step+1}"</span>)</code></pre>
+    </div>
+    <div class="output">Optimizer step at step 4
+Optimizer step at step 8</div>
+
+    <h3>Mixed Precision Training</h3>
+    <div class="code-block">
+      <div class="code-header"><span class="code-lang">python</span><button class="code-copy"><i class="ti ti-copy"></i> Copy</button></div>
+<pre><code><span class="co"># Mixed precision: compute forward/backward in float16, store weights in float32</span>
+<span class="co"># Result: ~2x speedup, ~50% memory reduction on compatible GPUs</span>
+
+<span class="kw">from</span> torch.amp <span class="kw">import</span> autocast, GradScaler
+
+device = <span class="st">"cuda"</span> <span class="kw">if</span> torch.cuda.<span class="fn">is_available</span>() <span class="kw">else</span> <span class="st">"cpu"</span>
+model = nn.<span class="cls">Sequential</span>(nn.<span class="fn">Linear</span>(<span class="st">10</span>, <span class="st">64</span>), nn.<span class="fn">ReLU</span>(), nn.<span class="fn">Linear</span>(<span class="st">64</span>, <span class="st">1</span>)).<span class="fn">to</span>(device)
+opt    = torch.optim.<span class="fn">AdamW</span>(model.<span class="fn">parameters</span>())
+
+X = torch.<span class="fn">randn</span>(<span class="st">32</span>, <span class="st">10</span>, device=device)
+y = torch.<span class="fn">randn</span>(<span class="st">32</span>, <span class="st">1</span>, device=device)
+
+opt.<span class="fn">zero_grad</span>()
+
+<span class="kw">if</span> device == <span class="st">"cuda"</span>:
+    scaler = <span class="fn">GradScaler</span>(<span class="st">"cuda"</span>)
+    <span class="kw">with</span> <span class="fn">autocast</span>(device_type=<span class="st">"cuda"</span>):
+        output = <span class="fn">model</span>(X)
+        loss   = nn.<span class="fn">MSELoss</span>()(output, y)
+    scaler.<span class="fn">scale</span>(loss).<span class="fn">backward</span>()
+    scaler.<span class="fn">step</span>(opt)
+    scaler.<span class="fn">update</span>()
+<span class="kw">else</span>:
+    <span class="co"># CPU: autocast and scaling are no-ops; just run normally</span>
+    output = <span class="fn">model</span>(X)
+    loss   = nn.<span class="fn">MSELoss</span>()(output, y)
+    loss.<span class="fn">backward</span>()
+    opt.<span class="fn">step</span>()
+
+<span class="fn">print</span>(<span class="st">f"Mixed precision step complete. Loss: {loss.item():.4f}"</span>)</code></pre>
+    </div>
+    <div class="output">Mixed precision step complete. Loss: 1.4753</div>
+  </section>
+
+  <!-- ============ SECTION 6 ============ -->
+  <section class="section" id="sec-6">
+    <div class="section-num">SECTION 06</div>
+    <h2>Metrics Tracking and Early Stopping</h2>
+
+    <div class="code-block">
+      <div class="code-header"><span class="code-lang">python</span><button class="code-copy"><i class="ti ti-copy"></i> Copy</button></div>
+<pre><code><span class="kw">class</span> <span class="cls">EarlyStopping</span>:
+    <span class="st">"""Stop training when validation loss hasn't improved for `patience` epochs."""</span>
+
+    <span class="kw">def</span> <span class="fn">__init__</span>(self, patience: <span class="cls">int</span> = <span class="st">10</span>, min_delta: <span class="cls">float</span> = <span class="st">1e-4</span>):
+        self.patience   = patience
+        self.min_delta  = min_delta
+        self.best_loss  = <span class="fn">float</span>(<span class="st">'inf'</span>)
+        self.counter    = <span class="st">0</span>
+        self.best_state = <span class="kw">None</span>
+
+    <span class="kw">def</span> <span class="fn">step</span>(self, val_loss: <span class="cls">float</span>, model: nn.Module) -&gt; <span class="cls">bool</span>:
+        <span class="st">"""Returns True if training should stop."""</span>
+        <span class="kw">if</span> val_loss &lt; self.best_loss - self.min_delta:
+            self.best_loss  = val_loss
+            self.counter    = <span class="st">0</span>
+            self.best_state = {k: v.<span class="fn">clone</span>() <span class="kw">for</span> k, v <span class="kw">in</span> model.<span class="fn">state_dict</span>().<span class="fn">items</span>()}
+        <span class="kw">else</span>:
+            self.counter += <span class="st">1</span>
+
+        <span class="kw">return</span> self.counter &gt;= self.patience
+
+    <span class="kw">def</span> <span class="fn">restore_best</span>(self, model: nn.Module):
+        model.<span class="fn">load_state_dict</span>(self.best_state)
+
+
+<span class="co"># Usage in training loop</span>
+es = <span class="fn">EarlyStopping</span>(patience=<span class="st">10</span>)
+<span class="kw">for</span> epoch <span class="kw">in</span> <span class="fn">range</span>(<span class="st">200</span>):
+    val_loss = <span class="st">0.5</span> * (<span class="st">0.99</span> ** epoch) + <span class="st">0.01</span>   <span class="co"># Simulated val loss</span>
+    <span class="kw">if</span> es.<span class="fn">step</span>(val_loss, nn.<span class="fn">Linear</span>(<span class="st">1</span>,<span class="st">1</span>)):
+        <span class="fn">print</span>(<span class="st">f"Early stopping at epoch {epoch}. Best loss: {es.best_loss:.4f}"</span>)
+        <span class="kw">break</span></code></pre>
+    </div>
+
+    <!-- INTERACTIVE WIDGET 6: Early Stopping Simulator -->
+    <div class="widget">
+      <div class="widget-title">Early Stopping Simulator</div>
+      <div class="widget-subtitle">Watch a noisy validation loss curve and see exactly when EarlyStopping triggers, what counter does, and which weights it would restore.</div>
+      <div class="controls">
+        <div class="ctrl-row">
+          <span class="ctrl-label">Patience</span>
+          <input type="range" id="es-pat" min="3" max="20" value="8" step="1">
+          <span class="ctrl-value" id="es-pat-v">8</span>
+        </div>
+        <div class="ctrl-row">
+          <span class="ctrl-label">Noise level</span>
+          <input type="range" id="es-noise" min="0" max="0.3" value="0.1" step="0.01">
+          <span class="ctrl-value" id="es-noise-v">0.10</span>
+        </div>
+        <div class="btn-row" style="justify-content:flex-end;">
+          <button class="pill-btn" id="es-resim"><i class="ti ti-refresh"></i> Re-simulate</button>
+        </div>
+      </div>
+      <div class="chart-box"><canvas id="es-chart"></canvas></div>
+      <div class="metric-grid">
+        <div class="metric"><div class="metric-label">Best epoch</div><div class="metric-value" id="es-best-ep">—</div></div>
+        <div class="metric"><div class="metric-label">Best val loss</div><div class="metric-value" id="es-best-loss">—</div></div>
+        <div class="metric"><div class="metric-label">Stopped at</div><div class="metric-value" id="es-stop-ep" style="color:var(--warn);">—</div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ SECTION 7 ============ -->
+  <section class="section" id="sec-7">
+    <div class="section-num">SECTION 07</div>
+    <h2>Debugging Training</h2>
+
+    <h3>Loss Not Decreasing</h3>
+    <div class="code-block">
+      <div class="code-header"><span class="code-lang">python</span><button class="code-copy"><i class="ti ti-copy"></i> Copy</button></div>
+<pre><code><span class="co"># Sanity check 1: Can the model overfit a tiny batch?</span>
+<span class="co"># If not — something is fundamentally wrong with the model or loss</span>
+
+model = nn.<span class="cls">Sequential</span>(nn.<span class="fn">Linear</span>(<span class="st">4</span>, <span class="st">32</span>), nn.<span class="fn">ReLU</span>(), nn.<span class="fn">Linear</span>(<span class="st">32</span>, <span class="st">2</span>))
+opt   = torch.optim.<span class="fn">AdamW</span>(model.<span class="fn">parameters</span>(), lr=<span class="st">1e-2</span>)
+crit  = nn.<span class="fn">CrossEntropyLoss</span>()
+
+<span class="co"># Use only 4 samples — should overfit to near-zero loss</span>
+X_tiny = torch.<span class="fn">randn</span>(<span class="st">4</span>, <span class="st">4</span>)
+y_tiny = torch.<span class="fn">tensor</span>([<span class="st">0</span>, <span class="st">1</span>, <span class="st">0</span>, <span class="st">1</span>])
+
+<span class="fn">print</span>(<span class="st">"Overfit test (loss should go to ~ 0):"</span>)
+<span class="kw">for</span> epoch <span class="kw">in</span> <span class="fn">range</span>(<span class="st">50</span>):
+    opt.<span class="fn">zero_grad</span>()
+    loss = <span class="fn">crit</span>(<span class="fn">model</span>(X_tiny), y_tiny)
+    loss.<span class="fn">backward</span>()
+    opt.<span class="fn">step</span>()
+    <span class="kw">if</span> epoch % <span class="st">10</span> == <span class="st">0</span>:
+        <span class="fn">print</span>(<span class="st">f"  Epoch {epoch}: loss = {loss.item():.5f}"</span>)</code></pre>
+    </div>
+    <div class="output">Overfit test (loss should go to ~ 0):
+  Epoch 0: loss = 0.82704
+  Epoch 10: loss = 0.26682
+  Epoch 20: loss = 0.04490
+  Epoch 30: loss = 0.00795
+  Epoch 40: loss = 0.00277</div>
+
+    <div class="callout callout-tip">
+      <i class="ti ti-bulb"></i>
+      <div class="callout-content">
+        <div class="callout-title">DEBUGGING TIP — Overfit a tiny batch first</div>
+        Before debugging anything else, train your model on just 4-8 samples. If the loss can't reach near-zero on that, something is fundamentally broken — the model architecture, the loss function, or the data pipeline. Fix that before scaling up.
+      </div>
+    </div>
+
+    <div class="code-block">
+      <div class="code-header"><span class="code-lang">python</span><button class="code-copy"><i class="ti ti-copy"></i> Copy</button></div>
+<pre><code><span class="co"># Debugging checklist (print these before training)</span>
+
+<span class="kw">def</span> <span class="fn">debug_model</span>(model, X, y, criterion):
+    <span class="fn">print</span>(<span class="st">"=== MODEL DEBUG ==="</span>)
+    <span class="fn">print</span>(<span class="st">f"Input shape:  {X.shape}"</span>)
+    <span class="fn">print</span>(<span class="st">f"Target shape: {y.shape}"</span>)
+
+    output = <span class="fn">model</span>(X[:<span class="st">4</span>])
+    <span class="fn">print</span>(<span class="st">f"Output shape: {output.shape}"</span>)
+    <span class="fn">print</span>(<span class="st">f"Output sample (raw logits):\n  {output[0].detach()}"</span>)
+
+    loss = <span class="fn">criterion</span>(output, y[:<span class="st">4</span>])
+    <span class="fn">print</span>(<span class="st">f"Initial loss: {loss.item():.4f}"</span>)
+
+    <span class="co"># Check if loss is at the expected value for random initialisation</span>
+    <span class="co"># For N classes, expected CE loss ~ log(N)</span>
+    <span class="kw">import</span> math
+    <span class="kw">if</span> <span class="fn">hasattr</span>(criterion, <span class="st">'weight'</span>) <span class="kw">or</span> <span class="fn">isinstance</span>(criterion, nn.CrossEntropyLoss):
+        n_classes = output.shape[<span class="st">1</span>]
+        <span class="fn">print</span>(<span class="st">f"Expected random CE loss: {math.log(n_classes):.4f}"</span>)
+
+    <span class="co"># Check for NaN</span>
+    <span class="fn">print</span>(<span class="st">f"Any NaN in output? {output.isnan().any().item()}"</span>)
+    <span class="fn">print</span>(<span class="st">f"Any NaN in input?  {X.isnan().any().item()}"</span>)
+
+
+X = torch.<span class="fn">randn</span>(<span class="st">32</span>, <span class="st">4</span>)
+y = torch.<span class="fn">randint</span>(<span class="st">0</span>, <span class="st">2</span>, (<span class="st">32</span>,))
+<span class="fn">debug_model</span>(model, X, y, nn.<span class="fn">CrossEntropyLoss</span>())</code></pre>
+    </div>
+    <div class="output">=== MODEL DEBUG ===
+Input shape:  torch.Size([32, 4])
+Target shape: torch.Size([32])
+Output shape: torch.Size([4, 2])
+Output sample (raw logits):
+  tensor([ 2.8189, -3.4459])
+Initial loss: 4.9560
+Expected random CE loss: 0.6931
+Any NaN in output? False
+Any NaN in input?  False</div>
+  </section>
+
+  <!-- ============ PROJECT ============ -->
+  <section class="section" id="sec-project">
+    <div class="section-num">HANDS-ON PROJECT</div>
+    <h2>End-to-End Tabular DS Model</h2>
+
+    <h3>Task: Predict employee churn (classification) and salary (regression)</h3>
+
+    <div class="code-block">
+      <div class="code-header"><span class="code-lang">python</span><button class="code-copy"><i class="ti ti-copy"></i> Copy</button></div>
+<pre><code>torch.<span class="fn">manual_seed</span>(<span class="st">0</span>)
+
+<span class="co"># Synthetic HR dataset</span>
+N = <span class="st">2000</span>
+age          = torch.<span class="fn">randint</span>(<span class="st">22</span>, <span class="st">65</span>, (N,)).<span class="fn">float</span>()
+experience   = (age - <span class="st">22</span> + torch.<span class="fn">randn</span>(N) * <span class="st">2</span>).<span class="fn">clamp</span>(<span class="st">0</span>)
+satisfaction = torch.<span class="fn">rand</span>(N) * <span class="st">10</span>
+hours_week   = <span class="st">30</span> + torch.<span class="fn">rand</span>(N) * <span class="st">30</span>
+performance  = torch.<span class="fn">rand</span>(N) * <span class="st">5</span> + <span class="st">1</span>
+
+<span class="co"># Target 1: Salary (regression)</span>
+salary = (experience * <span class="st">2500</span> + age * <span class="st">300</span> + performance * <span class="st">8000</span>
+          + torch.<span class="fn">randn</span>(N) * <span class="st">5000</span> + <span class="st">30000</span>)
+
+<span class="co"># Target 2: Churn (binary classification)</span>
+churn_score = (-satisfaction * <span class="st">0.3</span> + hours_week * <span class="st">0.02</span>
+               - performance * <span class="st">0.1</span> + torch.<span class="fn">randn</span>(N) * <span class="st">0.5</span>)
+churn_label = (churn_score &gt; churn_score.<span class="fn">median</span>()).<span class="fn">long</span>()
+
+<span class="co"># Feature matrix</span>
+features = torch.<span class="fn">stack</span>([age, experience, satisfaction, hours_week, performance], dim=<span class="st">1</span>)
+
+<span class="co"># Normalise features</span>
+feat_mean = features.<span class="fn">mean</span>(<span class="st">0</span>); feat_std = features.<span class="fn">std</span>(<span class="st">0</span>)
+features = (features - feat_mean) / feat_std
+
+<span class="co"># Normalise salary target</span>
+sal_mean = salary.<span class="fn">mean</span>(); sal_std = salary.<span class="fn">std</span>()
+salary_n = (salary - sal_mean) / sal_std
+
+<span class="co"># Train / val split</span>
+split = <span class="fn">int</span>(<span class="st">0.8</span> * N)
+X_tr, X_vl             = features[:split], features[split:]
+y_sal_tr, y_sal_vl     = salary_n[:split], salary_n[split:]
+y_churn_tr, y_churn_vl = churn_label[:split], churn_label[split:]
+
+<span class="fn">print</span>(<span class="st">f"Train: {X_tr.shape}, Val: {X_vl.shape}"</span>)
+<span class="fn">print</span>(<span class="st">f"Churn rate: {churn_label.float().mean():.2f}"</span>)</code></pre>
+    </div>
+    <div class="output">Train: torch.Size([1600, 5]), Val: torch.Size([400, 5])
+Churn rate: 0.50</div>
+
+    <h4>Multi-task Model: Shared Trunk + Two Heads</h4>
+    <div class="code-block">
+      <div class="code-header"><span class="code-lang">python</span><button class="code-copy"><i class="ti ti-copy"></i> Copy</button></div>
+<pre><code><span class="kw">from</span> torch.utils.data <span class="kw">import</span> TensorDataset, DataLoader
+
+<span class="co"># DataLoaders</span>
+train_ds = <span class="fn">TensorDataset</span>(X_tr, y_sal_tr, y_churn_tr)
+val_ds   = <span class="fn">TensorDataset</span>(X_vl, y_sal_vl, y_churn_vl)
+train_dl = <span class="fn">DataLoader</span>(train_ds, batch_size=<span class="st">64</span>, shuffle=<span class="kw">True</span>)
+val_dl   = <span class="fn">DataLoader</span>(val_ds,   batch_size=<span class="st">256</span>)
+
+<span class="co"># Multi-task model: shared trunk → two heads</span>
+<span class="kw">class</span> <span class="cls">HRModel</span>(nn.Module):
+
+    <span class="kw">def</span> <span class="fn">__init__</span>(self):
+        <span class="fn">super</span>().<span class="fn">__init__</span>()
+        self.trunk = nn.<span class="cls">Sequential</span>(
+            nn.<span class="fn">Linear</span>(<span class="st">5</span>, <span class="st">64</span>), nn.<span class="fn">LayerNorm</span>(<span class="st">64</span>), nn.<span class="fn">ReLU</span>(), nn.<span class="fn">Dropout</span>(<span class="st">0.2</span>),
+            nn.<span class="fn">Linear</span>(<span class="st">64</span>, <span class="st">32</span>), nn.<span class="fn">LayerNorm</span>(<span class="st">32</span>), nn.<span class="fn">ReLU</span>(), nn.<span class="fn">Dropout</span>(<span class="st">0.1</span>),
+        )
+        self.salary_head = nn.<span class="fn">Linear</span>(<span class="st">32</span>, <span class="st">1</span>)      <span class="co"># Regression</span>
+        self.churn_head  = nn.<span class="fn">Linear</span>(<span class="st">32</span>, <span class="st">2</span>)      <span class="co"># Classification</span>
+
+    <span class="kw">def</span> <span class="fn">forward</span>(self, x):
+        h = self.<span class="fn">trunk</span>(x)
+        <span class="kw">return</span> self.<span class="fn">salary_head</span>(h).<span class="fn">squeeze</span>(<span class="st">1</span>), self.<span class="fn">churn_head</span>(h)
+
+
+model    = <span class="fn">HRModel</span>()
+opt      = torch.optim.<span class="fn">AdamW</span>(model.<span class="fn">parameters</span>(), lr=<span class="st">1e-3</span>, weight_decay=<span class="st">1e-3</span>)
+sched    = torch.optim.lr_scheduler.<span class="fn">CosineAnnealingLR</span>(opt, T_max=<span class="st">50</span>)
+mse_loss = nn.<span class="fn">MSELoss</span>()
+ce_loss  = nn.<span class="fn">CrossEntropyLoss</span>()
+es       = <span class="fn">EarlyStopping</span>(patience=<span class="st">8</span>)
+
+<span class="fn">print</span>(<span class="st">f"Model params: {sum(p.numel() for p in model.parameters()):,}"</span>)</code></pre>
+    </div>
+    <div class="output">Model params: 2,755</div>
+
+    <h4>Training with Everything: LR Schedule + Grad Clip + Early Stopping</h4>
+    <div class="code-block">
+      <div class="code-header"><span class="code-lang">python</span><button class="code-copy"><i class="ti ti-copy"></i> Copy</button></div>
+<pre><code><span class="co"># Training</span>
+<span class="kw">for</span> epoch <span class="kw">in</span> <span class="fn">range</span>(<span class="st">60</span>):
+    model.<span class="fn">train</span>()
+    epoch_loss = <span class="st">0.0</span>
+    <span class="kw">for</span> X_b, y_sal_b, y_churn_b <span class="kw">in</span> train_dl:
+        opt.<span class="fn">zero_grad</span>()
+        sal_pred, churn_pred = <span class="fn">model</span>(X_b)
+        loss_sal   = <span class="fn">mse_loss</span>(sal_pred, y_sal_b)
+        loss_churn = <span class="fn">ce_loss</span>(churn_pred, y_churn_b)
+        loss       = loss_sal + <span class="st">0.5</span> * loss_churn    <span class="co"># Combined loss</span>
+        loss.<span class="fn">backward</span>()
+        torch.nn.utils.<span class="fn">clip_grad_norm_</span>(model.<span class="fn">parameters</span>(), max_norm=<span class="st">1.0</span>)
+        opt.<span class="fn">step</span>()
+        epoch_loss += loss.<span class="fn">item</span>()
+
+    sched.<span class="fn">step</span>()
+
+    <span class="co"># Validation</span>
+    model.<span class="fn">eval</span>()
+    <span class="kw">with</span> torch.<span class="fn">no_grad</span>():
+        sal_p, churn_p = <span class="fn">model</span>(X_vl)
+        val_mse        = <span class="fn">mse_loss</span>(sal_p, y_sal_vl).<span class="fn">item</span>()
+        val_acc        = (churn_p.<span class="fn">argmax</span>(<span class="st">1</span>) == y_churn_vl).<span class="fn">float</span>().<span class="fn">mean</span>().<span class="fn">item</span>()
+
+    <span class="kw">if</span> epoch % <span class="st">10</span> == <span class="st">0</span>:
+        <span class="fn">print</span>(<span class="st">f"Epoch {epoch:3d}: train_loss={epoch_loss/len(train_dl):.4f} "</span>
+              <span class="st">f"val_mse={val_mse:.4f} val_churn_acc={val_acc:.3f}"</span>)
+
+    <span class="kw">if</span> es.<span class="fn">step</span>(val_mse, model):
+        <span class="fn">print</span>(<span class="st">f"\nEarly stop at epoch {epoch}"</span>); <span class="kw">break</span>
+
+es.<span class="fn">restore_best</span>(model)
+<span class="fn">print</span>(<span class="st">"\nTraining complete. Best weights restored."</span>)</code></pre>
+    </div>
+    <div class="output">Epoch   0: train_loss=0.7204 val_mse=0.1002  val_churn_acc=0.705
+Epoch  10: train_loss=0.2445 val_mse=0.0359  val_churn_acc=0.873
+Epoch  20: train_loss=0.2307 val_mse=0.0308  val_churn_acc=0.868
+Epoch  30: train_loss=0.2177 val_mse=0.0295  val_churn_acc=0.868
+
+Early stop at epoch 37
+
+Training complete. Best weights restored.</div>
+  </section>
+
+  <!-- ============ MODULE SUMMARY ============ -->
+  <section class="section" id="sec-summary">
+    <div class="section-num">RECAP</div>
+    <h2>Module Summary</h2>
+    <div class="summary-box">
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Concept</th><th>Key Takeaway</th></tr></thead>
+          <tbody>
+            <tr><td>Training loop</td><td><code>zero_grad → forward → loss → backward → step</code>. Never vary this order.</td></tr>
+            <tr><td>Loss functions</td><td>CE for classification; BCEWithLogits for binary; Huber for robust regression.</td></tr>
+            <tr><td>AdamW</td><td>The default optimiser. Decoupled weight decay makes regularisation work correctly.</td></tr>
+            <tr><td>LR scheduling</td><td><code>CosineAnnealingLR</code> for most tasks; <code>OneCycleLR</code> for fast convergence.</td></tr>
+            <tr><td>Gradient clipping</td><td><code>clip_grad_norm_(params, max_norm=1.0)</code> before <code>optimizer.step()</code>.</td></tr>
+            <tr><td>Mixed precision</td><td><code>autocast</code> + <code>GradScaler</code> for 2× speed on GPU.</td></tr>
+            <tr><td>Overfit tiny batch</td><td>First sanity check when loss won't decrease.</td></tr>
+            <tr><td>Early stopping</td><td>Monitor val loss; restore best weights when patience expires.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <h3>What's Next</h3>
+    <p>Module 5 — Data Pipelines tackles the often-overlooked infrastructure that feeds your training loop. A fast model is useless if the data loader is the bottleneck. You'll build efficient <code>Dataset</code> and <code>DataLoader</code> objects, handle variable-length sequences, and stream large log datasets without loading them into memory.</p>
+  </section>
+</div>
+
+<!-- ============ REFERENCES ============ -->
+<section class="references">
+  <div class="refs-header">
+    <h2><span class="cyan-text">Learn &amp;</span> <span class="accent">Practice</span></h2>
+    <p>Explore curated resources and practice with real code</p>
+  </div>
+
+  <div class="ref-card">
+    <div class="ref-icon"><i class="ti ti-bulb"></i></div>
+    <div class="ref-body">
+      <div class="ref-type">Progressive Article</div>
+      <div class="ref-tagline">Stuck? Start here — beginner-friendly explanation</div>
+      <div class="ref-title">Optimization Loop — PyTorch Basics Tutorial</div>
+      <a href="https://docs.pytorch.org/tutorials/beginner/basics/optimization_tutorial.html" target="_blank" rel="noopener" class="ref-btn"><i class="ti ti-external-link"></i> Read Article</a>
+    </div>
+  </div>
+
+  <div class="ref-card">
+    <div class="ref-icon"><i class="ti ti-file-text"></i></div>
+    <div class="ref-body">
+      <div class="ref-type">Canonical Article</div>
+      <div class="ref-tagline">Authoritative source — official docs and tutorials</div>
+      <div class="ref-title">torch.optim — Optimisers &amp; LR Schedulers Reference</div>
+      <a href="https://docs.pytorch.org/docs/stable/optim.html" target="_blank" rel="noopener" class="ref-btn"><i class="ti ti-external-link"></i> Read Canonical</a>
+    </div>
+  </div>
+
+  <div class="ref-card pink-card">
+    <div class="ref-icon"><i class="ti ti-brand-github"></i></div>
+    <div class="ref-body">
+      <div class="ref-type">GitHub Repository</div>
+      <div class="ref-tagline">Hands-on — reference implementation &amp; examples</div>
+      <div class="ref-title">Lightning-AI / pytorch-lightning — production training loops</div>
+      <a href="https://github.com/Lightning-AI/pytorch-lightning" target="_blank" rel="noopener" class="ref-btn"><i class="ti ti-external-link"></i> Explore Repo</a>
+    </div>
+  </div>
+
+  <div class="ref-card">
+    <div class="ref-icon"><i class="ti ti-book-2"></i></div>
+    <div class="ref-body">
+      <div class="ref-type">API Reference</div>
+      <div class="ref-tagline">Mixed precision training — the official AMP guide</div>
+      <div class="ref-title">Automatic Mixed Precision (AMP) — PyTorch Recipes</div>
+      <a href="https://docs.pytorch.org/tutorials/recipes/recipes/amp_recipe.html" target="_blank" rel="noopener" class="ref-btn"><i class="ti ti-external-link"></i> Open Docs</a>
+    </div>
+  </div>
+</section>
+
+<!-- =================== NEXT MODULE =================== -->
+<div class="module-nav">
+  <div>
+    <div class="module-nav-label">Next up · Module 5.0</div>
+    <div class="module-nav-title">Module 5.0 — Custom Data Pipelines (Dataset &amp; DataLoader)</div>
+    <p style="font-size:14px;color:var(--ink-3);margin:10px 0 0;max-width:520px">Build efficient data loader pipelines, batching, shuffling, custom dataset overrides, and image transforms.</p>
+    <div style="display:flex;flex-wrap:wrap;gap:18px;margin-top:14px;font-family:var(--mono);font-size:11px;color:var(--ink-3)">
+      <span>ESTIMATED · <span style="color:var(--ink-2)">~60 min</span></span>
+      <span>TYPE · <span style="color:var(--ink-2)">Hands-on</span></span>
+      <span>CODE · <span style="color:var(--ink-2)">Python</span></span>
+      <span>DIFFICULTY · <span style="color:var(--accent)">★★★</span>☆☆</span>
+    </div>
+  </div>
+  <a class="module-nav-cta" href="module_5_data_pipeline.html">Begin Module 5.0 →</a>
+</div>
+
+<div style="margin-top:32px;text-align:center;font-family:var(--mono);font-size:10px;color:var(--ink-4);letter-spacing:0.15em">
+  AGENTIC AI ACADEMY // COURSE 02 — AUTONOMOUS SYSTEMS // MODULE 4.0 — END OF TRANSMISSION
+</div>
+</main>
+</div>
+
+<div class="scroll-dots" id="scroll-dots">
+  <div class="scroll-dot active" data-target="sec-1" data-label="Loop"></div>
+  <div class="scroll-dot" data-target="sec-2" data-label="Loss"></div>
+  <div class="scroll-dot" data-target="sec-3" data-label="Optimisers"></div>
+  <div class="scroll-dot" data-target="sec-4" data-label="LR Sched"></div>
+  <div class="scroll-dot" data-target="sec-5" data-label="Grad Tricks"></div>
+  <div class="scroll-dot" data-target="sec-6" data-label="Early Stop"></div>
+  <div class="scroll-dot" data-target="sec-7" data-label="Debug"></div>
+  <div class="scroll-dot" data-target="sec-project" data-label="Project"></div>
+  <div class="scroll-dot" data-target="sec-summary" data-label="Summary"></div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+/* Starfield */
+(function(){
+  const sf = document.getElementById('stars');
+  for (let i = 0; i < 120; i++) {
+    const s = document.createElement('div');
+    s.className = 'star';
+    const sz = Math.random() * 2 + 0.5;
+    s.style.width = sz + 'px'; s.style.height = sz + 'px';
+    s.style.left = Math.random() * 100 + '%';
+    s.style.top = Math.random() * 100 + '%';
+    s.style.setProperty('--dur', (2 + Math.random() * 4) + 's');
+    s.style.animationDelay = Math.random() * 4 + 's';
+    sf.appendChild(s);
+  }
+})();
+
+/* Nav active state + scroll dots */
+/* ============ SCROLL DOTS + TOC NAV ACTIVE + PROGRESS ============ */
+(function(){
+  const dots = document.querySelectorAll('.scroll-dot');
+  const tocLinks = document.querySelectorAll('.toc-link');
+  const sections = document.querySelectorAll('.section');
+  const progressFill = document.getElementById('progressFill');
+
+  dots.forEach(d => {
+    d.addEventListener('click', () => {
+      const target = document.getElementById(d.dataset.target);
+      if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  });
+
+  tocLinks.forEach(a => {
+    a.addEventListener('click', (e) => {
+      e.preventDefault();
+      const id = a.getAttribute('href').slice(1);
+      const t = document.getElementById(id);
+      if (t) t.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  });
+
+  function updateActive() {
+    let current = sections[0].id;
+    let currentIndex = -1;
+    sections.forEach((s, i) => {
+      const rect = s.getBoundingClientRect();
+      if (rect.top < window.innerHeight * 0.35) {
+        current = s.id;
+        currentIndex = i;
+      }
+    });
+
+    dots.forEach(d => d.classList.toggle('active', d.dataset.target === current));
+    tocLinks.forEach((l, i) => {
+      const isActive = l.getAttribute('href') === '#' + current;
+      const isPast = currentIndex > -1 && i < currentIndex;
+      l.classList.toggle('active', isActive);
+      l.classList.toggle('past', isPast && !isActive);
+    });
+
+    const docHeight = document.documentElement.scrollHeight - window.innerHeight;
+    const scrolled = window.scrollY / docHeight * 100;
+    if (progressFill) progressFill.style.width = Math.min(100, scrolled) + '%';
+  }
+
+  window.addEventListener('scroll', updateActive, { passive: true });
+  updateActive();
+})();
+
+/* Copy */
+document.querySelectorAll('.code-copy').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const code = btn.closest('.code-block').querySelector('pre').innerText;
+    navigator.clipboard.writeText(code).then(() => {
+      const orig = btn.innerHTML;
+      btn.innerHTML = '<i class="ti ti-check"></i> Copied';
+      setTimeout(() => btn.innerHTML = orig, 1200);
+    });
+  });
+});
+
+/* WIDGET 1: Step Walkthrough */
+(function(){
+  const cards = document.querySelectorAll('.step-card');
+  const out = document.getElementById('step-out');
+  let cur = -1;
+  let timer = null;
+  const stories = [
+    '>>> optimizer.zero_grad()\nGradients cleared. .grad on every parameter is now zero.\nReady for a fresh backward pass.',
+    '>>> output = model(X_batch)\nForward pass through model. Builds the computation graph.\nOutput shape: (batch, num_classes) for classification.',
+    '>>> loss = criterion(output, y_batch)\nLoss is a scalar that measures how wrong the predictions are.\nLower is better. Example: cross-entropy = 0.4521',
+    '>>> loss.backward()\nWalks the computation graph in reverse, applying the chain rule.\n.grad on every leaf parameter is now populated.',
+    '>>> optimizer.step()\nApplies updates to parameters using the gradients.\nweights ← weights − lr · grad   (for SGD)\nModel has learned a tiny bit. Loop back to step 1.'
+  ];
+  function show(i) {
+    cards.forEach((c, idx) => {
+      c.classList.remove('active', 'done');
+      if (idx < i) c.classList.add('done');
+      if (idx === i) c.classList.add('active');
+    });
+    out.textContent = stories[i] || stories[0];
+  }
+  function reset() {
+    if (timer) { clearInterval(timer); timer = null; }
+    cur = -1;
+    cards.forEach(c => c.classList.remove('active', 'done'));
+    out.textContent = 'Click "Play full loop" or "Step forward" to walk through one iteration.';
+  }
+  document.getElementById('step-next').addEventListener('click', () => {
+    cur = (cur + 1) % 5;
+    show(cur);
+  });
+  document.getElementById('step-play').addEventListener('click', () => {
+    reset();
+    cur = 0;
+    show(0);
+    timer = setInterval(() => {
+      cur++;
+      if (cur > 4) { clearInterval(timer); timer = null; return; }
+      show(cur);
+    }, 1100);
+  });
+  document.getElementById('step-reset').addEventListener('click', reset);
+})();
+
+/* WIDGET 2: MSE vs Huber */
+(function(){
+  const baseResiduals = [-0.5, 0.5, 0.1, 0.8]; // (pred - target) for 4 samples
+  const outlierEl = document.getElementById('outlier');
+  const outlierV = document.getElementById('outlier-v');
+  const deltaEl = document.getElementById('hdelta');
+  const deltaV = document.getElementById('hdelta-v');
+  const mMse = document.getElementById('m-mse');
+  const mHuber = document.getElementById('m-huber');
+  const mRatio = document.getElementById('m-ratio');
+
+  function huber(r, d) {
+    const a = Math.abs(r);
+    if (a <= d) return 0.5 * r * r;
+    return d * (a - 0.5 * d);
+  }
+  function mse(r) { return r * r; }
+
+  const xs = [];
+  for (let v = -8; v <= 8; v += 0.1) xs.push(+v.toFixed(2));
+
+  const ctx = document.getElementById('huber-chart').getContext('2d');
+  const chart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: xs,
+      datasets: [
+        { label: 'MSE', data: xs.map(r => mse(r)), borderColor: '#ff5cc0', backgroundColor: 'rgba(255,92,192,0.1)', fill: false, borderWidth: 2, pointRadius: 0 },
+        { label: 'Huber', data: xs.map(r => huber(r, 1.0)), borderColor: '#00e5ff', backgroundColor: 'rgba(0,229,255,0.1)', fill: false, borderWidth: 2, pointRadius: 0 }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      animation: { duration: 200 },
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { grid: { color: 'rgba(0,229,255,0.07)' }, ticks: { color: '#6b7896', maxTicksLimit: 9 } },
+        y: { grid: { color: 'rgba(0,229,255,0.07)' }, ticks: { color: '#6b7896' }, suggestedMax: 25 }
+      }
+    }
+  });
+
+  function update() {
+    const out = +outlierEl.value;
+    const d = +deltaEl.value;
+    outlierV.textContent = out;
+    deltaV.textContent = d.toFixed(1);
+    chart.data.datasets[1].data = xs.map(r => huber(r, d));
+    chart.update('none');
+    const residuals = baseResiduals.concat([out]);
+    const mseTotal = residuals.reduce((a, r) => a + mse(r), 0) / residuals.length;
+    const huberTotal = residuals.reduce((a, r) => a + huber(r, d), 0) / residuals.length;
+    mMse.textContent = mseTotal.toFixed(3);
+    mHuber.textContent = huberTotal.toFixed(3);
+    mRatio.textContent = (mseTotal / huberTotal).toFixed(1) + '×';
+  }
+  outlierEl.addEventListener('input', update);
+  deltaEl.addEventListener('input', update);
+  update();
+})();
+
+/* WIDGET 3: Optimizer Race */
+(function(){
+  const lrEl = document.getElementById('opt-lr');
+  const lrV = document.getElementById('opt-lr-v');
+  let startX = -2.5, startY = 2.0;
+  // Loss surface: L(x, y) = 10*x^2 + y^2 (ill-conditioned)
+  function grad(x, y) { return [20 * x, 2 * y]; }
+  function loss(x, y) { return 10 * x * x + y * y; }
+
+  const ctx = document.getElementById('opt-chart').getContext('2d');
+  // Generate contour points by sampling
+  const datasets = [];
+  // Background: contour lines as scatter (approximate)
+  for (let level of [0.5, 2, 5, 10, 25, 50]) {
+    const pts = [];
+    for (let theta = 0; theta < Math.PI * 2; theta += 0.05) {
+      // ellipse: 10*x^2 + y^2 = L  =>  x = sqrt(L/10)*cos, y = sqrt(L)*sin
+      pts.push({ x: Math.sqrt(level / 10) * Math.cos(theta), y: Math.sqrt(level) * Math.sin(theta) });
+    }
+    datasets.push({
+      label: '_contour' + level,
+      data: pts,
+      borderColor: 'rgba(0, 229, 255, 0.15)',
+      backgroundColor: 'transparent',
+      pointRadius: 0,
+      showLine: true,
+      borderWidth: 1,
+      tension: 0.4
+    });
+  }
+  // Three optimizer paths
+  datasets.push({ label: 'SGD', data: [], borderColor: '#ffb547', backgroundColor: '#ffb547', borderWidth: 2.5, pointRadius: 2.5, showLine: true });
+  datasets.push({ label: 'SGD+M', data: [], borderColor: '#ff5cc0', backgroundColor: '#ff5cc0', borderWidth: 2.5, pointRadius: 2.5, showLine: true });
+  datasets.push({ label: 'AdamW', data: [], borderColor: '#00e5ff', backgroundColor: '#00e5ff', borderWidth: 2.5, pointRadius: 2.5, showLine: true });
+
+  const chart = new Chart(ctx, {
+    type: 'scatter',
+    data: { datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      animation: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: { enabled: false }
+      },
+      scales: {
+        x: { min: -4, max: 4, grid: { color: 'rgba(0,229,255,0.07)' }, ticks: { color: '#6b7896' } },
+        y: { min: -3, max: 3, grid: { color: 'rgba(0,229,255,0.07)' }, ticks: { color: '#6b7896' } }
+      }
+    }
+  });
+
+  let timer = null;
+  function reset() {
+    if (timer) { clearInterval(timer); timer = null; }
+    datasets[6].data = [{ x: startX, y: startY }];
+    datasets[7].data = [{ x: startX, y: startY }];
+    datasets[8].data = [{ x: startX, y: startY }];
+    chart.update('none');
+    document.getElementById('opt-status').textContent = 'Click "Race" to start. AdamW typically wins for ill-conditioned surfaces.';
+  }
+  function race() {
+    reset();
+    const lr = +lrEl.value;
+    let sgdX = startX, sgdY = startY;
+    let mX = startX, mY = startY, mVx = 0, mVy = 0;
+    let aX = startX, aY = startY;
+    let aM1x = 0, aM1y = 0, aM2x = 0, aM2y = 0;
+    let t = 0;
+    const momentum = 0.9;
+    const b1 = 0.9, b2 = 0.999, eps = 1e-8;
+    timer = setInterval(() => {
+      t++;
+      // SGD
+      const [gx, gy] = grad(sgdX, sgdY);
+      sgdX -= lr * gx; sgdY -= lr * gy;
+      datasets[6].data.push({ x: sgdX, y: sgdY });
+      // SGD + momentum
+      const [mgx, mgy] = grad(mX, mY);
+      mVx = momentum * mVx + mgx;
+      mVy = momentum * mVy + mgy;
+      mX -= lr * mVx; mY -= lr * mVy;
+      datasets[7].data.push({ x: mX, y: mY });
+      // AdamW
+      const [agx, agy] = grad(aX, aY);
+      aM1x = b1 * aM1x + (1 - b1) * agx;
+      aM1y = b1 * aM1y + (1 - b1) * agy;
+      aM2x = b2 * aM2x + (1 - b2) * agx * agx;
+      aM2y = b2 * aM2y + (1 - b2) * agy * agy;
+      const m1xh = aM1x / (1 - Math.pow(b1, t));
+      const m1yh = aM1y / (1 - Math.pow(b1, t));
+      const m2xh = aM2x / (1 - Math.pow(b2, t));
+      const m2yh = aM2y / (1 - Math.pow(b2, t));
+      aX -= lr * 10 * m1xh / (Math.sqrt(m2xh) + eps);
+      aY -= lr * 10 * m1yh / (Math.sqrt(m2yh) + eps);
+      datasets[8].data.push({ x: aX, y: aY });
+      chart.update('none');
+      const sgdLoss = loss(sgdX, sgdY);
+      const mLoss = loss(mX, mY);
+      const aLoss = loss(aX, aY);
+      document.getElementById('opt-status').textContent =
+        `step ${t}  |  SGD loss=${sgdLoss.toFixed(3)}  SGD+M loss=${mLoss.toFixed(3)}  AdamW loss=${aLoss.toFixed(3)}`;
+      if (t > 80 || (sgdLoss < 0.001 && mLoss < 0.001 && aLoss < 0.001)) {
+        clearInterval(timer); timer = null;
+      }
+    }, 80);
+  }
+  lrEl.addEventListener('input', () => lrV.textContent = (+lrEl.value).toFixed(3));
+  document.querySelectorAll('[data-start]').forEach(b => b.addEventListener('click', () => {
+    document.querySelectorAll('[data-start]').forEach(x => x.classList.remove('active'));
+    b.classList.add('active');
+    const [x, y] = b.dataset.start.split(',').map(Number);
+    startX = x; startY = y;
+    reset();
+  }));
+  document.getElementById('opt-race').addEventListener('click', race);
+  document.getElementById('opt-reset').addEventListener('click', reset);
+  reset();
+})();
+
+/* WIDGET 4: LR Scheduler Visualizer */
+(function(){
+  let scheme = 'cosine';
+  const lrEl = document.getElementById('sched-lr');
+  const lrV = document.getElementById('sched-lr-v');
+  const epEl = document.getElementById('sched-ep');
+  const epV = document.getElementById('sched-ep-v');
+  const out = document.getElementById('sched-out');
+
+  function computeLRs(scheme, baseLr, epochs) {
+    const arr = [];
+    if (scheme === 'cosine') {
+      const etaMin = baseLr * 0.01;
+      for (let e = 0; e < epochs; e++) {
+        arr.push(etaMin + 0.5 * (baseLr - etaMin) * (1 + Math.cos(Math.PI * e / epochs)));
+      }
+    } else if (scheme === 'step') {
+      const stepSize = Math.floor(epochs / 3);
+      const gamma = 0.1;
+      for (let e = 0; e < epochs; e++) {
+        arr.push(baseLr * Math.pow(gamma, Math.floor(e / stepSize)));
+      }
+    } else if (scheme === 'onecycle') {
+      const maxLr = baseLr * 10;
+      const pctStart = 0.3;
+      const peak = Math.floor(epochs * pctStart);
+      for (let e = 0; e < epochs; e++) {
+        if (e <= peak) {
+          arr.push(baseLr + (maxLr - baseLr) * (e / peak));
+        } else {
+          arr.push(maxLr - (maxLr - baseLr * 0.01) * ((e - peak) / (epochs - peak)));
+        }
+      }
+    } else { // exponential
+      const gamma = 0.95;
+      for (let e = 0; e < epochs; e++) arr.push(baseLr * Math.pow(gamma, e));
+    }
+    return arr;
+  }
+
+  const ctx = document.getElementById('sched-chart').getContext('2d');
+  const chart = new Chart(ctx, {
+    type: 'line',
+    data: { labels: [], datasets: [{ data: [], borderColor: '#00e5ff', backgroundColor: 'rgba(0,229,255,0.15)', fill: true, borderWidth: 2, pointRadius: 0, tension: 0.0 }] },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      animation: { duration: 200 },
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { grid: { color: 'rgba(0,229,255,0.07)' }, ticks: { color: '#6b7896', maxTicksLimit: 10 }, title: { display: true, text: 'Epoch', color: '#9aa8c4', font: { size: 11 } } },
+        y: { grid: { color: 'rgba(0,229,255,0.07)' }, ticks: { color: '#6b7896' }, title: { display: true, text: 'Learning rate', color: '#9aa8c4', font: { size: 11 } } }
+      }
+    }
+  });
+
+  function update() {
+    const baseLr = +lrEl.value;
+    const epochs = +epEl.value;
+    lrV.textContent = baseLr.toFixed(4);
+    epV.textContent = epochs;
+    const lrs = computeLRs(scheme, baseLr, epochs);
+    chart.data.labels = lrs.map((_, i) => i);
+    chart.data.datasets[0].data = lrs;
+    chart.update('none');
+    const min = Math.min(...lrs);
+    const max = Math.max(...lrs);
+    const codeSnippets = {
+      cosine: `>>> torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=${epochs}, eta_min=${(baseLr * 0.01).toExponential(2)})`,
+      step:   `>>> torch.optim.lr_scheduler.StepLR(opt, step_size=${Math.floor(epochs/3)}, gamma=0.1)`,
+      onecycle: `>>> torch.optim.lr_scheduler.OneCycleLR(opt, max_lr=${(baseLr*10).toExponential(2)}, total_steps=${epochs}, pct_start=0.3)`,
+      exp:    `>>> torch.optim.lr_scheduler.ExponentialLR(opt, gamma=0.95)`
+    };
+    out.textContent = codeSnippets[scheme] + `\n\nLR range: ${min.toExponential(2)} → ${max.toExponential(2)}`;
+  }
+  lrEl.addEventListener('input', update);
+  epEl.addEventListener('input', update);
+  document.querySelectorAll('[data-sched]').forEach(b => b.addEventListener('click', () => {
+    document.querySelectorAll('[data-sched]').forEach(x => x.classList.remove('active'));
+    b.classList.add('active');
+    scheme = b.dataset.sched;
+    update();
+  }));
+  update();
+})();
+
+/* WIDGET 5: Gradient Clipping */
+(function(){
+  let grads = [];
+  function resample() {
+    grads = [];
+    for (let i = 0; i < 12; i++) {
+      let v = (Math.random() - 0.5) * 1.5;
+      // inject a couple of outliers
+      if (i === 3 || i === 8) v = (Math.random() > 0.5 ? 1 : -1) * (1.5 + Math.random() * 2);
+      grads.push(+v.toFixed(3));
+    }
+    update();
+  }
+  const ctx = document.getElementById('clip-chart').getContext('2d');
+  const chart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: grads.map((_, i) => 'p' + i),
+      datasets: [
+        { label: 'before', data: [], backgroundColor: 'rgba(255, 92, 192, 0.55)', borderColor: '#ff5cc0', borderWidth: 1, borderRadius: 3 },
+        { label: 'after',  data: [], backgroundColor: 'rgba(0, 229, 255, 0.65)',   borderColor: '#00e5ff', borderWidth: 1, borderRadius: 3 }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      animation: { duration: 200 },
+      plugins: { legend: { display: true, labels: { color: '#9aa8c4', font: { size: 11 }, boxWidth: 12 } } },
+      scales: {
+        x: { grid: { display: false }, ticks: { color: '#6b7896', font: { size: 10 } } },
+        y: { grid: { color: 'rgba(0,229,255,0.07)' }, ticks: { color: '#6b7896' }, title: { display: true, text: 'gradient', color: '#9aa8c4', font: { size: 11 } } }
+      }
+    }
+  });
+  const normEl = document.getElementById('clip-norm');
+  const normV = document.getElementById('clip-norm-v');
+  const before = document.getElementById('clip-before');
+  const after = document.getElementById('clip-after');
+  const scaleEl = document.getElementById('clip-scale');
+
+  function update() {
+    const maxN = +normEl.value;
+    normV.textContent = maxN.toFixed(1);
+    const sumSq = grads.reduce((a, g) => a + g * g, 0);
+    const norm = Math.sqrt(sumSq);
+    let scale = 1.0;
+    if (norm > maxN) scale = maxN / norm;
+    const clipped = grads.map(g => g * scale);
+    chart.data.labels = grads.map((_, i) => 'p' + i);
+    chart.data.datasets[0].data = grads;
+    chart.data.datasets[1].data = clipped;
+    chart.update('none');
+    before.textContent = norm.toFixed(3);
+    after.textContent = Math.min(norm, maxN).toFixed(3);
+    scaleEl.textContent = scale.toFixed(3) + '×';
+    scaleEl.style.color = scale < 1 ? 'var(--warn)' : 'var(--success)';
+  }
+  normEl.addEventListener('input', update);
+  document.getElementById('clip-resample').addEventListener('click', resample);
+  resample();
+})();
+
+/* WIDGET 6: Early Stopping Simulator */
+(function(){
+  const patEl = document.getElementById('es-pat');
+  const patV = document.getElementById('es-pat-v');
+  const noiseEl = document.getElementById('es-noise');
+  const noiseV = document.getElementById('es-noise-v');
+  const bestEpEl = document.getElementById('es-best-ep');
+  const bestLossEl = document.getElementById('es-best-loss');
+  const stopEpEl = document.getElementById('es-stop-ep');
+
+  function rand() { return Math.random(); }
+
+  let curveSeed = 7;
+  function seededRand() {
+    curveSeed = (curveSeed * 9301 + 49297) % 233280;
+    return curveSeed / 233280;
+  }
+
+  const ctx = document.getElementById('es-chart').getContext('2d');
+  const chart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: [],
+      datasets: [
+        { label: 'val loss', data: [], borderColor: '#00e5ff', backgroundColor: 'rgba(0,229,255,0.12)', fill: true, borderWidth: 2, pointRadius: 0, tension: 0.2 },
+        { label: 'best so far', data: [], borderColor: '#6bff9d', backgroundColor: 'transparent', borderWidth: 1.5, pointRadius: 0, borderDash: [4, 3] }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      animation: false,
+      plugins: { legend: { display: true, labels: { color: '#9aa8c4', font: { size: 11 }, boxWidth: 12 } } },
+      scales: {
+        x: { grid: { color: 'rgba(0,229,255,0.07)' }, ticks: { color: '#6b7896', maxTicksLimit: 10 }, title: { display: true, text: 'Epoch', color: '#9aa8c4', font: { size: 11 } } },
+        y: { grid: { color: 'rgba(0,229,255,0.07)' }, ticks: { color: '#6b7896' } }
+      }
+    }
+  });
+
+  function run() {
+    curveSeed = Math.floor(Math.random() * 1000) + 1;
+    const patience = +patEl.value;
+    const noise = +noiseEl.value;
+    patV.textContent = patience;
+    noiseV.textContent = noise.toFixed(2);
+    // Simulate: val loss decreases then plateaus + noise
+    const losses = [];
+    const bestSoFar = [];
+    let best = Infinity;
+    let bestEp = 0;
+    let counter = 0;
+    let stopAt = -1;
+    for (let e = 0; e < 100; e++) {
+      const trend = 0.05 + 0.6 * Math.exp(-e / 18);
+      const l = +(trend + (seededRand() - 0.5) * noise * 2).toFixed(4);
+      losses.push(l);
+      if (l < best - 1e-4) {
+        best = l;
+        bestEp = e;
+        counter = 0;
+      } else {
+        counter++;
+      }
+      bestSoFar.push(best);
+      if (counter >= patience && stopAt === -1) {
+        stopAt = e;
+        break;
+      }
+    }
+    chart.data.labels = losses.map((_, i) => i);
+    chart.data.datasets[0].data = losses;
+    chart.data.datasets[1].data = bestSoFar;
+    chart.update('none');
+    bestEpEl.textContent = bestEp;
+    bestLossEl.textContent = best.toFixed(4);
+    stopEpEl.textContent = stopAt === -1 ? '—' : stopAt;
+  }
+  patEl.addEventListener('input', run);
+  noiseEl.addEventListener('input', run);
+  document.getElementById('es-resim').addEventListener('click', run);
+  run();
+})();
+</script>
+</body>
+</html>

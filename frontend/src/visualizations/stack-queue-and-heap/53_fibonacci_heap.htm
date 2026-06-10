@@ -1,0 +1,768 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fibonacci Heap</title>
+    <style>
+        :root {
+            --bg-page: #070b14;
+            --bg-surface: rgba(255, 255, 255, 0.045);
+            --bg-input: rgba(255, 255, 255, 0.04);
+            --border-main: rgba(255, 255, 255, 0.10);
+            --btn-bg: rgba(255, 255, 255, 0.05);
+            --btn-hover: rgba(255, 255, 255, 0.10);
+            --text-main: #e8eefb;
+            --text-dim: #8b98b3;
+            --accent-orange: #f5a524;   /* value in motion / link path   */
+            --accent-blue:   #06b6d4;    /* child / edges / chrome        */
+            --accent-green:  #22c55e;    /* min / extracted result        */
+            --accent-red:    #f43f5e;    /* removed                       */
+            --accent-purple: #a855f7;    /* current node / root           */
+            --mono: ui-monospace, 'SF Mono', 'Cascadia Code', 'Courier New', monospace;
+            --sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+            --shell: 940px;
+        }
+
+        * { box-sizing: border-box; }
+        html, body { overflow-x: hidden; }
+        body {
+            background:
+                radial-gradient(1100px 600px at 15% -10%, rgba(168, 85, 247, 0.12), transparent 60%),
+                radial-gradient(900px 600px at 100% 10%, rgba(6, 182, 212, 0.10), transparent 55%),
+                linear-gradient(160deg, #070b14 0%, #0b1120 55%, #0a0f1c 100%);
+            background-attachment: fixed;
+            color: var(--text-main); font-family: var(--sans); margin: 0;
+            display: flex; flex-direction: column; align-items: center; min-height: 100vh;
+            padding-bottom: 48px; -webkit-font-smoothing: antialiased;
+        }
+        body::before, body::after { content: ''; position: fixed; border-radius: 50%; filter: blur(70px); pointer-events: none; z-index: 0; opacity: 0.45; }
+        body::before { width: 380px; height: 380px; top: 8%; left: -120px; background: radial-gradient(circle, rgba(168,85,247,0.30), transparent 70%); }
+        body::after  { width: 420px; height: 420px; bottom: 4%; right: -140px; background: radial-gradient(circle, rgba(6,182,212,0.22), transparent 70%); }
+        body > * { position: relative; z-index: 1; }
+
+        .input-bar {
+            width: 100%; background: rgba(10, 15, 28, 0.55);
+            backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+            padding: 14px 16px; display: flex; justify-content: center; align-items: center; gap: 10px;
+            border-bottom: 1px solid var(--border-main); flex-wrap: wrap; position: sticky; top: 0; z-index: 50;
+        }
+        label.ui-label, .ui-label { font-family: var(--mono); font-size: 13px; color: var(--text-dim); letter-spacing: 0.2px; }
+        input[type="number"] {
+            background: var(--bg-input); border: 1px solid var(--border-main); color: var(--text-main);
+            height: 34px; border-radius: 9px; padding: 0 12px; font-size: 13px; font-family: var(--mono); width: 90px;
+            transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+        }
+        input:focus { outline: none; border-color: var(--accent-purple); box-shadow: 0 0 0 3px rgba(168,85,247,0.18); background: rgba(168,85,247,0.06); }
+
+        button {
+            height: 34px; border-radius: 9px; padding: 0 14px; background: var(--btn-bg);
+            border: 1px solid var(--border-main); color: var(--text-main); font-size: 13px; font-weight: 600; cursor: pointer;
+            transition: transform 0.15s ease, background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+        }
+        button:hover { background: var(--btn-hover); border-color: rgba(168, 85, 247, 0.5); box-shadow: 0 0 18px rgba(168, 85, 247, 0.18); transform: translateY(-1px); }
+        button:active { transform: translateY(0); }
+        #play-btn { background: linear-gradient(135deg, rgba(168,85,247,0.22), rgba(168,85,247,0.10)); border-color: rgba(168, 85, 247, 0.45); color: #e9d5ff; min-width: 80px; }
+        .op-btn.ins { border-color: rgba(245,165,36,0.4); color: #ffe2b0; font-family: var(--mono); }
+        .op-btn.ext { border-color: rgba(34,197,94,0.4); color: #bbf7d0; font-family: var(--mono); }
+
+        .shell { width: var(--shell); max-width: 95%; margin: 24px auto 0; display: flex; flex-direction: column; gap: 16px; }
+
+        .title-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+        .title-row h1 { font-size: 18px; font-weight: 800; margin: 0; letter-spacing: 0.2px; }
+        .title-row .sub { color: var(--text-dim); font-weight: 500; font-size: 13px; }
+        .step-badge { font-family: var(--mono); font-size: 12px; font-weight: 700; color: #e9d5ff; background: rgba(168,85,247,0.12); border: 1px solid rgba(168,85,247,0.3); padding: 4px 10px; border-radius: 999px; white-space: nowrap; }
+        .progress-track { height: 4px; width: 100%; background: rgba(255,255,255,0.07); border-radius: 999px; overflow: hidden; margin-top: -6px; }
+        .progress-fill { height: 100%; width: 0%; border-radius: 999px; background: linear-gradient(90deg, var(--accent-purple), var(--accent-blue)); box-shadow: 0 0 12px rgba(168,85,247,0.5); transition: width 0.45s cubic-bezier(0.34,1.1,0.64,1); }
+
+        .op-feed { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+        .op-chip { font-family: var(--mono); font-size: 11px; font-weight: 700; padding: 4px 9px; border-radius: 8px; border: 1px solid var(--border-main); color: var(--text-dim); background: rgba(255,255,255,0.03); transition: all 0.3s; white-space: nowrap; }
+        .op-chip.done { opacity: 0.45; }
+        .op-chip.current { color: #fff; border-color: rgba(168,85,247,0.6); background: rgba(168,85,247,0.16); box-shadow: 0 0 12px rgba(168,85,247,0.3); }
+
+        .narration { background: var(--bg-surface); border: 1px solid rgba(168,85,247,0.22); border-radius: 12px; padding: 12px 18px; font-family: var(--mono); font-size: 14px; line-height: 1.5; color: #ede9fe; min-height: 48px; display: flex; align-items: center; gap: 10px; transition: border-color 0.3s, background 0.3s; }
+        .narration::before { content: '\25B8'; color: var(--accent-purple); font-size: 13px; }
+        .narration.done { border-color: rgba(34,197,94,0.4); background: rgba(34,197,94,0.06); }
+        .narration.done::before { content: '\2713'; color: var(--accent-green); }
+        .narration code { background: rgba(168,85,247,0.14); color: #d8b4fe; padding: 1px 6px; border-radius: 5px; font-size: 12.5px; }
+        .narration b { color: #fff; }
+
+        .stage-card { background: var(--bg-surface); border: 1px solid var(--border-main); border-radius: 18px; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); box-shadow: 0 12px 38px rgba(0,0,0,0.4); overflow: hidden; }
+        .stage-screen { position: relative; margin: 14px; border-radius: 14px; background: radial-gradient(700px 300px at 50% -10%, rgba(168,85,247,0.08), transparent 70%), #090d18; border: 1px solid rgba(255,255,255,0.06); }
+
+        .tree-stage { position: relative; width: 100%; height: 320px; overflow: auto; scrollbar-width: thin; }
+        .tree-stage::-webkit-scrollbar { height: 7px; width: 7px; }
+        .tree-stage::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 8px; }
+        .tree-canvas { position: relative; margin: 0 auto; }
+        #edges { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; z-index: 1; }
+        .edge-ln { stroke: var(--accent-blue); stroke-width: 2.2; fill: none; opacity: 0.45; transition: stroke 0.3s, opacity 0.3s; }
+        .edge-ln.active { stroke: var(--accent-orange); opacity: 1; filter: drop-shadow(0 0 6px rgba(245,165,36,0.6)); }
+
+        /* dashed root-list link between sibling roots */
+        .root-ln { stroke: var(--text-dim); stroke-width: 1.6; stroke-dasharray: 4 5; fill: none; opacity: 0.4; transition: opacity 0.3s; }
+
+        .hnode { position: absolute; width: 46px; height: 46px; margin: -23px 0 0 -23px; display: flex; align-items: center; justify-content: center;
+            border-radius: 50%; font-family: var(--mono); font-weight: 800; font-size: 17px;
+            border: 2px solid var(--border-main); background: rgba(255,255,255,0.06); color: var(--text-main);
+            z-index: 2; will-change: transform; transition: background 0.35s, border-color 0.35s, color 0.35s, box-shadow 0.35s; }
+        .hnode.root { border-color: rgba(168,85,247,0.55); }
+        .hnode.min { border-color: var(--accent-green); background: rgba(34,197,94,0.14); color: #bbf7d0; box-shadow: 0 0 22px rgba(34,197,94,0.5); }
+        .hnode.cur { border-color: var(--accent-purple); background: rgba(168,85,247,0.16); color: #e9d5ff; box-shadow: 0 0 20px rgba(168,85,247,0.55); }
+        .hnode.cmp { border-color: var(--accent-blue); background: rgba(6,182,212,0.16); color: #a5f3fc; box-shadow: 0 0 20px rgba(6,182,212,0.5); }
+        .hnode.link { border-color: var(--accent-orange); background: rgba(245,165,36,0.18); color: #ffd591; box-shadow: 0 0 22px rgba(245,165,36,0.6); }
+        .hnode.new { border-color: var(--accent-orange); background: rgba(245,165,36,0.16); color: #ffd591; box-shadow: 0 0 22px rgba(245,165,36,0.55); }
+        .hnode.gone { border-color: var(--accent-red); background: rgba(244,63,94,0.16); color: #fecdd3; box-shadow: 0 0 22px rgba(244,63,94,0.5); }
+        .hnode .deg { position: absolute; top: -8px; right: -8px; min-width: 15px; height: 15px; padding: 0 3px; border-radius: 8px; background: rgba(10,15,28,0.85); color: var(--text-dim); font-size: 9px; font-weight: 800; display: flex; align-items: center; justify-content: center; border: 1px solid var(--border-main); }
+
+        /* the 'min' floating tag */
+        .min-tag { position: absolute; z-index: 3; pointer-events: none; font-family: var(--mono); font-size: 9.5px; font-weight: 800; letter-spacing: 0.5px; color: #bbf7d0; background: rgba(34,197,94,0.16); border: 1px solid rgba(34,197,94,0.5); padding: 1px 6px; border-radius: 7px; white-space: nowrap; box-shadow: 0 0 12px rgba(34,197,94,0.35); transform: translate(-50%, -50%); will-change: left, top; transition: left 0.4s cubic-bezier(0.34,1.1,0.64,1), top 0.4s cubic-bezier(0.34,1.1,0.64,1), opacity 0.3s; }
+
+        .empty-note { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); color: var(--text-dim); font-family: var(--mono); font-size: 13px; }
+
+        /* degree buckets row (consolidation table) */
+        .buckets-zone { padding: 4px 16px 16px; }
+        .buckets-label { font-family: var(--mono); font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--text-dim); text-align: center; margin-bottom: 8px; }
+        .buckets-rail { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+        .bucket { min-width: 52px; padding: 6px 8px 4px; border-radius: 10px; border: 2px dashed var(--border-main); background: rgba(255,255,255,0.03); display: flex; flex-direction: column; align-items: center; gap: 3px; transition: background 0.35s, border-color 0.35s, box-shadow 0.35s; }
+        .bucket.hit { border-color: var(--accent-orange); background: rgba(245,165,36,0.10); box-shadow: 0 0 14px rgba(245,165,36,0.3); border-style: solid; }
+        .bucket.filled { border-style: solid; border-color: rgba(6,182,212,0.4); }
+        .bucket .bk-deg { font-family: var(--mono); font-size: 9px; font-weight: 800; color: var(--text-dim); letter-spacing: 0.5px; }
+        .bucket .bk-val { font-family: var(--mono); font-size: 15px; font-weight: 800; color: var(--text-main); min-height: 18px; }
+        .bucket .bk-val.empty { color: #3a4356; }
+
+        .action-stage { position: relative; min-height: 86px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; }
+        .extracted-track { display: flex; gap: 6px; align-items: center; min-height: 34px; flex-wrap: wrap; justify-content: center; }
+        .ex-label { font-family: var(--mono); font-size: 11px; color: var(--text-dim); }
+        .ex-tile { min-width: 34px; height: 34px; padding: 0 6px; border-radius: 9px; display: flex; align-items: center; justify-content: center; font-family: var(--mono); font-size: 16px; font-weight: 800; border: 2px solid var(--accent-green); background: rgba(34,197,94,0.14); color: #bbf7d0; }
+        .action-word { font-family: var(--mono); font-weight: 800; font-size: 18px; letter-spacing: 0.4px; min-height: 22px; text-align: center; transition: color 0.3s; }
+        #confetti { position: absolute; inset: 0; overflow: visible; pointer-events: none; }
+        .confetti-piece { position: absolute; top: 0; left: 50%; width: 8px; height: 13px; border-radius: 2px; opacity: 0; animation: confettiFall ease-out forwards; }
+
+        .controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: center; }
+        .controls .kbd-hint { font-size: 11px; color: var(--text-dim); font-family: var(--mono); margin-left: 4px; }
+        .kbd { background: rgba(255,255,255,0.07); border: 1px solid var(--border-main); border-radius: 5px; padding: 1px 6px; font-size: 10px; }
+        input[type="range"] { accent-color: var(--accent-purple); width: 110px; cursor: pointer; }
+
+        .details-toggle { align-self: center; height: 32px; padding: 0 16px; border-radius: 999px; cursor: pointer; background: rgba(255,255,255,0.04); border: 1px solid var(--border-main); color: var(--text-dim); font-family: var(--mono); font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; gap: 8px; transition: color 0.2s, border-color 0.2s, background 0.2s; }
+        .details-toggle:hover { color: var(--text-main); border-color: rgba(168,85,247,0.4); background: rgba(168,85,247,0.06); }
+        .details-toggle .chev { transition: transform 0.3s ease; }
+        .details-wrap.open .details-toggle .chev { transform: rotate(180deg); }
+        .details-body { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.4s ease; }
+        .details-wrap.open .details-body { grid-template-rows: 1fr; }
+        .details-inner { overflow: hidden; min-height: 0; }
+        .details-grid { display: flex; flex-direction: column; gap: 14px; padding-top: 14px; }
+
+        .panel-card { background: var(--bg-surface); border: 1px solid var(--border-main); border-radius: 16px; backdrop-filter: blur(10px); box-shadow: 0 8px 30px rgba(0,0,0,0.35); }
+        .panel-head { display: flex; align-items: center; gap: 8px; padding: 11px 16px; border-bottom: 1px solid var(--border-main); font-size: 11px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; color: var(--text-dim); }
+        .panel-head .pip { width: 7px; height: 7px; border-radius: 50%; background: var(--accent-purple); box-shadow: 0 0 8px var(--accent-purple); }
+        .code-body { padding: 12px 6px 14px; font-family: var(--mono); font-size: 12.5px; line-height: 1.7; }
+        .code-line { display: flex; gap: 12px; padding: 1px 16px; border-left: 2px solid transparent; transition: background 0.3s, border-color 0.3s; white-space: pre; }
+        .code-line .lno { color: #4b5772; width: 16px; text-align: right; user-select: none; }
+        .code-line .src { color: #c4cee0; }
+        .code-line .kw { color: #c792ea; }
+        .code-line .fn { color: #82aaff; }
+        .code-line.active { background: rgba(168,85,247,0.12); border-left-color: var(--accent-purple); }
+        .code-line.active .src, .code-line.active .lno { color: #e8eefb; }
+
+        .log-panel { border-radius: 14px; padding: 12px 16px; height: 110px; overflow-y: auto; font-family: var(--mono); font-size: 12.5px; line-height: 1.5; background: var(--bg-surface); border: 1px solid var(--border-main); }
+        .log-panel::-webkit-scrollbar { width: 8px; }
+        .log-panel::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 8px; }
+
+        @keyframes confettiFall { 0%{ opacity:1; transform: translate(-50%, 0) rotate(0deg); } 100%{ opacity:0; transform: translate(calc(-50% + var(--x)), 220px) rotate(var(--rot)); } }
+        @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; } }
+    </style>
+</head>
+<body>
+
+    <div class="input-bar">
+        <input type="number" id="val-input" placeholder="value" min="0" max="99">
+        <button class="op-btn ins" onclick="doOp('insert')">Insert</button>
+        <button class="op-btn ext" onclick="doOp('extractMin')">Extract-Min</button>
+        <span class="ui-label" style="opacity:.5">|</span>
+        <button onclick="loadExample(0)">Example 1</button>
+        <button onclick="loadExample(1)">Example 2</button>
+        <button onclick="resetSim()">&#8634; Reset</button>
+    </div>
+
+    <div class="shell">
+        <div class="title-row">
+            <h1>Fibonacci Heap <span class="sub">&middot; a forest of heap-ordered trees &middot; min pointer &middot; insert is O(1), extract-min consolidates by degree</span></h1>
+            <span class="step-badge" id="step-badge">Step 1 / 1</span>
+        </div>
+        <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+
+        <div class="op-feed" id="op-feed"></div>
+
+        <div class="narration" id="main-panel">&mdash;</div>
+
+        <div class="stage-card">
+            <div class="stage-screen">
+                <div class="tree-stage" id="tree-stage">
+                    <div class="tree-canvas" id="tree-canvas">
+                        <svg id="edges"></svg>
+                    </div>
+                </div>
+                <div class="buckets-zone">
+                    <div class="buckets-label">consolidate &middot; one tree per degree &middot; link equal degrees (smaller root wins)</div>
+                    <div class="buckets-rail" id="buckets-rail"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="action-stage">
+            <div id="confetti"></div>
+            <div class="extracted-track"><span class="ex-label" id="ex-label" style="display:none">extracted (sorted):</span><span id="extracted" style="display:flex;gap:6px"></span></div>
+            <div class="action-word" id="action-word"></div>
+        </div>
+
+        <div class="controls">
+            <button onclick="resetSim()">&#8634; Reset</button>
+            <button onclick="prevStep()">&#8592; Back</button>
+            <button onclick="togglePlay()" id="play-btn">Play</button>
+            <button onclick="nextStep()">Next &#8594;</button>
+            <span class="ui-label" style="margin-left:6px; font-size:11px">Speed</span>
+            <input type="range" id="speed" min="0" max="2" value="1">
+            <span class="kbd-hint"><span class="kbd">&#8592;</span> <span class="kbd">&#8594;</span> step &middot; <span class="kbd">space</span> play</span>
+        </div>
+
+        <div class="details-wrap" id="details-wrap">
+            <button class="details-toggle" onclick="toggleDetails()" aria-expanded="false">
+                <span id="details-label">Show code &amp; log</span> <span class="chev">&#9662;</span>
+            </button>
+            <div class="details-body">
+                <div class="details-inner">
+                    <div class="details-grid">
+                        <div class="panel-card">
+                            <div class="panel-head"><span class="pip"></span> Algorithm</div>
+                            <div class="code-body" id="code-panel"></div>
+                        </div>
+                        <div class="log-panel" id="log"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        'use strict';
+
+        // ───────── Motion engine ─────────
+        const REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        const FRAME = 1000 / 60;
+        function sampleSpring(stiffness, damping, mass) {
+            const dt = 1 / 60; let x = 1, v = 0; const out = [];
+            for (let i = 0; i < 240; i++) { const a = (-stiffness * x - damping * v) / mass; v += a * dt; x += v * dt; out.push(1 - x); if (Math.abs(x) < 0.0015 && Math.abs(v) < 0.0015) break; }
+            out.push(1); return out;
+        }
+        const SPRING_POS = sampleSpring(320, 30, 1);
+        const SPRING_POP = sampleSpring(520, 17, 1);
+        const durOf = (a) => a.length * FRAME;
+        const Motion = {
+            move(el, x, y) {
+                const px = el._x, py = el._y;
+                const commit = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px)`;
+                if (REDUCED || px == null || (Math.abs(x - px) < 0.5 && Math.abs(y - py) < 0.5)) { el._x = x; el._y = y; el.style.transform = commit; return; }
+                const dx = x - px, dy = y - py;
+                const kf = SPRING_POS.map(p => ({ transform: `translate(${(px + dx * p).toFixed(1)}px, ${(py + dy * p).toFixed(1)}px)` }));
+                el.animate(kf, { duration: durOf(SPRING_POS), easing: 'linear' });
+                el._x = x; el._y = y; el.style.transform = commit;
+            },
+            pop(el) {
+                if (REDUCED) { el.style.opacity = '1'; return; }
+                const kf = SPRING_POP.map(p => ({ opacity: Math.min(1, p * 2).toFixed(3), transform: `translate(${el._x.toFixed(1)}px, ${el._y.toFixed(1)}px) scale(${(0.3 + 0.7 * p).toFixed(3)})` }));
+                const a = el.animate(kf, { duration: durOf(SPRING_POP), easing: 'linear' });
+                a.onfinish = () => { el.style.transform = `translate(${el._x.toFixed(1)}px, ${el._y.toFixed(1)}px)`; };
+            },
+        };
+
+        // ───────── State ─────────
+        let ops = [];          // [{type:'insert',value}|{type:'extractMin'}]
+        let steps = [];
+        let stepIdx = 0;
+        let timer = null;
+        let confettiArmed = true;
+        const delays = [1500, 850, 420];
+        const nodeEls = {};    // keyed by stable node id  "k:<id>"
+        const edgeEls = {};    // keyed by child id        "e:<id>"
+        const bucketEls = {};  // keyed by degree          "b:<d>"
+        let minTagEl = null;
+
+        const CODE = [
+            [['src','  def '],['fn','insert'],['src','(x):']],
+            [['src','    add singleton tree x to root list']],
+            [['kw','    if '],['src','x < min: min = x']],
+            [['src','  def '],['fn','extractMin'],['src','():']],
+            [['src','    z = min; remove z; promote its children to roots']],
+            [['src','    # consolidate: one tree per degree']],
+            [['kw','    for '],['src','each root r:']],
+            [['kw','      while '],['src','bucket[deg(r)] exists:']],
+            [['src','        link(r, bucket[deg]) ; deg += 1']],
+            [['src','    min = smallest remaining root']],
+            [['kw','    return '],['src','z.key']],
+        ];
+        function buildCodePanel() {
+            const panel = document.getElementById('code-panel'); panel.innerHTML = '';
+            CODE.forEach((tokens, i) => {
+                const line = document.createElement('div'); line.className = 'code-line'; line.dataset.line = i;
+                const lno = document.createElement('span'); lno.className = 'lno'; lno.textContent = i + 1; line.appendChild(lno);
+                const src = document.createElement('span');
+                tokens.forEach(([cls, txt]) => { const s = document.createElement('span'); s.className = cls; s.textContent = txt; src.appendChild(s); });
+                line.appendChild(src); panel.appendChild(line);
+            });
+        }
+        function highlightCode(arr) { document.querySelectorAll('.code-line').forEach(el => el.classList.toggle('active', arr && arr.includes(+el.dataset.line))); }
+        function toggleDetails() {
+            const wrap = document.getElementById('details-wrap'); const open = wrap.classList.toggle('open');
+            wrap.querySelector('.details-toggle').setAttribute('aria-expanded', open ? 'true' : 'false');
+            document.getElementById('details-label').textContent = open ? 'Hide code & log' : 'Show code & log';
+        }
+
+        // ───────── Fibonacci-heap model ─────────
+        // Nodes are plain objects with a stable id. The heap is a forest: a list
+        // of root ids. Each node has {id, key, children:[ids], parent}.
+        // For animation we snapshot the forest + per-node decorations each step.
+        let NID = 0;
+        function newNode(key) { return { id: 'F' + (NID++), key, children: [], parent: null }; }
+
+        // Build a flat snapshot: map id->{key, childIds, isRoot}, root order array,
+        // plus decoration sets for the current step.
+        function snapForest(forest, nodes, extra) {
+            // forest = ordered array of root ids ; nodes = id->node
+            const flat = {};
+            const order = forest.slice();
+            const collect = (id) => {
+                const n = nodes[id];
+                flat[id] = { id, key: n.key, children: n.children.slice() };
+                n.children.forEach(collect);
+            };
+            forest.forEach(collect);
+            return Object.assign({
+                roots: order, flat,
+                extracted: [],
+                cur: null, cmp: null, link: [], gone: null, newId: null,
+                minId: null, minTagId: null,
+                buckets: null, bucketHit: -1,
+                opIdx: null, code: [],
+            }, extra);
+        }
+
+        function rootMinId(forest, nodes) {
+            if (!forest.length) return null;
+            let m = forest[0];
+            for (const id of forest) if (nodes[id].key < nodes[m].key) m = id;
+            return m;
+        }
+
+        // ───────── step generation ─────────
+        function generateSteps() {
+            steps = [];
+            NID = 0;
+            const nodes = {};
+            let forest = [];     // root id list (insertion order)
+            const extracted = [];
+
+            const push = (extra) => {
+                const s = snapForest(forest, nodes, Object.assign({ extracted: extracted.slice() }, extra));
+                steps.push(s);
+                return s;
+            };
+
+            push({ code: [], action: 'EMPTY HEAP', actionColor: 'var(--accent-purple)',
+                panel: `A <b>Fibonacci heap</b> is a <b>forest</b> of heap-ordered trees with a pointer to the <b>min</b> root. Insert just drops a new singleton tree into the root list &#8594; <code>O(1)</code>. Extract-min does the work: remove the min, then <b>consolidate</b> so no two trees share a degree.`,
+                log: `init  empty forest` });
+
+            ops.forEach((op, oi) => {
+                if (op.type === 'insert') {
+                    const x = op.value;
+                    const node = newNode(x); nodes[node.id] = node;
+                    forest.push(node.id);
+                    const minId = rootMinId(forest, nodes);
+                    push({ opIdx: oi, code: [0, 1, 2], action: 'INSERT ' + x, actionColor: 'var(--accent-orange)',
+                        newId: node.id, cur: node.id, minId, minTagId: minId,
+                        panel: `<code>insert(${x})</code> &#8594; add a singleton tree to the root list. ${minId === node.id ? `<span style="color:var(--accent-green)">${x} is the new <b>min</b>.</span>` : `<b>min</b> stays at ${nodes[minId].key}.`} No tree restructuring &#8594; <code>O(1)</code>.`,
+                        log: `insert(${x})  roots=[${forest.map(r => nodes[r].key).join(', ')}]` });
+
+                } else if (op.type === 'extractMin') {
+                    if (!forest.length) {
+                        push({ opIdx: oi, code: [3], action: 'EMPTY', actionColor: 'var(--accent-red)',
+                            panel: `<code>extractMin()</code> &#8594; the heap is empty, nothing to remove.`,
+                            log: `extractMin() -> empty` });
+                        return;
+                    }
+                    const zId = rootMinId(forest, nodes);
+                    const z = nodes[zId];
+                    const root = z.key;
+
+                    // (a) highlight the min that is about to leave
+                    push({ opIdx: oi, code: [3, 4], action: 'EXTRACT ' + root, actionColor: 'var(--accent-green)',
+                        cur: zId, minId: zId, minTagId: zId, gone: zId,
+                        panel: `<code>extractMin()</code> &#8594; the <b>min</b> root is <b>${root}</b>. Remove it and promote each of its ${z.children.length} child${z.children.length === 1 ? '' : 'ren'} to the root list.`,
+                        log: `extractMin() -> ${root}` });
+
+                    // (b) promote children to roots, remove z
+                    const promoted = z.children.slice();
+                    promoted.forEach(c => { nodes[c].parent = null; });
+                    // splice children into root list where z was, then drop z
+                    const zPos = forest.indexOf(zId);
+                    forest = forest.slice(0, zPos).concat(promoted).concat(forest.slice(zPos + 1));
+                    z.children = [];
+                    delete nodes[zId];
+
+                    if (forest.length) {
+                        const tmpMin = rootMinId(forest, nodes);
+                        push({ opIdx: oi, code: [4], action: promoted.length ? 'PROMOTE CHILDREN' : 'REMOVED', actionColor: 'var(--accent-blue)',
+                            minId: tmpMin, minTagId: tmpMin,
+                            panel: promoted.length
+                                ? `Children of ${root} {${promoted.map(c => nodes[c].key).join(', ')}} are now roots. The root list has trees of mixed degree &#8594; time to <b>consolidate</b>.`
+                                : `${root} had no children. Now <b>consolidate</b> the remaining roots so each degree appears at most once.`,
+                            log: `  promote children -> roots=[${forest.map(r => nodes[r].key).join(', ')}]` });
+                    }
+
+                    // (c) consolidate: walk roots, link equal degrees
+                    if (forest.length) {
+                        const degree = (id) => nodes[id].children.length;
+                        const buckets = {};   // degree -> root id
+
+                        // snapshot of buckets for rendering
+                        const bucketsView = () => {
+                            const v = {};
+                            Object.keys(buckets).forEach(d => { v[d] = nodes[buckets[d]] ? nodes[buckets[d]].key : null; });
+                            return v;
+                        };
+
+                        // process roots in current order; we iterate over a queue copy
+                        const queue = forest.slice();
+                        for (let qi = 0; qi < queue.length; qi++) {
+                            let r = queue[qi];
+                            if (!nodes[r]) continue;       // was consumed by an earlier link
+                            let d = degree(r);
+
+                            push({ opIdx: oi, code: [5, 6, 7], action: `root ${nodes[r].key} &middot; deg ${d}`, actionColor: 'var(--accent-blue)',
+                                cur: r, buckets: bucketsView(), bucketHit: d,
+                                minId: rootMinId(forest, nodes), minTagId: rootMinId(forest, nodes),
+                                panel: `Consolidate: take root <b>${nodes[r].key}</b> of degree <b>${d}</b>. ${buckets[d] != null && nodes[buckets[d]] ? `Bucket[${d}] already holds <b>${nodes[buckets[d]].key}</b> &#8594; link them.` : `Bucket[${d}] is free &#8594; park ${nodes[r].key} there.`}`,
+                                log: `  consolidate root ${nodes[r].key} (deg ${d})` });
+
+                            while (buckets[d] != null && nodes[buckets[d]] && buckets[d] !== r) {
+                                const other = buckets[d];
+                                // link: larger root becomes child of smaller root
+                                let parentId, childId;
+                                if (nodes[r].key <= nodes[other].key) { parentId = r; childId = other; }
+                                else { parentId = other; childId = r; }
+
+                                push({ opIdx: oi, code: [7, 8], action: `LINK ${nodes[r].key} &amp; ${nodes[other].key}`, actionColor: 'var(--accent-orange)',
+                                    cur: parentId, cmp: childId, link: [parentId, childId],
+                                    buckets: bucketsView(), bucketHit: d,
+                                    minId: rootMinId(forest, nodes), minTagId: rootMinId(forest, nodes),
+                                    panel: `Two trees share degree <b>${d}</b>. Compare roots: <b>${nodes[parentId].key}</b> &#8804; <b>${nodes[childId].key}</b>, so <b>${nodes[childId].key}</b> becomes a child of <b>${nodes[parentId].key}</b>. Bucket[${d}] clears; the merged tree has degree <b>${d + 1}</b>.`,
+                                    log: `    link: ${nodes[childId].key} -> child of ${nodes[parentId].key}` });
+
+                                // perform link: remove child from root list, attach under parent
+                                const cpos = forest.indexOf(childId);
+                                if (cpos !== -1) forest.splice(cpos, 1);
+                                nodes[childId].parent = parentId;
+                                nodes[parentId].children.push(childId);
+                                delete buckets[d];
+                                r = parentId;
+                                d = degree(r);
+                            }
+                            buckets[d] = r;
+
+                            push({ opIdx: oi, code: [7], action: `bucket[${d}] = ${nodes[r].key}`, actionColor: 'var(--accent-blue)',
+                                cur: r, buckets: bucketsView(), bucketHit: d,
+                                minId: rootMinId(forest, nodes), minTagId: rootMinId(forest, nodes),
+                                panel: `Park root <b>${nodes[r].key}</b> in bucket[<b>${d}</b>]. Move on to the next root in the list.`,
+                                log: `    bucket[${d}] = ${nodes[r].key}` });
+                        }
+
+                        // (d) min pointer settles
+                        const fin = rootMinId(forest, nodes);
+                        push({ opIdx: oi, code: [9], action: 'min = ' + nodes[fin].key, actionColor: 'var(--accent-green)',
+                            minId: fin, minTagId: fin, buckets: bucketsView(),
+                            panel: `Consolidation done: every degree appears at most once. Scan the remaining roots &#8594; new <b>min</b> is <b>${nodes[fin].key}</b>.`,
+                            log: `  min = ${nodes[fin].key}  roots=[${forest.map(rr => nodes[rr].key).join(', ')}]` });
+                    }
+
+                    extracted.push(root);
+                }
+            });
+
+            const remaining = forest.map(r => nodes[r].key);
+            const finMin = forest.length ? nodes[rootMinId(forest, nodes)].key : null;
+            push({ complete: true, confetti: true, code: [10],
+                minId: forest.length ? rootMinId(forest, nodes) : null, minTagId: forest.length ? rootMinId(forest, nodes) : null,
+                action: '✓ DONE', actionColor: 'var(--accent-green)',
+                panel: `All operations done. ${remaining.length ? `Forest roots: <code>[${remaining.join(', ')}]</code>, min = <b>${finMin}</b>.` : `Forest is empty.`}${extracted.length ? ` Extracted in sorted order: <code>[${extracted.join(', ')}]</code>.` : ''}`,
+                log: `done  extracted=[${extracted.join(', ')}]` });
+        }
+
+        // ───────── layout (forest of trees, side by side) ─────────
+        const ROW = 62, NODE = 46, PADX = 34, PADY = 30, TREE_GAP = 30, SUB_GAP = 14;
+
+        // Lay out a single tree rooted at id. Returns {pos:{id->{x,y}}, width, depth}
+        // Children are placed left-to-right; parent centered above its children block.
+        function layoutTree(rootId, flat, depth) {
+            const pos = {};
+            const SLOT = NODE + SUB_GAP;
+            let cursor = 0;
+            function place(id, d) {
+                const node = flat[id];
+                const kids = node.children;
+                if (!kids.length) {
+                    const x = cursor + NODE / 2;
+                    cursor += SLOT;
+                    pos[id] = { x, y: d * ROW + PADY, depth: d };
+                    return x;
+                }
+                const xs = kids.map(c => place(c, d + 1));
+                const x = (xs[0] + xs[xs.length - 1]) / 2;
+                pos[id] = { x, y: d * ROW + PADY, depth: d };
+                return x;
+            }
+            place(rootId, 0);
+            return { pos, width: cursor, };
+        }
+
+        function layoutForest(snap) {
+            const pos = {};
+            let xOffset = PADX;
+            let maxDepth = 0;
+            const rootX = {};
+            snap.roots.forEach((rid, ti) => {
+                const t = layoutTree(rid, snap.flat, 0);
+                const w = Math.max(t.width, NODE);
+                for (const id in t.pos) {
+                    pos[id] = { x: t.pos[id].x + xOffset, y: t.pos[id].y, depth: t.pos[id].depth };
+                    if (t.pos[id].depth > maxDepth) maxDepth = t.pos[id].depth;
+                }
+                rootX[rid] = pos[rid] ? pos[rid].x : xOffset;
+                xOffset += w + TREE_GAP;
+            });
+            const width = Math.max(xOffset - TREE_GAP + PADX, 360);
+            const height = (maxDepth + 1) * ROW + PADY + 18;
+            return { pos, width, height, rootX };
+        }
+
+        // ───────── render ─────────
+        function renderStep(idx) {
+            stepIdx = idx; const step = steps[idx]; if (!step) return;
+            const { pos, width, height, rootX } = layoutForest(step);
+            const canvas = document.getElementById('tree-canvas');
+            const svg = document.getElementById('edges');
+            const H = Math.max(height, 150);
+            canvas.style.width = width + 'px'; canvas.style.height = H + 'px';
+            svg.setAttribute('width', width); svg.setAttribute('height', H);
+
+            const linkSet = new Set(step.link || []);
+            const ids = Object.keys(step.flat);
+
+            // ── nodes ──
+            const used = new Set();
+            ids.forEach(id => {
+                const key = 'k:' + id; used.add(key);
+                let el = nodeEls[key]; const fresh = !el;
+                if (!el) { el = document.createElement('div'); el.className = 'hnode'; el.innerHTML = `<span class="hv"></span><span class="deg"></span>`; canvas.appendChild(el); nodeEls[key] = el; }
+                const f = step.flat[id];
+                el.querySelector('.hv').textContent = f.key;
+                const isRoot = step.roots.includes(id);
+                const degEl = el.querySelector('.deg');
+                if (isRoot) { degEl.style.display = 'flex'; degEl.textContent = f.children.length; }
+                else { degEl.style.display = 'none'; }
+
+                let cls = 'hnode' + (isRoot ? ' root' : '');
+                if (id === step.gone) cls += ' gone';
+                else if (linkSet.has(id)) cls += ' link';
+                else if (id === step.cur) cls += ' cur';
+                else if (id === step.cmp) cls += ' cmp';
+                else if (id === step.minId) cls += ' min';
+                if (id === step.newId) cls += ' new';
+                el.className = cls;
+
+                const p = pos[id];
+                if (fresh) { el._x = p.x; el._y = p.y; el.style.transform = `translate(${p.x}px, ${p.y}px)`; el.style.opacity = '0'; Motion.pop(el); }
+                else Motion.move(el, p.x, p.y);
+            });
+            Object.keys(nodeEls).forEach(k => { if (!used.has(k)) { nodeEls[k].remove(); delete nodeEls[k]; } });
+
+            // ── parent->child edges ──
+            const usedE = new Set();
+            ids.forEach(id => {
+                const f = step.flat[id];
+                f.children.forEach(cid => {
+                    const ekey = 'e:' + cid; usedE.add(ekey);
+                    let ln = edgeEls[ekey];
+                    if (!ln) { ln = document.createElementNS('http://www.w3.org/2000/svg', 'line'); svg.appendChild(ln); edgeEls[ekey] = ln; }
+                    const a = pos[id], b = pos[cid];
+                    ln.setAttribute('x1', a.x); ln.setAttribute('y1', a.y); ln.setAttribute('x2', b.x); ln.setAttribute('y2', b.y);
+                    const onPath = linkSet.has(id) && linkSet.has(cid);
+                    ln.setAttribute('class', 'edge-ln' + (onPath ? ' active' : ''));
+                });
+            });
+            Object.keys(edgeEls).forEach(k => { if (!usedE.has(k)) { edgeEls[k].remove(); delete edgeEls[k]; } });
+
+            // ── dashed root-list link (between consecutive roots) ──
+            for (let i = 0; i + 1 < step.roots.length; i++) {
+                const a = step.roots[i], b = step.roots[i + 1];
+                const ekey = 'r:' + i; usedE.add(ekey);
+                let ln = edgeEls[ekey];
+                if (!ln) { ln = document.createElementNS('http://www.w3.org/2000/svg', 'line'); svg.insertBefore(ln, svg.firstChild); edgeEls[ekey] = ln; }
+                ln.setAttribute('x1', rootX[a]); ln.setAttribute('y1', PADY); ln.setAttribute('x2', rootX[b]); ln.setAttribute('y2', PADY);
+                ln.setAttribute('class', 'root-ln');
+            }
+            // reap stale root links
+            Object.keys(edgeEls).forEach(k => { if (k.startsWith('r:') && !usedE.has(k)) { edgeEls[k].remove(); delete edgeEls[k]; } });
+
+            // ── min tag (floating chip above the min root) ──
+            if (!minTagEl) { minTagEl = document.createElement('div'); minTagEl.className = 'min-tag'; minTagEl.textContent = 'min'; canvas.appendChild(minTagEl); }
+            if (step.minTagId && pos[step.minTagId]) {
+                const p = pos[step.minTagId];
+                minTagEl.style.opacity = '1';
+                minTagEl.style.left = p.x + 'px';
+                minTagEl.style.top = (p.y - 34) + 'px';
+            } else { minTagEl.style.opacity = '0'; }
+
+            // empty-forest note
+            let note = canvas.querySelector('.empty-note');
+            if (step.roots.length === 0) {
+                if (!note) { note = document.createElement('div'); note.className = 'empty-note'; note.textContent = 'forest is empty'; canvas.appendChild(note); }
+            } else if (note) note.remove();
+
+            // ── degree buckets ──
+            renderBuckets(step);
+
+            // ── extracted track ──
+            const exWrap = document.getElementById('extracted'); const exLabel = document.getElementById('ex-label');
+            exWrap.innerHTML = '';
+            if (step.extracted.length) { exLabel.style.display = 'inline'; step.extracted.forEach(v => { const t = document.createElement('div'); t.className = 'ex-tile'; t.textContent = v; exWrap.appendChild(t); }); }
+            else exLabel.style.display = 'none';
+
+            // ── narration / chrome ──
+            const mp = document.getElementById('main-panel');
+            mp.innerHTML = step.panel || '&mdash;';
+            mp.classList.toggle('done', !!step.complete);
+            const aw = document.getElementById('action-word'); aw.innerHTML = step.action || ''; aw.style.color = step.actionColor || 'var(--text-dim)';
+            highlightCode(step.code);
+
+            if (step.confetti) { if (confettiArmed) { fireConfetti(); confettiArmed = false; } } else confettiArmed = true;
+
+            renderOpFeed(step.opIdx);
+            document.getElementById('step-badge').textContent = `Step ${idx + 1} / ${steps.length}`;
+            document.getElementById('progress-fill').style.width = `${(idx / Math.max(1, steps.length - 1)) * 100}%`;
+
+            const logEl = document.getElementById('log');
+            logEl.innerHTML = steps.slice(0, idx + 1).map(s => `<div style="margin:3px 0;white-space:pre-wrap;">${s.log}</div>`).join('');
+            logEl.scrollTop = logEl.scrollHeight;
+        }
+
+        function renderBuckets(step) {
+            const rail = document.getElementById('buckets-rail');
+            const bk = step.buckets;
+            const used = new Set();
+            if (!bk) {
+                // no active consolidation: clear bucket DOM
+                Object.keys(bucketEls).forEach(k => { bucketEls[k].remove(); delete bucketEls[k]; });
+                if (!rail.querySelector('.bk-idle')) {
+                    rail.innerHTML = '<span class="bk-idle" style="color:var(--text-dim);font-family:var(--mono);font-size:12px;opacity:.7">degree buckets fill during extract-min &#8594; consolidation</span>';
+                }
+                return;
+            }
+            const idle = rail.querySelector('.bk-idle'); if (idle) idle.remove();
+            const degs = Object.keys(bk).map(Number);
+            const maxD = Math.max(2, degs.length ? Math.max(...degs) : 0, step.bucketHit);
+            for (let d = 0; d <= maxD; d++) {
+                const key = 'b:' + d; used.add(key);
+                let el = bucketEls[key];
+                if (!el) {
+                    el = document.createElement('div'); el.className = 'bucket';
+                    el.innerHTML = `<span class="bk-val"></span><span class="bk-deg"></span>`;
+                    rail.appendChild(el); bucketEls[key] = el;
+                }
+                const val = bk[d];
+                const ve = el.querySelector('.bk-val');
+                if (val != null) { ve.textContent = val; ve.classList.remove('empty'); }
+                else { ve.textContent = '&middot;'; ve.innerHTML = '&middot;'; ve.classList.add('empty'); }
+                el.querySelector('.bk-deg').textContent = 'd=' + d;
+                let cls = 'bucket';
+                if (d === step.bucketHit) cls += ' hit';
+                else if (val != null) cls += ' filled';
+                el.className = cls;
+            }
+            Object.keys(bucketEls).forEach(k => { if (!used.has(k)) { bucketEls[k].remove(); delete bucketEls[k]; } });
+        }
+
+        function renderOpFeed(currentOpIdx) {
+            const feed = document.getElementById('op-feed'); feed.innerHTML = '';
+            ops.forEach((op, i) => {
+                const chip = document.createElement('div');
+                const label = op.type === 'insert' ? 'ins ' + op.value : 'extractMin';
+                chip.className = 'op-chip' + (currentOpIdx === i ? ' current' : (currentOpIdx != null && i < currentOpIdx ? ' done' : ''));
+                chip.textContent = label; feed.appendChild(chip);
+            });
+        }
+
+        function fireConfetti() {
+            const host = document.getElementById('confetti'); if (!host || REDUCED) return;
+            const colors = ['#22c55e', '#06b6d4', '#a855f7', '#f5a524', '#f43f5e'];
+            for (let i = 0; i < 38; i++) {
+                const p = document.createElement('div'); p.className = 'confetti-piece';
+                p.style.setProperty('--x', ((Math.random() * 2 - 1) * 220) + 'px');
+                p.style.setProperty('--rot', ((Math.random() * 720 - 360)) + 'deg');
+                p.style.background = colors[i % colors.length];
+                p.style.animationDuration = (0.9 + Math.random() * 0.8) + 's';
+                p.style.animationDelay = (Math.random() * 0.15) + 's';
+                host.appendChild(p); setTimeout(() => p.remove(), 1900);
+            }
+        }
+
+        // ───────── controls ─────────
+        function nextStep() { if (stepIdx < steps.length - 1) renderStep(stepIdx + 1); else pause(); }
+        function prevStep() { if (stepIdx > 0) renderStep(stepIdx - 1); }
+        function resetSim() { pause(); renderStep(0); }
+        function togglePlay() {
+            const btn = document.getElementById('play-btn');
+            if (timer) { pause(); return; }
+            btn.textContent = 'Pause';
+            if (stepIdx >= steps.length - 1) renderStep(0);
+            timer = setInterval(() => { if (stepIdx < steps.length - 1) nextStep(); else pause(); }, delays[document.getElementById('speed').value]);
+        }
+        function pause() { clearInterval(timer); timer = null; document.getElementById('play-btn').textContent = 'Play'; }
+
+        function clearDom() {
+            Object.keys(nodeEls).forEach(k => { nodeEls[k].remove(); delete nodeEls[k]; });
+            Object.keys(edgeEls).forEach(k => { edgeEls[k].remove(); delete edgeEls[k]; });
+            Object.keys(bucketEls).forEach(k => { bucketEls[k].remove(); delete bucketEls[k]; });
+            if (minTagEl) { minTagEl.remove(); minTagEl = null; }
+            document.getElementById('buckets-rail').innerHTML = '';
+            confettiArmed = true;
+        }
+        function loadOps(newOps) { pause(); ops = newOps; clearDom(); generateSteps(); renderStep(0); }
+        function doOp(type) {
+            const input = document.getElementById('val-input');
+            let value;
+            if (type === 'insert') { value = parseInt(input.value, 10); if (isNaN(value)) { input.focus(); return; } }
+            loadOps([...ops, type === 'insert' ? { type, value } : { type }]);
+            renderStep(steps.length - 1);
+            input.value = '';
+        }
+        function loadExample(n) {
+            const exs = [
+                [ {type:'insert',value:5},{type:'insert',value:2},{type:'insert',value:8},{type:'insert',value:1},{type:'extractMin'},{type:'extractMin'},{type:'insert',value:3},{type:'extractMin'} ],
+                [ {type:'insert',value:10},{type:'extractMin'},{type:'insert',value:7},{type:'insert',value:4},{type:'extractMin'},{type:'extractMin'},{type:'extractMin'} ],
+            ];
+            loadOps(exs[n]);
+        }
+
+        document.addEventListener('keydown', (e) => {
+            const tag = (e.target.tagName || '').toLowerCase(); if (tag === 'input' || tag === 'textarea') return;
+            if (e.key === 'ArrowRight') { e.preventDefault(); pause(); nextStep(); }
+            else if (e.key === 'ArrowLeft') { e.preventDefault(); pause(); prevStep(); }
+            else if (e.key === ' ') { e.preventDefault(); togglePlay(); }
+        });
+        document.getElementById('val-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') doOp('insert'); });
+        window.addEventListener('resize', () => renderStep(stepIdx));
+
+        buildCodePanel();
+        window.onload = () => loadExample(0);
+    </script>
+</body>
+</html>

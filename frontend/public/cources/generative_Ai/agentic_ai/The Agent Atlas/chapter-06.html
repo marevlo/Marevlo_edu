@@ -1,0 +1,751 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Agent Atlas · Ch.6 — Building the Pipeline</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..900;1,9..144,300..900&family=Newsreader:ital,opsz,wght@0,6..72,300..600;1,6..72,300..600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#1a1714;--paper:#f4efe6;--paper-deep:#ebe3d4;
+    --rust:#b34727;--rust-deep:#8a3219;--gold:#c08a2d;--sage:#5c6b54;--slate:#3d4a5c;
+    --line:#cabfa9;--shadow:rgba(43,33,22,.14);--maxw:1180px;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{background:var(--paper);color:var(--ink);font-family:"Newsreader",Georgia,serif;
+    font-size:20px;line-height:1.65;-webkit-font-smoothing:antialiased;overflow-x:hidden}
+  body::before{content:"";position:fixed;inset:0;z-index:1;pointer-events:none;opacity:.5;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.045'/%3E%3C/svg%3E")}
+  .wrap{position:relative;z-index:2}
+
+  #progress{position:fixed;top:0;left:0;height:4px;width:0;z-index:50;
+    background:linear-gradient(90deg,var(--rust),var(--gold));box-shadow:0 0 12px rgba(179,71,39,.5)}
+  .topbar{position:fixed;top:0;left:0;right:0;z-index:40;display:flex;justify-content:space-between;
+    align-items:center;padding:14px 28px;mix-blend-mode:multiply;font-family:"JetBrains Mono",monospace;
+    font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:var(--rust-deep)}
+  .topbar .series{font-weight:700}.topbar .ch{opacity:.7}
+
+  header.hero{min-height:100vh;display:flex;flex-direction:column;justify-content:center;
+    padding:120px 28px 80px;max-width:var(--maxw);margin:0 auto;position:relative}
+  .eyebrow{font-family:"JetBrains Mono",monospace;font-size:12px;letter-spacing:.35em;
+    text-transform:uppercase;color:var(--rust);margin-bottom:28px;display:flex;align-items:center;gap:14px}
+  .eyebrow::before{content:"";width:46px;height:1px;background:var(--rust)}
+  h1.title{font-family:"Fraunces",serif;font-weight:300;font-size:clamp(2.9rem,8vw,6.8rem);
+    line-height:.97;letter-spacing:-.02em;margin-bottom:36px}
+  h1.title em{font-style:italic;color:var(--rust);font-weight:400}
+  .lede{font-size:clamp(1.15rem,2.4vw,1.6rem);max-width:720px;line-height:1.5;color:#403830}
+  .lede .drop{font-style:italic;color:var(--sage)}
+  .hero-meta{margin-top:54px;display:flex;gap:42px;flex-wrap:wrap;font-family:"JetBrains Mono",monospace;
+    font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:#7a6f5e}
+  .hero-meta span b{display:block;font-family:"Fraunces",serif;font-size:30px;letter-spacing:0;
+    text-transform:none;color:var(--ink);font-weight:500;margin-top:4px}
+  .scroll-cue{position:absolute;bottom:34px;left:28px;font-family:"JetBrains Mono",monospace;
+    font-size:11px;letter-spacing:.25em;text-transform:uppercase;color:#9a8f7d;
+    display:flex;align-items:center;gap:10px;animation:bob 2.4s ease-in-out infinite}
+  .scroll-cue::after{content:"↓";font-size:16px}
+  @keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(7px)}}
+  .glyph{position:absolute;font-family:"Fraunces",serif;color:var(--gold);opacity:.16;
+    pointer-events:none;user-select:none;font-style:italic}
+  .g1{top:13%;right:6%;font-size:150px;transform:rotate(-10deg)}
+  .g2{bottom:22%;right:19%;font-size:78px;transform:rotate(9deg);color:var(--sage)}
+
+  section{max-width:var(--maxw);margin:0 auto;padding:70px 28px}
+  .sec-num{font-family:"JetBrains Mono",monospace;font-size:12px;letter-spacing:.3em;
+    color:var(--rust);text-transform:uppercase;margin-bottom:18px}
+  h2{font-family:"Fraunces",serif;font-weight:400;font-size:clamp(2rem,4.4vw,3.3rem);
+    line-height:1.05;letter-spacing:-.015em;margin-bottom:26px;max-width:17ch}
+  h2 em{font-style:italic;color:var(--rust)}
+  h3{font-family:"Fraunces",serif;font-weight:500;font-size:1.5rem;margin:38px 0 14px;letter-spacing:-.01em}
+  p{margin-bottom:22px;max-width:64ch}
+  .big-p{font-size:1.28rem;line-height:1.55}
+  strong{font-weight:600;color:var(--rust-deep)}
+  em.term{font-style:italic;color:var(--slate);font-weight:500}
+  code.inl{font-family:"JetBrains Mono",monospace;font-size:.82em;background:#e7dec9;padding:2px 7px;border-radius:4px}
+
+  .rule{width:100%;height:1px;background:var(--line);margin:0 auto;max-width:var(--maxw)}
+  .divider{display:flex;align-items:center;justify-content:center;gap:18px;margin:8px auto;
+    color:var(--gold);font-size:20px;max-width:var(--maxw)}
+  .divider::before,.divider::after{content:"";height:1px;flex:1;background:var(--line)}
+
+  .pull{font-family:"Fraunces",serif;font-style:italic;font-weight:300;
+    font-size:clamp(1.7rem,4vw,2.5rem);line-height:1.25;color:var(--rust-deep);
+    border-left:3px solid var(--gold);padding:8px 0 8px 32px;margin:44px 0;max-width:24ch}
+
+  /* example cards */
+  .ex-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(255px,1fr));gap:18px;margin:30px 0}
+  .ex{background:#fbf8f1;border:1px solid var(--line);border-radius:6px;padding:24px 22px;
+    position:relative;overflow:hidden;transition:transform .25s ease,box-shadow .25s ease}
+  .ex:hover{transform:translateY(-4px);box-shadow:0 14px 30px var(--shadow)}
+  .ex .tag{font-family:"JetBrains Mono",monospace;font-size:10px;letter-spacing:.18em;
+    text-transform:uppercase;padding:4px 9px;border-radius:20px;display:inline-block;margin-bottom:14px}
+  .tag.biz{background:#eadfca;color:var(--rust-deep)}
+  .tag.code{background:#dde3d8;color:var(--sage)}
+  .tag.life{background:#e2dce6;color:var(--slate)}
+  .ex h4{font-family:"Fraunces",serif;font-size:1.2rem;font-weight:500;margin-bottom:8px}
+  .ex p{font-size:.98rem;line-height:1.5;margin-bottom:0;color:#4a4138}
+  .ex .num{position:absolute;top:-12px;right:6px;font-family:"Fraunces",serif;font-size:90px;
+    font-weight:300;color:var(--line);opacity:.5;font-style:italic}
+
+  .code{background:#211d18;color:#e8ddc8;border-radius:6px;padding:22px 24px;margin:24px 0;
+    font-family:"JetBrains Mono",monospace;font-size:.8rem;line-height:1.7;overflow-x:auto;
+    border:1px solid #36302a;position:relative}
+  .code .cmt{color:#7d8b6e}.code .kw{color:#d98b5f}.code .str{color:#c7b06a}.code .fn{color:#9ab0c4}.code .key{color:#c9a0d8}
+  .code[data-lang]::before{content:attr(data-lang);position:absolute;top:10px;right:14px;font-size:9px;
+    letter-spacing:.2em;color:#5c554c;text-transform:uppercase}
+
+  .callout{background:linear-gradient(180deg,#f0e7d4,#ece2cd);border:1px solid var(--line);
+    border-left:4px solid var(--rust);border-radius:4px;padding:24px 28px;margin:34px 0}
+  .callout .lbl{font-family:"JetBrains Mono",monospace;font-size:11px;letter-spacing:.22em;
+    text-transform:uppercase;color:var(--rust);margin-bottom:10px}
+  .callout p{margin-bottom:0;font-size:1.05rem}
+  .callout p+p{margin-top:14px}
+
+  /* pattern cards */
+  .pat{background:#fbf8f1;border:1px solid var(--line);border-radius:8px;margin:16px 0;padding:24px 26px;border-left:4px solid var(--gold)}
+  .pat h4{font-family:"Fraunces",serif;font-size:1.35rem;font-weight:500;margin-bottom:8px;display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
+  .pat h4 .eip{font-family:"JetBrains Mono",monospace;font-size:.62rem;letter-spacing:.14em;text-transform:uppercase;
+    color:var(--paper);background:var(--sage);padding:3px 9px;border-radius:5px}
+  .pat p{margin:0;font-size:1.02rem;color:#4a4138;line-height:1.55}
+  .pat p+p{margin-top:12px}
+
+  /* diagram insets */
+  .diagram-sec{background:var(--ink);color:var(--paper);padding:78px 0;margin:30px 0}
+  .diagram-sec .inner{max-width:var(--maxw);margin:0 auto;padding:0 28px}
+  .diagram-sec .sec-num{color:var(--gold)}
+  .diagram-sec h2{color:var(--paper)}.diagram-sec h2 em{color:var(--gold)}
+  .diagram-sec p{color:#d6cbb8}
+  .diagram-frame{margin-top:34px;background:#19150f;border:1px solid #36302a;border-radius:10px;padding:18px;overflow-x:auto}
+  svg{display:block;width:100%;height:auto}
+  .svg-wide{min-width:720px}
+  .legend{display:flex;gap:24px;flex-wrap:wrap;margin-top:24px;font-family:"JetBrains Mono",monospace;
+    font-size:11px;letter-spacing:.1em;color:#a89c87}
+  .legend span{display:flex;align-items:center;gap:8px}
+  .legend i{width:14px;height:14px;border-radius:3px;display:inline-block}
+
+  /* steps */
+  .steps{counter-reset:s;margin:30px 0}
+  .step{counter-increment:s;background:#fbf8f1;border:1px solid var(--line);border-radius:8px;padding:20px 24px 20px 70px;
+    margin-bottom:12px;position:relative}
+  .step::before{content:counter(s);position:absolute;left:18px;top:50%;transform:translateY(-50%);
+    font-family:"Fraunces",serif;font-style:italic;font-size:1.4rem;color:var(--paper);background:var(--ink);
+    width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center}
+  .step h4{font-family:"Fraunces",serif;font-size:1.2rem;font-weight:500;margin-bottom:3px}
+  .step p{margin:0;font-size:.98rem;color:#4a4138;line-height:1.5}
+
+  /* config method cards */
+  .methods{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;margin:28px 0}
+  .method{background:#fbf8f1;border:1px solid var(--line);border-radius:8px;padding:22px;text-align:left}
+  .method .mi{font-size:1.6rem;display:block;margin-bottom:8px}
+  .method h4{font-family:"Fraunces",serif;font-size:1.15rem;font-weight:500;margin-bottom:5px}
+  .method p{font-size:.94rem;margin:0;color:#4a4138;line-height:1.45}
+  .method.on{border:2px solid var(--sage)}
+  .method.on h4::after{content:" ✓";color:var(--sage)}
+
+  /* mock UI panels */
+  .mockui{background:#fbf8f1;border:1px solid var(--line);border-radius:10px;margin:28px 0;overflow:hidden;
+    box-shadow:0 14px 32px var(--shadow)}
+  .mockui .bar{display:flex;align-items:center;gap:12px;background:#fff;border-bottom:1px solid var(--line);padding:14px 22px}
+  .mockui .dot{width:10px;height:10px;border-radius:50%;background:#d8cdb6}
+  .mockui .title{font-family:"Fraunces",serif;font-weight:500;font-size:1.05rem}
+  .mockui .badge{margin-left:auto;font-family:"JetBrains Mono",monospace;font-size:.6rem;letter-spacing:.1em;
+    text-transform:uppercase;background:#dde6f0;color:#27496b;padding:3px 9px;border-radius:20px}
+  .mockui .badge.cert{background:#e2dcf0;color:#5a4a8a}
+  .mockui .form{padding:20px 24px}
+  .field{margin-bottom:16px}
+  .field label{display:block;font-family:"JetBrains Mono",monospace;font-size:.7rem;letter-spacing:.06em;
+    text-transform:uppercase;color:#7a6f5e;margin-bottom:6px}
+  .field label .opt{color:#b0a48d;text-transform:none;letter-spacing:0;font-style:italic}
+  .field .input{background:#fff;border:1px solid var(--line);border-radius:6px;padding:11px 14px;
+    font-family:"Newsreader",serif;font-size:1rem;color:var(--ink)}
+  .field .input.mono{font-family:"JetBrains Mono",monospace;font-size:.85rem}
+  .field .input.sel{display:flex;justify-content:space-between;align-items:center;color:#4a4138}
+  .field .input.sel::after{content:"▾";color:#9a8f7d}
+  .field .input.secret{letter-spacing:.18em;color:#9a8f7d}
+  .field .chips{display:flex;gap:8px;flex-wrap:wrap}
+  .field .chips .c{background:#eef0ea;border:1px solid var(--line);border-radius:6px;padding:5px 10px;font-size:.85rem;display:flex;gap:6px;align-items:center}
+  .field .chips .c .x{color:#b0a48d}
+  .sectlabel{font-family:"JetBrains Mono",monospace;font-size:.72rem;letter-spacing:.14em;text-transform:uppercase;
+    color:var(--rust);margin:18px 0 12px;padding-top:14px;border-top:1px solid var(--line)}
+  .sectlabel:first-of-type{border-top:none;padding-top:0}
+  .mock-btn{background:var(--rust);color:var(--paper);font-family:"JetBrains Mono",monospace;font-size:.72rem;
+    letter-spacing:.12em;text-transform:uppercase;padding:11px 20px;border-radius:7px;display:inline-block;margin-top:6px}
+
+  /* connections map */
+  .connmap{display:grid;grid-template-columns:1fr auto 1fr;gap:0;align-items:center;background:#fbf8f1;
+    border:1px solid var(--line);border-radius:10px;padding:26px;margin:28px 0}
+  .connmap .col{display:flex;flex-direction:column;gap:10px}
+  .connmap .col .h{font-family:"JetBrains Mono",monospace;font-size:.68rem;letter-spacing:.14em;text-transform:uppercase;color:#9a8f7d;margin-bottom:4px}
+  .connmap .node{background:#fff;border:1px solid var(--line);border-radius:7px;padding:11px 14px;font-size:.92rem;display:flex;align-items:center;gap:9px}
+  .connmap .node .ic{font-size:1.1rem}
+  .connmap .hub{font-family:"Fraunces",serif;font-style:italic;color:var(--rust);font-size:1.1rem;text-align:center;padding:0 18px;position:relative}
+  .connmap .hub::before,.connmap .hub::after{content:"→";display:block;color:var(--gold);font-size:1.3rem}
+
+  /* takeaways / quiz / footer */
+  .takeaways{background:var(--ink);color:var(--paper);border-radius:8px;padding:46px 44px;margin:30px 0}
+  .takeaways .lbl{font-family:"JetBrains Mono",monospace;font-size:11px;letter-spacing:.28em;
+    text-transform:uppercase;color:var(--gold);margin-bottom:24px}
+  .takeaways ol{list-style:none;counter-reset:t}
+  .takeaways li{counter-increment:t;padding:18px 0;border-bottom:1px solid #383128;display:flex;gap:22px;align-items:baseline}
+  .takeaways li:last-child{border-bottom:none}
+  .takeaways li::before{content:counter(t,decimal-leading-zero);font-family:"Fraunces",serif;
+    font-style:italic;font-size:1.6rem;color:var(--rust);min-width:48px}
+  .takeaways li span{font-size:1.1rem;line-height:1.45;color:#e6dcc9}
+  .takeaways li b{color:#fff;font-weight:600}
+
+  .quiz{margin:30px 0}
+  details.q{background:#fbf8f1;border:1px solid var(--line);border-radius:6px;margin-bottom:14px;padding:0 24px;transition:background .2s}
+  details.q[open]{background:#f3ecdc}
+  details.q summary{cursor:pointer;list-style:none;padding:20px 0;font-family:"Fraunces",serif;
+    font-size:1.18rem;font-weight:500;display:flex;align-items:center;gap:14px}
+  details.q summary::-webkit-details-marker{display:none}
+  details.q summary::before{content:"?";font-family:"JetBrains Mono",monospace;font-size:.9rem;
+    background:var(--rust);color:var(--paper);width:26px;height:26px;border-radius:50%;display:flex;
+    align-items:center;justify-content:center;flex-shrink:0;transition:transform .3s}
+  details.q[open] summary::before{transform:rotate(360deg);background:var(--sage)}
+  details.q .ans{padding:0 0 22px 40px;font-size:1.05rem;color:#4a4138;line-height:1.55}
+
+  footer{background:var(--paper-deep);border-top:1px solid var(--line);margin-top:40px}
+  .next-wrap{max-width:var(--maxw);margin:0 auto;padding:64px 28px}
+  .next-card{display:flex;justify-content:space-between;align-items:flex-end;gap:30px;flex-wrap:wrap}
+  .next-card .nx-lbl{font-family:"JetBrains Mono",monospace;font-size:11px;letter-spacing:.25em;
+    text-transform:uppercase;color:var(--rust);margin-bottom:14px}
+  .next-card h3{font-family:"Fraunces",serif;font-weight:400;font-size:clamp(1.8rem,4vw,2.8rem);
+    margin:0;letter-spacing:-.01em;max-width:16ch}
+  .next-card h3 em{font-style:italic;color:var(--rust)}
+  .next-btn{font-family:"JetBrains Mono",monospace;font-size:12px;letter-spacing:.2em;text-transform:uppercase;
+    background:var(--ink);color:var(--paper);padding:18px 34px;border-radius:40px;text-decoration:none;
+    white-space:nowrap;transition:transform .2s,background .2s;display:flex;align-items:center;gap:12px}
+  .next-btn:hover{background:var(--rust);transform:translateX(6px)}
+  .colophon{max-width:var(--maxw);margin:0 auto;padding:0 28px 50px;font-family:"JetBrains Mono",monospace;
+    font-size:11px;letter-spacing:.12em;color:#9a8f7d;display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px}
+
+  .reveal{opacity:0;transform:translateY(28px);transition:opacity .7s cubic-bezier(.2,.7,.2,1),transform .7s cubic-bezier(.2,.7,.2,1)}
+  .reveal.in{opacity:1;transform:none}
+
+  @media(max-width:680px){
+    body{font-size:18px}
+    .g1,.g2{display:none}
+    section{padding:54px 22px}
+    .takeaways{padding:28px 22px}
+    .connmap{grid-template-columns:1fr;gap:14px}
+    .connmap .hub{transform:rotate(90deg);padding:8px 0}
+  }
+</style>
+</head>
+<body>
+<div id="progress"></div>
+<div class="topbar">
+  <span class="series">◆ The Agent Atlas</span>
+  <span class="ch">Chapter 06 / 09</span>
+</div>
+
+<div class="wrap">
+
+<!-- HERO -->
+<header class="hero">
+  <span class="glyph g1">⛏</span>
+  <span class="glyph g2">⇉</span>
+  <div class="eyebrow">Chapter Six · Hands On</div>
+  <h1 class="title">Building the<br><em>Pipeline</em></h1>
+  <p class="lede"><span class="drop">Enough theory — let's build the real thing.</span> In this chapter we wire PDFs in an Amazon S3 bucket through Airbyte and into the Pinecone vector database, using a low-code interface and a single YAML file. By the end you'll have a working ingestion pipeline you can reuse on any GenAI project.</p>
+  <div class="hero-meta">
+    <span>Reading time<b>16 min</b></span>
+    <span>Concepts<b>10 core</b></span>
+    <span>Examples<b>15 worked</b></span>
+  </div>
+  <div class="scroll-cue">Begin reading</div>
+</header>
+
+<div class="rule"></div>
+
+<!-- 01 ARCHITECTURE -->
+<section>
+  <div class="reveal">
+    <div class="sec-num">01 — The Pipeline We're Building</div>
+    <h2>From a bucket of PDFs to <em>searchable meaning</em></h2>
+    <p class="big-p">Everything so far has been groundwork. Now we build a genuinely practical pipeline: it reads PDF documents from <strong>Amazon S3</strong>, runs them through <strong>Airbyte</strong> to handle the whole extract-transform-load workflow, and lands the results as vector embeddings in the <strong>Pinecone</strong> vector database. The whole thing is configured through Airbyte's low-code interface — no heavy programming required.</p>
+    <p>Here's the shape of it. Documents start as raw PDFs in a cloud bucket. Inside Airbyte, three logical stages do the work: <strong>Load Data</strong> (pull the documents in), <strong>Create Embeddings</strong> (chunk and vectorize), and <strong>Ingest Data</strong> (write to the destination). Out the other end, the embeddings sit in Pinecone, ready for semantic queries. Notice how this maps cleanly onto the Extract-Transform-Load shape from the last chapter — the same three movements, now with a concrete tool doing each one.</p>
+  </div>
+
+  <div class="diagram-frame reveal" style="background:#19150f;border:1px solid #36302a">
+    <svg class="svg-wide" viewBox="0 0 920 300" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Pipeline architecture from Amazon S3 through Airbyte to Pinecone">
+      <defs><marker id="pa" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6 Z" fill="#c08a2d"/></marker></defs>
+      <!-- S3 -->
+      <rect x="36" y="116" width="92" height="92" rx="8" fill="#1f6b4a" stroke="#2a8a60" stroke-width="1.5"/>
+      <path d="M62,148 h40 l-5,42 h-30 z" fill="none" stroke="#cfe9dc" stroke-width="2"/>
+      <text x="82" y="240" text-anchor="middle" font-family="Newsreader,serif" font-size="13" fill="#bcd0ad">Amazon S3</text>
+      <text x="82" y="258" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="8" fill="#7d8b6e">PDF bucket</text>
+      <path d="M130,162 L186,162" stroke="#c08a2d" stroke-width="2" marker-end="url(#pa)"/>
+      <!-- Airbyte box -->
+      <rect x="196" y="40" width="520" height="232" rx="12" fill="none" stroke="#9a8cff" stroke-width="1.5" stroke-dasharray="6 5"/>
+      <text x="456" y="68" text-anchor="middle" font-family="Fraunces,serif" font-style="italic" font-size="18" fill="#c3baff">Airbyte</text>
+      <!-- three overlapping stages -->
+      <rect x="230" y="160" width="180" height="86" rx="6" fill="#2a1f10" stroke="#c08a2d" stroke-width="1.4"/>
+      <text x="320" y="210" text-anchor="middle" font-family="Newsreader,serif" font-size="14" fill="#f0d9a8">Load Data</text>
+      <rect x="350" y="120" width="180" height="86" rx="6" fill="#241a10" stroke="#c08a2d" stroke-width="1.4"/>
+      <text x="440" y="158" text-anchor="middle" font-family="Newsreader,serif" font-size="14" fill="#f0d9a8">Create</text>
+      <text x="440" y="178" text-anchor="middle" font-family="Newsreader,serif" font-size="14" fill="#f0d9a8">Embeddings</text>
+      <rect x="470" y="80" width="180" height="86" rx="6" fill="#1f1508" stroke="#c08a2d" stroke-width="1.4"/>
+      <text x="560" y="130" text-anchor="middle" font-family="Newsreader,serif" font-size="14" fill="#f0d9a8">Ingest Data</text>
+      <path d="M650,116 L720,116" stroke="#c08a2d" stroke-width="2" marker-end="url(#pa)"/>
+      <!-- Pinecone -->
+      <ellipse cx="800" cy="120" rx="56" ry="16" fill="#1c2533" stroke="#5b7da0" stroke-width="1.5"/>
+      <path d="M744,120 V190 a56,16 0 0 0 112,0 V120" fill="#16202c" stroke="#5b7da0" stroke-width="1.5"/>
+      <ellipse cx="800" cy="120" rx="56" ry="16" fill="#1c2533" stroke="#5b7da0" stroke-width="1.5"/>
+      <ellipse cx="800" cy="150" rx="56" ry="16" fill="none" stroke="#3a5570" stroke-width="1"/>
+      <ellipse cx="800" cy="178" rx="56" ry="16" fill="none" stroke="#3a5570" stroke-width="1"/>
+      <text x="800" y="240" text-anchor="middle" font-family="Newsreader,serif" font-size="13" fill="#bcd6e8">Pinecone</text>
+      <text x="800" y="258" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="8" fill="#7d96ad">vector database</text>
+    </svg>
+  </div>
+
+  <div class="reveal">
+    <p>This chapter has two halves. First we look <em>under the hood</em> at the software patterns Airbyte uses to make this possible — because understanding them is what lets you swap S3 for SharePoint, or Pinecone for Weaviate, without re-architecting anything. Then we roll up our sleeves and build the pipeline step by step.</p>
+  </div>
+</section>
+
+<div class="divider">❧</div>
+
+<!-- 02 APPLICABLE PATTERNS -->
+<section>
+  <div class="reveal">
+    <div class="sec-num">02 — Under the Hood</div>
+    <h2>The patterns that <em>move the data</em></h2>
+    <p>Airbyte, like most ETL tools, is built on well-known software design patterns — specifically from the Enterprise Integration Patterns (EIP) catalog by Gregor Hohpe and Bobby Woolf. Two of them do the heavy lifting in our pipeline. Once you recognize them, the tool stops being a black box.</p>
+  </div>
+
+  <div class="pat reveal">
+    <h4>Message Channel <span class="eip">EIP</span></h4>
+    <p>A message channel lets components that produce and consume data talk <em>without being wired directly together</em>. Instead of connecting systems point-to-point, messages travel through a channel. This <strong>decouples</strong> producer from consumer, so each side can scale independently and neither needs to know the other's internals.</p>
+    <p>In our pipeline, the producer reads documents from S3 and pushes the extracted data into the channel; downstream components process it and ultimately store it in Pinecone.</p>
+  </div>
+
+  <div class="pat reveal">
+    <h4>Channel Adapter <span class="eip">EIP</span></h4>
+    <p>A channel adapter connects an external communication channel — RabbitMQ, an HTTP API, a file store — to an application by <strong>translating between the channel's format and the system's internal representation</strong>. It's the universal plug that lets a foreign system speak your pipeline's language.</p>
+    <p>Airbyte ships two kinds. An <strong>inbound</strong> adapter brings data <em>in</em> (message-driven, reacting as messages arrive, or polling-based, checking periodically). An <strong>outbound</strong> adapter sends data <em>out</em> — listening on a channel and pushing to an external file, database, or API. The vector-database connector (Qdrant, Pinecone, Milvus) is an outbound adapter.</p>
+  </div>
+
+  <div class="reveal">
+    <p>These two patterns are the foundation of how ETL tools manage data movement in practice. To build a pipeline, you specify only two things — <strong>the source</strong> (where information comes from) and <strong>the destination</strong> (where processed data goes). Airbyte handles the rest with internal strategy and adapter components. And because of that design, a pipeline reading from S3 today can be repointed at SharePoint or a relational database tomorrow <em>without touching the underlying architecture.</em></p>
+  </div>
+</section>
+
+<!-- 03 MESSAGE CHANNEL DIAGRAM -->
+<div class="diagram-sec">
+  <div class="inner">
+    <div class="reveal">
+      <div class="sec-num">03 — How the Pieces Connect</div>
+      <h2>Producer, channel, <em>receiver</em></h2>
+      <p>Here's how Message Channel and Channel Adapter fit together. A message producer hands data to a messaging system, which delivers it to a receiver application. On <em>each</em> side sits a strategy that selects the right channel adapter — the source side chooses how to read, the destination side chooses how to write.</p>
+    </div>
+
+    <div class="diagram-frame reveal">
+      <svg class="svg-wide" viewBox="0 0 920 380" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Message channel and channel adapter pattern">
+        <defs><marker id="mc" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#8a8170"/></marker></defs>
+        <!-- top row -->
+        <rect x="40" y="40" width="160" height="70" rx="8" fill="#1f2a33" stroke="#5b7da0" stroke-width="1.5"/><text x="120" y="72" text-anchor="middle" font-family="Newsreader,serif" font-size="14" fill="#bcd6e8">Message</text><text x="120" y="92" text-anchor="middle" font-family="Newsreader,serif" font-size="14" fill="#bcd6e8">Producer</text>
+        <rect x="320" y="40" width="280" height="70" rx="8" fill="#241a10" stroke="#c08a2d" stroke-width="1.5"/><text x="460" y="72" text-anchor="middle" font-family="Newsreader,serif" font-size="14" fill="#f0d9a8">Messaging</text><text x="460" y="92" text-anchor="middle" font-family="Newsreader,serif" font-size="14" fill="#f0d9a8">System (channel)</text>
+        <rect x="720" y="40" width="160" height="70" rx="8" fill="#1f2a1c" stroke="#7d8b6e" stroke-width="1.5"/><text x="800" y="72" text-anchor="middle" font-family="Newsreader,serif" font-size="14" fill="#bcd0ad">Receiver</text><text x="800" y="92" text-anchor="middle" font-family="Newsreader,serif" font-size="14" fill="#bcd0ad">Application</text>
+        <path d="M200,75 L318,75" stroke="#8a8170" stroke-width="1.6" marker-end="url(#mc)"/>
+        <path d="M600,75 L718,75" stroke="#8a8170" stroke-width="1.6" marker-end="url(#mc)"/>
+        <!-- left strategy + adapter -->
+        <rect x="40" y="180" width="160" height="60" rx="8" fill="#3a1a30" stroke="#9a6a9a" stroke-width="1.4"/><text x="120" y="206" text-anchor="middle" font-family="Newsreader,serif" font-size="13" fill="#e0c0e0">Source</text><text x="120" y="224" text-anchor="middle" font-family="Newsreader,serif" font-size="13" fill="#e0c0e0">Strategy</text>
+        <rect x="40" y="290" width="160" height="60" rx="8" fill="#2a1f10" stroke="#c08a2d" stroke-width="1.4"/><text x="120" y="316" text-anchor="middle" font-family="Newsreader,serif" font-size="13" fill="#f0d9a8">Channel</text><text x="120" y="334" text-anchor="middle" font-family="Newsreader,serif" font-size="13" fill="#f0d9a8">Adapter</text>
+        <path d="M120,110 L120,178" stroke="#8a8170" stroke-width="1.5" marker-end="url(#mc)"/>
+        <path d="M120,240 L120,288" stroke="#8a8170" stroke-width="1.5" marker-end="url(#mc)"/>
+        <!-- right strategy + adapter -->
+        <rect x="720" y="180" width="160" height="60" rx="8" fill="#3a1a30" stroke="#9a6a9a" stroke-width="1.4"/><text x="800" y="206" text-anchor="middle" font-family="Newsreader,serif" font-size="13" fill="#e0c0e0">Destination</text><text x="800" y="224" text-anchor="middle" font-family="Newsreader,serif" font-size="13" fill="#e0c0e0">Strategy</text>
+        <rect x="720" y="290" width="160" height="60" rx="8" fill="#2a1f10" stroke="#c08a2d" stroke-width="1.4"/><text x="800" y="316" text-anchor="middle" font-family="Newsreader,serif" font-size="13" fill="#f0d9a8">Channel</text><text x="800" y="334" text-anchor="middle" font-family="Newsreader,serif" font-size="13" fill="#f0d9a8">Adapter</text>
+        <path d="M800,110 L800,178" stroke="#8a8170" stroke-width="1.5" marker-end="url(#mc)"/>
+        <path d="M800,240 L800,288" stroke="#8a8170" stroke-width="1.5" marker-end="url(#mc)"/>
+      </svg>
+    </div>
+
+    <div class="legend reveal">
+      <span><i style="background:#5b7da0"></i>producer</span>
+      <span><i style="background:#c08a2d"></i>channel / adapter</span>
+      <span><i style="background:#9a6a9a"></i>strategy</span>
+      <span><i style="background:#7d8b6e"></i>receiver</span>
+    </div>
+  </div>
+</div>
+
+<!-- 04 STRATEGY PATTERN -->
+<section>
+  <div class="reveal">
+    <div class="sec-num">04 — The Pattern That Makes It Configurable</div>
+    <h2>One pipeline, <em>many</em> sources and destinations</h2>
+    <p>How does Airbyte let you pick "read from S3, write to Pinecone" without writing custom code for every combination? The <strong>Strategy pattern</strong> — a behavioral design pattern that lets a program choose an algorithm from a family of algorithms <em>at runtime</em>. It defines interchangeable algorithms, wraps each in its own class, and makes them selectable on the fly, usually by passing a strategy object into a <em>context</em> object. The result is code that's flexible, interchangeable, and extensible without touching its core.</p>
+    <p>This is exactly why Airbyte minimizes your configuration effort: you simply tell it <em>which</em> adapter to use and hand over the connection details through a no-code interface. The Strategy pattern does the wiring.</p>
+  </div>
+
+  <div class="callout reveal">
+    <div class="lbl">The mental model</div>
+    <p>Think of the <strong>context</strong> as a power socket and each <strong>strategy/adapter</strong> as a different plug. You don't rewire your house to charge a different device — you just snap in the right plug. Choosing S3 over SharePoint, or Pinecone over Weaviate, is swapping the plug, not rebuilding the wall.</p>
+  </div>
+
+  <div class="reveal">
+    <h3>Strategy on the producer side — picking a source</h3>
+    <p>To make Airbyte read from a source like Amazon S3, you give the <em>context</em> the source type plus the connection and security info the adapter needs to authenticate. The context then routes to the right data-source adapter.</p>
+  </div>
+
+  <div class="diagram-frame reveal" style="background:#19150f;border:1px solid #36302a">
+    <svg class="svg-wide" viewBox="0 0 920 320" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Strategy pattern on the Airbyte producer side">
+      <defs><marker id="s1" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#8a8170"/></marker></defs>
+      <rect x="60" y="60" width="200" height="60" rx="8" fill="#1f2a33" stroke="#5b7da0" stroke-width="1.5"/><text x="160" y="96" text-anchor="middle" font-family="Newsreader,serif" font-size="15" fill="#bcd6e8">Client</text>
+      <rect x="60" y="190" width="200" height="70" rx="8" fill="#3a1a30" stroke="#9a6a9a" stroke-width="1.5"/><text x="160" y="232" text-anchor="middle" font-family="Newsreader,serif" font-size="15" fill="#e0c0e0">Context</text>
+      <path d="M160,120 L160,188" stroke="#8a8170" stroke-width="1.6" marker-end="url(#s1)"/>
+      <!-- adapters box -->
+      <rect x="500" y="40" width="360" height="240" rx="10" fill="none" stroke="#c08a2d" stroke-width="1.5"/>
+      <text x="680" y="68" text-anchor="middle" font-family="Fraunces,serif" font-style="italic" font-size="16" fill="#e8b15c">Data Source Adapters</text>
+      <rect x="530" y="86" width="300" height="42" rx="6" fill="#2a1f10" stroke="#c08a2d" stroke-width="1.3"/><text x="680" y="113" text-anchor="middle" font-family="Newsreader,serif" font-size="14" fill="#f0d9a8">Amazon S3</text>
+      <rect x="530" y="138" width="300" height="42" rx="6" fill="#241a10" stroke="#7d8b6e" stroke-width="1.1"/><text x="680" y="165" text-anchor="middle" font-family="Newsreader,serif" font-size="14" fill="#cdc4b4">SharePoint</text>
+      <rect x="530" y="190" width="300" height="42" rx="6" fill="#241a10" stroke="#7d8b6e" stroke-width="1.1"/><text x="680" y="217" text-anchor="middle" font-family="Newsreader,serif" font-size="14" fill="#cdc4b4">RDBMS</text>
+      <text x="544" y="262" font-family="Newsreader,serif" font-size="15" fill="#9a8f7d">…</text>
+      <path d="M260,225 Q400,225 528,200" stroke="#8a8170" stroke-width="1.6" fill="none" marker-end="url(#s1)"/>
+      <text x="390" y="210" font-family="JetBrains Mono,monospace" font-size="9" fill="#a89c87">selects adapter at runtime</text>
+    </svg>
+  </div>
+
+  <div class="reveal">
+    <h3>Strategy on the receiver side — picking a destination</h3>
+    <p>Writing to a destination works identically. Give the context the destination type plus its connection and security details, and it routes to the right vector-database adapter — ChromaDB, Pinecone, Weaviate, and so on. Same pattern, mirror image.</p>
+  </div>
+
+  <div class="diagram-frame reveal" style="background:#19150f;border:1px solid #36302a">
+    <svg class="svg-wide" viewBox="0 0 920 320" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Strategy pattern on the Airbyte receiver side">
+      <defs><marker id="s2" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#8a8170"/></marker></defs>
+      <rect x="60" y="60" width="200" height="60" rx="8" fill="#1f2a33" stroke="#5b7da0" stroke-width="1.5"/><text x="160" y="96" text-anchor="middle" font-family="Newsreader,serif" font-size="15" fill="#bcd6e8">Client</text>
+      <rect x="60" y="190" width="200" height="70" rx="8" fill="#3a1a30" stroke="#9a6a9a" stroke-width="1.5"/><text x="160" y="232" text-anchor="middle" font-family="Newsreader,serif" font-size="15" fill="#e0c0e0">Context</text>
+      <path d="M160,120 L160,188" stroke="#8a8170" stroke-width="1.6" marker-end="url(#s2)"/>
+      <rect x="500" y="40" width="360" height="240" rx="10" fill="none" stroke="#5b7da0" stroke-width="1.5"/>
+      <text x="680" y="68" text-anchor="middle" font-family="Fraunces,serif" font-style="italic" font-size="16" fill="#bcd6e8">Vector Database Adapters</text>
+      <rect x="530" y="86" width="300" height="42" rx="6" fill="#16202c" stroke="#5b7da0" stroke-width="1.1"/><text x="680" y="113" text-anchor="middle" font-family="Newsreader,serif" font-size="14" fill="#bcd6e8">ChromaDB</text>
+      <rect x="530" y="138" width="300" height="42" rx="6" fill="#1c2d33" stroke="#46c0c0" stroke-width="1.3"/><text x="680" y="165" text-anchor="middle" font-family="Newsreader,serif" font-size="14" fill="#9ce0e0">Pinecone</text>
+      <rect x="530" y="190" width="300" height="42" rx="6" fill="#16202c" stroke="#5b7da0" stroke-width="1.1"/><text x="680" y="217" text-anchor="middle" font-family="Newsreader,serif" font-size="14" fill="#bcd6e8">Weaviate</text>
+      <text x="544" y="262" font-family="Newsreader,serif" font-size="15" fill="#9a8f7d">…</text>
+      <path d="M260,225 Q400,225 528,200" stroke="#8a8170" stroke-width="1.6" fill="none" marker-end="url(#s2)"/>
+      <text x="390" y="210" font-family="JetBrains Mono,monospace" font-size="9" fill="#a89c87">selects adapter at runtime</text>
+    </svg>
+  </div>
+
+  <div class="ex-grid">
+    <div class="ex reveal"><span class="num">1</span><span class="tag code">Code</span><h4>Payment gateways</h4><p>A checkout that accepts a <em>PaymentStrategy</em> — Stripe, PayPal, or Square — picks the processor at runtime. Adding a new one means writing one class, not rewriting checkout.</p></div>
+    <div class="ex reveal"><span class="num">2</span><span class="tag biz">Business</span><h4>Repointing the source</h4><p>Legal moves its docs from a file server to SharePoint. The pipeline keeps running — you swap the source strategy and the rest of the architecture never notices.</p></div>
+    <div class="ex reveal"><span class="num">3</span><span class="tag life">Everyday</span><h4>Travel adapters</h4><p>One laptop charger, a pocket of plug adapters. You don't buy a new laptop per country — you choose the right adapter. That's Strategy in your carry-on.</p></div>
+  </div>
+</section>
+
+<div class="divider">❧</div>
+
+<!-- 05 BUILD STEPS -->
+<section>
+  <div class="reveal">
+    <div class="sec-num">05 — Let's Build It</div>
+    <h2>Five steps to a <em>working</em> pipeline</h2>
+    <p>With tool selection done and the patterns understood, the build itself is refreshingly concrete. Five steps take us from nothing to a running pipeline:</p>
+  </div>
+
+  <div class="steps reveal">
+    <div class="step"><h4>Install Pinecone and Airbyte</h4><p>The open-source Airbyte installs locally with ease, or you can use a free trial (no credit card). Pinecone offers <em>Pinecone Local</em> via Docker for an open-source-like local experience. The book's GitHub repo has setup instructions for Pinecone, Airbyte, and S3.</p></div>
+    <div class="step"><h4>Analyze the document collections</h4><p>Survey what you're migrating: categorization, PII, required authentication, file types (PDF/Excel/text), and structural patterns like chapters and subchapters.</p></div>
+    <div class="step"><h4>Configure Airbyte</h4><p>Point it at the source (S3) and destination (Pinecone), supplying connection URLs and credentials — via no-code UI, REST API, or Python SDK.</p></div>
+    <div class="step"><h4>Migrate the documents</h4><p>Run the pipeline: load from S3, chunk, embed, and write vectors into Pinecone.</p></div>
+    <div class="step"><h4>Test the results</h4><p>Run your sample semantic queries and confirm the retrieved chunks are relevant — catching any "drift" before it reaches users.</p></div>
+  </div>
+</section>
+
+<!-- 06 DOCUMENT ANALYSIS + TAXONOMY -->
+<section>
+  <div class="reveal">
+    <div class="sec-num">06 — Know Your Documents First</div>
+    <h2>Survey before you <em>ingest</em></h2>
+    <p>Before configuring anything, survey and document the collections you intend to migrate. Walk each collection and interrogate it: <strong>Does it contain PII? What authentication is needed to access it? What document types are present — PDF, Excel, plain text? What structural patterns appear — do the PDFs have chapters and subchapters?</strong> The answers shape every later decision about chunking, security, and connectors.</p>
+    <p>If you discover several repositories of <em>poorly categorized</em> documents, consider running text-classification or topic-modeling algorithms <strong>before</strong> the ETL pipeline. These can build a <em>taxonomy</em> that enriches each document's metadata. Options range from a simple taxonomy extractor built with a prompt and a third-party LLM library, all the way to sophisticated cloud tools from Google, Amazon, and Microsoft. Covering every option is beyond scope — but for large, messy collections, a commercial or open-source taxonomy extractor is well worth considering.</p>
+  </div>
+
+  <div class="diagram-frame reveal" style="background:#19150f;border:1px solid #36302a">
+    <svg class="svg-wide" viewBox="0 0 920 340" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Taxonomy: a source document classified into a hierarchy">
+      <defs><marker id="tx" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#7d8b6e"/></marker></defs>
+      <!-- root -->
+      <rect x="380" y="34" width="160" height="48" rx="8" fill="#1c2a44" stroke="#5b7da0" stroke-width="1.5"/><text x="460" y="63" text-anchor="middle" font-family="Newsreader,serif" font-size="14" fill="#bcd6e8">Source · "Life" (root)</text>
+      <!-- level 1 -->
+      <g font-family="Newsreader,serif" font-size="13">
+        <rect x="90" y="130" width="150" height="42" rx="7" fill="#1f3a24" stroke="#5c8a54"/><text x="165" y="156" text-anchor="middle" fill="#bcd0ad">Plants</text>
+        <rect x="290" y="130" width="150" height="42" rx="7" fill="#1f2a44" stroke="#5b7da0"/><text x="365" y="156" text-anchor="middle" fill="#bcd6e8">Animals</text>
+        <rect x="490" y="130" width="150" height="42" rx="7" fill="#2a1f44" stroke="#8a6abe"/><text x="565" y="156" text-anchor="middle" fill="#c8b8e0">Fungi</text>
+        <rect x="690" y="130" width="170" height="42" rx="7" fill="#3a2a10" stroke="#c08a2d"/><text x="775" y="156" text-anchor="middle" fill="#f0d9a8">Microorganisms</text>
+      </g>
+      <path d="M460,82 L165,128" stroke="#7d8b6e" stroke-width="1.2" fill="none" marker-end="url(#tx)"/>
+      <path d="M460,82 L365,128" stroke="#7d8b6e" stroke-width="1.2" fill="none" marker-end="url(#tx)"/>
+      <path d="M460,82 L565,128" stroke="#7d8b6e" stroke-width="1.2" fill="none" marker-end="url(#tx)"/>
+      <path d="M460,82 L775,128" stroke="#7d8b6e" stroke-width="1.2" fill="none" marker-end="url(#tx)"/>
+      <!-- level 2 sample under animals -->
+      <g font-family="Newsreader,serif" font-size="12">
+        <rect x="270" y="210" width="90" height="38" rx="6" fill="#16202c" stroke="#3a5570"/><text x="315" y="234" text-anchor="middle" fill="#9cb0c4">Mammals</text>
+        <rect x="370" y="210" width="80" height="38" rx="6" fill="#16202c" stroke="#3a5570"/><text x="410" y="234" text-anchor="middle" fill="#9cb0c4">Birds</text>
+      </g>
+      <path d="M365,172 L315,208" stroke="#7d8b6e" stroke-width="1.1" fill="none" marker-end="url(#tx)"/>
+      <path d="M365,172 L410,208" stroke="#7d8b6e" stroke-width="1.1" fill="none" marker-end="url(#tx)"/>
+      <!-- level 3 -->
+      <g font-family="Newsreader,serif" font-size="11">
+        <rect x="250" y="286" width="84" height="34" rx="5" fill="#10161e" stroke="#2a3a48"/><text x="292" y="308" text-anchor="middle" fill="#7d96ad">Carnivores</text>
+        <rect x="344" y="286" width="84" height="34" rx="5" fill="#10161e" stroke="#2a3a48"/><text x="386" y="308" text-anchor="middle" fill="#7d96ad">Herbivores</text>
+      </g>
+      <path d="M315,248 L292,284" stroke="#7d8b6e" stroke-width="1" fill="none" marker-end="url(#tx)"/>
+      <path d="M315,248 L386,284" stroke="#7d8b6e" stroke-width="1" fill="none" marker-end="url(#tx)"/>
+      <text x="700" y="300" font-family="Fraunces,serif" font-style="italic" font-size="14" fill="#e8b15c">root → broad → sub → specific</text>
+      <text x="700" y="320" font-family="JetBrains Mono,monospace" font-size="9" fill="#a89c87">classification enriches metadata</text>
+    </svg>
+  </div>
+
+  <div class="ex-grid">
+    <div class="ex reveal"><span class="num">4</span><span class="tag biz">Business</span><h4>Messy shared drive</h4><p>Twenty years of files with no folders. A topic-modeling pass tags each doc with a department and category before ingestion, so later queries can filter precisely.</p></div>
+    <div class="ex reveal"><span class="num">5</span><span class="tag code">Code</span><h4>Prompt-built taxonomy</h4><p>For a small collection, a single LLM prompt — "classify this doc into a 3-level hierarchy" — produces serviceable metadata without a heavyweight cloud tool.</p></div>
+    <div class="ex reveal"><span class="num">6</span><span class="tag life">Everyday</span><h4>Sorting the junk drawer</h4><p>Before storing, you group: batteries here, cables there, manuals in back. Taxonomy is doing that to documents so you can find things fast later.</p></div>
+  </div>
+</section>
+
+<div class="divider">❧</div>
+
+<!-- 07 CONFIG METHODS + CONNECTIONS -->
+<section>
+  <div class="reveal">
+    <div class="sec-num">07 — Configuring Airbyte</div>
+    <h2>Three ways to wire it <em>up</em></h2>
+    <p>To get the pipeline running, Airbyte needs two things from you: which endpoints it's connecting to, and the connection details (URLs, credentials) to authenticate. You can supply all of that in three different ways — pick whichever fits your team.</p>
+  </div>
+
+  <div class="methods">
+    <div class="method on reveal"><span class="mi">🖱️</span><h4>No-code interface</h4><p>Click through Airbyte's UI. What we'll walk through here — the fastest way to a first pipeline.</p></div>
+    <div class="method reveal"><span class="mi">🔌</span><h4>RESTful API</h4><p>Call the endpoints from any mature language — TypeScript, Java, and so on. The book's repo has a TypeScript example.</p></div>
+    <div class="method reveal"><span class="mi">🐍</span><h4>Python SDK</h4><p>Drive Airbyte programmatically from Python if that's your stack — handy for codifying pipelines as scripts.</p></div>
+  </div>
+
+  <div class="reveal">
+    <p>We'll use the no-code interface. When you log in, you land on the <strong>Connections</strong> page — the heart of Airbyte, where sources link to destinations through its connector hub. Conceptually it looks like this: a fan of possible <em>sources</em> on the left, a fan of possible <em>destinations</em> on the right, and Airbyte in the middle joining any source to any destination.</p>
+  </div>
+
+  <div class="connmap reveal">
+    <div class="col">
+      <span class="h">Sources</span>
+      <div class="node"><span class="ic">🪣</span> Amazon S3</div>
+      <div class="node"><span class="ic">📁</span> SharePoint</div>
+      <div class="node"><span class="ic">🗄️</span> RDBMS</div>
+      <div class="node" style="opacity:.6"><span class="ic">⋯</span> 300+ more</div>
+    </div>
+    <div class="hub">Airbyte<br><span style="font-family:'JetBrains Mono',monospace;font-size:.6rem;letter-spacing:.1em;color:#9a8f7d">connector hub</span></div>
+    <div class="col">
+      <span class="h">Destinations</span>
+      <div class="node"><span class="ic">🌲</span> Pinecone</div>
+      <div class="node"><span class="ic">🎨</span> ChromaDB</div>
+      <div class="node"><span class="ic">🧶</span> Weaviate</div>
+      <div class="node" style="opacity:.6"><span class="ic">⋯</span> many more</div>
+    </div>
+  </div>
+
+  <div class="reveal">
+    <p>The whole job, then, is: <strong>configure a source, configure a destination, connect them.</strong> Let's do the source first.</p>
+  </div>
+</section>
+
+<!-- 08 S3 SOURCE CONFIG (MOCK UI) -->
+<section>
+  <div class="reveal">
+    <div class="sec-num">08 — Step One: The Source</div>
+    <h2>Pointing Airbyte at your <em>S3 bucket</em></h2>
+    <p>Click <strong>Sources</strong> in the left pane and you'll see a wall of source connectors. Search for <em>S3</em>, click the S3 bucket icon, and the configuration screen appears. Here you name the source, give the bucket, choose which files to replicate, and — in the optional fields — drop in your AWS credentials so Airbyte sends them with each fetch request and is authorized to read the bucket. Here's a faithful recreation of that screen:</p>
+  </div>
+
+  <div class="mockui reveal">
+    <div class="bar"><span class="dot"></span><span class="title">Create a source</span><span class="badge">🪣 S3 ✓</span></div>
+    <div class="form">
+      <div class="field"><label>Source name</label><div class="input">S3</div></div>
+      <div class="field"><label>Output Stream Name</label><div class="input mono">pdf_docs</div></div>
+      <div class="field"><label>Pattern of files to replicate</label><div class="input mono">**</div></div>
+      <div class="field"><label>Bucket</label><div class="input mono">company-pdfs</div></div>
+      <div class="sectlabel">Optional fields</div>
+      <div class="field"><label>AWS Access Key ID <span class="opt">· optional</span></label><div class="input secret">••••••••••••••••••••••••••••</div></div>
+      <div class="field"><label>AWS Secret Access Key <span class="opt">· optional</span></label><div class="input secret">••••••••••••••••••••••••••••</div></div>
+      <div class="field"><label>Path Prefix <span class="opt">· optional</span></label><div class="input" style="color:#b0a48d">documents/</div></div>
+      <div class="field"><label>Endpoint <span class="opt">· optional</span></label><div class="input mono">https://s3.amazonaws.com</div></div>
+    </div>
+  </div>
+
+  <div class="callout reveal">
+    <div class="lbl">What each field is really doing</div>
+    <p>The <strong>bucket</strong> and <strong>file pattern</strong> tell Airbyte <em>what</em> to read (<code class="inl">**</code> means "every file, any depth"). The <strong>access key</strong> and <strong>secret</strong> are the credentials Airbyte attaches to every fetch so AWS lets it in. They're "optional" only because some buckets are public or use other auth — for a real private bucket, they're mandatory. This single screen <em>is</em> the source-side Strategy pattern in action: you picked the S3 adapter and handed the context its connection details.</p>
+  </div>
+</section>
+
+<!-- 09 PINECONE DESTINATION (MOCK UI) -->
+<section>
+  <div class="reveal">
+    <div class="sec-num">09 — Step Two: The Destination</div>
+    <h2>Configuring <em>Pinecone</em></h2>
+    <p>Now click <strong>Destinations</strong> in the left sidebar and select Pinecone (filter by vector databases or by name if needed). This screen is richer than the source, because it's where the actual <em>transform</em> happens — it bundles three jobs together: <strong>Processing</strong> (how to chunk and split the text), <strong>Embedding</strong> (which model turns text into vectors), and <strong>Indexing</strong> (where in Pinecone to store them). Here's the recreation:</p>
+  </div>
+
+  <div class="mockui reveal">
+    <div class="bar"><span class="dot"></span><span class="title">Create a destination</span><span class="badge cert">🌲 Pinecone · Certified</span></div>
+    <div class="form">
+      <div class="field"><label>Destination name</label><div class="input">Pinecone</div></div>
+
+      <div class="sectlabel">Processing</div>
+      <div class="field"><label>Chunk size</label><div class="input mono">1000</div></div>
+      <div class="field"><label>Fields to store as metadata <span class="opt">· optional</span></label><div class="input" style="color:#b0a48d">source, page, author</div></div>
+      <div class="field"><label>Text fields to embed <span class="opt">· optional</span></label><div class="chips"><span class="c">title <span class="x">×</span></span><span class="c">body <span class="x">×</span></span></div></div>
+      <div class="field"><label>Text splitter</label><div class="input sel">By Separator</div></div>
+
+      <div class="sectlabel">Embedding</div>
+      <div class="field"><label>Embedding provider</label><div class="input sel">OpenAI</div></div>
+      <div class="field"><label>OpenAI API key</label><div class="input secret">••••••••••••••••••</div></div>
+
+      <div class="sectlabel">Indexing</div>
+      <div class="field"><label>Index</label><div class="input mono">my-index</div></div>
+      <div class="field"><label>Pinecone Environment</label><div class="input mono">asia-southeast1-gcp-free</div></div>
+      <div class="field"><label>Pinecone API key</label><div class="input secret">••••••••••••</div></div>
+
+      <span class="mock-btn">Set up destination</span>
+    </div>
+  </div>
+
+  <div class="reveal">
+    <p>Look at how much of the previous chapters quietly resurfaces here. <strong>Chunk size</strong> (1000) and the <strong>text splitter</strong> are the chunking decisions from Chapter 3 — turned into two dropdowns. The <strong>embedding provider</strong> is the model-selection question from Chapter 2, now a single choice. And <strong>fields to store as metadata</strong> is exactly the metadata enrichment we discussed for sharpening retrieval. The hard concepts didn't disappear — a mature tool just gave each one a sensible default and a form field. That's the whole promise of choosing a proven ETL platform.</p>
+  </div>
+
+  <div class="ex-grid">
+    <div class="ex reveal"><span class="num">7</span><span class="tag code">Code</span><h4>Chunk size as a knob</h4><p>The 600-vs-100-token debate from the Harry Potter chapter is now literally a number in a box. Same trade-off, zero plumbing — you just type the value you reasoned your way to.</p></div>
+    <div class="ex reveal"><span class="num">8</span><span class="tag biz">Business</span><h4>Metadata pays off later</h4><p>Adding "department" and "source" as metadata fields now lets a future query filter to just HR documents — the precision win from Chapter 5, configured in seconds.</p></div>
+    <div class="ex reveal"><span class="num">9</span><span class="tag life">Everyday</span><h4>A coffee machine with presets</h4><p>You could grind, weigh, and time by hand — or press "espresso." The form is the preset; the expertise is baked into sensible defaults you can still override.</p></div>
+  </div>
+</section>
+
+<div class="divider">❧</div>
+
+<!-- 10 YAML MANIFEST -->
+<section>
+  <div class="reveal">
+    <div class="sec-num">10 — Step Three: Connect Them</div>
+    <h2>One YAML file to <em>bind</em> it all</h2>
+    <p>With a source and destination defined, the last step is the connection itself. Click the <strong>Builder</strong> tab and you get three ways to create a connector: import a YAML manifest, fork an existing connector, or start from scratch. We'll take the first route — providing a YAML file you customize and upload. YAML is a human-readable serialization language used for config files; you can open it in any text editor (VS Code, Sublime, Vim, and so on).</p>
+  </div>
+
+  <div class="code reveal" data-lang="airbyte connection · yaml"><span class="cmt"># Airbyte connection: S3 (documents) → Pinecone</span>
+<span class="key">resourceType</span>: connection
+<span class="key">name</span>: s3-pdfs → pinecone
+<span class="key">workspaceId</span>: <span class="str">${AIRBYTE_WORKSPACE_ID}</span>
+
+<span class="cmt"># Reference the source &amp; destination config files</span>
+<span class="key">source</span>:      ../sources/s3_pdfs/configuration.yaml
+<span class="key">destination</span>: ../destinations/pinecone/configuration.yaml
+
+<span class="cmt"># Minimal catalog — let Airbyte infer the schema</span>
+<span class="key">syncCatalog</span>:
+  <span class="key">streams</span>:
+    - <span class="key">stream</span>:
+        <span class="key">name</span>: pdf_docs
+        <span class="key">jsonSchema</span>: {}          <span class="cmt"># Airbyte manages schema details</span>
+        <span class="key">supportedSyncModes</span>: [<span class="str">"full_refresh"</span>, <span class="str">"incremental"</span>]
+      <span class="key">config</span>:
+        <span class="key">syncMode</span>: <span class="str">incremental</span>          <span class="cmt"># ← only process new/changed files</span>
+        <span class="key">destinationSyncMode</span>: <span class="str">append</span>     <span class="cmt"># ← keep older versions too</span>
+        <span class="key">primaryKey</span>: [[<span class="str">"document_key"</span>]]   <span class="cmt"># de-dupe / stable upserts</span>
+        <span class="key">selected</span>: true
+
+<span class="cmt"># Schedule (change as desired)</span>
+<span class="key">schedule</span>:
+  <span class="key">timeUnit</span>: hours
+  <span class="key">units</span>: 24
+
+<span class="key">status</span>: active</div>
+
+  <div class="reveal">
+    <p>Two lines in that file deserve special attention, because together they decide how your pipeline behaves over time. We set <code class="inl">syncMode: incremental</code> and <code class="inl">destinationSyncMode: append</code>. In plain terms: when a new document lands in the S3 bucket, or an existing one is updated, <strong>only that file gets processed</strong> — Airbyte doesn't re-embed the entire collection — and older versions <strong>remain available</strong> rather than being overwritten. This is precisely the incremental-sync strategy from Chapter 5, now expressed in two lines of config. If you don't need to keep old versions, the <strong>Deduped</strong> mode saves space by discarding them; the Airbyte docs cover this and many other features in depth.</p>
+  </div>
+
+  <div class="callout reveal">
+    <div class="lbl">Why these two settings matter so much</div>
+    <p>Incremental + append is the difference between a pipeline that costs a few embeddings per night and one that re-embeds everything on every run. Remember the EPS arithmetic from Chapter 5: re-embedding ten thousand documents nightly is hours of compute and a real bill; re-embedding only the 1% that changed is minutes. The mode you pick here directly shapes your operating cost.</p>
+  </div>
+</section>
+
+<!-- 11 DRIFT + TESTING -->
+<section>
+  <div class="reveal">
+    <div class="sec-num">11 — Watching for Drift</div>
+    <h2>Did the new data <em>change</em> the answers?</h2>
+    <p>Every run of the pipeline carries a risk the book calls <strong>drift</strong> — a change in the system's behaviour caused by a new or modified dataset. After ingestion, you want to confirm that your semantic queries <em>still</em> return acceptable results, because fresh data can quietly shift what comes back. This is exactly where the work from Chapter 3 pays off: remember the best practice of writing a few dozen sample queries at the very start of a GenAI project? This is the moment that investment is redeemed. You replay those known queries, inspect the top chunks, and check that quality held steady. If it slipped, you've caught drift before your users did.</p>
+  </div>
+
+  <div class="ex-grid">
+    <div class="ex reveal"><span class="num">10</span><span class="tag biz">Business</span><h4>The policy-update surprise</h4><p>An insurer ingests a revised manual; suddenly a common query returns the new rules — good — but also surfaces a deprecated clause. The sample-query suite flags it before customers see it.</p></div>
+    <div class="ex reveal"><span class="num">11</span><span class="tag code">Code</span><h4>Drift as a regression test</h4><p>Wire the sample queries into CI. Every pipeline run re-checks them, so "ingest more data" can never silently degrade retrieval quality without a red build.</p></div>
+    <div class="ex reveal"><span class="num">12</span><span class="tag life">Everyday</span><h4>Re-tasting the soup</h4><p>You add an ingredient, then taste again — because one change can alter the whole pot. Sample queries are how you re-taste the knowledge base after every addition.</p></div>
+  </div>
+</section>
+
+<!-- TAKEAWAYS -->
+<section>
+  <div class="takeaways reveal">
+    <div class="lbl">◆ Carry these forward</div>
+    <ol>
+      <li><span><b>The pipeline is S3 → Airbyte → Pinecone,</b> with Airbyte's three internal stages — Load, Create Embeddings, Ingest — mapping directly onto Extract-Transform-Load.</span></li>
+      <li><span><b>Two EIP patterns move the data:</b> Message Channel decouples producer from consumer; Channel Adapter (inbound and outbound) translates each external system into the pipeline's language.</span></li>
+      <li><span><b>The Strategy pattern makes it configurable.</b> Pick a source adapter and a destination adapter at runtime — swap S3 for SharePoint or Pinecone for Weaviate without re-architecting.</span></li>
+      <li><span><b>Survey documents before ingesting:</b> PII, auth, file types, structure — and build a taxonomy for poorly categorized collections to enrich metadata.</span></li>
+      <li><span><b>Configure three ways:</b> no-code UI, REST API, or Python SDK. The UI's source and destination screens are the Strategy pattern made visible.</span></li>
+      <li><span><b>The destination form hides old friends:</b> chunk size, text splitter, embedding model, and metadata fields are Chapters 2, 3, and 5 turned into form fields with sensible defaults.</span></li>
+      <li><span><b>incremental + append</b> processes only new or changed files and keeps old versions — the cheap, current pipeline from Chapter 5, expressed in two lines of YAML.</span></li>
+      <li><span><b>Test for drift after every run</b> with the sample queries you wrote on day one. This is where that early discipline finally pays off.</span></li>
+    </ol>
+  </div>
+</section>
+
+<!-- CHECK YOURSELF -->
+<section>
+  <div class="reveal">
+    <div class="sec-num">12 — Check Yourself</div>
+    <h2>Four quick <em>gut-checks</em></h2>
+    <p>Answer each in your head, then reveal it. If all four land, you can stand up a real ingestion pipeline and reuse it across projects.</p>
+  </div>
+  <div class="quiz reveal">
+    <details class="q"><summary>Your boss wants to read from SharePoint instead of S3 next quarter. How much of the pipeline must you rebuild?</summary><div class="ans">Almost none. Thanks to the Strategy pattern, the source is just an interchangeable adapter selected at runtime. You configure a new source strategy (SharePoint) and hand the context its connection details — the channel, the destination, and the rest of the architecture stay exactly as they are.</div></details>
+    <details class="q"><summary>In the YAML, why set syncMode to incremental and destinationSyncMode to append?</summary><div class="ans">Incremental means only new or changed files are processed, not the whole collection — which keeps cost and runtime low (recall the EPS arithmetic). Append means older versions are retained rather than overwritten, preserving traceability. If you don't need old versions, Deduped mode saves space instead.</div></details>
+    <details class="q"><summary>The Pinecone destination form asks for chunk size and a text splitter. Where did those concepts come from?</summary><div class="ans">Chapter 3's chunking decisions and Chapter 2's chunking discussion. The hard reasoning about chunk size and intelligent splitting didn't vanish — a mature ETL tool simply exposed each as a form field with a sensible default you can override. The expertise is baked in.</div></details>
+    <details class="q"><summary>You re-ran the pipeline with a fresh batch of documents. What should you do before trusting it, and why?</summary><div class="ans">Replay your sample semantic queries and inspect the top chunks, to check for drift — a change in system behaviour caused by the new dataset. New data can shift what retrieval returns, so the sample queries written at the project's start are how you confirm quality held steady before users are affected.</div></details>
+  </div>
+</section>
+
+</div><!-- /wrap -->
+
+<footer>
+  <div class="next-wrap">
+    <div class="next-card reveal">
+      <div>
+        <div class="nx-lbl">Chapter 07 · Up Next</div>
+        <h3>Best practices &amp; advanced options for <em>managing GenAI data</em></h3>
+      </div>
+      <a class="next-btn" href="#">Data Management at Scale →</a>
+    </div>
+  </div>
+  <div class="colophon">
+    <span>THE AGENT ATLAS — A FIELD GUIDE TO MULTI-AGENT SYSTEMS</span>
+    <span>CH.06 · BUILDING THE PIPELINE</span>
+  </div>
+</footer>
+
+<script>
+  const bar=document.getElementById('progress');
+  const onScroll=()=>{const h=document.documentElement;bar.style.width=(h.scrollTop/(h.scrollHeight-h.clientHeight)*100)+'%';};
+  document.addEventListener('scroll',onScroll,{passive:true});onScroll();
+
+  const io=new IntersectionObserver((es)=>{es.forEach(e=>{if(e.isIntersecting){e.target.classList.add('in');io.unobserve(e.target);}});},{threshold:.1,rootMargin:'0px 0px -40px 0px'});
+  document.querySelectorAll('.reveal').forEach(el=>io.observe(el));
+</script>
+</body>
+</html>

@@ -1,0 +1,665 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Spell Checker using Trie</title>
+    <style>
+        :root {
+            --bg-page: #070b14;
+            --bg-surface: rgba(255, 255, 255, 0.045);
+            --bg-input: rgba(255, 255, 255, 0.04);
+            --border-main: rgba(255, 255, 255, 0.10);
+            --btn-bg: rgba(255, 255, 255, 0.05);
+            --btn-hover: rgba(255, 255, 255, 0.10);
+            --text-main: #e8eefb;
+            --text-dim: #8b98b3;
+            --accent-orange: #f5a524;   /* traversal cursor / path */
+            --accent-blue:   #06b6d4;   /* edges / links          */
+            --accent-green:  #22c55e;   /* end-of-word / found    */
+            --accent-red:    #f43f5e;   /* miss                   */
+            --accent-purple: #a855f7;   /* trie / root            */
+            --mono: ui-monospace, 'SF Mono', 'Cascadia Code', 'Courier New', monospace;
+            --sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+            --shell: 980px;
+        }
+
+        * { box-sizing: border-box; }
+        html, body { overflow-x: hidden; }
+        body {
+            background:
+                radial-gradient(1100px 600px at 15% -10%, rgba(168, 85, 247, 0.12), transparent 60%),
+                radial-gradient(900px 600px at 100% 10%, rgba(6, 182, 212, 0.10), transparent 55%),
+                linear-gradient(160deg, #070b14 0%, #0b1120 55%, #0a0f1c 100%);
+            background-attachment: fixed;
+            color: var(--text-main); font-family: var(--sans); margin: 0;
+            display: flex; flex-direction: column; align-items: center; min-height: 100vh;
+            padding-bottom: 48px; -webkit-font-smoothing: antialiased;
+        }
+        body::before, body::after { content: ''; position: fixed; border-radius: 50%; filter: blur(70px); pointer-events: none; z-index: 0; opacity: 0.45; }
+        body::before { width: 380px; height: 380px; top: 8%; left: -120px; background: radial-gradient(circle, rgba(168,85,247,0.30), transparent 70%); }
+        body::after  { width: 420px; height: 420px; bottom: 4%; right: -140px; background: radial-gradient(circle, rgba(6,182,212,0.22), transparent 70%); }
+        body > * { position: relative; z-index: 1; }
+
+        .input-bar {
+            width: 100%; background: rgba(10, 15, 28, 0.55);
+            backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+            padding: 14px 16px; display: flex; justify-content: center; align-items: center; gap: 10px;
+            border-bottom: 1px solid var(--border-main); flex-wrap: wrap; position: sticky; top: 0; z-index: 50;
+        }
+        label.ui-label, .ui-label { font-family: var(--mono); font-size: 13px; color: var(--text-dim); letter-spacing: 0.2px; }
+        input[type="text"] {
+            background: var(--bg-input); border: 1px solid var(--border-main); color: var(--text-main);
+            height: 34px; border-radius: 9px; padding: 0 12px; font-size: 13px; font-family: var(--mono);
+            transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+        }
+        input[type="text"]:focus { outline: none; border-color: var(--accent-purple); box-shadow: 0 0 0 3px rgba(168, 85, 247, 0.18); background: rgba(168, 85, 247, 0.06); }
+        .word-input { width: 150px; }
+
+        button {
+            height: 34px; border-radius: 9px; padding: 0 14px; background: var(--btn-bg);
+            border: 1px solid var(--border-main); color: var(--text-main); font-size: 13px; font-weight: 600; cursor: pointer;
+            transition: transform 0.15s ease, background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+        }
+        button:hover { background: var(--btn-hover); border-color: rgba(168, 85, 247, 0.5); box-shadow: 0 0 18px rgba(168, 85, 247, 0.18); transform: translateY(-1px); }
+        button:active { transform: translateY(0); }
+        #play-btn { background: linear-gradient(135deg, rgba(168,85,247,0.22), rgba(168,85,247,0.10)); border-color: rgba(168, 85, 247, 0.45); color: #e9d5ff; min-width: 80px; }
+        .op-btn { font-family: var(--mono); }
+        .op-btn.ins { border-color: rgba(34,197,94,0.4); color: #bbf7d0; }
+        .op-btn.srch { border-color: rgba(6,182,212,0.4); color: #a5f3fc; }
+
+        .shell { width: var(--shell); max-width: 95%; margin: 24px auto 0; display: flex; flex-direction: column; gap: 16px; }
+
+        .title-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+        .title-row h1 { font-size: 18px; font-weight: 800; margin: 0; letter-spacing: 0.2px; }
+        .title-row .sub { color: var(--text-dim); font-weight: 500; font-size: 13px; }
+        .step-badge { font-family: var(--mono); font-size: 12px; font-weight: 700; color: #e9d5ff; background: rgba(168,85,247,0.12); border: 1px solid rgba(168,85,247,0.3); padding: 4px 10px; border-radius: 999px; white-space: nowrap; }
+        .progress-track { height: 4px; width: 100%; background: rgba(255,255,255,0.07); border-radius: 999px; overflow: hidden; margin-top: -6px; }
+        .progress-fill { height: 100%; width: 0%; border-radius: 999px; background: linear-gradient(90deg, var(--accent-purple), var(--accent-blue)); box-shadow: 0 0 12px rgba(168,85,247,0.5); transition: width 0.45s cubic-bezier(0.34,1.1,0.64,1); }
+
+        /* operation feed */
+        .op-feed { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+        .op-chip { font-family: var(--mono); font-size: 11px; font-weight: 700; padding: 4px 9px; border-radius: 8px; border: 1px solid var(--border-main); color: var(--text-dim); background: rgba(255,255,255,0.03); transition: all 0.3s; white-space: nowrap; }
+        .op-chip.done { opacity: 0.5; }
+        .op-chip.current { color: #fff; border-color: rgba(168,85,247,0.6); background: rgba(168,85,247,0.16); box-shadow: 0 0 12px rgba(168,85,247,0.3); }
+
+        .narration { background: var(--bg-surface); border: 1px solid rgba(168,85,247,0.22); border-radius: 12px; padding: 12px 18px; font-family: var(--mono); font-size: 14px; line-height: 1.5; color: #ede9fe; min-height: 48px; display: flex; align-items: center; gap: 10px; transition: border-color 0.3s, background 0.3s; }
+        .narration::before { content: '\25B8'; color: var(--accent-purple); font-size: 13px; }
+        .narration.done { border-color: rgba(34,197,94,0.4); background: rgba(34,197,94,0.06); }
+        .narration.done::before { content: '\2713'; color: var(--accent-green); }
+        .narration.miss { border-color: rgba(244,63,94,0.4); background: rgba(244,63,94,0.06); }
+        .narration.miss::before { content: '\2717'; color: var(--accent-red); }
+        .narration code { background: rgba(168,85,247,0.14); color: #d8b4fe; padding: 1px 6px; border-radius: 5px; font-size: 12.5px; }
+        .narration b { color: #fff; }
+
+        .stage-card { background: var(--bg-surface); border: 1px solid var(--border-main); border-radius: 18px; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); box-shadow: 0 12px 38px rgba(0,0,0,0.4); overflow: hidden; }
+        .stage-screen { position: relative; margin: 14px; border-radius: 14px; background: radial-gradient(700px 300px at 50% -10%, rgba(168,85,247,0.08), transparent 70%), #090d18; border: 1px solid rgba(255,255,255,0.06); }
+        .trie-stage { position: relative; width: 100%; height: 446px; overflow: auto; scrollbar-width: thin; cursor: grab; }
+        .trie-stage.grabbing { cursor: grabbing; }
+        .trie-stage::-webkit-scrollbar { height: 7px; width: 7px; }
+        .trie-stage::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 8px; }
+        .trie-canvas { position: relative; }
+        .trie-inner { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
+        .zoom-bar { position: absolute; right: 14px; bottom: 12px; display: flex; gap: 6px; z-index: 12; }
+        .zoom-bar button { height: 30px; min-width: 30px; padding: 0 9px; border-radius: 8px; font-size: 15px; font-weight: 700; background: rgba(10,15,28,0.7); backdrop-filter: blur(6px); }
+        .zoom-bar .fit { font-size: 12px; }
+        #edges { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; z-index: 1; }
+        .edge-ln { stroke: var(--accent-blue); stroke-width: 2.4; fill: none; opacity: 0.55; transition: stroke 0.35s, opacity 0.35s; }
+        .edge-ln.on-path { stroke: var(--accent-orange); opacity: 1; filter: drop-shadow(0 0 6px rgba(245,165,36,0.6)); }
+        .edge-ln.fresh { stroke-dasharray: 60; stroke-dashoffset: 60; animation: drawEdge 0.5s ease forwards; }
+        .edge-lbl { font-family: var(--mono); font-size: 12px; font-weight: 800; fill: var(--text-dim); }
+        .edge-lbl.on-path { fill: var(--accent-orange); }
+
+        .tnode { position: absolute; width: 46px; height: 46px; margin-left: -23px; display: flex; align-items: center; justify-content: center;
+            border-radius: 50%; font-family: var(--mono); font-weight: 800; font-size: 17px;
+            border: 2px solid var(--border-main); background: rgba(255,255,255,0.06); color: var(--text-main);
+            z-index: 2; will-change: transform; transition: background 0.35s, border-color 0.35s, color 0.35s, box-shadow 0.35s; }
+        .tnode.root { border-color: var(--accent-purple); background: linear-gradient(180deg, rgba(168,85,247,0.30), rgba(168,85,247,0.12)); color: #e9d5ff; font-size: 10px; }
+        .tnode.on-path { border-color: var(--accent-orange); box-shadow: 0 0 16px rgba(245,165,36,0.45); color: #fff; }
+        .tnode.end { border-color: var(--accent-green); background: linear-gradient(180deg, #2fe08f, #21c275); color: #06251a; box-shadow: 0 0 16px rgba(34,197,94,0.4); }
+        .tnode.end.on-path { box-shadow: 0 0 22px rgba(34,197,94,0.7); }
+        .tnode.found { animation: pulseGreen 1.6s ease-in-out infinite; }
+        .tnode.miss { border-color: var(--accent-red); box-shadow: 0 0 18px rgba(244,63,94,0.55); color: #fecdd3; }
+        .tnode .cnt { position: absolute; top: -7px; right: -7px; min-width: 16px; height: 16px; padding: 0 3px; border-radius: 9px; background: var(--accent-blue); color: #042027; font-size: 10px; font-weight: 800; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 8px rgba(6,182,212,0.6); }
+
+        .action-stage { position: relative; min-height: 88px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; }
+        .word-track { display: flex; gap: 6px; align-items: center; min-height: 40px; flex-wrap: wrap; justify-content: center; }
+        .ltile { width: 34px; height: 40px; border-radius: 9px; display: flex; align-items: center; justify-content: center; font-family: var(--mono); font-size: 18px; font-weight: 800; border: 2px solid var(--border-main); background: rgba(255,255,255,0.05); color: var(--text-dim); transition: all 0.3s; }
+        .ltile.lit { border-color: var(--accent-orange); color: #fff; background: rgba(245,165,36,0.16); box-shadow: 0 0 12px rgba(245,165,36,0.4); }
+        .ltile.matched { border-color: var(--accent-green); color: #bbf7d0; background: rgba(34,197,94,0.14); }
+        .ltile.bad { border-color: var(--accent-red); color: #fecdd3; background: rgba(244,63,94,0.14); }
+        .action-word { font-family: var(--mono); font-weight: 800; font-size: 18px; letter-spacing: 0.4px; min-height: 22px; text-align: center; transition: color 0.3s; }
+
+        /* suggestion chip strip */
+        .chip-strip { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: center; min-height: 0; }
+        .sugg-chip { font-family: var(--mono); font-size: 13px; font-weight: 700; padding: 6px 12px; border-radius: 999px; border: 1px solid rgba(6,182,212,0.45); color: #a5f3fc; background: rgba(6,182,212,0.10); display: inline-flex; align-items: center; gap: 7px; box-shadow: 0 0 12px rgba(6,182,212,0.18); }
+        .sugg-chip.top { border-color: rgba(34,197,94,0.55); color: #bbf7d0; background: rgba(34,197,94,0.12); box-shadow: 0 0 14px rgba(34,197,94,0.25); }
+        .sugg-chip .dist { font-size: 10px; font-weight: 800; color: #062a30; background: var(--accent-blue); border-radius: 999px; padding: 1px 6px; }
+        .sugg-chip.top .dist { color: #06251a; background: var(--accent-green); }
+        .sugg-chip.pop { animation: chipPop 0.4s cubic-bezier(0.34,1.4,0.64,1) both; }
+
+        #confetti { position: absolute; inset: 0; overflow: visible; pointer-events: none; }
+        .confetti-piece { position: absolute; top: 0; left: 50%; width: 8px; height: 13px; border-radius: 2px; opacity: 0; animation: confettiFall ease-out forwards; }
+
+        .controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: center; }
+        .controls .kbd-hint { font-size: 11px; color: var(--text-dim); font-family: var(--mono); margin-left: 4px; }
+        .kbd { background: rgba(255,255,255,0.07); border: 1px solid var(--border-main); border-radius: 5px; padding: 1px 6px; font-size: 10px; }
+        input[type="range"] { accent-color: var(--accent-purple); width: 110px; cursor: pointer; }
+
+        .details-toggle { align-self: center; height: 32px; padding: 0 16px; border-radius: 999px; cursor: pointer; background: rgba(255,255,255,0.04); border: 1px solid var(--border-main); color: var(--text-dim); font-family: var(--mono); font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; gap: 8px; transition: color 0.2s, border-color 0.2s, background 0.2s; }
+        .details-toggle:hover { color: var(--text-main); border-color: rgba(168,85,247,0.4); background: rgba(168,85,247,0.06); }
+        .details-toggle .chev { transition: transform 0.3s ease; }
+        .details-wrap.open .details-toggle .chev { transform: rotate(180deg); }
+        .details-body { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.4s ease; }
+        .details-wrap.open .details-body { grid-template-rows: 1fr; }
+        .details-inner { overflow: hidden; min-height: 0; }
+        .details-grid { display: flex; flex-direction: column; gap: 14px; padding-top: 14px; }
+
+        .panel-card { background: var(--bg-surface); border: 1px solid var(--border-main); border-radius: 16px; backdrop-filter: blur(10px); box-shadow: 0 8px 30px rgba(0,0,0,0.35); }
+        .panel-head { display: flex; align-items: center; gap: 8px; padding: 11px 16px; border-bottom: 1px solid var(--border-main); font-size: 11px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; color: var(--text-dim); }
+        .panel-head .pip { width: 7px; height: 7px; border-radius: 50%; background: var(--accent-purple); box-shadow: 0 0 8px var(--accent-purple); }
+        .code-body { padding: 12px 6px 14px; font-family: var(--mono); font-size: 12.5px; line-height: 1.7; }
+        .code-line { display: flex; gap: 12px; padding: 1px 16px; border-left: 2px solid transparent; transition: background 0.3s, border-color 0.3s; white-space: pre; }
+        .code-line .lno { color: #4b5772; width: 16px; text-align: right; user-select: none; }
+        .code-line .src { color: #c4cee0; }
+        .code-line .kw { color: #c792ea; }
+        .code-line .fn { color: #82aaff; }
+        .code-line.active { background: rgba(168,85,247,0.12); border-left-color: var(--accent-purple); }
+        .code-line.active .src, .code-line.active .lno { color: #e8eefb; }
+
+        .log-panel { border-radius: 14px; padding: 12px 16px; height: 110px; overflow-y: auto; font-family: var(--mono); font-size: 12.5px; line-height: 1.5; background: var(--bg-surface); border: 1px solid var(--border-main); }
+        .log-panel::-webkit-scrollbar { width: 8px; }
+        .log-panel::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 8px; }
+
+        @keyframes drawEdge { to { stroke-dashoffset: 0; } }
+        @keyframes pulseGreen { 0%,100%{ box-shadow: 0 0 16px rgba(34,197,94,0.4); } 50%{ box-shadow: 0 0 30px rgba(34,197,94,0.8); } }
+        @keyframes chipPop { 0%{ opacity:0; transform: scale(0.4) translateY(8px); } 100%{ opacity:1; transform: scale(1) translateY(0); } }
+        @keyframes confettiFall { 0%{ opacity:1; transform: translate(-50%, 0) rotate(0deg); } 100%{ opacity:0; transform: translate(calc(-50% + var(--x)), 220px) rotate(var(--rot)); } }
+        @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; } }
+    </style>
+</head>
+<body>
+
+    <div class="input-bar">
+        <input type="text" id="word-input" class="word-input" placeholder="word" maxlength="12">
+        <button class="op-btn ins"  onclick="doOp('insert')">Add word</button>
+        <button class="op-btn srch" onclick="doOp('check')">Spell-check</button>
+        <span class="ui-label" style="opacity:.5">|</span>
+        <button onclick="loadExample(0)">Example 1</button>
+        <button onclick="loadExample(1)">Example 2</button>
+        <button onclick="resetSim()">&#8634; Reset</button>
+    </div>
+
+    <div class="shell">
+        <div class="title-row">
+            <h1>Spell Checker using Trie <span class="sub">&middot; exact lookup &middot; edit-distance suggestions</span></h1>
+            <span class="step-badge" id="step-badge">Step 1 / 1</span>
+        </div>
+        <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+
+        <div class="op-feed" id="op-feed"></div>
+
+        <div class="narration" id="main-panel">&mdash;</div>
+
+        <div class="stage-card">
+            <div class="stage-screen">
+                <div class="trie-stage" id="trie-stage">
+                    <div class="trie-canvas" id="trie-canvas">
+                        <div class="trie-inner" id="trie-inner">
+                            <svg id="edges"></svg>
+                        </div>
+                    </div>
+                </div>
+                <div class="zoom-bar">
+                    <button onclick="zoomBy(0.8)" title="Zoom out">&#8722;</button>
+                    <button class="fit" onclick="fitView()" title="Fit whole tree">Fit</button>
+                    <button onclick="zoomBy(1.25)" title="Zoom in">+</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="action-stage">
+            <div id="confetti"></div>
+            <div class="word-track" id="word-track"></div>
+            <div class="chip-strip" id="chip-strip"></div>
+            <div class="action-word" id="action-word"></div>
+        </div>
+
+        <div class="controls">
+            <button onclick="resetSim()">&#8634; Reset</button>
+            <button onclick="prevStep()">&#8592; Back</button>
+            <button onclick="togglePlay()" id="play-btn">Play</button>
+            <button onclick="nextStep()">Next &#8594;</button>
+            <span class="ui-label" style="margin-left:6px; font-size:11px">Speed</span>
+            <input type="range" id="speed" min="0" max="2" value="1">
+            <span class="kbd-hint"><span class="kbd">&#8592;</span> <span class="kbd">&#8594;</span> step &middot; <span class="kbd">space</span> play</span>
+        </div>
+
+        <div class="details-wrap" id="details-wrap">
+            <button class="details-toggle" onclick="toggleDetails()" aria-expanded="false">
+                <span id="details-label">Show code, state &amp; log</span> <span class="chev">&#9662;</span>
+            </button>
+            <div class="details-body">
+                <div class="details-inner">
+                    <div class="details-grid">
+                        <div class="panel-card">
+                            <div class="panel-head"><span class="pip"></span> Algorithm</div>
+                            <div class="code-body" id="code-panel"></div>
+                        </div>
+                        <div class="log-panel" id="log"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        'use strict';
+
+        // ----- Motion engine (spring + FLIP, zero deps) -----
+        const REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        const FRAME = 1000 / 60;
+        function sampleSpring(stiffness, damping, mass) {
+            const dt = 1 / 60; let x = 1, v = 0; const out = [];
+            for (let i = 0; i < 240; i++) { const a = (-stiffness * x - damping * v) / mass; v += a * dt; x += v * dt; out.push(1 - x); if (Math.abs(x) < 0.0015 && Math.abs(v) < 0.0015) break; }
+            out.push(1); return out;
+        }
+        const SPRING_POS = sampleSpring(320, 30, 1);
+        const SPRING_POP = sampleSpring(520, 17, 1);
+        const durOf = (a) => a.length * FRAME;
+        const Motion = {
+            move(el, x, y) {
+                const px = el._x, py = el._y;
+                const commit = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px)`;
+                if (REDUCED || px == null || (Math.abs(x - px) < 0.5 && Math.abs(y - py) < 0.5)) { el._x = x; el._y = y; el.style.transform = commit; return; }
+                const dx = x - px, dy = y - py;
+                const kf = SPRING_POS.map(p => ({ transform: `translate(${(px + dx * p).toFixed(1)}px, ${(py + dy * p).toFixed(1)}px)` }));
+                el.animate(kf, { duration: durOf(SPRING_POS), easing: 'linear' });
+                el._x = x; el._y = y; el.style.transform = commit;
+            },
+            pop(el) {
+                if (REDUCED) { el.style.opacity = '1'; return; }
+                const kf = SPRING_POP.map(p => ({ opacity: Math.min(1, p * 2).toFixed(3), transform: `translate(${el._x.toFixed(1)}px, ${el._y.toFixed(1)}px) scale(${(0.3 + 0.7 * p).toFixed(3)})` }));
+                const a = el.animate(kf, { duration: durOf(SPRING_POP), easing: 'linear' });
+                a.onfinish = () => { el.style.transform = `translate(${el._x.toFixed(1)}px, ${el._y.toFixed(1)}px)`; };
+            },
+        };
+
+        // ----- State -----
+        let ops = [];          // [{type, word} | {type:'check', word, maxDist}]
+        let dict = [];         // running list of inserted dictionary words (insertion order)
+        let steps = [];
+        let stepIdx = 0;
+        let timer = null;
+        let confettiArmed = true;
+        const delays = [1650, 850, 380];
+        const nodeEls = {};     // 'n:'+path -> element
+        const edgeEls = {};     // 'e:'+path -> {ln, lbl}
+        let viewScale = 1, autoFit = true, contentW = 0, contentH = 0;
+
+        const CODE = [
+            [['kw','class '],['fn','SpellChecker'],['src',':']],
+            [['src','  def '],['fn','add'],['src','(self, w):  # build dictionary trie']],
+            [['src','    node = root']],
+            [['kw','    for '],['src','c '],['kw','in'],['src',' w:']],
+            [['src','      node = node.children.setdefault(c, Node())']],
+            [['src','    node.isEnd = True']],
+            [['src','  def '],['fn','check'],['src','(self, q):']],
+            [['src','    node = root']],
+            [['kw','    for '],['src','c '],['kw','in'],['src',' q:']],
+            [['kw','      if '],['src','c not in node.children: return MISS']],
+            [['src','      node = node.children[c]']],
+            [['kw','    return '],['src','node.isEnd  # correct iff end-of-word']],
+            [['src','  def '],['fn','suggest'],['src','(self, q, k):  # edit distance']],
+            [['src','    cand = [w for w in dict if lev(q,w) <= k]']],
+            [['kw','    return '],['src','sorted(cand, key=(dist, word))']],
+        ];
+
+        function buildCodePanel() {
+            const panel = document.getElementById('code-panel'); panel.innerHTML = '';
+            CODE.forEach((tokens, i) => {
+                const line = document.createElement('div'); line.className = 'code-line'; line.dataset.line = i;
+                const lno = document.createElement('span'); lno.className = 'lno'; lno.textContent = i + 1; line.appendChild(lno);
+                const src = document.createElement('span');
+                tokens.forEach(([cls, txt]) => { const s = document.createElement('span'); s.className = cls; s.textContent = txt; src.appendChild(s); });
+                line.appendChild(src); panel.appendChild(line);
+            });
+        }
+        function highlightCode(arr) { document.querySelectorAll('.code-line').forEach(el => el.classList.toggle('active', arr && arr.includes(+el.dataset.line))); }
+        function toggleDetails() {
+            const wrap = document.getElementById('details-wrap'); const open = wrap.classList.toggle('open');
+            wrap.querySelector('.details-toggle').setAttribute('aria-expanded', open ? 'true' : 'false');
+            document.getElementById('details-label').textContent = open ? 'Hide code, state & log' : 'Show code, state & log';
+        }
+
+        // ----- trie model (object children, keyed by char) -----
+        function emptyTrie() { return { ch: {}, end: false }; }
+        function trieInsert(root, w) {
+            let n = root; const created = [];
+            for (let i = 0; i < w.length; i++) { const c = w[i]; if (!n.ch[c]) { n.ch[c] = emptyTrie(); created.push(w.slice(0, i + 1)); } n = n.ch[c]; }
+            n.end = true; return created;
+        }
+        function trieWalk(root, w) { // returns matched length + final node
+            let n = root, k = 0;
+            for (const c of w) { if (!n.ch[c]) return { k, node: n, ok: false }; n = n.ch[c]; k++; }
+            return { k, node: n, ok: true };
+        }
+        // serialize all nodes to {path, char, end} list (DFS, sorted children)
+        function serialize(root) {
+            const out = []; out.push({ path: '', char: null, end: root.end });
+            (function dfs(n, path) {
+                const keys = Object.keys(n.ch).sort();
+                for (const c of keys) { const child = n.ch[c]; out.push({ path: path + c, char: c, end: child.end }); dfs(child, path + c); }
+            })(root, '');
+            return out;
+        }
+
+        // ----- Levenshtein edit distance (PRESERVED from original) -----
+        function levenshtein(a, b) {
+            const dp = Array.from({ length: a.length + 1 }, () => Array(b.length + 1).fill(0));
+            for (let i = 0; i <= a.length; i++) dp[i][0] = i;
+            for (let j = 0; j <= b.length; j++) dp[0][j] = j;
+            for (let i = 1; i <= a.length; i++) {
+                for (let j = 1; j <= b.length; j++) {
+                    if (a[i - 1] === b[j - 1]) dp[i][j] = dp[i - 1][j - 1];
+                    else dp[i][j] = 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1]);
+                }
+            }
+            return dp[a.length][b.length];
+        }
+        // collect candidates with editDist <= maxDist, sorted (dist asc, word lexicographic)
+        function suggestions(dictionary, query, maxDist) {
+            const matches = [];
+            for (const w of dictionary) { const d = levenshtein(query, w); if (d <= maxDist) matches.push({ word: w, dist: d }); }
+            matches.sort((a, b) => a.dist !== b.dist ? a.dist - b.dist : (a.word < b.word ? -1 : a.word > b.word ? 1 : 0));
+            return matches;
+        }
+
+        // ----- step generation -----
+        function generateSteps() {
+            steps = [];
+            const root = emptyTrie();
+            const dictSoFar = [];
+            steps.push({ type: 'init', snapshot: serialize(root), word: '', matchLen: 0, newPaths: [], chips: null,
+                code: [0], action: 'spell checker', actionColor: '#d8b4fe',
+                panel: 'A <b>spell checker</b> stores a dictionary in a <b>trie</b>. Each edge is a letter; a green ring marks the <b>end</b> of a valid word.',
+                log: 'Spell checker initialized (empty dictionary trie).' });
+
+            ops.forEach((op, oi) => {
+                if (op.type === 'insert') {
+                    const created = trieInsert(root, op.word);
+                    if (!dictSoFar.includes(op.word)) dictSoFar.push(op.word);
+                    steps.push({ type: 'insert', opIdx: oi, snapshot: serialize(root), word: op.word, matchLen: op.word.length, newPaths: created, chips: null,
+                        code: [1,3,4,5], action: 'add "' + op.word + '"', actionColor: 'var(--accent-green)',
+                        panel: `Add <code>${op.word}</code> to the dictionary &#8594; walk/create one node per letter, then mark the last node <b>end-of-word</b>${created.length ? ' (' + created.length + ' new node' + (created.length>1?'s':'') + ')' : ' (already present)'}.`,
+                        log: `add("${op.word}")  +${created.length} node(s)` });
+                } else if (op.type === 'check') {
+                    const r = trieWalk(root, op.word);
+                    const correct = r.ok && r.node.end;
+                    const dictSnap = dictSoFar.slice();
+                    let chips = null, sugLog = '';
+                    if (!correct) {
+                        const sug = suggestions(dictSnap, op.word, op.maxDist);
+                        chips = { list: sug, maxDist: op.maxDist };
+                        sugLog = sug.length ? ('  suggest: ' + sug.map(m => m.word + '(' + m.dist + ')').join(', ')) : '  no suggestions';
+                    }
+                    steps.push({ type: 'check', opIdx: oi, snapshot: serialize(root), word: op.word, matchLen: r.k, newPaths: [],
+                        result: correct, missAt: r.ok ? -1 : r.k, miss: !correct, confetti: correct, chips,
+                        code: correct ? [6,7,8,10,11] : [6,8,9,12,13,14],
+                        action: correct ? ('"' + op.word + '" is spelled correctly') : ('"' + op.word + '" is misspelled'),
+                        actionColor: correct ? 'var(--accent-green)' : 'var(--accent-red)',
+                        panel: correct
+                            ? `Spell-check <code>${op.word}</code>: the full path exists <b>and</b> the last node is end-of-word &#8594; <span style="color:var(--accent-green)">correct</span>.`
+                            : (r.ok
+                                ? `Spell-check <code>${op.word}</code>: path exists but the last node is <b>not</b> end-of-word &#8594; <span style="color:var(--accent-red)">misspelled</span>. Suggest dictionary words within edit distance ${op.maxDist}.`
+                                : `Spell-check <code>${op.word}</code>: no edge for <code>${op.word[r.k]}</code> at depth ${r.k} &#8594; <span style="color:var(--accent-red)">misspelled</span>. Suggest words within edit distance ${op.maxDist}.`),
+                        log: `check("${op.word}") = ${correct ? 'correct' : 'misspelled'}` + (correct ? '' : sugLog) });
+                }
+            });
+        }
+
+        // ----- layout (tidy top-down tree) -----
+        const PADX = 40, PADY = 22;
+        function layout(snapshot) {
+            // adaptive spacing — shrink gaps for big trees (the fit-scale shrinks further if needed)
+            const n = snapshot.length;
+            const COL = n > 80 ? 52 : n > 36 ? 60 : 72;
+            const ROW = n > 80 ? 60 : 70;
+            const byPath = new Map();
+            snapshot.forEach(n => byPath.set(n.path, Object.assign({}, n, { kids: [] })));
+            if (!byPath.has('')) byPath.set('', { path: '', char: null, end: false, kids: [] });
+            byPath.forEach((n, p) => { if (p !== '') { const par = p.slice(0, -1); if (byPath.has(par)) byPath.get(par).kids.push(n); } });
+            byPath.forEach(n => n.kids.sort((a, b) => a.char < b.char ? -1 : 1));
+            let nextX = 0;
+            (function dfs(n, depth) {
+                n.y = depth * ROW + PADY;
+                if (n.kids.length === 0) { n.x = nextX * COL + PADX; nextX++; }
+                else { n.kids.forEach(k => dfs(k, depth + 1)); n.x = (n.kids[0].x + n.kids[n.kids.length - 1].x) / 2; }
+            })(byPath.get(''), 0);
+            const width = Math.max(nextX, 1) * COL + PADX * 2 - COL;
+            let maxDepth = 0; byPath.forEach(n => { const d = n.path.length; if (d > maxDepth) maxDepth = d; });
+            const height = maxDepth * ROW + PADY * 2 + 46;
+            return { byPath, width, height };
+        }
+
+        // ----- render -----
+        function renderStep(idx) {
+            stepIdx = idx; const step = steps[idx]; if (!step) return;
+            const { byPath, width, height } = layout(step.snapshot);
+            contentW = width; contentH = height;
+            const inner = document.getElementById('trie-inner');
+            const svg = document.getElementById('edges');
+            inner.style.width = width + 'px'; inner.style.height = height + 'px';
+            svg.setAttribute('width', width); svg.setAttribute('height', height);
+
+            const onPath = new Set();          // node paths on the highlighted path
+            const w = step.word || '';
+            for (let i = 0; i <= step.matchLen; i++) onPath.add(w.slice(0, i)); // includes root ''
+            const newSet = new Set(step.newPaths || []);
+            const used = new Set();
+
+            // nodes
+            byPath.forEach((n, path) => {
+                const key = 'n:' + path; used.add(key);
+                let el = nodeEls[key];
+                const fresh = !el;
+                if (!el) {
+                    el = document.createElement('div'); el.className = 'tnode';
+                    el.innerHTML = `<span class="lbl"></span><span class="cnt" style="display:none"></span>`;
+                    inner.appendChild(el); nodeEls[key] = el;
+                }
+                el.querySelector('.lbl').textContent = path === '' ? 'root' : n.char;
+                const isOn = onPath.has(path);
+                const isEndNode = (step.type === 'check') && step.result && path === w;       // the correctly-spelled word node
+                const isMissNode = step.miss && step.missAt >= 0 && path === w.slice(0, step.matchLen) && (step.type !== 'insert');
+                el.className = 'tnode'
+                    + (path === '' ? ' root' : '')
+                    + (n.end ? ' end' : '')
+                    + (isOn ? ' on-path' : '')
+                    + (isEndNode ? ' found' : '')
+                    + (isMissNode ? ' miss' : '');
+                if (fresh) { el._x = n.x; el._y = n.y; el.style.transform = `translate(${n.x}px, ${n.y}px)`; el.style.opacity = '0'; }
+                else Motion.move(el, n.x, n.y);
+                if (fresh && newSet.has(path)) Motion.pop(el);
+                else if (fresh) { el.style.opacity = '1'; }
+            });
+
+            // edges
+            const usedE = new Set();
+            byPath.forEach((n, path) => {
+                if (path === '') return;
+                const par = byPath.get(path.slice(0, -1)); if (!par) return;
+                const key = 'e:' + path; usedE.add(key);
+                let rec = edgeEls[key];
+                if (!rec) {
+                    const ln = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                    const lbl = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                    lbl.setAttribute('text-anchor', 'middle');
+                    svg.appendChild(ln); svg.appendChild(lbl); rec = { ln, lbl }; edgeEls[key] = rec;
+                    if (newSet.has(path)) ln.classList.add('fresh');
+                }
+                const x1 = par.x, y1 = par.y + 46, x2 = n.x, y2 = n.y;
+                const my = (y1 + y2) / 2;
+                rec.ln.setAttribute('d', `M ${x1} ${y1} C ${x1} ${my}, ${x2} ${my}, ${x2} ${y2}`);
+                const on = onPath.has(path) && onPath.has(path.slice(0, -1));
+                rec.ln.setAttribute('class', 'edge-ln' + (on ? ' on-path' : '') + (rec.ln.classList.contains('fresh') ? ' fresh' : ''));
+                rec.lbl.textContent = n.char;
+                rec.lbl.setAttribute('x', (x1 + x2) / 2 + 9); rec.lbl.setAttribute('y', my - 2);
+                rec.lbl.setAttribute('class', 'edge-lbl' + (on ? ' on-path' : ''));
+            });
+
+            // reap removed nodes/edges
+            Object.keys(nodeEls).forEach(k => { if (!used.has(k)) { nodeEls[k].remove(); delete nodeEls[k]; } });
+            Object.keys(edgeEls).forEach(k => { if (!usedE.has(k)) { edgeEls[k].ln.remove(); edgeEls[k].lbl.remove(); delete edgeEls[k]; } });
+
+            // letter track (the word being processed)
+            const track = document.getElementById('word-track'); track.innerHTML = '';
+            if (w) {
+                [...w].forEach((c, i) => {
+                    const t = document.createElement('div'); t.className = 'ltile'; t.textContent = c;
+                    if (step.type === 'insert') { if (i < step.matchLen) t.classList.add('matched'); }
+                    else { if (i < step.matchLen) t.classList.add('matched'); else if (step.miss && i === step.matchLen) t.classList.add('bad'); }
+                    track.appendChild(t);
+                });
+            }
+
+            // suggestion chip strip (lexicographic within distance; top match emphasized)
+            const strip = document.getElementById('chip-strip'); strip.innerHTML = '';
+            if (step.chips && step.chips.list && step.chips.list.length) {
+                step.chips.list.forEach((m, i) => {
+                    const chip = document.createElement('span');
+                    chip.className = 'sugg-chip' + (i === 0 ? ' top' : '') + (REDUCED ? '' : ' pop');
+                    chip.style.animationDelay = (i * 0.07) + 's';
+                    chip.innerHTML = `${m.word}<span class="dist">${m.dist}</span>`;
+                    strip.appendChild(chip);
+                });
+            } else if (step.chips) {
+                const chip = document.createElement('span'); chip.className = 'sugg-chip'; chip.textContent = 'no suggestions';
+                strip.appendChild(chip);
+            }
+
+            // narration / action / chrome
+            const mp = document.getElementById('main-panel');
+            mp.innerHTML = step.panel || '&mdash;';
+            mp.classList.toggle('done', !!step.confetti);
+            mp.classList.toggle('miss', !!step.miss);
+            const aw = document.getElementById('action-word'); aw.textContent = step.action || ''; aw.style.color = step.actionColor || 'var(--text-dim)';
+            highlightCode(step.code);
+
+            if (step.confetti) { if (confettiArmed) { fireConfetti(); confettiArmed = false; } } else { confettiArmed = true; }
+
+            renderOpFeed(step.opIdx);
+            document.getElementById('step-badge').textContent = `Step ${idx + 1} / ${steps.length}`;
+            document.getElementById('progress-fill').style.width = `${(idx / Math.max(1, steps.length - 1)) * 100}%`;
+
+            const logEl = document.getElementById('log');
+            logEl.innerHTML = steps.slice(0, idx + 1).map(s => `<div style="margin:3px 0;">${s.log}</div>`).join('');
+            logEl.scrollTop = logEl.scrollHeight;
+
+            if (autoFit) fitView(); else applyView();
+        }
+
+        // ----- view: fit / zoom / pan (scale the whole tree so it all fits; zoom in to read) -----
+        function applyView() {
+            const inner = document.getElementById('trie-inner');
+            const canvas = document.getElementById('trie-canvas');
+            const stage = document.getElementById('trie-stage');
+            if (!inner || !canvas || !stage) return;
+            inner.style.transform = 'scale(' + viewScale + ')';
+            const sw = contentW * viewScale, sh = contentH * viewScale;
+            canvas.style.width = sw + 'px'; canvas.style.height = sh + 'px';
+            canvas.style.marginLeft = Math.max(0, (stage.clientWidth - sw) / 2) + 'px';
+            canvas.style.marginTop = Math.max(0, (stage.clientHeight - sh) / 2) + 'px';
+        }
+        function fitView() {
+            autoFit = true;
+            const stage = document.getElementById('trie-stage');
+            if (!stage || !contentW || !contentH) { viewScale = 1; applyView(); return; }
+            const s = Math.min((stage.clientWidth - 18) / contentW, (stage.clientHeight - 18) / contentH, 1.25);
+            viewScale = Math.max(0.12, s);
+            applyView();
+        }
+        function zoomBy(f) { autoFit = false; viewScale = Math.max(0.12, Math.min(2.6, viewScale * f)); applyView(); }
+        (function setupPanZoom() {
+            const stage = document.getElementById('trie-stage'); if (!stage) return;
+            stage.addEventListener('wheel', (e) => { e.preventDefault(); zoomBy(e.deltaY < 0 ? 1.12 : 0.9); }, { passive: false });
+            let drag = false, sx = 0, sy = 0, sl = 0, st = 0;
+            stage.addEventListener('mousedown', (e) => { drag = true; stage.classList.add('grabbing'); sx = e.clientX; sy = e.clientY; sl = stage.scrollLeft; st = stage.scrollTop; });
+            window.addEventListener('mousemove', (e) => { if (!drag) return; stage.scrollLeft = sl - (e.clientX - sx); stage.scrollTop = st - (e.clientY - sy); });
+            window.addEventListener('mouseup', () => { drag = false; stage.classList.remove('grabbing'); });
+        })();
+        let _rsT; window.addEventListener('resize', () => { clearTimeout(_rsT); _rsT = setTimeout(() => { if (autoFit) fitView(); else applyView(); }, 120); });
+
+        function renderOpFeed(currentOpIdx) {
+            const feed = document.getElementById('op-feed'); feed.innerHTML = '';
+            ops.forEach((op, i) => {
+                const chip = document.createElement('div');
+                const label = (op.type === 'check' ? 'check' : 'add') + ' ' + op.word;
+                chip.className = 'op-chip' + (currentOpIdx === i ? ' current' : (currentOpIdx !== undefined && i < currentOpIdx ? ' done' : ''));
+                if (currentOpIdx === undefined) chip.className = 'op-chip';
+                chip.textContent = label; feed.appendChild(chip);
+            });
+        }
+
+        function fireConfetti() {
+            const host = document.getElementById('confetti'); if (!host || REDUCED) return;
+            const colors = ['#22c55e', '#06b6d4', '#a855f7', '#f5a524', '#f43f5e'];
+            for (let i = 0; i < 38; i++) {
+                const p = document.createElement('div'); p.className = 'confetti-piece';
+                p.style.setProperty('--x', ((Math.random() * 2 - 1) * 220) + 'px');
+                p.style.setProperty('--rot', ((Math.random() * 720 - 360)) + 'deg');
+                p.style.background = colors[i % colors.length];
+                p.style.animationDuration = (0.9 + Math.random() * 0.8) + 's';
+                p.style.animationDelay = (Math.random() * 0.15) + 's';
+                host.appendChild(p); setTimeout(() => p.remove(), 1900);
+            }
+        }
+
+        // ----- controls -----
+        function nextStep() { if (stepIdx < steps.length - 1) renderStep(stepIdx + 1); else pause(); }
+        function prevStep() { if (stepIdx > 0) renderStep(stepIdx - 1); }
+        function resetSim() { pause(); renderStep(0); }
+        function togglePlay() {
+            const btn = document.getElementById('play-btn');
+            if (timer) { pause(); return; }
+            btn.textContent = 'Pause';
+            if (stepIdx >= steps.length - 1) renderStep(0);
+            timer = setInterval(() => { if (stepIdx < steps.length - 1) nextStep(); else pause(); }, delays[document.getElementById('speed').value]);
+        }
+        function pause() { clearInterval(timer); timer = null; document.getElementById('play-btn').textContent = 'Play'; }
+
+        function clearDom() { Object.keys(nodeEls).forEach(k => { nodeEls[k].remove(); delete nodeEls[k]; }); Object.keys(edgeEls).forEach(k => { edgeEls[k].ln.remove(); edgeEls[k].lbl.remove(); delete edgeEls[k]; }); confettiArmed = true; }
+
+        function loadOps(newOps) { pause(); ops = newOps; clearDom(); generateSteps(); renderStep(0); }
+        function doOp(type) {
+            const input = document.getElementById('word-input');
+            const word = (input.value || '').toLowerCase().replace(/[^a-z]/g, '');
+            if (!word) { input.focus(); return; }
+            if (type === 'check') loadOps([...ops, { type: 'check', word, maxDist: 2 }]);
+            else loadOps([...ops, { type: 'insert', word }]);
+            renderStep(steps.length - 1);
+            input.value = '';
+        }
+        function loadExample(n) {
+            const examples = [
+                // dictionary cat/bat/rat/car/bar, then spell-check "ct" (maxDist 2)
+                [ {type:'insert',word:'cat'}, {type:'insert',word:'bat'}, {type:'insert',word:'rat'}, {type:'insert',word:'car'}, {type:'insert',word:'bar'}, {type:'check',word:'ct',maxDist:2} ],
+                // dictionary hello/help/shell/hill, then spell-check "helo" (maxDist 1)
+                [ {type:'insert',word:'hello'}, {type:'insert',word:'help'}, {type:'insert',word:'shell'}, {type:'insert',word:'hill'}, {type:'check',word:'helo',maxDist:1} ],
+            ];
+            loadOps(examples[n]);
+        }
+
+        document.addEventListener('keydown', (e) => {
+            const tag = (e.target.tagName || '').toLowerCase(); if (tag === 'input' || tag === 'textarea') return;
+            if (e.key === 'ArrowRight') { e.preventDefault(); pause(); nextStep(); }
+            else if (e.key === 'ArrowLeft') { e.preventDefault(); pause(); prevStep(); }
+            else if (e.key === ' ') { e.preventDefault(); togglePlay(); }
+        });
+        document.getElementById('word-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') doOp('insert'); });
+
+        buildCodePanel();
+        window.onload = () => loadExample(0);
+    </script>
+</body>
+</html>

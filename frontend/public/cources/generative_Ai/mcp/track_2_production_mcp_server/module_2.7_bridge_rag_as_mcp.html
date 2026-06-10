@@ -1,0 +1,2531 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Module 2.7 — Bridge: RAG as an MCP Server</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Source+Serif+4:ital,opsz,wght@0,8..60,300;0,8..60,400;0,8..60,500;0,8..60,600;1,8..60,400&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #08090b; --bg-2: #0b0f1a;
+    --panel: #0d1117; --panel-2: #111827; --panel-3: #111827;
+    --line: #1e2330; --line-strong: #2a3142;
+    --text: #e8eaed; --text-dim: #a8aeb8; --text-mute: #6b7280;
+    --teal: #6366f1; --purple: #8b5cf6; --pink: #f7768e;
+    --amber: #f59e0b; --red: #f7768e; --blue: #818cf8;
+    --green: #10b981; --orange: #f59e0b;
+    --mono: 'JetBrains Mono', ui-monospace, monospace;
+    --sans: 'Outfit', system-ui, -apple-system, sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; scroll-padding-top: 80px; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans);
+    font-size: 16px; line-height: 1.65; -webkit-font-smoothing: antialiased; overflow-x: hidden; }
+  body::before {
+    content: ""; position: fixed; inset: 0;
+    background-image:
+      linear-gradient(rgba(99, 102, 241, 0.035) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(99, 102, 241, 0.035) 1px, transparent 1px);
+    background-size: 48px 48px; pointer-events: none; z-index: 0;
+    mask-image: radial-gradient(ellipse 80% 60% at 50% 30%, black 40%, transparent 100%);
+  }
+  body::after {
+    content: ""; position: fixed; inset: 0;
+    background:
+      radial-gradient(ellipse 50% 30% at 20% 10%, rgba(99, 102, 241,0.06), transparent 60%),
+      radial-gradient(ellipse 40% 25% at 90% 80%, rgba(139, 92, 246,0.05), transparent 60%);
+    pointer-events: none; z-index: 0;
+  }
+  .topbar { position: sticky; top: 0; z-index: 50;
+    backdrop-filter: blur(14px); background: rgba(10,14,26,0.85);
+    border-bottom: 1px solid var(--line); }
+  .topbar-inner { max-width: 1200px; margin: 0 auto;
+    padding: 14px 32px; display: flex; align-items: center; gap: 24px; }
+  .brand { font-family: var(--mono); font-size: 12px;
+    letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--teal); font-weight: 600;
+    display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+  .brand .dot { width: 8px; height: 8px; background: var(--teal);
+    border-radius: 50%; box-shadow: 0 0 12px rgba(99, 102, 241,0.6); }
+  .track-progress { flex: 1; display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; }
+  .track-progress::-webkit-scrollbar { display: none; }
+  .tp-item { font-family: var(--mono); font-size: 10.5px;
+    letter-spacing: 0.1em; text-transform: uppercase;
+    color: var(--text-mute); padding: 4px 10px;
+    border-radius: 4px; border: 1px solid var(--line);
+    white-space: nowrap; }
+  .tp-item.done { color: var(--text-dim); }
+  .tp-item.done::before { content: "✓ "; color: var(--teal); }
+  .tp-item.current { color: var(--teal); border-color: var(--teal); background: rgba(99, 102, 241,0.06); }
+  .progress-bar { flex-shrink: 0; font-family: var(--mono); font-size: 11px;
+    color: var(--text-dim); display: flex; align-items: center; gap: 10px; }
+  .progress-track { width: 80px; height: 4px; background: var(--line);
+    border-radius: 2px; overflow: hidden; }
+  .progress-fill { height: 100%; background: linear-gradient(90deg, var(--teal), var(--purple));
+    width: 0%; transition: width 0.3s ease; }
+
+  .layout { max-width: 1200px; margin: 0 auto;
+    padding: 56px 32px 120px; display: grid;
+    grid-template-columns: 220px 1fr; gap: 56px;
+    position: relative; z-index: 1; }
+  .sidebar { position: sticky; top: 80px; align-self: start;
+    max-height: calc(100vh - 96px); overflow-y: auto; }
+  .sb-label { font-family: var(--mono); font-size: 10.5px;
+    letter-spacing: 0.16em; text-transform: uppercase;
+    color: var(--text-mute); margin-bottom: 18px;
+    padding-bottom: 12px; border-bottom: 1px solid var(--line); }
+  .sb-list { list-style: none; }
+  .sb-list li a { display: flex; align-items: center; gap: 12px;
+    padding: 9px 0; font-size: 13.5px;
+    color: var(--text-dim); text-decoration: none;
+    border-left: 2px solid transparent; padding-left: 12px;
+    transition: all 0.2s; line-height: 1.4; }
+  .sb-list li a:hover { color: var(--text); }
+  .sb-list li a.active { color: var(--teal); border-left-color: var(--teal);
+    background: linear-gradient(90deg, rgba(99, 102, 241,0.05), transparent); }
+  .sb-list li a .num { font-family: var(--mono); font-size: 10.5px;
+    color: var(--text-mute); min-width: 22px; }
+  .sb-list li a.active .num { color: var(--teal); }
+
+  .content { min-width: 0; }
+  .crumb { display: flex; align-items: center; gap: 10px;
+    font-family: var(--mono); font-size: 11px;
+    letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--teal); margin-bottom: 22px; flex-wrap: wrap; }
+  .crumb .bar { width: 24px; height: 1px; background: var(--teal); }
+  .crumb .sep { color: var(--text-mute); }
+  .crumb .dim { color: var(--text-dim); }
+  .crumb .bridge {
+    padding: 2px 8px; border-radius: 4px;
+    background: rgba(247, 118, 142,0.1);
+    border: 1px solid rgba(247, 118, 142,0.3);
+    color: var(--pink);
+    letter-spacing: 0.1em;
+    display: inline-flex; align-items: center; gap: 4px;
+  }
+
+  .bridge-banner {
+    background: linear-gradient(90deg, rgba(247, 118, 142,0.06), rgba(139, 92, 246,0.04) 50%, rgba(99, 102, 241,0.04));
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--pink);
+    border-radius: 10px;
+    padding: 14px 18px;
+    margin-bottom: 32px;
+    display: flex; align-items: center; gap: 14px;
+  }
+  .bridge-banner .ic {
+    width: 32px; height: 32px;
+    flex-shrink: 0;
+    background: rgba(247, 118, 142,0.12);
+    border: 1px solid rgba(247, 118, 142,0.3);
+    border-radius: 8px;
+    display: grid; place-items: center;
+    font-size: 18px;
+  }
+  .bridge-banner .txt {
+    font-family: var(--mono); font-size: 11.5px;
+    color: var(--text-dim);
+    line-height: 1.5;
+  }
+  .bridge-banner .txt strong {
+    color: var(--text);
+    font-weight: 600;
+  }
+  .bridge-banner .txt .pk {
+    color: var(--pink);
+    letter-spacing: 0.12em; text-transform: uppercase;
+    font-size: 10px;
+    display: block;
+    margin-bottom: 2px;
+  }
+
+  h1.module-title { font-size: clamp(34px, 5vw, 54px); font-weight: 800;
+    letter-spacing: -0.025em; line-height: 1.05;
+    margin-bottom: 18px; }
+  h1.module-title .accent { color: var(--teal); }
+  .lede { font-size: 18px; color: var(--text-dim); max-width: 700px; }
+
+  .hero-meta { display: flex; flex-wrap: wrap; gap: 20px;
+    margin-top: 26px; padding-top: 22px;
+    border-top: 1px solid var(--line); }
+  .hero-meta .m { display: flex; align-items: center; gap: 10px; }
+  .hero-meta .m-label { font-family: var(--mono); font-size: 10px;
+    letter-spacing: 0.14em; text-transform: uppercase; color: var(--text-mute); }
+  .hero-meta .m-val { font-family: var(--mono); font-size: 13px;
+    color: var(--text); font-weight: 500; }
+
+  .objectives { margin: 40px 0 64px;
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 14px; padding: 26px 28px;
+    position: relative; overflow: hidden; }
+  .objectives::before { content: ""; position: absolute; top: 0; left: 0; right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--teal) 30%, var(--purple) 70%, transparent); }
+  .obj-header { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+  .obj-icon { width: 32px; height: 32px;
+    background: rgba(99, 102, 241,0.12);
+    border: 1px solid rgba(99, 102, 241,0.3);
+    border-radius: 8px; display: grid; place-items: center; }
+  .obj-icon svg { width: 16px; height: 16px; }
+  .obj-title { font-family: var(--mono); font-size: 11px;
+    letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--teal); font-weight: 600; }
+  .obj-list { list-style: none; display: grid; gap: 10px; }
+  .obj-list li { display: grid; grid-template-columns: 22px 1fr;
+    gap: 12px; align-items: start;
+    color: #c2cad9; font-size: 14.5px; line-height: 1.55; }
+  .obj-list .check { width: 18px; height: 18px; border-radius: 4px;
+    border: 1.5px solid var(--line-strong); margin-top: 2px;
+    display: grid; place-items: center; color: var(--text-mute);
+    font-family: var(--mono); font-size: 11px;
+    cursor: pointer; transition: all 0.2s; }
+  .obj-list .check.done { background: rgba(99, 102, 241,0.15);
+    border-color: var(--teal); color: var(--teal); }
+
+  .section-label { font-family: var(--mono); font-size: 11px;
+    letter-spacing: 0.18em; text-transform: uppercase;
+    color: var(--text-mute); margin-bottom: 14px;
+    display: flex; align-items: center; gap: 12px; }
+  .section-label .sn { color: var(--teal); font-weight: 600; }
+  .section-label::before { content: ""; width: 6px; height: 6px;
+    background: var(--teal); border-radius: 1px; transform: rotate(45deg); }
+
+  h2 { font-size: 28px; font-weight: 700; letter-spacing: -0.015em;
+    margin-bottom: 18px; line-height: 1.2; }
+  h3.sub { font-size: 17px; font-weight: 700; margin: 30px 0 12px; color: var(--text); }
+  h3.sub .num { font-family: var(--mono); color: var(--teal); font-size: 12px; margin-right: 10px; }
+  section.block { margin-bottom: 72px; scroll-margin-top: 80px; }
+
+  p { color: #c2cad9; margin-bottom: 16px; }
+  p strong { color: var(--text); font-weight: 600; }
+  p code, li code, td code { font-family: var(--mono); font-size: 0.88em;
+    background: rgba(99, 102, 241, 0.08);
+    color: var(--teal); padding: 1px 6px; border-radius: 4px;
+    border: 1px solid rgba(99, 102, 241,0.15); }
+  ul.tight { list-style: none; padding: 0; margin: 14px 0 18px; }
+  ul.tight li { color: #c2cad9; padding: 6px 0 6px 22px; position: relative; }
+  ul.tight li::before { content: "›"; position: absolute; left: 4px; top: 6px;
+    color: var(--teal); font-family: var(--mono); font-weight: 600; }
+
+  .exercise-tag { display: inline-flex; align-items: center; gap: 8px;
+    font-family: var(--mono); font-size: 10.5px;
+    letter-spacing: 0.14em; text-transform: uppercase;
+    padding: 5px 12px; border-radius: 999px;
+    background: rgba(139, 92, 246,0.1);
+    border: 1px solid rgba(139, 92, 246,0.35);
+    color: var(--purple); margin-bottom: 12px; }
+  .exercise-tag .pulse { width: 6px; height: 6px;
+    background: var(--purple); border-radius: 50%;
+    animation: pulse 2s ease-in-out infinite; }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.4; transform: scale(1.3); }
+  }
+
+  .callout { border-left: 2px solid var(--teal);
+    background: linear-gradient(90deg, rgba(99, 102, 241,0.06), rgba(99, 102, 241,0));
+    padding: 18px 22px; margin: 22px 0;
+    border-radius: 0 6px 6px 0; }
+  .callout.purple { border-left-color: var(--purple);
+    background: linear-gradient(90deg, rgba(139, 92, 246,0.06), rgba(139, 92, 246,0)); }
+  .callout.amber { border-left-color: var(--amber);
+    background: linear-gradient(90deg, rgba(245, 158, 11,0.06), rgba(245, 158, 11,0)); }
+  .callout.pink { border-left-color: var(--pink);
+    background: linear-gradient(90deg, rgba(247, 118, 142,0.06), rgba(247, 118, 142,0)); }
+  .callout .tag { font-family: var(--mono); font-size: 10.5px;
+    letter-spacing: 0.16em; text-transform: uppercase;
+    color: var(--teal); margin-bottom: 6px; }
+  .callout.purple .tag { color: var(--purple); }
+  .callout.amber .tag { color: var(--amber); }
+  .callout.pink .tag { color: var(--pink); }
+  .callout p { margin-bottom: 0; }
+
+  pre.code-block {
+    font-family: var(--mono); font-size: 13px;
+    background: #06080f; border: 1px solid var(--line);
+    border-radius: 10px; padding: 18px 20px;
+    line-height: 1.7; color: #c2cad9;
+    overflow-x: auto; white-space: pre;
+    border-left: 3px solid var(--teal);
+    margin: 20px 0;
+  }
+  pre.code-block.purple { border-left-color: var(--purple); }
+  pre.code-block.pink { border-left-color: var(--pink); }
+  pre.code-block .k { color: var(--purple); }
+  pre.code-block .d { color: var(--pink); }
+  pre.code-block .s { color: var(--teal); }
+  pre.code-block .f { color: var(--blue); }
+  pre.code-block .c { color: var(--text-mute); font-style: italic; }
+  pre.code-block .n { color: var(--amber); }
+
+  /* ========= PARADIGM PICKER ========= */
+  .pp-w { background: var(--panel); border: 1px solid var(--line);
+    border-radius: 14px; overflow: hidden; margin: 20px 0; }
+  .pp-head { padding: 14px 22px; background: var(--panel-2);
+    border-bottom: 1px solid var(--line);
+    display: flex; justify-content: space-between; align-items: center;
+    flex-wrap: wrap; gap: 10px; }
+  .pp-head .title { font-family: var(--mono); font-size: 11.5px;
+    letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-dim); }
+  .pp-tabs { display: flex; gap: 4px;
+    background: var(--panel-3); border-radius: 8px; padding: 3px;
+    font-family: var(--mono); font-size: 10.5px;
+    letter-spacing: 0.08em; text-transform: uppercase; }
+  .pp-tabs button {
+    background: transparent; border: none;
+    color: var(--text-mute); padding: 5px 12px;
+    border-radius: 6px; cursor: pointer; transition: all 0.18s;
+    font-family: inherit; font-size: inherit;
+    letter-spacing: inherit; text-transform: inherit;
+  }
+  .pp-tabs button.active.classic { background: var(--blue); color: var(--bg); font-weight: 600; }
+  .pp-tabs button.active.agentic { background: var(--purple); color: var(--bg); font-weight: 600; }
+
+  .pp-body {
+    padding: 26px 22px;
+    background: var(--bg-2);
+    min-height: 360px;
+  }
+  .pp-flow {
+    max-width: 760px;
+    margin: 0 auto;
+  }
+  .pp-flow svg { width: 100%; height: 220px; display: block; }
+  .pp-box rect {
+    fill: var(--panel);
+    stroke: var(--line-strong);
+    stroke-width: 1.5;
+  }
+  .pp-box.user rect   { fill: rgba(16, 185, 129,0.05);  stroke: var(--green); }
+  .pp-box.host rect   { fill: rgba(129, 140, 248,0.05);  stroke: var(--blue); }
+  .pp-box.llm rect    { fill: rgba(245, 158, 11,0.05);  stroke: var(--amber); }
+  .pp-box.retr rect   { fill: rgba(247, 118, 142,0.05); stroke: var(--pink); }
+  .pp-box.vdb rect    { fill: rgba(99, 102, 241,0.05);  stroke: var(--teal); }
+  .pp-box .lbl {
+    font-family: var(--mono); font-size: 12px;
+    fill: var(--text); font-weight: 600;
+    text-anchor: middle; pointer-events: none;
+  }
+  .pp-box .sub {
+    font-family: var(--mono); font-size: 9.5px;
+    fill: var(--text-mute);
+    text-anchor: middle; pointer-events: none;
+    letter-spacing: 0.08em; text-transform: uppercase;
+  }
+  .pp-arrow { fill: none; stroke-width: 2; }
+  .pp-arrow.classic { stroke: var(--blue); }
+  .pp-arrow.agentic { stroke: var(--purple); }
+  .pp-arrow-label {
+    font-family: var(--mono); font-size: 10.5px;
+    text-anchor: middle;
+    letter-spacing: 0.04em;
+  }
+  .pp-arrow-label.classic { fill: var(--blue); }
+  .pp-arrow-label.agentic { fill: var(--purple); }
+
+  .pp-cmp {
+    display: grid; grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-top: 20px;
+    max-width: 760px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+  .pp-cmp .panel {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 14px 16px;
+  }
+  .pp-cmp .panel.classic { border-top: 3px solid var(--blue); }
+  .pp-cmp .panel.agentic { border-top: 3px solid var(--purple); }
+  .pp-cmp .pk {
+    font-family: var(--mono); font-size: 10px;
+    letter-spacing: 0.14em; text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  .pp-cmp .panel.classic .pk { color: var(--blue); }
+  .pp-cmp .panel.agentic .pk { color: var(--purple); }
+  .pp-cmp h4 {
+    font-size: 15px; color: var(--text);
+    margin-bottom: 8px; font-weight: 700;
+    font-family: var(--mono);
+  }
+  .pp-cmp .ds {
+    font-size: 12.5px; color: #c2cad9;
+    line-height: 1.55;
+    margin-bottom: 10px;
+  }
+  .pp-row {
+    display: grid;
+    grid-template-columns: 80px 1fr;
+    gap: 8px;
+    padding: 5px 0;
+    border-top: 1px solid var(--line);
+    font-size: 11.5px;
+    color: #c2cad9;
+    line-height: 1.45;
+  }
+  .pp-row .k {
+    font-family: var(--mono); font-size: 9.5px;
+    letter-spacing: 0.1em; text-transform: uppercase;
+    color: var(--text-mute);
+    padding-top: 1px;
+  }
+
+  /* ========= RAG ANATOMY ========= */
+  .aa-w { background: var(--panel); border: 1px solid var(--line);
+    border-radius: 14px; overflow: hidden; margin: 20px 0; }
+  .aa-head { padding: 14px 22px; background: var(--panel-2);
+    border-bottom: 1px solid var(--line);
+    display: flex; justify-content: space-between; align-items: center;
+    flex-wrap: wrap; gap: 10px; }
+  .aa-head .title { font-family: var(--mono); font-size: 11.5px;
+    letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-dim); }
+  .aa-head .hint { font-family: var(--mono); font-size: 10.5px; color: var(--text-mute); }
+  .aa-body {
+    display: grid;
+    grid-template-columns: 1.1fr 1fr;
+    background: var(--bg-2);
+    min-height: 460px;
+  }
+  .aa-map {
+    padding: 22px;
+    border-right: 1px solid var(--line);
+  }
+  .aa-section {
+    margin-bottom: 14px;
+  }
+  .aa-section-h {
+    font-family: var(--mono); font-size: 10.5px;
+    letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--text-mute);
+    margin-bottom: 8px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .aa-section-h::before {
+    content: ""; width: 4px; height: 4px;
+    border-radius: 50%; background: var(--teal);
+  }
+  .aa-section-h.res::before { background: var(--blue); }
+  .aa-section-h.pmt::before { background: var(--purple); }
+  .aa-piece {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 9px 12px;
+    margin-bottom: 5px;
+    cursor: pointer;
+    transition: all 0.15s;
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    gap: 10px;
+    align-items: center;
+  }
+  .aa-piece:hover { border-color: var(--line-strong); }
+  .aa-piece.sel { border-color: var(--teal); background: rgba(99, 102, 241,0.05); }
+  .aa-piece.sel.res { border-color: var(--blue);   background: rgba(129, 140, 248,0.05); }
+  .aa-piece.sel.pmt { border-color: var(--purple); background: rgba(139, 92, 246,0.05); }
+  .aa-piece .kind {
+    font-family: var(--mono); font-size: 9.5px;
+    padding: 2px 7px; border-radius: 3px;
+    background: rgba(99, 102, 241,0.08);
+    color: var(--teal);
+    border: 1px solid rgba(99, 102, 241,0.25);
+    letter-spacing: 0.08em; text-transform: uppercase;
+  }
+  .aa-piece.res .kind {
+    background: rgba(129, 140, 248,0.08);
+    color: var(--blue);
+    border-color: rgba(129, 140, 248,0.25);
+  }
+  .aa-piece.pmt .kind {
+    background: rgba(139, 92, 246,0.08);
+    color: var(--purple);
+    border-color: rgba(139, 92, 246,0.25);
+  }
+  .aa-piece .nm {
+    font-family: var(--mono); font-size: 12.5px;
+    color: var(--text); font-weight: 600;
+  }
+  .aa-piece .ds {
+    font-size: 11px; color: var(--text-mute);
+    font-family: var(--sans);
+    line-height: 1.35;
+    margin-top: 1px;
+  }
+  .aa-piece .ic {
+    font-family: var(--mono); font-size: 11px;
+    color: var(--text-mute);
+  }
+  .aa-detail {
+    padding: 22px 24px;
+    background: var(--panel);
+    overflow-y: auto;
+    max-height: 500px;
+  }
+  .aa-detail .pk {
+    font-family: var(--mono); font-size: 10.5px;
+    letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--teal); margin-bottom: 6px;
+  }
+  .aa-detail h4 { font-size: 17px; color: var(--text);
+    margin-bottom: 8px; font-weight: 700;
+    font-family: var(--mono); }
+  .aa-detail p { color: #c2cad9; font-size: 13.5px;
+    line-height: 1.6; margin-bottom: 12px; }
+  .aa-detail p code {
+    font-family: var(--mono); font-size: 0.88em;
+    background: rgba(255,255,255,0.04); color: var(--text);
+    padding: 1px 5px; border-radius: 3px; }
+  .aa-detail .clbl {
+    font-family: var(--mono); font-size: 10px;
+    letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--text-mute);
+    margin: 12px 0 6px;
+  }
+  .aa-detail .code {
+    font-family: var(--mono); font-size: 12px;
+    background: #06080f; border: 1px solid var(--line);
+    border-radius: 8px; padding: 12px 14px;
+    color: #c2cad9; line-height: 1.7;
+    overflow-x: auto; white-space: pre;
+  }
+  .aa-detail .code .k { color: var(--purple); }
+  .aa-detail .code .d { color: var(--pink); }
+  .aa-detail .code .s { color: var(--teal); }
+  .aa-detail .code .f { color: var(--blue); }
+  .aa-detail .code .n { color: var(--amber); }
+  .aa-detail .code .c { color: var(--text-mute); font-style: italic; }
+
+  /* ========= HYBRID SEARCH DEMO ========= */
+  .hs-w { background: var(--panel); border: 1px solid var(--line);
+    border-radius: 14px; overflow: hidden; margin: 20px 0; }
+  .hs-head { padding: 14px 22px; background: var(--panel-2);
+    border-bottom: 1px solid var(--line);
+    display: flex; justify-content: space-between; align-items: center;
+    flex-wrap: wrap; gap: 10px; }
+  .hs-head .title { font-family: var(--mono); font-size: 11.5px;
+    letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-dim); }
+  .hs-query-bar {
+    padding: 14px 22px;
+    background: var(--panel-2);
+    border-bottom: 1px solid var(--line);
+  }
+  .hs-query-bar .lab {
+    font-family: var(--mono); font-size: 10.5px;
+    color: var(--text-mute);
+    letter-spacing: 0.1em; text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  .hs-pills {
+    display: flex; gap: 6px;
+    flex-wrap: wrap;
+  }
+  .hs-pill {
+    font-family: var(--mono); font-size: 11px;
+    padding: 5px 11px;
+    border-radius: 6px;
+    border: 1px solid var(--line);
+    color: var(--text-dim);
+    background: var(--bg-2);
+    cursor: pointer;
+    transition: all 0.15s;
+    letter-spacing: 0.04em;
+  }
+  .hs-pill:hover { color: var(--text); border-color: var(--line-strong); }
+  .hs-pill.on {
+    color: var(--teal);
+    border-color: var(--teal);
+    background: rgba(99, 102, 241,0.06);
+  }
+  .hs-body {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    background: var(--bg-2);
+    min-height: 380px;
+  }
+  .hs-col {
+    padding: 18px 18px 20px;
+    border-right: 1px solid var(--line);
+  }
+  .hs-col:last-child { border-right: none; }
+  .hs-col-h {
+    display: flex; justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 10px;
+  }
+  .hs-col-h .nm {
+    font-family: var(--mono); font-size: 13px;
+    color: var(--text); font-weight: 700;
+  }
+  .hs-col-h .score {
+    font-family: var(--mono); font-size: 10.5px;
+    padding: 2px 8px; border-radius: 4px;
+    letter-spacing: 0.08em;
+  }
+  .hs-col-h .score.good { color: var(--green); background: rgba(16, 185, 129,0.08); border: 1px solid rgba(16, 185, 129,0.25); }
+  .hs-col-h .score.mid  { color: var(--amber); background: rgba(245, 158, 11,0.08); border: 1px solid rgba(245, 158, 11,0.25); }
+  .hs-col-h .score.bad  { color: var(--red); background: rgba(247, 118, 142,0.08); border: 1px solid rgba(247, 118, 142,0.25); }
+  .hs-col .ds {
+    font-size: 11.5px; color: var(--text-mute);
+    line-height: 1.45;
+    margin-bottom: 12px;
+  }
+  .hs-results {
+    display: flex; flex-direction: column;
+    gap: 5px;
+  }
+  .hs-result {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 7px 10px;
+    display: grid;
+    grid-template-columns: 32px 1fr;
+    gap: 8px;
+    transition: opacity 0.3s;
+  }
+  .hs-result.dim { opacity: 0.35; }
+  .hs-result .sc {
+    font-family: var(--mono); font-size: 9.5px;
+    text-align: center;
+    color: var(--text-mute);
+    padding-top: 2px;
+  }
+  .hs-result.hit .sc { color: var(--green); }
+  .hs-result .ti {
+    font-family: var(--mono); font-size: 11.5px;
+    color: var(--text);
+  }
+  .hs-result .src {
+    font-size: 10px; color: var(--text-mute);
+    line-height: 1.3;
+    margin-top: 2px;
+  }
+  .hs-result.hit { border-color: rgba(16, 185, 129,0.3); background: rgba(16, 185, 129,0.04); }
+  .hs-summary {
+    padding: 14px 22px;
+    background: var(--panel);
+    border-top: 1px solid var(--line);
+  }
+  .hs-summary .lab {
+    font-family: var(--mono); font-size: 10.5px;
+    color: var(--text-mute);
+    letter-spacing: 0.1em; text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  .hs-summary p {
+    color: #c2cad9; font-size: 13px;
+    line-height: 1.55; margin: 0;
+  }
+  .hs-summary p code {
+    font-family: var(--mono); font-size: 0.88em;
+    background: rgba(255,255,255,0.04); color: var(--text);
+    padding: 1px 5px; border-radius: 3px;
+  }
+  .hs-summary p strong { color: var(--teal); }
+
+  /* ========= DESIGN PATTERNS ========= */
+  .dp-w { background: var(--panel); border: 1px solid var(--line);
+    border-radius: 14px; overflow: hidden; margin: 20px 0; }
+  .dp-head { padding: 14px 22px; background: var(--panel-2);
+    border-bottom: 1px solid var(--line);
+    display: flex; justify-content: space-between; align-items: center;
+    flex-wrap: wrap; gap: 10px; }
+  .dp-head .title { font-family: var(--mono); font-size: 11.5px;
+    letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-dim); }
+  .dp-tabs { display: flex; gap: 4px;
+    background: var(--panel-3); border-radius: 8px; padding: 3px;
+    font-family: var(--mono); font-size: 10.5px;
+    letter-spacing: 0.08em; text-transform: uppercase;
+    overflow-x: auto; max-width: 100%;
+    scrollbar-width: none;
+  }
+  .dp-tabs::-webkit-scrollbar { display: none; }
+  .dp-tabs button {
+    background: transparent; border: none;
+    color: var(--text-mute); padding: 5px 11px;
+    border-radius: 6px; cursor: pointer; transition: all 0.18s;
+    font-family: inherit; font-size: inherit;
+    letter-spacing: inherit; text-transform: inherit;
+    white-space: nowrap;
+  }
+  .dp-tabs button.active { background: var(--teal); color: var(--bg); font-weight: 600; }
+
+  .dp-body {
+    padding: 22px 24px;
+    background: var(--bg-2);
+    min-height: 460px;
+  }
+  .dp-pattern-h {
+    display: flex; align-items: center; gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 6px;
+  }
+  .dp-pattern-h .pk {
+    font-family: var(--mono); font-size: 10.5px;
+    letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--teal);
+  }
+  .dp-pattern-h .kind {
+    font-family: var(--mono); font-size: 9.5px;
+    padding: 2px 7px; border-radius: 3px;
+    background: rgba(99, 102, 241,0.08);
+    color: var(--teal);
+    border: 1px solid rgba(99, 102, 241,0.25);
+    letter-spacing: 0.08em; text-transform: uppercase;
+  }
+  .dp-pattern-h .kind.res { background: rgba(129, 140, 248,0.08); color: var(--blue); border-color: rgba(129, 140, 248,0.25); }
+  .dp-pattern-h .kind.pmt { background: rgba(139, 92, 246,0.08); color: var(--purple); border-color: rgba(139, 92, 246,0.25); }
+  .dp-pattern-h .kind.task { background: rgba(247, 118, 142,0.08); color: var(--pink); border-color: rgba(247, 118, 142,0.25); }
+  h4.dp-name {
+    font-size: 22px; color: var(--text);
+    font-weight: 700; margin-bottom: 6px;
+    font-family: var(--mono);
+    letter-spacing: -0.005em;
+  }
+  .dp-ds {
+    color: #c2cad9; font-size: 14px;
+    line-height: 1.6; margin-bottom: 16px;
+    max-width: 700px;
+  }
+  .dp-ds code {
+    font-family: var(--mono); font-size: 0.88em;
+    background: rgba(255,255,255,0.04); color: var(--text);
+    padding: 1px 5px; border-radius: 3px;
+  }
+  .dp-grid {
+    display: grid;
+    grid-template-columns: 1.1fr 1fr;
+    gap: 14px;
+  }
+  .dp-code-block {
+    background: #06080f;
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--teal);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .dp-code-block.pink   { border-left-color: var(--pink); }
+  .dp-code-block.purple { border-left-color: var(--purple); }
+  .dp-code-block .h {
+    padding: 8px 14px;
+    background: var(--panel-2);
+    font-family: var(--mono); font-size: 10px;
+    letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--text-mute);
+    border-bottom: 1px solid var(--line);
+    display: flex; justify-content: space-between;
+  }
+  .dp-code-block .b {
+    padding: 12px 14px;
+    font-family: var(--mono); font-size: 12px;
+    line-height: 1.7;
+    color: #c2cad9;
+    overflow-x: auto;
+    white-space: pre;
+  }
+  .dp-code-block .k { color: var(--purple); }
+  .dp-code-block .d { color: var(--pink); }
+  .dp-code-block .s { color: var(--teal); }
+  .dp-code-block .f { color: var(--blue); }
+  .dp-code-block .n { color: var(--amber); }
+  .dp-code-block .c { color: var(--text-mute); font-style: italic; }
+  .dp-notes {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 14px 16px;
+  }
+  .dp-notes .h {
+    font-family: var(--mono); font-size: 10px;
+    letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--text-mute);
+    margin-bottom: 10px;
+  }
+  .dp-notes ul { list-style: none; padding: 0; margin: 0; }
+  .dp-notes li {
+    padding: 5px 0 5px 18px;
+    position: relative;
+    font-size: 13px; color: #c2cad9;
+    line-height: 1.5;
+  }
+  .dp-notes li::before {
+    content: "›";
+    position: absolute; left: 2px; top: 5px;
+    color: var(--teal); font-family: var(--mono);
+  }
+  .dp-notes li code {
+    font-family: var(--mono); font-size: 0.88em;
+    background: rgba(255,255,255,0.04); color: var(--text);
+    padding: 1px 5px; border-radius: 3px;
+  }
+
+  /* ========= END-TO-END RUN ========= */
+  .rr-w { background: var(--panel); border: 1px solid var(--line);
+    border-radius: 14px; overflow: hidden; margin: 20px 0; }
+  .rr-head { padding: 14px 22px; background: var(--panel-2);
+    border-bottom: 1px solid var(--line);
+    display: flex; justify-content: space-between; align-items: center;
+    flex-wrap: wrap; gap: 10px; }
+  .rr-head .title { font-family: var(--mono); font-size: 11.5px;
+    letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-dim); }
+  .rr-head .controls { display: flex; gap: 8px; }
+  .rr-head button {
+    font-family: var(--mono); font-size: 11px;
+    letter-spacing: 0.1em; text-transform: uppercase;
+    padding: 6px 14px; border-radius: 6px;
+    background: transparent; border: 1px solid var(--line-strong);
+    color: var(--text-dim); cursor: pointer; transition: all 0.15s;
+  }
+  .rr-head button:hover { border-color: var(--teal); color: var(--teal); }
+  .rr-head button.primary { color: var(--teal); border-color: var(--teal); }
+  .rr-stage-bar {
+    padding: 12px 22px;
+    background: var(--panel-2);
+    border-bottom: 1px solid var(--line);
+    display: flex;
+    gap: 6px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .rr-stage-bar::-webkit-scrollbar { display: none; }
+  .rr-step {
+    flex: 1;
+    min-width: 110px;
+    padding: 7px 10px;
+    border-radius: 6px;
+    border: 1px solid var(--line);
+    background: var(--bg-2);
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .rr-step:hover { border-color: var(--line-strong); }
+  .rr-step.active {
+    border-color: var(--teal);
+    background: rgba(99, 102, 241,0.06);
+  }
+  .rr-step.done {
+    border-color: var(--line-strong);
+    background: rgba(99, 102, 241,0.02);
+  }
+  .rr-step .ix {
+    font-family: var(--mono); font-size: 9px;
+    letter-spacing: 0.12em;
+    color: var(--text-mute);
+  }
+  .rr-step.active .ix { color: var(--teal); }
+  .rr-step .nm {
+    font-family: var(--mono); font-size: 10.5px;
+    color: var(--text-dim);
+    margin-top: 2px;
+    line-height: 1.3;
+  }
+  .rr-step.active .nm { color: var(--text); }
+  .rr-body {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    background: var(--bg-2);
+    min-height: 420px;
+  }
+  .rr-chat {
+    padding: 22px 24px;
+    border-right: 1px solid var(--line);
+    overflow-y: auto;
+    max-height: 460px;
+  }
+  .rr-chat .lab {
+    font-family: var(--mono); font-size: 10.5px;
+    letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--text-mute);
+    margin-bottom: 12px;
+  }
+  .rr-msg {
+    margin-bottom: 10px;
+    padding: 10px 14px;
+    border-radius: 10px;
+    font-size: 13.5px;
+    color: #c2cad9;
+    line-height: 1.55;
+  }
+  .rr-msg .role {
+    font-family: var(--mono); font-size: 9.5px;
+    letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--text-mute);
+    margin-bottom: 4px;
+  }
+  .rr-msg.user {
+    background: rgba(16, 185, 129,0.05);
+    border: 1px solid rgba(16, 185, 129,0.2);
+  }
+  .rr-msg.user .role { color: var(--green); }
+  .rr-msg.assistant {
+    background: rgba(245, 158, 11,0.05);
+    border: 1px solid rgba(245, 158, 11,0.2);
+  }
+  .rr-msg.assistant .role { color: var(--amber); }
+  .rr-msg.tool-call {
+    background: var(--panel);
+    border: 1px dashed var(--line-strong);
+    font-family: var(--mono); font-size: 12px;
+  }
+  .rr-msg.tool-call .role { color: var(--purple); }
+  .rr-msg.tool-result {
+    background: rgba(99, 102, 241,0.04);
+    border: 1px solid rgba(99, 102, 241,0.2);
+  }
+  .rr-msg.tool-result .role { color: var(--teal); }
+  .rr-msg .body code {
+    font-family: var(--mono); font-size: 0.88em;
+    background: rgba(255,255,255,0.04); color: var(--text);
+    padding: 1px 5px; border-radius: 3px;
+  }
+  .rr-msg .cite {
+    display: inline-block;
+    font-family: var(--mono); font-size: 9.5px;
+    background: rgba(129, 140, 248,0.1);
+    color: var(--blue);
+    border: 1px solid rgba(129, 140, 248,0.3);
+    padding: 1px 5px;
+    border-radius: 3px;
+    margin: 0 2px;
+    letter-spacing: 0.04em;
+    vertical-align: 1px;
+  }
+  .rr-chunk {
+    background: var(--bg-2);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 8px 10px;
+    margin-top: 6px;
+    font-family: var(--mono); font-size: 11.5px;
+    color: var(--text-dim);
+    line-height: 1.5;
+  }
+  .rr-chunk .uri {
+    color: var(--teal);
+    font-size: 10.5px;
+    margin-bottom: 3px;
+  }
+  .rr-chunk .body {
+    color: #c2cad9;
+    font-family: var(--sans);
+    font-size: 12px;
+    line-height: 1.45;
+  }
+
+  .rr-side {
+    padding: 22px 24px;
+    background: var(--panel);
+  }
+  .rr-side .lab {
+    font-family: var(--mono); font-size: 10.5px;
+    letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--purple);
+    margin-bottom: 8px;
+  }
+  .rr-side h4 {
+    font-size: 16px; color: var(--text);
+    margin-bottom: 8px; font-weight: 700;
+  }
+  .rr-side p {
+    color: #c2cad9; font-size: 13.5px;
+    line-height: 1.6; margin-bottom: 12px;
+  }
+  .rr-side p code {
+    font-family: var(--mono); font-size: 0.88em;
+    background: rgba(255,255,255,0.04); color: var(--text);
+    padding: 1px 5px; border-radius: 3px;
+  }
+  .rr-timing {
+    background: var(--bg-2);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 12px 14px;
+    margin-top: 12px;
+  }
+  .rr-timing .lab {
+    color: var(--text-mute);
+    margin-bottom: 8px;
+  }
+  .rr-timing .row {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 8px;
+    padding: 3px 0;
+    font-family: var(--mono); font-size: 11.5px;
+    color: var(--text-dim);
+  }
+  .rr-timing .row .val { color: var(--teal); }
+  .rr-timing .row.total {
+    border-top: 1px solid var(--line);
+    margin-top: 6px;
+    padding-top: 6px;
+    color: var(--text);
+    font-weight: 600;
+  }
+  .rr-timing .row.total .val { color: var(--amber); }
+
+  /* knowledge check */
+  .kc { margin: 56px 0 24px;
+    background: linear-gradient(180deg, rgba(139, 92, 246,0.04), rgba(139, 92, 246,0) 50%), var(--panel);
+    border: 1px solid var(--line); border-radius: 14px;
+    padding: 28px; position: relative; overflow: hidden; }
+  .kc::before { content: ""; position: absolute; top: 0; left: 0; right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--purple), transparent); }
+  .kc-head { display: flex; align-items: center; gap: 14px; margin-bottom: 18px; }
+  .kc-icon { width: 36px; height: 36px;
+    background: rgba(139, 92, 246,0.12);
+    border: 1px solid rgba(139, 92, 246,0.3);
+    border-radius: 8px;
+    display: grid; place-items: center; }
+  .kc-icon svg { width: 17px; height: 17px; }
+  .kc-label { font-family: var(--mono); font-size: 11px;
+    letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--purple); font-weight: 600; }
+  .kc-title { font-size: 22px; font-weight: 700; letter-spacing: -0.01em; margin: 4px 0 0; }
+  .kc-q { margin-top: 22px; padding-top: 22px; border-top: 1px solid var(--line); }
+  .kc-q:first-of-type { border-top: none; padding-top: 0; margin-top: 0; }
+  .kc-prompt { font-size: 15px; color: var(--text); font-weight: 600;
+    margin-bottom: 14px; line-height: 1.45; }
+  .kc-prompt .qn { display: inline-block; font-family: var(--mono);
+    font-size: 11px; color: var(--purple); margin-right: 8px; letter-spacing: 0.1em; }
+  .kc-prompt code { font-family: var(--mono); font-size: 0.88em;
+    background: rgba(255,255,255,0.04);
+    color: var(--text); padding: 1px 5px;
+    border-radius: 3px; }
+  .kc-opts { display: grid; gap: 8px; }
+  .kc-opt { padding: 12px 16px; background: var(--panel-2);
+    border: 1px solid var(--line); border-radius: 8px;
+    color: #c2cad9; font-size: 14px;
+    cursor: pointer; transition: all 0.18s;
+    text-align: left;
+    display: grid; grid-template-columns: 20px 1fr;
+    gap: 12px; align-items: start;
+    font-family: inherit; line-height: 1.5; }
+  .kc-opt .marker { font-family: var(--mono); font-size: 11px;
+    color: var(--text-mute); margin-top: 2px; }
+  .kc-opt:hover { border-color: var(--purple); color: var(--text); }
+  .kc-opt.correct { border-color: var(--teal);
+    background: rgba(99, 102, 241,0.08); color: var(--teal); }
+  .kc-opt.correct .marker { color: var(--teal); }
+  .kc-opt.wrong { border-color: var(--red);
+    background: rgba(247, 118, 142,0.08); color: var(--red); }
+  .kc-opt.wrong .marker { color: var(--red); }
+  .kc-opt code { font-family: var(--mono); font-size: 0.88em;
+    background: rgba(255,255,255,0.04);
+    color: var(--text); padding: 1px 5px;
+    border-radius: 3px; }
+  .kc-opt.correct code, .kc-opt.wrong code { background: transparent; color: inherit; }
+  .kc-feedback { margin-top: 12px; padding: 10px 14px; border-radius: 6px;
+    font-size: 13px;
+    background: rgba(99, 102, 241,0.06);
+    border-left: 2px solid var(--teal);
+    color: #c2cad9; display: none; line-height: 1.55; }
+  .kc-feedback.show { display: block; }
+  .kc-feedback strong { color: var(--teal); }
+  .kc-feedback code { font-family: var(--mono); font-size: 0.88em;
+    background: rgba(255,255,255,0.04);
+    color: var(--text); padding: 1px 5px;
+    border-radius: 3px; }
+
+  /* resources */
+  .resources { margin-top: 96px; padding-top: 56px; border-top: 1px solid var(--line); }
+  .resources-header { margin-bottom: 36px; }
+  .resources-header .label { font-family: var(--mono); font-size: 11px;
+    letter-spacing: 0.18em; text-transform: uppercase;
+    color: var(--text-mute);
+    display: flex; align-items: center; gap: 12px;
+    margin-bottom: 18px; }
+  .resources-header .label::before { content: ""; width: 28px; height: 1px; background: var(--text-mute); }
+  .resources-header h2.r-h { font-size: clamp(28px, 4vw, 40px);
+    font-weight: 800; letter-spacing: -0.02em;
+    margin-bottom: 14px; line-height: 1.1; }
+  .resources-header h2.r-h .accent { color: var(--teal); }
+  .resources-header .r-sub { color: var(--text-dim); font-size: 15px; max-width: 620px; }
+  .r-card { background: var(--panel); border: 1px solid var(--line);
+    border-radius: 14px; padding: 26px 28px;
+    margin-bottom: 16px; position: relative;
+    transition: border-color 0.2s, transform 0.2s; }
+  .r-card:hover { border-color: var(--line-strong); transform: translateY(-1px); }
+  .r-card::before { content: ""; position: absolute;
+    left: -1px; top: 18px; bottom: 18px;
+    width: 3px; border-radius: 3px;
+    background: var(--accent, var(--teal)); }
+  .r-card.teal { --accent: var(--teal); }
+  .r-card.purple { --accent: var(--purple); }
+  .r-card.pink { --accent: var(--pink); }
+  .r-top { display: flex; align-items: flex-start; gap: 14px; margin-bottom: 16px; }
+  .r-icon { width: 38px; height: 38px; border-radius: 8px;
+    display: grid; place-items: center; flex-shrink: 0;
+    background: rgba(99, 102, 241,0.12);
+    border: 1px solid rgba(99, 102, 241,0.3); }
+  .r-card.purple .r-icon { background: rgba(139, 92, 246,0.12); border-color: rgba(139, 92, 246,0.3); }
+  .r-card.pink .r-icon { background: rgba(247, 118, 142,0.12); border-color: rgba(247, 118, 142,0.3); }
+  .r-icon svg { width: 18px; height: 18px; }
+  .r-titles .kind { font-size: 14px; font-weight: 700; color: var(--text); margin-bottom: 2px; }
+  .r-titles .tagline { font-family: var(--mono); font-size: 11.5px; color: var(--text-mute); }
+  .r-card h3.r-title { font-size: 18px; font-weight: 700;
+    margin-bottom: 10px; letter-spacing: -0.005em; }
+  .r-card.teal h3.r-title { color: var(--teal); }
+  .r-card.purple h3.r-title { color: var(--purple); }
+  .r-card.pink h3.r-title { color: var(--pink); }
+  .r-card p.r-desc { color: #b9c1d2; font-size: 14.5px;
+    line-height: 1.6; margin-bottom: 18px; }
+  .r-card p.r-desc code { font-family: var(--mono); font-size: 0.9em;
+    background: rgba(255,255,255,0.04); color: var(--text);
+    padding: 1px 5px; border-radius: 3px; border: none; }
+  .r-btn { display: inline-flex; align-items: center; gap: 10px;
+    font-family: var(--mono); font-size: 11.5px;
+    letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--text); text-decoration: none;
+    padding: 9px 18px;
+    border: 1px solid var(--line-strong); border-radius: 999px;
+    background: transparent; transition: all 0.18s; }
+  .r-card.teal .r-btn:hover { border-color: var(--teal); color: var(--teal); box-shadow: 0 0 0 4px rgba(99, 102, 241,0.08); }
+  .r-card.purple .r-btn:hover { border-color: var(--purple); color: var(--purple); box-shadow: 0 0 0 4px rgba(139, 92, 246,0.08); }
+  .r-card.pink .r-btn:hover { border-color: var(--pink); color: var(--pink); box-shadow: 0 0 0 4px rgba(247, 118, 142,0.08); }
+
+  .nav-foot { margin-top: 80px; padding-top: 32px;
+    border-top: 1px solid var(--line);
+    display: flex; justify-content: space-between; align-items: center;
+    font-family: var(--mono); font-size: 11.5px;
+    letter-spacing: 0.1em; text-transform: uppercase;
+    color: var(--text-mute); }
+  .nav-foot a { color: var(--teal); text-decoration: none; }
+
+  @media (max-width: 980px) {
+    .layout { grid-template-columns: 1fr; gap: 0; padding: 40px 24px 80px; }
+    .sidebar { display: none; }
+    .pp-cmp { grid-template-columns: 1fr; }
+    .aa-body { grid-template-columns: 1fr; }
+    .aa-map { border-right: none; border-bottom: 1px solid var(--line); }
+    .hs-body { grid-template-columns: 1fr; }
+    .hs-col { border-right: none; border-bottom: 1px solid var(--line); }
+    .dp-grid { grid-template-columns: 1fr; }
+    .rr-body { grid-template-columns: 1fr; }
+    .rr-chat { border-right: none; border-bottom: 1px solid var(--line); }
+    .topbar-inner { padding: 12px 20px; }
+    .track-progress { display: none; }
+  }
+  /* ===== M0 indigo / serif theme overlay ===== */
+  :root { --serif: 'Source Serif 4', Georgia, serif; }
+  h1.module-title { font-family: var(--serif); font-weight: 400; letter-spacing: -0.022em; }
+  h1.module-title .accent { font-style: italic; font-weight: 300; }
+  .lede { font-family: var(--serif); font-weight: 300; }
+  h2 { font-family: var(--serif); font-weight: 400; letter-spacing: -0.01em; }
+  p { font-family: var(--serif); font-weight: 300; }
+  ul.tight li { font-family: var(--serif); font-weight: 300; }
+  p em { font-style: italic; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-inner">
+    <div class="brand"><span class="dot"></span><span>MCP / Masterclass</span></div>
+    <div class="track-progress">
+      <div class="tp-item done">Track 0 · Foundations</div>
+      <div class="tp-item done">Track 1 · Protocol</div>
+      <div class="tp-item current">Track 2 · Servers</div>
+      <div class="tp-item">Track 3 · Clients</div>
+      <div class="tp-item">Track 4 · Security</div>
+      <div class="tp-item">Track 5 · Production</div>
+      <div class="tp-item">Track 6 · Capstone</div>
+    </div>
+    <div class="progress-bar">
+      <span id="progressLabel">0%</span>
+      <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+    </div>
+  </div>
+</div>
+
+<div class="layout">
+
+  <aside class="sidebar">
+    <div class="sb-label">Module 2.7 · Contents</div>
+    <ul class="sb-list" id="sbList">
+      <li><a href="#s1" data-target="s1"><span class="num">01</span><span>Two paradigms</span></a></li>
+      <li><a href="#s2" data-target="s2"><span class="num">02</span><span>RAG-as-MCP shape</span></a></li>
+      <li><a href="#s3" data-target="s3"><span class="num">03</span><span>Hybrid search</span></a></li>
+      <li><a href="#s4" data-target="s4"><span class="num">04</span><span>Tool patterns</span></a></li>
+      <li><a href="#s5" data-target="s5"><span class="num">05</span><span>End-to-end run</span></a></li>
+      <li><a href="#kc" data-target="kc"><span class="num">✓</span><span>Knowledge check</span></a></li>
+      <li><a href="#res" data-target="res"><span class="num">⌘</span><span>Resources</span></a></li>
+    </ul>
+  </aside>
+
+  <div class="content">
+
+    <div class="crumb">
+      <span class="bar"></span>
+      <span>Track 02 — Building Servers</span>
+      <span class="sep">/</span>
+      <span class="dim">Module 2.7</span>
+      <span class="sep">/</span>
+      <span class="bridge">🌉 Bridge</span>
+    </div>
+
+    <div class="bridge-banner">
+      <div class="ic">🌉</div>
+      <div class="txt">
+        <span class="pk">Bridge module</span>
+        <strong>Track 2 → Track 5/6.</strong> This module closes Track 2 by showing how to expose retrieval — the heart of any knowledge-base agent — as an MCP server. It also sets up the production patterns of Track 5 and the capstone in Track 6.
+      </div>
+    </div>
+
+    <h1 class="module-title">RAG as an <span class="accent">MCP server</span>.</h1>
+    <p class="lede">
+      Retrieval-Augmented Generation used to be a pipeline you wired up inside the
+      host: <em>embed → retrieve → stuff into prompt → call LLM</em>. With MCP, the
+      retrieval stops being a pipeline and becomes a <em>service</em>: a search
+      <strong>tool</strong> the LLM chooses to call, with document <strong>resources</strong>
+      the host can attach. The shift unlocks an agent that decides <em>when</em> to
+      retrieve, can refine queries mid-conversation, and composes retrieval with every
+      other tool you've built in this track.
+    </p>
+
+    <div class="hero-meta">
+      <div class="m"><span class="m-label">Time</span><span class="m-val">62 min</span></div>
+      <div class="m"><span class="m-label">Format</span><span class="m-val">5 interactive widgets</span></div>
+      <div class="m"><span class="m-label">Stack</span><span class="m-val">FastMCP · BM25 · vectors · rerankers</span></div>
+      <div class="m"><span class="m-label">Closes</span><span class="m-val">Track 2 teaching</span></div>
+    </div>
+
+    <div class="objectives">
+      <div class="obj-header">
+        <div class="obj-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>
+          </svg>
+        </div>
+        <div class="obj-title">What you'll master</div>
+      </div>
+      <ul class="obj-list" id="objList">
+        <li><div class="check" data-i="0">01</div><span>Contrast <strong>classical RAG</strong> (always-retrieve, host-driven) with <strong>retrieval-as-a-tool</strong> (LLM-driven, MCP-mediated) and pick the right one for any agent scenario.</span></li>
+        <li><div class="check" data-i="1">02</div><span>Lay out the four primitives a RAG MCP server typically ships — <code>search_docs</code>, <code>get_chunk</code>, <code>docs://</code> resources, a <code>reindex</code> task — and know what each carries on the wire.</span></li>
+        <li><div class="check" data-i="2">03</div><span>Pick the right backend — <strong>BM25</strong> for terminology-heavy queries, <strong>vector</strong> for semantic intent, <strong>hybrid + reranker</strong> for both — by examining the query shape.</span></li>
+        <li><div class="check" data-i="3">04</div><span>Author the five core <strong>retrieval-tool design patterns</strong> — search-and-cite, two-stage retrieval, filtered search, doc-as-resource, async reindex — without inventing them from scratch.</span></li>
+        <li><div class="check" data-i="4">05</div><span>Trace a complete agent turn: question in → tool-call out → chunks back → cited answer rendered. Recognise the timing budget and where retrieval latency hides.</span></li>
+      </ul>
+    </div>
+
+    <!-- ============ SECTION 1 ============ -->
+    <section class="block" id="s1">
+      <div class="section-label"><span class="sn">01</span> &nbsp;Two paradigms</div>
+      <h2>Always-retrieve vs decide-to-retrieve.</h2>
+
+      <p>
+        Classical RAG retrieves <em>before</em> the LLM call. The host embeds the user's
+        question, pulls top-k chunks from a vector store, stitches them into the prompt,
+        and only then asks the model. The LLM has no choice; it's served retrieved
+        context whether it needed it or not. Retrieval-as-a-tool flips this: the LLM
+        gets a search tool and <em>decides</em> when to call it. Toggle to compare:
+      </p>
+
+      <span class="exercise-tag"><span class="pulse"></span>Compare · toggle paradigm</span>
+
+      <div class="pp-w" id="ppW">
+        <div class="pp-head">
+          <span class="title">Two Paradigms · Side-by-Side Flow</span>
+          <div class="pp-tabs">
+            <button class="active classic" data-pp="classic">Classical RAG</button>
+            <button class="agentic" data-pp="agentic">Retrieval-as-a-tool</button>
+          </div>
+        </div>
+        <div class="pp-body">
+          <div class="pp-flow">
+            <svg viewBox="0 0 760 220" xmlns="http://www.w3.org/2000/svg">
+              <defs>
+                <marker id="ppArrowC" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+                  <path d="M 0 0 L 10 5 L 0 10 z" fill="#818cf8"/>
+                </marker>
+                <marker id="ppArrowA" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+                  <path d="M 0 0 L 10 5 L 0 10 z" fill="#8b5cf6"/>
+                </marker>
+              </defs>
+              <g class="pp-box user"><rect x="20" y="90" width="100" height="56" rx="10"/>
+                <text class="lbl" x="70" y="115">User</text>
+                <text class="sub" x="70" y="132">question</text>
+              </g>
+              <g class="pp-box host"><rect x="170" y="90" width="120" height="56" rx="10"/>
+                <text class="lbl" x="230" y="115">Host</text>
+                <text class="sub" x="230" y="132">client app</text>
+              </g>
+              <g class="pp-box llm"><rect x="540" y="90" width="100" height="56" rx="10"/>
+                <text class="lbl" x="590" y="115">LLM</text>
+                <text class="sub" x="590" y="132">answers</text>
+              </g>
+              <g class="pp-box retr" id="ppBoxRetr"><rect x="340" y="20" width="140" height="44" rx="10"/>
+                <text class="lbl" x="410" y="40">Retrieval</text>
+                <text class="sub" x="410" y="55">vector store</text>
+              </g>
+              <g class="pp-box retr" id="ppBoxRetrR"><rect x="340" y="156" width="140" height="44" rx="10"/>
+                <text class="lbl" x="410" y="176">Retrieval (MCP)</text>
+                <text class="sub" x="410" y="191">tool · server</text>
+              </g>
+
+              <g id="ppClassic">
+                <path class="pp-arrow classic" d="M 120 118 L 170 118" marker-end="url(#ppArrowC)"/>
+                <path class="pp-arrow classic" d="M 230 90 Q 230 40 340 42" marker-end="url(#ppArrowC)"/>
+                <text class="pp-arrow-label classic" x="265" y="55">always · embed + top-k</text>
+                <path class="pp-arrow classic" d="M 480 50 Q 540 70 588 92" marker-end="url(#ppArrowC)"/>
+                <text class="pp-arrow-label classic" x="540" y="62">chunks</text>
+                <path class="pp-arrow classic" d="M 290 118 L 540 118" marker-end="url(#ppArrowC)"/>
+                <text class="pp-arrow-label classic" x="415" y="110">prompt + chunks</text>
+              </g>
+
+              <g id="ppAgentic" style="display:none;">
+                <path class="pp-arrow agentic" d="M 120 118 L 170 118" marker-end="url(#ppArrowA)"/>
+                <path class="pp-arrow agentic" d="M 290 118 L 540 118" marker-end="url(#ppArrowA)"/>
+                <text class="pp-arrow-label agentic" x="415" y="110">just the question</text>
+                <path class="pp-arrow agentic" d="M 540 130 Q 480 150 480 175" marker-end="url(#ppArrowA)"/>
+                <text class="pp-arrow-label agentic" x="525" y="160">if needed · search</text>
+                <path class="pp-arrow agentic" d="M 340 175 Q 285 175 285 145" marker-end="url(#ppArrowA)" stroke-dasharray="4 4"/>
+                <text class="pp-arrow-label agentic" x="310" y="168">chunks · cite</text>
+              </g>
+            </svg>
+          </div>
+          <div class="pp-cmp" id="ppCmp"></div>
+        </div>
+      </div>
+
+      <h3 class="sub"><span class="num">›</span> When each paradigm wins</h3>
+      <ul class="tight">
+        <li><strong>Classical RAG wins when retrieval is always needed.</strong> Customer-support chatbot grounded in a fixed knowledge base, a "your docs as a chat interface" wrap, anything where the question domain is the corpus. Lower latency (one call) and the LLM can't forget to retrieve.</li>
+        <li><strong>Retrieval-as-a-tool wins for general-purpose agents.</strong> The same agent that uses GitHub, writes code, and searches Slack should also be <em>able</em> to retrieve from internal docs — but shouldn't retrieve every time you ask it the weather. The LLM's judgement is the gating mechanism.</li>
+        <li><strong>Hybrid is also a thing.</strong> Some hosts auto-attach a "primary" knowledge base as classical RAG, while still exposing it as a tool for refinement. Best of both at the cost of some duplicated work.</li>
+      </ul>
+
+      <div class="callout pink">
+        <div class="tag">Why this matters for MCP</div>
+        <p>
+          The MCP path makes your retrieval system <em>portable</em>. Every host that
+          speaks MCP can attach it; you don't need a Slack-specific RAG plugin and a
+          Cursor-specific RAG plugin and a Claude Desktop-specific RAG plugin.
+          One server, every host. That's the bridge from "RAG pipeline" to
+          "RAG product".
+        </p>
+      </div>
+    </section>
+
+    <!-- ============ SECTION 2 ============ -->
+    <section class="block" id="s2">
+      <div class="section-label"><span class="sn">02</span> &nbsp;RAG-as-MCP shape</div>
+      <h2>The four primitives a RAG server ships.</h2>
+
+      <p>
+        A useful RAG MCP server has a small, predictable surface. Two tools (search +
+        fetch), one resource family (per-document), and one optional task (reindex).
+        Click each piece to see why it's there and what it carries:
+      </p>
+
+      <span class="exercise-tag"><span class="pulse"></span>Inspect · click any piece</span>
+
+      <div class="aa-w">
+        <div class="aa-head">
+          <span class="title">RAG MCP Server · The Standard Shape</span>
+          <span class="hint">4 pieces · click any →</span>
+        </div>
+        <div class="aa-body">
+          <div class="aa-map">
+            <div class="aa-section">
+              <div class="aa-section-h">Tools</div>
+              <div class="aa-piece sel" data-id="search">
+                <span class="kind">tool</span>
+                <div>
+                  <div class="nm">search_docs</div>
+                  <div class="ds">Hybrid search returning ranked chunks with metadata</div>
+                </div>
+                <span class="ic">→</span>
+              </div>
+              <div class="aa-piece" data-id="fetch">
+                <span class="kind">tool</span>
+                <div>
+                  <div class="nm">get_chunk</div>
+                  <div class="ds">Read the full neighbourhood of a chunk by id</div>
+                </div>
+                <span class="ic">→</span>
+              </div>
+            </div>
+            <div class="aa-section">
+              <div class="aa-section-h res">Resources</div>
+              <div class="aa-piece res" data-id="docres">
+                <span class="kind">resource</span>
+                <div>
+                  <div class="nm">docs://collection/{doc_id}</div>
+                  <div class="ds">Whole document by id · attachable via @ mention</div>
+                </div>
+                <span class="ic">→</span>
+              </div>
+              <div class="aa-piece res" data-id="listres">
+                <span class="kind">resource</span>
+                <div>
+                  <div class="nm">docs://collections</div>
+                  <div class="ds">List of indexed collections + stats</div>
+                </div>
+                <span class="ic">→</span>
+              </div>
+            </div>
+            <div class="aa-section">
+              <div class="aa-section-h pmt">Maintenance</div>
+              <div class="aa-piece pmt" data-id="reindex">
+                <span class="kind">task</span>
+                <div>
+                  <div class="nm">reindex</div>
+                  <div class="ds">Long-running re-embed (Module 2.5 Task)</div>
+                </div>
+                <span class="ic">→</span>
+              </div>
+            </div>
+          </div>
+          <div class="aa-detail" id="aaDetail"></div>
+        </div>
+      </div>
+
+      <h3 class="sub"><span class="num">›</span> The minimum-viable RAG server</h3>
+      <p>
+        About 40 lines, including imports. The pattern: hand-written tools that call
+        out to whatever index you happen to use (Postgres+pgvector, Qdrant, Chroma,
+        OpenSearch). The MCP surface stays the same; the backend changes:
+      </p>
+
+      <pre class="code-block"><span class="k">from</span> fastmcp <span class="k">import</span> FastMCP, Context
+<span class="k">from</span> mcp.types <span class="k">import</span> TextResourceContents
+
+mcp = <span class="f">FastMCP</span>(<span class="s">"company-rag"</span>)
+
+<span class="d">@mcp.tool</span>
+<span class="k">async def</span> <span class="f">search_docs</span>(
+    query:      <span class="k">str</span>,
+    collection: <span class="k">str</span> = <span class="s">"all"</span>,
+    k:          <span class="k">int</span> = <span class="n">5</span>,
+    filters:    <span class="k">dict</span> | <span class="k">None</span> = <span class="k">None</span>,
+) -> <span class="k">list</span>[<span class="k">dict</span>]:
+    <span class="s">"""Search the knowledge base. Returns ranked chunks with source URIs."""</span>
+    chunks = <span class="k">await</span> index.<span class="f">hybrid_search</span>(query, collection, k, filters)
+    <span class="k">return</span> [
+        {
+            <span class="s">"text"</span>:   c.text,
+            <span class="s">"uri"</span>:    c.uri,           <span class="c"># for citation</span>
+            <span class="s">"score"</span>:  c.score,
+            <span class="s">"title"</span>:  c.metadata.title,
+        }
+        <span class="k">for</span> c <span class="k">in</span> chunks
+    ]
+
+<span class="d">@mcp.resource</span>(<span class="s">"docs://collection/{doc_id}"</span>)
+<span class="k">async def</span> <span class="f">document</span>(doc_id: <span class="k">str</span>) -> TextResourceContents:
+    <span class="s">"""Whole document by id."""</span>
+    doc = <span class="k">await</span> store.<span class="f">get</span>(doc_id)
+    <span class="k">return</span> <span class="f">TextResourceContents</span>(uri=<span class="f">f</span><span class="s">"docs://collection/{doc_id}"</span>, text=doc.text)
+
+mcp.<span class="f">run</span>()</pre>
+
+      <div class="callout">
+        <div class="tag">Citations come from the URI</div>
+        <p>
+          Every chunk returned must include a stable URI for the source — that's how
+          the LLM cites. If the URI is a real resource the host can read (the
+          <code>docs://</code> family), users can click through to the full document.
+          If it's an opaque key, the agent can still drop it into the answer as
+          "[source: docs://kb/12345]". Either way, the LLM citing without a URI in the
+          chunk metadata is doing it from memory — and getting it wrong.
+        </p>
+      </div>
+    </section>
+
+    <!-- ============ SECTION 3 ============ -->
+    <section class="block" id="s3">
+      <div class="section-label"><span class="sn">03</span> &nbsp;Hybrid search</div>
+      <h2>BM25, vectors, and when each is wrong.</h2>
+
+      <p>
+        Two retrieval mechanisms dominate, and they fail on different queries.
+        <strong>BM25</strong> (keyword + TF-IDF) is great when the query contains the
+        exact terminology you indexed — product names, function names, error messages.
+        <strong>Vector search</strong> is great when the query expresses an intent that
+        doesn't match the docs verbatim — "how do I make the cache reset itself" should
+        find "automatic invalidation strategies". Pick a query and watch each system's
+        verdict:
+      </p>
+
+      <span class="exercise-tag"><span class="pulse"></span>Pick · click a query</span>
+
+      <div class="hs-w" id="hsW">
+        <div class="hs-head">
+          <span class="title">Hybrid Search · Three Backends, One Query</span>
+        </div>
+        <div class="hs-query-bar">
+          <div class="lab">Pick a query</div>
+          <div class="hs-pills" id="hsPills"></div>
+        </div>
+        <div class="hs-body" id="hsBody"></div>
+        <div class="hs-summary" id="hsSummary"></div>
+      </div>
+
+      <h3 class="sub"><span class="num">›</span> The "what you actually ship" stack</h3>
+      <ul class="tight">
+        <li><strong>BM25</strong> via Postgres FTS, OpenSearch, or Tantivy. Cheap to run, fast to query, fast to index. Comes for free with most existing databases.</li>
+        <li><strong>Vector search</strong> via pgvector, Qdrant, Chroma, or LanceDB. Requires embedding the corpus once (and re-embedding on schema changes). Adds 30–100ms latency per query for the embedding call alone.</li>
+        <li><strong>Hybrid fusion</strong> — run both, merge results with Reciprocal Rank Fusion. ~80% of the win of "smart" approaches at ~5% of the engineering effort. Default to this.</li>
+        <li><strong>Cross-encoder reranker</strong> (e.g. <code>bge-reranker-base</code>) — re-score top-50 hybrid results, return top-5. Adds 50–200ms but materially improves precision. Add it once the basics are stable; not on day one.</li>
+      </ul>
+
+      <pre class="code-block purple"><span class="k">async def</span> <span class="f">hybrid_search</span>(query: <span class="k">str</span>, k: <span class="k">int</span> = <span class="n">5</span>) -> <span class="k">list</span>[Chunk]:
+    <span class="c"># 1. Run both retrievers in parallel</span>
+    bm25_hits, vec_hits = <span class="k">await</span> asyncio.<span class="f">gather</span>(
+        bm25.<span class="f">search</span>(query, k=<span class="n">50</span>),
+        vector.<span class="f">search</span>(<span class="k">await</span> embed(query), k=<span class="n">50</span>),
+    )
+
+    <span class="c"># 2. Fuse rankings via Reciprocal Rank Fusion</span>
+    fused = <span class="f">rrf_fuse</span>(bm25_hits, vec_hits, k=<span class="n">60</span>)   <span class="c"># classic k=60 constant</span>
+
+    <span class="c"># 3. Optional: cross-encoder reranker for precision</span>
+    <span class="k">if</span> reranker:
+        fused = <span class="k">await</span> reranker.<span class="f">rerank</span>(query, fused, top_k=<span class="n">25</span>)
+
+    <span class="k">return</span> fused[:k]</pre>
+
+      <div class="callout amber">
+        <div class="tag">Recall vs precision — the agentic shift</div>
+        <p>
+          Classical RAG tunes for <em>precision in top-5</em>: the LLM gets only those
+          5 chunks and one bad one is real noise. Retrieval-as-a-tool tunes for
+          <em>recall in top-25</em>: the LLM is happy to ignore the bad ones if the
+          right answer is in there. This means you can run a larger <code>k</code>,
+          rely less on rerankers, and worry less about chunk-level precision — at the
+          cost of some token waste the LLM will tolerate.
+        </p>
+      </div>
+    </section>
+
+    <!-- ============ SECTION 4 ============ -->
+    <section class="block" id="s4">
+      <div class="section-label"><span class="sn">04</span> &nbsp;Tool patterns</div>
+      <h2>Five patterns you'll keep reusing.</h2>
+
+      <p>
+        Most production RAG MCP servers crystallise around the same handful of patterns.
+        Tab through to see each — name, shape, when to reach for it:
+      </p>
+
+      <span class="exercise-tag"><span class="pulse"></span>Browse · tab through patterns</span>
+
+      <div class="dp-w">
+        <div class="dp-head">
+          <span class="title">Retrieval Tool Design Patterns</span>
+          <div class="dp-tabs" id="dpTabs">
+            <button class="active" data-dp="search-cite">search + cite</button>
+            <button data-dp="two-stage">two-stage</button>
+            <button data-dp="filtered">filtered</button>
+            <button data-dp="doc-resource">doc-as-resource</button>
+            <button data-dp="reindex">async reindex</button>
+          </div>
+        </div>
+        <div class="dp-body" id="dpBody"></div>
+      </div>
+
+      <div class="callout purple">
+        <div class="tag">Pattern composition</div>
+        <p>
+          These aren't exclusive. A real production RAG server typically ships
+          <em>search + cite</em> as the primary tool, <em>doc-as-resource</em> for
+          attachment workflows, <em>filtered</em> args on the search tool when the
+          corpus has structured metadata, and <em>async reindex</em> as a task when
+          the index supports it. <em>Two-stage</em> is the optimisation you add when
+          chunks are short and the LLM keeps asking follow-ups for surrounding context.
+        </p>
+      </div>
+    </section>
+
+    <!-- ============ SECTION 5 ============ -->
+    <section class="block" id="s5">
+      <div class="section-label"><span class="sn">05</span> &nbsp;End-to-end run</div>
+      <h2>One question, one retrieval, one cited answer.</h2>
+
+      <p>
+        Put it together. A user asks a question; the LLM picks the search tool; the
+        MCP server runs hybrid retrieval; chunks come back; the LLM reads them and
+        cites. The whole loop is what every chat-with-your-docs interface boils down
+        to. Step through:
+      </p>
+
+      <span class="exercise-tag"><span class="pulse"></span>Watch · auto-play or step</span>
+
+      <div class="rr-w" id="rrW">
+        <div class="rr-head">
+          <span class="title">End-to-End RAG Run · One Turn</span>
+          <div class="controls">
+            <button class="primary" id="rrRun">▶ Auto-play</button>
+            <button id="rrReset">↺ Reset</button>
+          </div>
+        </div>
+        <div class="rr-stage-bar" id="rrStageBar"></div>
+        <div class="rr-body">
+          <div class="rr-chat" id="rrChat"></div>
+          <div class="rr-side" id="rrSide"></div>
+        </div>
+      </div>
+
+      <h3 class="sub"><span class="num">›</span> Where the latency lives</h3>
+      <ul class="tight">
+        <li><strong>Embed query</strong> — 30–100 ms if local model, 100–300 ms if cloud API. Vector search needs an embedding before it can search.</li>
+        <li><strong>Hybrid retrieval</strong> — 20–80 ms for 100k-chunk corpora with a healthy index. Both BM25 and vector run in parallel; the slower of the two dominates.</li>
+        <li><strong>Reranker</strong> (if used) — 50–200 ms for cross-encoders on 25–50 candidates. The biggest single addition in the precision-vs-latency tradeoff.</li>
+        <li><strong>LLM with chunks</strong> — 1–4 s depending on chunks-sent and model. Almost always the dominant cost.</li>
+      </ul>
+
+      <pre class="code-block pink">Total round trip (typical) ≈ <span class="n">2.0</span> – <span class="n">4.5</span> s
+  ├ embed query     ≈   <span class="n">80</span> ms
+  ├ hybrid search   ≈   <span class="n">60</span> ms
+  ├ rerank top-50   ≈  <span class="n">120</span> ms
+  └ LLM (with k=<span class="n">5</span>) ≈ <span class="n">2000</span> ms+
+
+<span class="c"># Want sub-2-second? Drop the reranker and the cloud embedder.</span>
+<span class="c"># Local embeddings + BM25-only fallback can land at 1.2-1.5s total.</span></pre>
+
+      <div class="callout pink">
+        <div class="tag">This is the bridge into Track 5</div>
+        <p>
+          Everything from here on is production polish: caching the embed step, scaling
+          the index, observability across the retrieval span (Module 3.3 trace tree),
+          security on cross-tenant retrieval (Module 4.3), and the capstone that
+          stitches RAG together with agents (Track 6). Track 2 ends with the
+          primitive in place; the rest of the masterclass operates on it.
+        </p>
+      </div>
+    </section>
+
+    <!-- ============ KNOWLEDGE CHECK ============ -->
+    <section class="kc" id="kc">
+      <div class="kc-head">
+        <div class="kc-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
+          </svg>
+        </div>
+        <div>
+          <div class="kc-label">Knowledge Check · End of Module 2.7</div>
+          <div class="kc-title">Five checks to close Track 2.</div>
+        </div>
+      </div>
+
+      <div class="kc-q">
+        <div class="kc-prompt"><span class="qn">Q1.</span>You're building a general-purpose dev assistant that can use GitHub, browse Slack, and answer questions from a 200k-doc internal wiki. Classical RAG or retrieval-as-a-tool for the wiki?</div>
+        <div class="kc-opts" data-q="0" data-correct="2">
+          <button class="kc-opt"><span class="marker">A</span><span>Classical RAG — embed every question and pull chunks before the LLM call</span></button>
+          <button class="kc-opt"><span class="marker">B</span><span>No retrieval — pass the whole wiki into context</span></button>
+          <button class="kc-opt"><span class="marker">C</span><span>Retrieval-as-a-tool — expose <code>search_docs</code> as an MCP tool. The LLM should decide when wiki retrieval is needed (when the user asks an internal-knowledge question) and skip it when the question is about GitHub or Slack</span></button>
+          <button class="kc-opt"><span class="marker">D</span><span>Hybrid — always retrieve, but also expose as a tool</span></button>
+        </div>
+        <div class="kc-feedback"><strong>Correct.</strong> The agent has multiple knowledge sources and the wiki isn't always relevant. Classical RAG would force wiki retrieval on every question — wasting tokens on a 'fix this Slack bug' question. Letting the LLM choose is exactly what retrieval-as-a-tool delivers.</div>
+      </div>
+
+      <div class="kc-q">
+        <div class="kc-prompt"><span class="qn">Q2.</span>Your search tool returns chunks but no source URIs. Symptom?</div>
+        <div class="kc-opts" data-q="1" data-correct="1">
+          <button class="kc-opt"><span class="marker">A</span><span>The search is slower than necessary</span></button>
+          <button class="kc-opt"><span class="marker">B</span><span>The LLM either omits citations entirely, or hallucinates plausible-looking ones — because there's no real anchor in the tool result. Always include a stable URI in every chunk so the LLM has something concrete to cite</span></button>
+          <button class="kc-opt"><span class="marker">C</span><span>The host can't render the chunks</span></button>
+          <button class="kc-opt"><span class="marker">D</span><span>The reranker has nothing to score</span></button>
+        </div>
+        <div class="kc-feedback"><strong>Right.</strong> LLMs cite from what's in their context. No URI in the chunk = no URI to cite = either silent omission or fabrication. The "search-and-cite" pattern is the antidote: every chunk carries a uri field; the system prompt instructs the LLM to cite using those URIs verbatim.</div>
+      </div>
+
+      <div class="kc-q">
+        <div class="kc-prompt"><span class="qn">Q3.</span>A user asks "how do I fix EBADF". Best retrieval backend?</div>
+        <div class="kc-opts" data-q="2" data-correct="0">
+          <button class="kc-opt"><span class="marker">A</span><span>BM25 dominates because <code>EBADF</code> is a literal token — exact-match indexes are unbeatable for terminology, error codes, function names. Vector search may surface "related" content but rarely the precise reference doc</span></button>
+          <button class="kc-opt"><span class="marker">B</span><span>Pure vector — the embedding will find conceptually similar content</span></button>
+          <button class="kc-opt"><span class="marker">C</span><span>Neither — the LLM should answer from training data</span></button>
+          <button class="kc-opt"><span class="marker">D</span><span>BM25 + vector with vector weighted higher</span></button>
+        </div>
+        <div class="kc-feedback"><strong>Correct.</strong> Acronyms, error codes, function names, product SKUs — these are where BM25 shines. Hybrid still works (it includes BM25), but pure vector struggles to match exact tokens reliably. The Section 3 widget shows this exact pattern.</div>
+      </div>
+
+      <div class="kc-q">
+        <div class="kc-prompt"><span class="qn">Q4.</span>You're shipping a "reindex" operation that takes 8 minutes. What primitive?</div>
+        <div class="kc-opts" data-q="3" data-correct="3">
+          <button class="kc-opt"><span class="marker">A</span><span>Tool — the LLM should be able to trigger it</span></button>
+          <button class="kc-opt"><span class="marker">B</span><span>Resource — the result is a list of indexed docs</span></button>
+          <button class="kc-opt"><span class="marker">C</span><span>Prompt — the user invokes it via slash command</span></button>
+          <button class="kc-opt"><span class="marker">D</span><span>Task (Module 2.5) — long-running, with progress signal and cancellation. The LLM (or user via prompt) submits it, gets a task_id, can poll or subscribe to <code>notifications/tasks/update</code>, and the work survives a reconnect</span></button>
+        </div>
+        <div class="kc-feedback"><strong>Yes.</strong> Reindexing hits all four task-fitness tests from Module 2.5: long, progressive, cancellable, backgroundable. Modelling it as a synchronous tool means the LLM blocks for 8 minutes; modelling it as a task makes it feel like submitting a job.</div>
+      </div>
+
+      <div class="kc-q">
+        <div class="kc-prompt"><span class="qn">Q5.</span>Your hybrid search runs BM25 + vector in parallel and merges. Top-5 BM25 has the right doc at position 4; top-5 vector misses entirely. What does Reciprocal Rank Fusion typically do?</div>
+        <div class="kc-opts" data-q="4" data-correct="1">
+          <button class="kc-opt"><span class="marker">A</span><span>Drops the doc because only one retriever found it</span></button>
+          <button class="kc-opt"><span class="marker">B</span><span>Keeps the doc near the top — RRF gives credit for being on either list and rewards higher positions. A doc at BM25 rank 4 still has meaningful weight; if vector also surfaces it (even at rank 30), both signals add. Single-retriever hits are weaker than dual hits but still survive</span></button>
+          <button class="kc-opt"><span class="marker">C</span><span>Drops the BM25 result if the vector ignores it</span></button>
+          <button class="kc-opt"><span class="marker">D</span><span>Only ranks docs found by both retrievers</span></button>
+        </div>
+        <div class="kc-feedback"><strong>Right.</strong> RRF is forgiving by design. Each retriever contributes <code>1 / (k + rank)</code> for every doc it finds; docs found by both win; docs found by one still appear. This is what makes hybrid fusion the "default" choice — neither retriever's blind spot becomes the system's blind spot.</div>
+      </div>
+    </section>
+
+    <!-- ============ RESOURCES ============ -->
+    <section class="resources" id="res">
+      <div class="resources-header">
+        <div class="label">Learn &amp; Practice</div>
+        <h2 class="r-h">Resources for going <span class="accent">deeper</span></h2>
+        <p class="r-sub">
+          The pgvector + BM25 stack everyone ends up on, the canonical reference for
+          Reciprocal Rank Fusion, and a reference RAG server you can clone and study.
+        </p>
+      </div>
+
+      <div class="r-card teal">
+        <div class="r-top">
+          <div class="r-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14a9 3 0 0 0 18 0V5"/><path d="M3 12a9 3 0 0 0 18 0"/>
+            </svg>
+          </div>
+          <div class="r-titles">
+            <div class="kind">pgvector — Postgres meets vector search</div>
+            <div class="tagline">Hybrid BM25 + vectors in one DB</div>
+          </div>
+        </div>
+        <h3 class="r-title">github.com/pgvector/pgvector</h3>
+        <p class="r-desc">
+          The simplest production stack: Postgres for BM25 (via tsvector) plus pgvector
+          for embeddings. One database, two indexes, hybrid fusion in a single query.
+          Cheap to operate, easy to back up, no extra infrastructure. The README has
+          working examples for HNSW and IVFFlat indexes and SQL for hybrid queries.
+        </p>
+        <a class="r-btn" href="https://github.com/pgvector/pgvector" target="_blank" rel="noopener">
+          <span class="arr">↗</span> Open repo
+        </a>
+      </div>
+
+      <div class="r-card purple">
+        <div class="r-top">
+          <div class="r-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/>
+            </svg>
+          </div>
+          <div class="r-titles">
+            <div class="kind">Reciprocal Rank Fusion — the paper</div>
+            <div class="tagline">Cormack et al., SIGIR '09</div>
+          </div>
+        </div>
+        <h3 class="r-title">RRF — Reciprocal Rank Fusion outperforms Condorcet…</h3>
+        <p class="r-desc">
+          The 4-page paper that turned RRF into the "default" rank fusion method.
+          Sketches the formula (<code>score(d) = Σ 1 / (k + rank_i(d))</code>) and why
+          the constant <code>k = 60</code> is the empirical sweet spot. Worth reading
+          end-to-end the first time you implement hybrid search — explains the failure
+          modes of simpler approaches.
+        </p>
+        <a class="r-btn" href="https://plg.uwaterloo.ca/~gvcormac/cormacksigir09-rrf.pdf" target="_blank" rel="noopener">
+          <span class="arr">↗</span> Open paper
+        </a>
+      </div>
+
+      <div class="r-card pink">
+        <div class="r-top">
+          <div class="r-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#f7768e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>
+            </svg>
+          </div>
+          <div class="r-titles">
+            <div class="kind">Reference RAG MCP server</div>
+            <div class="tagline">Clone, run, study</div>
+          </div>
+        </div>
+        <h3 class="r-title">modelcontextprotocol/servers — rag-example</h3>
+        <p class="r-desc">
+          A working reference RAG MCP server that ships the four primitives from
+          Section 2: <code>search_docs</code>, <code>get_chunk</code>, <code>docs://</code>
+          resources, and a <code>reindex</code> task. Uses pgvector for the backend.
+          The fastest way to calibrate "what does a real RAG MCP server look like" —
+          read the source, run it locally with the Inspector, then start replacing
+          parts with your own corpus and index.
+        </p>
+        <a class="r-btn" href="https://github.com/modelcontextprotocol/servers" target="_blank" rel="noopener">
+          <span class="arr">↗</span> Open repo
+        </a>
+      </div>
+    </section>
+
+    <div class="nav-foot">
+      <div>← Module 2.6 · Wrapping &amp; OpenAPI</div>
+      <a href="#">Track 3 · Clients &amp; hosts →</a>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// ============ PARADIGM PICKER ============
+const ppData = {
+  classic: {
+    showSel: 'ppClassic',
+    hideSel: 'ppAgentic',
+    showRetr: 'ppBoxRetr',
+    hideRetr: 'ppBoxRetrR',
+    panels: [
+      {
+        cls: 'classic',
+        pk: 'Paradigm · classical RAG',
+        h: 'Always retrieve · host-driven',
+        ds: 'The host runs retrieval before every LLM call. The model sees a prompt prefixed with whatever chunks came back. Simple, deterministic, but the LLM has no choice about it.',
+        rows: [
+          ['driver',     'host pipeline'],
+          ['retrieval',  'every turn'],
+          ['cost',       'always pays retrieval latency'],
+          ['portability', 'tied to one host'],
+          ['LLM agency', 'none'],
+        ]
+      },
+      {
+        cls: 'agentic',
+        pk: 'Paradigm · retrieval-as-a-tool',
+        h: 'Decide to retrieve · LLM-driven',
+        ds: 'Retrieval is exposed as an MCP tool. The model decides whether the question needs it, calls the tool if so, and stitches the answer with citations. The same retrieval server works in any host.',
+        rows: [
+          ['driver',     'LLM via MCP'],
+          ['retrieval',  'only when needed'],
+          ['cost',       'pays only when called'],
+          ['portability', 'any MCP host'],
+          ['LLM agency', 'full · can refine + chain'],
+        ]
+      }
+    ]
+  },
+  agentic: {
+    showSel: 'ppAgentic',
+    hideSel: 'ppClassic',
+    showRetr: 'ppBoxRetrR',
+    hideRetr: 'ppBoxRetr',
+    panels: [
+      {
+        cls: 'classic',
+        pk: 'Paradigm · classical RAG',
+        h: 'Always retrieve · host-driven',
+        ds: 'The host runs retrieval before every LLM call. The model sees a prompt prefixed with whatever chunks came back. Simple, deterministic, but the LLM has no choice about it.',
+        rows: [
+          ['driver',     'host pipeline'],
+          ['retrieval',  'every turn'],
+          ['cost',       'always pays retrieval latency'],
+          ['portability', 'tied to one host'],
+          ['LLM agency', 'none'],
+        ]
+      },
+      {
+        cls: 'agentic',
+        pk: 'Paradigm · retrieval-as-a-tool',
+        h: 'Decide to retrieve · LLM-driven',
+        ds: 'Retrieval is exposed as an MCP tool. The model decides whether the question needs it, calls the tool if so, and stitches the answer with citations. The same retrieval server works in any host.',
+        rows: [
+          ['driver',     'LLM via MCP'],
+          ['retrieval',  'only when needed'],
+          ['cost',       'pays only when called'],
+          ['portability', 'any MCP host'],
+          ['LLM agency', 'full · can refine + chain'],
+        ]
+      }
+    ]
+  }
+};
+
+function renderPp(mode) {
+  document.querySelectorAll('.pp-tabs button').forEach(b => b.classList.toggle('active', b.dataset.pp === mode));
+  const d = ppData[mode];
+  document.getElementById('ppClassic').style.display = mode === 'classic' ? 'block' : 'none';
+  document.getElementById('ppAgentic').style.display = mode === 'agentic' ? 'block' : 'none';
+  document.getElementById('ppBoxRetr').style.display = mode === 'classic' ? 'block' : 'none';
+  document.getElementById('ppBoxRetrR').style.display = mode === 'agentic' ? 'block' : 'none';
+
+  const cmp = document.getElementById('ppCmp');
+  cmp.innerHTML = d.panels.map(p => `
+    <div class="panel ${p.cls}">
+      <div class="pk">${p.pk}</div>
+      <h4>${p.h}</h4>
+      <div class="ds">${p.ds}</div>
+      ${p.rows.map(r => `<div class="pp-row"><span class="k">${r[0]}</span><span>${r[1]}</span></div>`).join('')}
+    </div>
+  `).join('');
+}
+document.querySelectorAll('.pp-tabs button').forEach(b => b.onclick = () => renderPp(b.dataset.pp));
+renderPp('classic');
+
+// ============ RAG ANATOMY ============
+const aaData = {
+  search: {
+    pk: 'Tool · search_docs',
+    h: 'search_docs',
+    p: 'The workhorse. The LLM calls this whenever it decides the user\'s question needs corpus knowledge. Returns ranked chunks with text, source URI, score, and any metadata the LLM should cite from. Most production RAG MCP servers expose this as the primary tool.',
+    clbl: 'Tool signature + return shape',
+    code: `<span class="d">@mcp.tool</span>
+<span class="k">async def</span> <span class="f">search_docs</span>(
+    query:      <span class="k">str</span>,
+    collection: <span class="k">str</span> = <span class="s">"all"</span>,
+    k:          <span class="k">int</span> = <span class="n">5</span>,
+    filters:    <span class="k">dict</span> | <span class="k">None</span> = <span class="k">None</span>,
+) -> <span class="k">list</span>[<span class="k">dict</span>]:
+    <span class="s">"""Hybrid search across the configured corpus.</span>
+<span class="s">    Returns ranked chunks with stable source URIs."""</span>
+    chunks = <span class="k">await</span> index.<span class="f">hybrid_search</span>(query, collection, k, filters)
+    <span class="k">return</span> [{
+        <span class="s">"text"</span>:   c.text,
+        <span class="s">"uri"</span>:    c.uri,        <span class="c"># LLM cites from this</span>
+        <span class="s">"score"</span>:  c.score,
+        <span class="s">"title"</span>:  c.metadata.title,
+        <span class="s">"section"</span>: c.metadata.section,
+    } <span class="k">for</span> c <span class="k">in</span> chunks]`
+  },
+  fetch: {
+    pk: 'Tool · get_chunk',
+    h: 'get_chunk',
+    p: 'The "go deeper" tool. After search returns a short chunk and the LLM wants more — surrounding paragraphs, the full table, the parent section — it calls get_chunk with the chunk\'s URI. Returns a wider neighbourhood. Without this, the LLM has no way to ask for more context after a hit.',
+    clbl: 'Two-stage retrieval helper',
+    code: `<span class="d">@mcp.tool</span>
+<span class="k">async def</span> <span class="f">get_chunk</span>(
+    uri: <span class="k">str</span>,
+    window: <span class="k">int</span> = <span class="n">2</span>,
+) -> <span class="k">str</span>:
+    <span class="s">"""Read a chunk plus its \`window\` neighbours on each side.</span>
+<span class="s">    Use after search when one hit looks promising but truncated."""</span>
+    chunk = <span class="k">await</span> store.<span class="f">get_by_uri</span>(uri)
+    neighbours = <span class="k">await</span> store.<span class="f">neighbours</span>(chunk, window=window)
+    <span class="k">return</span> <span class="s">"\\n---\\n"</span>.<span class="f">join</span>([c.text <span class="k">for</span> c <span class="k">in</span> neighbours])`
+  },
+  docres: {
+    pk: 'Resource · docs://collection/{doc_id}',
+    h: 'docs://collection/{doc_id}',
+    p: 'A document as a first-class resource. Hosts that support @ mentions will let the user attach a specific document by id — the host calls <code>resources/read</code> on this URI and pulls the whole doc into context. The corresponding doc_id appears in every chunk returned by search_docs, so the LLM can also surface the link in citations.',
+    clbl: 'Templated resource',
+    code: `<span class="d">@mcp.resource</span>(<span class="s">"docs://collection/{doc_id}"</span>)
+<span class="k">async def</span> <span class="f">document</span>(doc_id: <span class="k">str</span>) -> TextResourceContents:
+    <span class="s">"""Whole document by id · attachable via @ mention in hosts."""</span>
+    doc = <span class="k">await</span> store.<span class="f">get</span>(doc_id)
+    <span class="k">return</span> <span class="f">TextResourceContents</span>(
+        uri=<span class="f">f</span><span class="s">"docs://collection/{doc_id}"</span>,
+        text=doc.text,
+        mime_type=<span class="s">"text/markdown"</span>,
+    )`
+  },
+  listres: {
+    pk: 'Resource · docs://collections',
+    h: 'docs://collections',
+    p: 'A meta-resource listing every indexed collection with stats — chunk count, last-indexed timestamp, brief description. The LLM occasionally reads this to know "what corpora do I even have access to?" before picking what to search. Most useful in multi-corpus deployments.',
+    clbl: 'List + stats',
+    code: `<span class="d">@mcp.resource</span>(<span class="s">"docs://collections"</span>)
+<span class="k">async def</span> <span class="f">list_collections</span>() -> TextResourceContents:
+    <span class="s">"""Indexed collections with chunk counts and last-update times."""</span>
+    cols = <span class="k">await</span> store.<span class="f">list_collections</span>()
+    body = <span class="s">"\\n"</span>.<span class="f">join</span>(
+        <span class="f">f</span><span class="s">"{c.name}: {c.chunks} chunks, indexed {c.last_indexed}"</span>
+        <span class="k">for</span> c <span class="k">in</span> cols
+    )
+    <span class="k">return</span> <span class="f">TextResourceContents</span>(uri=<span class="s">"docs://collections"</span>, text=body)`
+  },
+  reindex: {
+    pk: 'Task · reindex',
+    h: 'reindex',
+    p: 'Re-embed and rebuild the corpus. Almost always long-running — for any non-trivial corpus, embedding takes minutes to hours. Use the Task primitive (Module 2.5) so the LLM (or user via prompt) submits a job, gets a task_id, and the work survives reconnects. Emits progress per document.',
+    clbl: 'Long-running task with progress',
+    code: `<span class="d">@mcp.task</span>
+<span class="k">async def</span> <span class="f">reindex</span>(
+    collection: <span class="k">str</span>,
+    ctx: TaskContext,
+) -> <span class="k">dict</span>:
+    <span class="s">"""Re-embed and reindex a collection. May take minutes to hours."""</span>
+    docs = <span class="k">await</span> source.<span class="f">list_docs</span>(collection)
+    <span class="k">for</span> i, doc <span class="k">in</span> <span class="f">enumerate</span>(docs):
+        <span class="k">if</span> ctx.<span class="f">is_cancelled</span>():
+            <span class="k">return</span> {<span class="s">"isError"</span>: <span class="k">True</span>, <span class="s">"text"</span>: <span class="s">"cancelled"</span>}
+        chunks = <span class="f">chunk_text</span>(doc.text)
+        vectors = <span class="k">await</span> embedder.<span class="f">embed</span>(chunks)
+        <span class="k">await</span> store.<span class="f">upsert</span>(collection, chunks, vectors)
+        <span class="k">await</span> ctx.<span class="f">report_progress</span>(progress=i+<span class="n">1</span>, total=<span class="f">len</span>(docs))
+    <span class="k">return</span> {<span class="s">"reindexed"</span>: <span class="f">len</span>(docs), <span class="s">"collection"</span>: collection}`
+  }
+};
+
+const aaDetail = document.getElementById('aaDetail');
+function renderAa(id) {
+  document.querySelectorAll('.aa-piece').forEach(p => p.classList.toggle('sel', p.dataset.id === id));
+  const d = aaData[id];
+  aaDetail.innerHTML = `
+    <div class="pk">${d.pk}</div>
+    <h4>${d.h}</h4>
+    <p>${d.p}</p>
+    <div class="clbl">${d.clbl}</div>
+    <pre class="code">${d.code}</pre>
+  `;
+}
+document.querySelectorAll('.aa-piece').forEach(p => p.onclick = () => renderAa(p.dataset.id));
+renderAa('search');
+
+// ============ HYBRID SEARCH ============
+const hsQueries = [
+  {
+    id: 'q1',
+    text: '"how to fix EBADF in our Node service?"',
+    winner: 'bm25',
+    bm25: [
+      { ti: 'Troubleshooting: EBADF errors after pool exhaustion', src: 'docs://eng/errors/EBADF · 2024-08', score: '0.94', hit: true },
+      { ti: 'fs.close() race conditions and EBADF', src: 'docs://eng/runbooks/fs · 2025-02', score: '0.81', hit: true },
+      { ti: 'Common Node errors reference', src: 'docs://eng/errors/index · 2025-04', score: '0.62' },
+      { ti: 'File descriptor leaks in worker processes', src: 'docs://eng/postmortems/2024-11', score: '0.51' },
+      { ti: 'Process limits and ulimit recipes', src: 'docs://infra/limits · 2024-09', score: '0.32' },
+    ],
+    vector: [
+      { ti: 'When sockets misbehave: a debugging guide', src: 'docs://eng/sockets · 2025-01', score: '0.68' },
+      { ti: 'I/O fundamentals · what makes a syscall fail', src: 'docs://eng/io-101 · 2024-07', score: '0.61' },
+      { ti: 'Closing files reliably across runtimes', src: 'docs://eng/fs-best-practices · 2025-03', score: '0.58' },
+      { ti: 'Process exit handlers and resource cleanup', src: 'docs://eng/exit-handlers · 2024-12', score: '0.52' },
+      { ti: 'Async error patterns in node', src: 'docs://eng/async-errors · 2025-05', score: '0.49' },
+    ],
+    summary: 'Pure terminology query. <strong>BM25 wins</strong> by a mile — <code>EBADF</code> is an exact-match token. Vector search surfaces "related" content (debugging, I/O, file handling) but rarely the precise reference doc. In a hybrid system, BM25\'s strong signal would dominate the fused ranking.'
+  },
+  {
+    id: 'q2',
+    text: '"how does our cache decide when stuff is stale?"',
+    winner: 'vector',
+    bm25: [
+      { ti: 'Internal API: stale-while-revalidate flag', src: 'docs://eng/api/cache · 2025-03', score: '0.42' },
+      { ti: 'Stale data warnings in dashboards', src: 'docs://product/dashboards · 2025-01', score: '0.31' },
+      { ti: 'How "stuff" data flows in v3', src: 'docs://eng/dataflow · 2024-10', score: '0.21' },
+      { ti: 'Glossary: stale, fresh, hot', src: 'docs://eng/glossary · 2024-08', score: '0.19' },
+      { ti: 'Cache layers overview (high-level)', src: 'docs://eng/cache/overview · 2025-04', score: '0.15' },
+    ],
+    vector: [
+      { ti: 'Cache invalidation strategies in our stack', src: 'docs://eng/cache/invalidation · 2025-05', score: '0.87', hit: true },
+      { ti: 'TTL policies per service tier', src: 'docs://eng/cache/ttl-policies · 2025-02', score: '0.83', hit: true },
+      { ti: 'Event-driven cache refresh design', src: 'docs://eng/architecture/refresh · 2025-01', score: '0.76' },
+      { ti: 'Why we moved off write-through caching', src: 'docs://eng/postmortems/cache · 2024-11', score: '0.68' },
+      { ti: 'Caching: a reading list', src: 'docs://eng/learning/caching · 2024-09', score: '0.55' },
+    ],
+    summary: 'Intent-heavy, terminology-light. <strong>Vector wins</strong> — the words "stuff" and "stale" don\'t match the doc terminology ("invalidation", "TTL", "refresh"). Embeddings capture the semantic equivalence; BM25 has nothing exact to anchor on and returns mostly noise.'
+  },
+  {
+    id: 'q3',
+    text: '"is there documentation about the auth refactor we did last quarter?"',
+    winner: 'hybrid',
+    bm25: [
+      { ti: 'Auth refactor proposal · approved 2025-Q1', src: 'docs://eng/proposals/auth-2025 · 2025-01', score: '0.71', hit: true },
+      { ti: 'Auth service migration runbook', src: 'docs://eng/runbooks/auth-migrate · 2025-02', score: '0.64' },
+      { ti: 'Quarterly engineering review · Q1', src: 'docs://eng/reviews/2025-q1 · 2025-04', score: '0.48', hit: true },
+      { ti: 'Refactor patterns we use', src: 'docs://eng/refactor-patterns · 2024-09', score: '0.31' },
+      { ti: 'Documentation index · auth', src: 'docs://eng/auth/index · 2025-05', score: '0.28' },
+    ],
+    vector: [
+      { ti: 'Auth refactor proposal · approved 2025-Q1', src: 'docs://eng/proposals/auth-2025 · 2025-01', score: '0.81', hit: true },
+      { ti: 'Identity service redesign · ADR-042', src: 'docs://adr/0042-identity · 2025-02', score: '0.74', hit: true },
+      { ti: 'Login flow modernisation · postmortem-style retro', src: 'docs://eng/retros/login · 2025-03', score: '0.68', hit: true },
+      { ti: 'Token rotation policy update', src: 'docs://security/token-rotation · 2025-02', score: '0.61' },
+      { ti: 'Why we standardised on OAuth 2.1', src: 'docs://eng/decisions/oauth · 2025-01', score: '0.54' },
+    ],
+    summary: '<strong>Hybrid wins.</strong> "Auth refactor" is half terminology (good for BM25) and half intent (good for vector). BM25 finds the exact-named proposal doc; vector finds the conceptually-related ADRs and retros that don\'t use the word "refactor" but describe the same work. Reciprocal Rank Fusion combines both into the best top-5.'
+  },
+];
+const hsPills = document.getElementById('hsPills');
+const hsBody = document.getElementById('hsBody');
+const hsSummary = document.getElementById('hsSummary');
+
+function renderHsResults(arr) {
+  return arr.map(r => `
+    <div class="hs-result ${r.hit ? 'hit' : ''}">
+      <div class="sc">${r.score}</div>
+      <div>
+        <div class="ti">${r.ti}</div>
+        <div class="src">${r.src}</div>
+      </div>
+    </div>
+  `).join('');
+}
+function renderHs(id) {
+  const q = hsQueries.find(x => x.id === id);
+  hsPills.querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.q === id));
+  const bm25Verdict = q.winner === 'bm25' ? 'good' : q.winner === 'hybrid' ? 'mid' : 'bad';
+  const vecVerdict  = q.winner === 'vector' ? 'good' : q.winner === 'hybrid' ? 'mid' : 'bad';
+  const hybridVerdict = q.winner === 'hybrid' ? 'good' : 'mid';
+  hsBody.innerHTML = `
+    <div class="hs-col">
+      <div class="hs-col-h">
+        <div class="nm">BM25</div>
+        <div class="score ${bm25Verdict}">${bm25Verdict === 'good' ? '✓ strong' : bm25Verdict === 'mid' ? '~ ok' : '✕ weak'}</div>
+      </div>
+      <div class="ds">keyword · TF-IDF · exact tokens win</div>
+      <div class="hs-results">${renderHsResults(q.bm25)}</div>
+    </div>
+    <div class="hs-col">
+      <div class="hs-col-h">
+        <div class="nm">Vector</div>
+        <div class="score ${vecVerdict}">${vecVerdict === 'good' ? '✓ strong' : vecVerdict === 'mid' ? '~ ok' : '✕ weak'}</div>
+      </div>
+      <div class="ds">embeddings · cosine · semantic intent</div>
+      <div class="hs-results">${renderHsResults(q.vector)}</div>
+    </div>
+    <div class="hs-col">
+      <div class="hs-col-h">
+        <div class="nm">Hybrid + RRF</div>
+        <div class="score ${hybridVerdict}">${hybridVerdict === 'good' ? '✓ best' : '~ solid'}</div>
+      </div>
+      <div class="ds">RRF fusion · both signals weighted</div>
+      <div class="hs-results">${renderHsResults(
+        // simple merge: take hits from both, dedupe by title, sort hit first
+        [...q.bm25.filter(r => r.hit), ...q.vector.filter(r => r.hit && !q.bm25.find(b => b.ti === r.ti)),
+         ...q.bm25.filter(r => !r.hit).slice(0, 2), ...q.vector.filter(r => !r.hit && !q.bm25.find(b => b.ti === r.ti)).slice(0, 1)]
+        .slice(0, 5)
+      )}</div>
+    </div>
+  `;
+  hsSummary.innerHTML = `<div class="lab">Verdict</div><p>${q.summary}</p>`;
+}
+hsPills.innerHTML = hsQueries.map(q => `<button class="hs-pill" data-q="${q.id}">${q.text}</button>`).join('');
+hsPills.querySelectorAll('button').forEach(b => b.onclick = () => renderHs(b.dataset.q));
+renderHs('q1');
+
+// ============ DESIGN PATTERNS ============
+const dpData = {
+  'search-cite': {
+    pk: 'Pattern · 01',
+    kind: 'tool',
+    kindLabel: 'tool',
+    name: 'search + cite',
+    ds: 'The primary RAG tool. Returns ranked chunks; every chunk carries a stable URI so the LLM can cite. Pair with a system-prompt clause telling the LLM "after using this tool, cite each fact with its source URI". Without explicit citation instructions, the LLM may omit or fabricate them.',
+    code: `<span class="d">@mcp.tool</span>
+<span class="k">async def</span> <span class="f">search_docs</span>(query: <span class="k">str</span>, k: <span class="k">int</span> = <span class="n">5</span>) -> <span class="k">list</span>[<span class="k">dict</span>]:
+    <span class="s">"""Search the corp knowledge base.</span>
+<span class="s">    Returns ranked chunks. Cite each fact you use with its \`uri\`."""</span>
+    chunks = <span class="k">await</span> index.<span class="f">hybrid_search</span>(query, k=k)
+    <span class="k">return</span> [{
+        <span class="s">"text"</span>:  c.text,
+        <span class="s">"uri"</span>:   c.uri,         <span class="c"># &lt;= LLM cites from this</span>
+        <span class="s">"title"</span>: c.title,
+        <span class="s">"score"</span>: c.score,
+    } <span class="k">for</span> c <span class="k">in</span> chunks]`,
+    notes: [
+      'Include the citation instruction <em>in the tool description</em>. The LLM\'s tool-picker sees it before deciding to call.',
+      'Always return a <code>uri</code> field — even an opaque id works; the LLM just needs <em>something</em> to cite.',
+      'Default <code>k=5</code> works for narrow questions. Bump to 10–15 for exploratory queries where the LLM should browse.',
+      'Add a <code>score</code> field so the LLM can de-emphasise low-confidence hits in its own answer.',
+    ]
+  },
+  'two-stage': {
+    pk: 'Pattern · 02',
+    kind: 'tool',
+    kindLabel: 'tool',
+    name: 'two-stage retrieval',
+    ds: 'A search tool returns short chunks; a fetch tool reads the wider neighbourhood. Chunks are cheap; full docs are expensive. The two-stage shape lets the LLM look broadly, decide, then drill in — without paying for full-doc reads it doesn\'t need.',
+    code: `<span class="d">@mcp.tool</span>
+<span class="k">async def</span> <span class="f">search_docs</span>(query: <span class="k">str</span>, k: <span class="k">int</span> = <span class="n">10</span>) -> <span class="k">list</span>[<span class="k">dict</span>]:
+    <span class="s">"""Short-chunk search · 256 tokens each. Drill into hits with get_chunk."""</span>
+    <span class="c"># …returns short snippets…</span>
+
+<span class="d">@mcp.tool</span>
+<span class="k">async def</span> <span class="f">get_chunk</span>(uri: <span class="k">str</span>, window: <span class="k">int</span> = <span class="n">2</span>) -> <span class="k">str</span>:
+    <span class="s">"""Expand a hit to ±window neighbouring chunks.</span>
+<span class="s">    Use when search hit looks promising but truncated."""</span>
+    <span class="k">return await</span> store.<span class="f">window</span>(uri, before=window, after=window)`,
+    notes: [
+      'Search returns enough text to <em>recognise</em> a hit (≈256 tokens). Fetch returns enough to <em>use</em> it (≈1k–4k tokens).',
+      'The LLM learns this pattern when the search tool\'s description mentions get_chunk explicitly.',
+      'Reduces wasted tokens: the LLM only expands the 1–2 chunks that look right, not all 10 hits.',
+      'Pairs perfectly with chunks-with-neighbour-ids stored at index time — fetch is then a fast neighbour lookup, not a re-search.',
+    ]
+  },
+  'filtered': {
+    pk: 'Pattern · 03',
+    kind: 'tool',
+    kindLabel: 'tool',
+    name: 'filtered search',
+    ds: 'Add structured filter arguments to the search tool — collection, date range, author, type. The LLM uses these to scope retrieval the way a power user would scope a search. Most useful when the corpus has multiple sub-spaces (eng docs vs product docs vs HR) and the user\'s intent narrows naturally.',
+    code: `<span class="d">@mcp.tool</span>
+<span class="k">async def</span> <span class="f">search_docs</span>(
+    query:      <span class="k">str</span>,
+    collection: Literal[<span class="s">"eng"</span>, <span class="s">"product"</span>, <span class="s">"hr"</span>, <span class="s">"all"</span>] = <span class="s">"all"</span>,
+    since:      <span class="k">str</span> | <span class="k">None</span> = <span class="k">None</span>,    <span class="c"># ISO date</span>
+    doc_type:   <span class="k">str</span> | <span class="k">None</span> = <span class="k">None</span>,    <span class="c"># "runbook" / "proposal" / "adr"</span>
+    k:          <span class="k">int</span> = <span class="n">5</span>,
+) -> <span class="k">list</span>[<span class="k">dict</span>]:
+    <span class="s">"""Search docs · filter by collection, date, or doc type to narrow."""</span>
+    <span class="k">return await</span> index.<span class="f">hybrid_search</span>(
+        query, k=k,
+        filters={<span class="s">"collection"</span>: collection, <span class="s">"since"</span>: since, <span class="s">"type"</span>: doc_type},
+    )`,
+    notes: [
+      'Use <code>Literal</code> for enum-like args — the LLM gets a JSON Schema enum and is much less likely to pass a junk value.',
+      'Date filters massively help "find anything we wrote last quarter" queries — without them the LLM gets last decade\'s docs.',
+      'Don\'t add a filter dimension your corpus doesn\'t index well — the LLM will use it, then be confused when results are empty.',
+      'Argue for filters that align with how humans browse the same docs. If your wiki has folders, the filter should be the folder.',
+    ]
+  },
+  'doc-resource': {
+    pk: 'Pattern · 04',
+    kind: 'res',
+    kindLabel: 'resource',
+    name: 'doc-as-resource',
+    ds: 'Expose every indexed document as an MCP resource under a templated URI. Hosts that support @-mentions let users attach specific docs directly into context — bypassing search entirely for "I already know which doc I need" workflows. The same URIs appear in search citations, so the user can click through to read the source.',
+    code: `<span class="d">@mcp.resource</span>(<span class="s">"docs://collection/{doc_id}"</span>)
+<span class="k">async def</span> <span class="f">document</span>(doc_id: <span class="k">str</span>) -> TextResourceContents:
+    <span class="s">"""Full document by id."""</span>
+    doc = <span class="k">await</span> store.<span class="f">get</span>(doc_id)
+    <span class="k">return</span> <span class="f">TextResourceContents</span>(
+        uri=<span class="f">f</span><span class="s">"docs://collection/{doc_id}"</span>,
+        text=doc.text,
+        mime_type=<span class="s">"text/markdown"</span>,
+    )
+
+<span class="c"># Also expose a discoverable list of recent / popular docs:</span>
+<span class="d">@mcp.resource</span>(<span class="s">"docs://recent"</span>)
+<span class="k">async def</span> <span class="f">recent_docs</span>() -> TextResourceContents:
+    docs = <span class="k">await</span> store.<span class="f">recently_modified</span>(limit=<span class="n">50</span>)
+    <span class="k">return</span> <span class="f">TextResourceContents</span>(
+        uri=<span class="s">"docs://recent"</span>,
+        text=<span class="s">"\\n"</span>.<span class="f">join</span>(<span class="f">f</span><span class="s">"{d.id} · {d.title}"</span> <span class="k">for</span> d <span class="k">in</span> docs),
+    )`,
+    notes: [
+      'The same <code>uri</code> field your search tool returns should resolve as a real resource. Two surfaces, one address.',
+      'In hosts with @ mentions (Claude Desktop, Cursor), users type <code>@docs://eng/runbooks/cache</code> to attach. Make IDs predictable.',
+      'Combine with a <code>docs://recent</code> list resource so the host\'s "suggest a resource" UI has something to offer.',
+      'Don\'t expose every doc as a resource if your corpus is millions of items — templated URIs work better than enumerated ones.',
+    ]
+  },
+  'reindex': {
+    pk: 'Pattern · 05',
+    kind: 'task',
+    kindLabel: 'task',
+    name: 'async reindex',
+    ds: 'Re-embedding an entire corpus takes minutes to hours. Model this as a Module 2.5 Task. The user (or LLM, or scheduled job) submits a reindex; the server returns a task_id immediately; the work runs in the background with progress; cancellation is supported. Without the task primitive, large reindexes either block synchronously or run as fire-and-forget jobs nobody can monitor.',
+    code: `<span class="d">@mcp.task</span>
+<span class="k">async def</span> <span class="f">reindex</span>(
+    collection: <span class="k">str</span>,
+    ctx:        TaskContext,
+) -> <span class="k">dict</span>:
+    <span class="s">"""Re-embed and reindex a collection. May take minutes to hours."""</span>
+    docs = <span class="k">await</span> source.<span class="f">list_docs</span>(collection)
+    <span class="k">for</span> i, doc <span class="k">in</span> <span class="f">enumerate</span>(docs):
+        <span class="k">if</span> ctx.<span class="f">is_cancelled</span>():
+            <span class="k">return</span> {<span class="s">"isError"</span>: <span class="k">True</span>, <span class="s">"text"</span>: <span class="s">"cancelled"</span>}
+        chunks = <span class="f">chunk_text</span>(doc.text)
+        vectors = <span class="k">await</span> embedder.<span class="f">embed</span>(chunks)
+        <span class="k">await</span> store.<span class="f">upsert</span>(collection, chunks, vectors)
+        <span class="k">await</span> ctx.<span class="f">report_progress</span>(
+            progress=i + <span class="n">1</span>, total=<span class="f">len</span>(docs),
+            message=<span class="f">f</span><span class="s">"embedded {doc.id}"</span>,
+        )
+    <span class="k">return</span> {<span class="s">"reindexed"</span>: <span class="f">len</span>(docs), <span class="s">"collection"</span>: collection}`,
+    notes: [
+      'Tasks are the right primitive (Module 2.5): long, cancellable, progressive, resumable. All four traits apply to reindexing.',
+      'Cooperative cancellation: check <code>ctx.is_cancelled()</code> between docs, not inside a single doc\'s embedding call.',
+      'Per-doc progress notifications let the host show a meaningful progress bar instead of an indeterminate spinner.',
+      'Schedule periodic reindexes externally (cron, GitHub Actions) — the task primitive makes it easy to trigger from MCP, but most reindexes shouldn\'t need the LLM to ask.',
+    ]
+  }
+};
+
+const dpBody = document.getElementById('dpBody');
+function renderDp(id) {
+  document.querySelectorAll('.dp-tabs button').forEach(b => b.classList.toggle('active', b.dataset.dp === id));
+  const d = dpData[id];
+  const codeCls = d.kind === 'task' ? 'pink' : d.kind === 'res' ? 'purple' : '';
+  dpBody.innerHTML = `
+    <div class="dp-pattern-h">
+      <span class="pk">${d.pk}</span>
+      <span class="kind ${d.kind === 'res' ? 'res' : d.kind === 'task' ? 'task' : ''}">${d.kindLabel}</span>
+    </div>
+    <h4 class="dp-name">${d.name}</h4>
+    <div class="dp-ds">${d.ds}</div>
+    <div class="dp-grid">
+      <div class="dp-code-block ${codeCls}">
+        <div class="h"><span>shape</span><span>FastMCP</span></div>
+        <pre class="b">${d.code}</pre>
+      </div>
+      <div class="dp-notes">
+        <div class="h">Field notes</div>
+        <ul>
+          ${d.notes.map(n => `<li>${n}</li>`).join('')}
+        </ul>
+      </div>
+    </div>
+  `;
+}
+document.querySelectorAll('.dp-tabs button').forEach(b => b.onclick = () => renderDp(b.dataset.dp));
+renderDp('search-cite');
+
+// ============ END-TO-END RUN ============
+const rrStages = [
+  {
+    name: 'question',
+    chatHtml: `
+      <div class="lab">Chat · this turn</div>
+      <div class="rr-msg user">
+        <div class="role">user</div>
+        <div class="body">What's our policy on cache invalidation across services? Need to write an ADR by EOD.</div>
+      </div>`,
+    side: {
+      pk: 'Stage · 01',
+      h: 'Question lands',
+      p: 'Host forwards the user message to the LLM with the available tools list. <code>search_docs</code> is one of them. No retrieval has happened yet — under the agentic paradigm, the LLM decides.',
+    },
+    timing: null,
+  },
+  {
+    name: 'decide',
+    chatHtml: `
+      <div class="lab">Chat · LLM reasoning</div>
+      <div class="rr-msg user">
+        <div class="role">user</div>
+        <div class="body">What's our policy on cache invalidation across services? Need to write an ADR by EOD.</div>
+      </div>
+      <div class="rr-msg assistant">
+        <div class="role">assistant · thinking</div>
+        <div class="body">This is an internal-knowledge question. I should use <code>search_docs</code> with a focused query. Filtering by collection=<code>"eng"</code> will scope to engineering docs.</div>
+      </div>`,
+    side: {
+      pk: 'Stage · 02',
+      h: 'LLM picks the tool',
+      p: 'The LLM recognises this as a knowledge-base question (not a general-knowledge one) and decides to call <code>search_docs</code>. This is the agentic part — under classical RAG the host would have already retrieved, possibly with a less precise query.',
+    },
+    timing: null,
+  },
+  {
+    name: 'call',
+    chatHtml: `
+      <div class="lab">Chat · tool call emitted</div>
+      <div class="rr-msg user">
+        <div class="role">user</div>
+        <div class="body">What's our policy on cache invalidation across services? Need to write an ADR by EOD.</div>
+      </div>
+      <div class="rr-msg tool-call">
+        <div class="role">→ tools/call · search_docs</div>
+        <div class="body">{
+  "query": "cache invalidation policy across services",
+  "collection": "eng",
+  "k": 5
+}</div>
+      </div>`,
+    side: {
+      pk: 'Stage · 03',
+      h: 'MCP tool call on the wire',
+      p: 'The host serialises the tool call and sends it to the RAG MCP server. The server now runs the hybrid pipeline: embed the query, BM25 + vector in parallel, RRF fusion, optionally rerank. Module 3.3\'s OTel span tree shows this exact call.',
+    },
+    timing: null,
+  },
+  {
+    name: 'retrieve',
+    chatHtml: `
+      <div class="lab">Chat · chunks returned</div>
+      <div class="rr-msg user">
+        <div class="role">user</div>
+        <div class="body">What's our policy on cache invalidation across services? Need to write an ADR by EOD.</div>
+      </div>
+      <div class="rr-msg tool-call">
+        <div class="role">→ tools/call · search_docs</div>
+        <div class="body">{"query": "cache invalidation policy across services", "collection": "eng", "k": 5}</div>
+      </div>
+      <div class="rr-msg tool-result">
+        <div class="role">← result · 5 chunks · 142 ms</div>
+        <div class="body">
+          <div class="rr-chunk">
+            <div class="uri">docs://eng/cache/invalidation · score 0.91</div>
+            <div class="body">We use a TTL+event-driven hybrid: 5min default TTL with explicit invalidation events on writes. Services subscribe to the <code>cache.invalidate</code> topic via Kafka…</div>
+          </div>
+          <div class="rr-chunk">
+            <div class="uri">docs://eng/architecture/refresh · score 0.83</div>
+            <div class="body">Refresh-ahead is preferred over passive expiry for hot keys. The cache layer reads from cold storage when TTL is at 80%, populates background…</div>
+          </div>
+          <div class="rr-chunk">
+            <div class="uri">docs://adr/0028-cache-keys · score 0.78</div>
+            <div class="body">All cache keys must follow <code>service:resource:id:version</code>. Version bumps invalidate atomically by namespace…</div>
+          </div>
+          <div class="rr-chunk">
+            <div class="uri">docs://eng/postmortems/cache-2024 · score 0.71</div>
+            <div class="body">Lessons from the September 2024 cascading-invalidation incident…</div>
+          </div>
+          <div class="rr-chunk">
+            <div class="uri">docs://eng/cache/ttl-policies · score 0.69</div>
+            <div class="body">Per-tier TTL configuration. Tier 0: 60s. Tier 1: 5min. Tier 2: 1h. Adjust via the <code>cache.ttl</code> config map…</div>
+          </div>
+        </div>
+      </div>`,
+    side: {
+      pk: 'Stage · 04',
+      h: 'Chunks return to the LLM',
+      p: 'Server returns 5 ranked chunks, each with a stable URI for citation. The LLM\'s next turn now includes these chunks in context. Critically, the LLM also has the URIs — those are what the citations in the next stage will reference.',
+    },
+    timing: null,
+  },
+  {
+    name: 'answer',
+    chatHtml: `
+      <div class="lab">Chat · cited answer</div>
+      <div class="rr-msg user">
+        <div class="role">user</div>
+        <div class="body">What's our policy on cache invalidation across services? Need to write an ADR by EOD.</div>
+      </div>
+      <div class="rr-msg tool-call">
+        <div class="role">→ tools/call · search_docs</div>
+        <div class="body">{"query": "cache invalidation policy across services", "collection": "eng", "k": 5}</div>
+      </div>
+      <div class="rr-msg tool-result">
+        <div class="role">← result · 5 chunks · 142 ms</div>
+        <div class="body" style="font-size:11.5px; color:var(--text-mute);">(chunks returned)</div>
+      </div>
+      <div class="rr-msg assistant">
+        <div class="role">assistant · final answer</div>
+        <div class="body">Our cache invalidation policy combines three mechanisms:<br><br>
+          <strong>1. TTL + event-driven hybrid.</strong> Default 5-minute TTLs, with explicit invalidation events on writes published to a <code>cache.invalidate</code> Kafka topic <span class="cite">docs://eng/cache/invalidation</span>.<br><br>
+          <strong>2. Refresh-ahead for hot keys.</strong> When a key reaches 80% of its TTL, the cache layer reads from cold storage and populates in the background <span class="cite">docs://eng/architecture/refresh</span>.<br><br>
+          <strong>3. Namespaced keys with versions.</strong> All keys use the <code>service:resource:id:version</code> shape; bumping the version atomically invalidates that namespace <span class="cite">docs://adr/0028-cache-keys</span>.<br><br>
+          Per-tier TTL config (60s/5min/1h) lives in the <code>cache.ttl</code> config map <span class="cite">docs://eng/cache/ttl-policies</span>. Worth reading the Sept-2024 postmortem before drafting the ADR <span class="cite">docs://eng/postmortems/cache-2024</span>.</div>
+      </div>`,
+    side: {
+      pk: 'Stage · 05',
+      h: 'Cited answer rendered',
+      p: 'LLM synthesises the answer from the chunks, citing each fact with the URI from the chunk metadata. The host renders citations as clickable pills; clicking one reads the corresponding <code>docs://</code> resource. This is the full round trip.',
+      timing: [
+        ['user → host', '<5 ms'],
+        ['LLM (tool pick)', '650 ms'],
+        ['MCP call (RAG)', '142 ms'],
+        ['LLM (with chunks)', '2,100 ms'],
+        ['total', '≈ 2.9 s']
+      ],
+    },
+  },
+];
+
+const rrW = document.getElementById('rrW');
+const rrStageBar = document.getElementById('rrStageBar');
+const rrChat = document.getElementById('rrChat');
+const rrSide = document.getElementById('rrSide');
+let rrCurrent = 0;
+let rrAuto = null;
+
+function renderRr(ix) {
+  rrCurrent = ix;
+  const stage = rrStages[ix];
+  document.querySelectorAll('.rr-step').forEach((el, i) => {
+    el.classList.toggle('active', i === ix);
+    el.classList.toggle('done', i < ix);
+  });
+  rrChat.innerHTML = stage.chatHtml;
+  const timingHtml = stage.timing
+    ? `<div class="rr-timing"><div class="lab">Latency breakdown</div>` +
+      stage.timing.map((row, i) => {
+        const isTotal = row[0].toLowerCase().includes('total');
+        return `<div class="row ${isTotal ? 'total' : ''}"><span>${row[0]}</span><span class="val">${row[1]}</span></div>`;
+      }).join('') + '</div>'
+    : '';
+  rrSide.innerHTML = `
+    <div class="lab">${stage.side.pk}</div>
+    <h4>${stage.side.h}</h4>
+    <p>${stage.side.p}</p>
+    ${timingHtml}
+  `;
+}
+
+rrStageBar.innerHTML = rrStages.map((s, i) => `
+  <div class="rr-step ${i === 0 ? 'active' : ''}">
+    <div class="ix">0${i + 1}</div>
+    <div class="nm">${s.name}</div>
+  </div>
+`).join('');
+
+document.querySelectorAll('.rr-step').forEach((el, i) => {
+  el.onclick = () => {
+    clearInterval(rrAuto);
+    rrAuto = null;
+    document.getElementById('rrRun').textContent = '▶ Auto-play';
+    renderRr(i);
+  };
+});
+
+document.getElementById('rrRun').onclick = function() {
+  if (rrAuto) {
+    clearInterval(rrAuto);
+    rrAuto = null;
+    this.textContent = '▶ Auto-play';
+  } else {
+    this.textContent = '⏸ Pause';
+    let ix = rrCurrent;
+    rrAuto = setInterval(() => {
+      ix = (ix + 1) % rrStages.length;
+      renderRr(ix);
+    }, 1800);
+  }
+};
+
+document.getElementById('rrReset').onclick = () => {
+  clearInterval(rrAuto);
+  rrAuto = null;
+  rrCurrent = 0;
+  document.getElementById('rrRun').textContent = '▶ Auto-play';
+  renderRr(0);
+};
+
+renderRr(0);
+
+// ============ KNOWLEDGE CHECK ============
+document.querySelectorAll('.kc-opts').forEach(group => {
+  const correct = Number.parseInt(group.dataset.correct, 10);
+  const feedback = group.parentElement.querySelector('.kc-feedback');
+  const options = Array.from(group.querySelectorAll('.kc-opt'));
+
+  options.forEach((opt, idx) => {
+    opt.onclick = function() {
+      options.forEach(o => o.classList.remove('correct', 'wrong'));
+      if (idx === correct) {
+        this.classList.add('correct');
+      } else {
+        this.classList.add('wrong');
+        if (options[correct]) options[correct].classList.add('correct');
+      }
+      if (feedback) feedback.classList.add('show');
+    };
+  });
+});
+
+// ============ SIDEBAR NAVIGATION ============
+document.querySelectorAll('.sb-list a').forEach(a => {
+  a.onclick = (e) => {
+    e.preventDefault();
+    document.querySelectorAll('.sb-list a').forEach(x => x.classList.remove('active'));
+    a.classList.add('active');
+    const target = document.getElementById(a.dataset.target);
+    if (target) target.scrollIntoView({ behavior: 'smooth' });
+  };
+});
+
+// ============ OBJECTIVES CHECKLIST ============
+document.querySelectorAll('.obj-list .check').forEach(check => {
+  check.onclick = function() {
+    this.classList.toggle('done');
+  };
+});
+
+// ============ PROGRESS TRACKING ============
+function updateProgress() {
+  const checks = document.querySelectorAll('.obj-list .check.done').length;
+  const total = document.querySelectorAll('.obj-list .check').length;
+  const pct = Math.round((checks / total) * 100);
+  document.getElementById('progressFill').style.width = pct + '%';
+  document.getElementById('progressLabel').textContent = pct + '%';
+}
+
+document.querySelectorAll('.obj-list .check').forEach(check => {
+  check.addEventListener('click', updateProgress);
+});
+
+// Initialize
+updateProgress();
+</script>
+</body>
+</html>

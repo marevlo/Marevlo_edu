@@ -1,0 +1,2218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PyTorch Academy • Module 11 — Distributed &amp; Acceleration</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Source+Serif+4:ital,opsz,wght@0,8..60,300;0,8..60,400;0,8..60,500;0,8..60,600;1,8..60,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.47.0/tabler-icons.min.css">
+<style>
+:root{
+  --bg:#08090b;
+  --bg-2:#0b0f1a;
+  --bg-3:#111827;
+  --panel:#0d1117;
+  --panel-2:#111827;
+  --line:#1e2330;
+  --line-2:#2a3142;
+  --ink:#e8eaed;
+  --ink-2:#a8aeb8;
+  --ink-3:#6b7280;
+  --ink-4:#454b58;
+  --accent:#6366f1;       /* indigo — primary accent */
+  --accent-2:#818cf8;
+  --accent-glow:rgba(99,102,241,0.18);
+  --plan:#f59e0b;        /* planning / cognition */
+  --tool:#10b981;        /* tool execution */
+  --observe:#8b5cf6;     /* observation */
+  --fail:#f7768e;
+  --success:#10b981;
+  --serif:'Source Serif 4', Georgia, serif;
+  --sans:'Outfit', -apple-system, sans-serif;
+  --mono:'JetBrains Mono', monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{
+  background:var(--bg);
+  color:var(--ink);
+  font-family:var(--sans);
+  font-weight:400;
+  line-height:1.6;
+  -webkit-font-smoothing:antialiased;
+  overflow-x:hidden;
+  min-height:100vh;
+  position:relative;
+}
+body::before{
+  content:'';position:fixed;inset:0;
+  background:
+    radial-gradient(ellipse 80% 50% at 42% -15%, rgba(99,102,241,0.1), transparent 60%),
+    radial-gradient(ellipse 60% 40% at 100% 100%, rgba(99,102,241,0.04), transparent 60%);
+  pointer-events:none;z-index:0;
+}
+body::after{
+  content:'';position:fixed;inset:0;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='300' height='300' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E");
+  background-size:300px 300px;
+  opacity:0.025;
+  pointer-events:none;z-index:0;
+}
+
+/* ============ STARFIELD ============ */
+.starfield {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  pointer-events: none;
+  z-index: -2;
+}
+.stars {
+  position: fixed;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  z-index: -1;
+  pointer-events: none;
+}
+.star {
+  position: absolute;
+  background: #fff;
+  border-radius: 50%;
+  opacity: 0.3;
+  animation: twinkle var(--dur, 4s) ease-in-out infinite;
+}
+@keyframes twinkle {
+  0%, 100% { opacity: 0.1; }
+  50% { opacity: 0.6; }
+}
+
+/* ============== LAYOUT ============== */
+.shell{position:relative;z-index:1;display:grid;grid-template-columns:280px 1fr;min-height:100vh}
+.sidebar{
+  position:sticky;top:0;height:100vh;
+  border-right:1px solid transparent;
+  background:linear-gradient(180deg, rgba(13,17,23,0.92) 0%, rgba(8,9,11,0.96) 100%);
+  backdrop-filter:blur(20px) saturate(1.4);
+  -webkit-backdrop-filter:blur(20px) saturate(1.4);
+  padding:36px 22px 28px;
+  overflow-y:auto;
+  box-shadow:inset -1px 0 0 rgba(255,255,255,0.04), 1px 0 32px rgba(0,0,0,0.5);
+  display:flex;flex-direction:column;
+}
+/* Left accent spine as pseudo */
+.sidebar::before{
+  position:absolute;left:0;top:0;bottom:0;width:2px;
+  background:linear-gradient(180deg,
+    transparent 0%,
+    rgba(99,102,241,0.5) 20%,
+    rgba(99,102,241,0.3) 60%,
+    transparent 100%);
+  pointer-events:none;z-index:2;
+}
+.sidebar::-webkit-scrollbar{width:3px}
+.sidebar::-webkit-scrollbar-track{background:transparent}
+.sidebar::-webkit-scrollbar-thumb{background:linear-gradient(180deg, var(--accent), transparent);border-radius:3px;opacity:0.5}
+.brand{
+  display:flex;align-items:center;gap:10px;margin-bottom:8px;
+  position:relative;
+}
+/* #3 — top glow arc behind brand */
+.brand::before{
+  content:'';
+  position:absolute;top:-28px;left:-22px;right:-22px;height:90px;
+  background:radial-gradient(ellipse 70% 60% at 40% 0%, rgba(99,102,241,0.18), transparent 70%);
+  pointer-events:none;z-index:0;
+  border-radius:50%;
+}
+.brand > *{position:relative;z-index:1}
+.brand-mark{
+  width:36px;height:36px;border-radius:8px;
+  background:transparent;
+  display:grid;place-items:center;
+  overflow:hidden;
+  flex-shrink:0;
+}
+.brand-mark img, .brand-mark i{
+  font-size:24px;
+  color:var(--accent-2);
+  display:block;
+}
+.brand-name{font-size:13px;font-weight:600;letter-spacing:0.02em}
+.brand-sub{font-size:11px;color:var(--ink-3);margin-top:2px;letter-spacing:0.04em}
+/* #6 — brand divider hairline */
+.brand-divider{
+  height:1px;
+  margin:18px 0 4px;
+  background:linear-gradient(90deg, transparent 0%, rgba(99,102,241,0.25) 40%, rgba(99,102,241,0.25) 60%, transparent 100%);
+}
+.module-tag{
+  margin-top:24px;padding:13px 15px;
+  background:linear-gradient(135deg, rgba(99,102,241,0.06) 0%, rgba(13,17,23,0.9) 100%);
+  border:1px solid rgba(99,102,241,0.18);
+  border-radius:9px;
+  box-shadow:0 1px 12px rgba(0,0,0,0.25);
+}
+.module-tag-label{font-size:10px;color:var(--ink-3);letter-spacing:0.04em;margin-bottom:4px}
+.module-tag-title{font-family:var(--serif);font-size:13px;color:var(--ink);font-weight:400}
+.toc{margin-top:24px}
+.toc-label{font-size:10px;color:var(--ink-3);letter-spacing:0.05em;margin-bottom:12px;padding-left:10px}
+.toc a{
+  display:flex;align-items:center;gap:10px;
+  padding:9px 11px;color:var(--ink-2);text-decoration:none;font-size:13px;
+  border-radius:6px;border-left:2px solid transparent;
+  transition:background 0.18s ease, color 0.18s ease, border-color 0.18s ease;
+  position:relative;
+}
+.toc a:hover{
+  background:rgba(255,255,255,0.03);
+  color:var(--ink);
+}
+.toc a.active{
+  background:linear-gradient(90deg, rgba(99,102,241,0.12) 0%, transparent 100%);
+  color:var(--accent);
+  border-left-color:var(--accent);
+  box-shadow:inset 0 0 0 1px rgba(99,102,241,0.08);
+}
+/* #7 — past TOC items fade */
+.toc a.past{
+  opacity:0.38;
+  color:var(--ink-4);
+}
+.toc a.past .toc-num{color:var(--ink-4)}
+.toc-num{font-family:var(--mono);font-size:11px;color:var(--ink-4);width:24px;transition:color 0.18s}
+.toc a.active .toc-num{color:var(--accent-2)}
+.progress-rail{
+  margin-top:28px;padding:15px 16px;
+  background:linear-gradient(135deg, rgba(99,102,241,0.05) 0%, rgba(13,17,23,0.8) 100%);
+  border:1px solid rgba(99,102,241,0.14);
+  border-radius:9px;
+  box-shadow:0 1px 10px rgba(0,0,0,0.2);
+}
+.progress-bar{
+  height:3px;background:rgba(255,255,255,0.05);border-radius:2px;overflow:hidden;margin-top:10px;
+  box-shadow:inset 0 1px 2px rgba(0,0,0,0.4);
+}
+.progress-fill{
+  height:100%;width:0%;
+  background:linear-gradient(90deg, var(--accent), var(--accent-2));
+  transition:width 0.5s cubic-bezier(0.4,0,0.2,1);
+  box-shadow:0 0 8px rgba(99,102,241,0.5);
+}
+.progress-text{font-size:11px;color:var(--ink-3);font-family:var(--serif)}
+
+.main{padding:80px 80px 200px;max-width:980px}
+@media (max-width: 1100px){
+  .shell{grid-template-columns:1fr}
+  .sidebar{position:relative;height:auto;border-right:none;border-bottom:1px solid var(--line)}
+  .main{padding:48px 32px 120px}
+}
+
+/* ============== HERO ============== */
+.hero{margin-bottom:80px;position:relative;text-align:left;padding:0;max-width:100%}
+.hero-meta{
+  display:inline-flex;align-items:center;gap:0;
+  margin-bottom:36px;
+  font-family:var(--mono);font-size:11px;color:var(--ink-3);letter-spacing:0.05em;
+  background:linear-gradient(135deg, rgba(99,102,241,0.07) 0%, rgba(13,17,23,0.6) 100%);
+  border:1px solid rgba(99,102,241,0.2);
+  border-radius:100px;
+  padding:7px 16px;
+  backdrop-filter:blur(8px);
+  box-shadow:0 0 0 1px rgba(255,255,255,0.03), 0 4px 24px rgba(0,0,0,0.3), 0 0 32px rgba(99,102,241,0.06);
+}
+.hero-meta span{white-space:nowrap;padding:0 2px}
+.hero-meta .dot{
+  width:5px;height:5px;border-radius:50%;
+  background:var(--accent);
+  box-shadow:0 0 6px rgba(99,102,241,0.8), 0 0 12px rgba(99,102,241,0.4);
+  flex-shrink:0;margin:0 10px;
+}
+.hero-meta .sep{
+  width:1px;height:10px;
+  background:rgba(255,255,255,0.08);
+  flex-shrink:0;margin:0 12px;
+}
+.hero-meta .track-label{color:var(--accent-2);font-weight:500}
+.hero-meta .level-badge{
+  padding:2px 9px;
+  background:rgba(99,102,241,0.12);
+  border:1px solid rgba(99,102,241,0.25);
+  border-radius:100px;
+  color:var(--accent-2);
+  font-weight:600;
+  font-size:10px;
+  letter-spacing:0.08em;
+  margin-left:4px;
+}
+.hero h1{
+  font-family:var(--serif);font-weight:400;font-size:clamp(40px, 5.5vw, 68px);
+  line-height:1.05;letter-spacing:-0.022em;margin-bottom:24px;
+}
+.hero h1 em, .hero h1 .accent{font-style:italic;color:var(--accent);font-weight:300;background:none;-webkit-text-fill-color:initial;text-fill-color:initial}
+.hero-lede, .hero .subtitle{
+  font-family:var(--serif);font-size:21px;line-height:1.55;color:var(--ink-2);
+  max-width:680px;font-weight:300;margin: 0;
+}
+.hero-stats{
+  display:grid;grid-template-columns:repeat(4,1fr);gap:2px;
+  margin-top:48px;background:var(--line);border:1px solid var(--line);border-radius:9px;overflow:hidden;
+}
+.hero-stat{background:var(--panel);padding:20px 22px;text-align:left}
+.hero-stat-num{font-family:var(--serif);font-size:28px;font-weight:500;color:var(--accent);line-height:1}
+.hero-stat-label{font-size:11px;color:var(--ink-3);margin-top:6px;letter-spacing:0.03em}
+@media (max-width:700px){.hero-stats{grid-template-columns:repeat(2,1fr)}}
+
+/* ============== SECTIONS ============== */
+.section{margin-bottom:88px;scroll-margin-top:100px}
+section:nth-child(3n){margin-bottom:104px}
+section:nth-child(2n){margin-bottom:96px}
+.section-head{margin-bottom:28px;padding-bottom:18px;border-bottom:1px solid var(--line)}
+.section-num{font-family:var(--mono);font-size:11px;color:var(--accent);letter-spacing:0.15em}
+.section-title, .section h2{
+  font-family:var(--serif);font-size:36px;font-weight:400;line-height:1.15;
+  letter-spacing:-0.01em;margin-top:8px;margin-bottom:8px;
+  display:flex;align-items:center;gap:14px;color:var(--ink);
+}
+.section h2::before{
+  content:'';
+  width:4px;
+  height:28px;
+  background:linear-gradient(180deg, var(--accent), var(--accent-2));
+  border-radius:2px;
+}
+.section-sub{font-size:15px;color:var(--ink-3);margin-top:12px;max-width:680px}
+
+p{font-family:var(--serif);font-size:17px;line-height:1.73;color:var(--ink-2);margin-bottom:20px;font-weight:300}
+p strong{color:var(--ink);font-weight:500}
+p em{color:var(--accent);font-style:italic}
+
+/* Goal Callout matches Marevlo callout standard */
+.goal-callout {
+  max-width: 980px;
+  margin: 20px 0 60px;
+  padding: 22px 28px;
+  background: linear-gradient(135deg, rgba(99,102,241,0.06), rgba(99,102,241,0.02));
+  border-left: 2px solid var(--accent);
+  border-radius: 0 7px 7px 0;
+  position: relative;
+}
+.goal-callout::before {
+  display:none;
+}
+.goal-callout h3 {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+  font-weight:600;
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.goal-callout p {
+  margin: 0;
+  font-size: 16px;
+  color: var(--ink);
+}
+
+.callout{
+  margin:32px 0;padding:22px 28px;
+  background:linear-gradient(135deg, rgba(99,102,241,0.06), rgba(99,102,241,0.02));
+  border-left:2px solid var(--accent);border-radius:0 7px 7px 0;
+  display:flex;
+  gap:16px;
+  align-items:flex-start;
+}
+.callout i{
+  font-size:20px;
+  margin-top:2px;
+  flex-shrink:0;
+}
+.callout-content{flex:1}
+.callout-title{
+  font-family:var(--mono);font-size:11px;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:8px;
+  font-weight:600;
+}
+.callout p{margin:0;font-size:16px;color:var(--ink)}
+
+/* Callout variants */
+.callout-tip{
+  background:linear-gradient(135deg, rgba(16,185,129,0.06), rgba(16,185,129,0.02));
+  border-left-color:var(--success);
+}
+.callout-tip i, .callout-tip .callout-title{color:var(--success)}
+
+.callout-warn{
+  background:linear-gradient(135deg, rgba(245,158,11,0.06), rgba(245,158,11,0.02));
+  border-left-color:var(--plan);
+}
+.callout-warn i, .callout-warn .callout-title{color:var(--plan)}
+
+.callout-info{
+  background:linear-gradient(135deg, rgba(99,102,241,0.06), rgba(99,102,241,0.02));
+  border-left-color:var(--accent);
+}
+.callout-info i, .callout-info .callout-title{color:var(--accent)}
+
+.callout-danger{
+  background:linear-gradient(135deg, rgba(247,118,142,0.06), rgba(247,118,142,0.02));
+  border-left-color:var(--fail);
+}
+.callout-danger i, .callout-danger .callout-title{color:var(--fail)}
+
+h3{font-family:var(--sans);font-size:20px;font-weight:600;margin:48px 0 16px;letter-spacing:-0.005em;color:var(--ink)}
+h4{font-family:var(--sans);font-size:15px;font-weight:600;margin:24px 0 12px;color:var(--ink);text-transform:uppercase;letter-spacing:0.06em}
+
+ul,ol{margin:16px 0 20px 0;padding-left:24px}
+li{font-family:var(--serif);font-size:17px;line-height:1.68;color:var(--ink-2);margin-bottom:10px;font-weight:300}
+li strong{color:var(--ink);font-weight:500}
+
+/* ============== CODE BLOCKS ============== */
+.code-block {
+  background:#06070a;
+  border:1px solid var(--line);
+  border-radius:8px;
+  margin:20px 0;
+  overflow:hidden;
+  position:relative;
+}
+.code-header {
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  padding:10px 18px;
+  background:rgba(255,255,255,0.02);
+  border-bottom:1px solid var(--line);
+}
+.code-lang {
+  font-size:11px;
+  color:var(--accent-2);
+  font-family:var(--mono);
+  letter-spacing:1px;
+  text-transform:uppercase;
+  font-weight:600;
+}
+.code-copy {
+  background:transparent;
+  border:1px solid var(--line-2);
+  color:var(--ink-2);
+  padding:4px 10px;
+  border-radius:5px;
+  font-size:11px;
+  cursor:pointer;
+  display:flex;
+  align-items:center;
+  gap:4px;
+  transition:all 0.15s;
+}
+.code-copy:hover {
+  background:rgba(255,255,255,0.04);
+  color:var(--ink);
+  border-color:var(--accent);
+}
+.code-block pre {
+  padding:18px 20px;
+  overflow-x:auto;
+  font-family:var(--mono);
+  font-size:13px;
+  line-height:1.65;
+}
+.code-block pre code {
+  color:#c8d3e0;
+  background:none;
+  padding:0;
+  border:none;
+}
+.section code:not(pre code) {
+  background: rgba(99, 102, 241, 0.08);
+  color: var(--accent-2);
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-family: var(--mono);
+  font-size: 13px;
+  border: 1px solid rgba(99, 102, 241, 0.18);
+}
+.kw{color:#8b5cf6}
+.fn{color:#818cf8}
+.st{color:#10b981}
+.co{color:#6b7280;font-style:italic}
+.cls{color:#f59e0b}
+.op{color:#67e8f9}
+
+/* === Output Blocks === */
+.output {
+  background:rgba(0,0,0,0.4);
+  border-left:3px solid var(--accent);
+  padding:14px 18px;
+  margin:8px 0 20px;
+  font-family:var(--mono);
+  font-size:12.5px;
+  color:var(--ink-2);
+  border-radius:0 8px 8px 0;
+  white-space:pre-wrap;
+  overflow-x:auto;
+}
+.output::before {
+  content:'output';
+  display:block;
+  font-size:10px;
+  color:var(--accent-2);
+  letter-spacing:1.5px;
+  margin-bottom:6px;
+  text-transform:uppercase;
+  font-weight:600;
+}
+
+/* === Tables === */
+.table-wrap{overflow-x:auto;margin:24px 0}
+table{
+  width:100%;
+  border-collapse:collapse;
+  background:var(--bg-2);
+  border:1px solid var(--line);
+  border-radius:9px;
+  overflow:hidden;
+  font-size:14px;
+}
+thead{
+  background:rgba(99,102,241,0.06);
+}
+th{
+  text-align:left;
+  padding:12px 14px;
+  color:var(--accent-2);
+  font-weight:600;
+  letter-spacing:0.02em;
+  border-bottom:1px solid var(--line-2);
+  font-size:13px;
+  font-family:var(--sans);
+}
+td{
+  padding:11px 14px;
+  border-bottom:1px solid var(--line);
+  color:var(--ink-2);
+  vertical-align:top;
+  font-family:var(--serif);
+  font-weight:300;
+}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:rgba(99,102,241,0.02)}
+td code{font-size:12px}
+
+/* ============== INTERACTIVE WIDGETS ============== */
+.widget {
+  margin:40px 0;
+  background:var(--panel);
+  border:1px solid var(--line);
+  border-radius:11px;
+  padding:28px;
+  position:relative;
+}
+.widget::before {
+  content: 'INTERACTIVE';
+  position: absolute;
+  top: -10px;
+  left: 20px;
+  background: var(--bg);
+  padding: 2px 10px;
+  font-size: 10px;
+  letter-spacing: 2px;
+  color: var(--accent-2);
+  border: 1px solid var(--accent);
+  border-radius: 10px;
+  font-weight: 600;
+  font-family:var(--mono);
+}
+.widget-title {
+  font-family:var(--sans);
+  font-size:16px;
+  font-weight:600;
+  color:var(--ink);
+  margin-bottom:6px;
+  letter-spacing:0.02em;
+  display:flex;
+  align-items:center;
+  gap:10px;
+}
+.widget-title::before {
+  content:'';
+  width:6px;
+  height:6px;
+  border-radius:50%;
+  background:var(--accent);
+  box-shadow:0 0 8px var(--accent-glow);
+}
+.widget-subtitle {
+  font-size:13px;
+  color:var(--ink-3);
+  margin-bottom:18px;
+}
+.controls {
+  display:flex;
+  flex-direction:column;
+  gap:14px;
+  margin-bottom:18px;
+}
+.ctrl-row {
+  display:flex;
+  align-items:center;
+  gap:14px;
+  flex-wrap:wrap;
+}
+.ctrl-label {
+  font-family:var(--sans);
+  font-size:12px;
+  color:var(--ink-2);
+  min-width:130px;
+  letter-spacing:0.02em;
+  text-transform:uppercase;
+  font-weight:500;
+}
+.ctrl-value {
+  font-size:13px;
+  color:var(--accent-2);
+  font-family:var(--mono);
+  min-width:70px;
+  text-align:right;
+  font-weight:600;
+}
+input[type="range"] {
+  flex:1;
+  accent-color:var(--accent);
+  height:4px;
+  background:var(--line-2);
+  border-radius:2px;
+  appearance:none;
+  outline:none;
+}
+input[type="range"]::-webkit-slider-thumb {
+  appearance:none;
+  width:16px;
+  height:16px;
+  border-radius:50%;
+  background:var(--accent-2);
+  cursor:pointer;
+  box-shadow:0 0 12px var(--accent-glow);
+}
+input[type="range"]::-moz-range-thumb {
+  width:16px;
+  height:16px;
+  border-radius:50%;
+  background:var(--accent-2);
+  cursor:pointer;
+  border:none;
+}
+.btn-row { display:flex; gap:8px; flex-wrap:wrap; }
+.pill-btn {
+  background:var(--bg-3);
+  color:var(--ink-2);
+  border:1px solid var(--line-2);
+  padding:7px 16px;
+  border-radius:8px;
+  font-size:12px;
+  cursor:pointer;
+  font-family:var(--mono);
+  font-weight:500;
+  transition:all 0.15s;
+}
+.pill-btn:hover {
+  background:var(--panel-2);
+  color:var(--ink);
+  border-color:var(--accent);
+}
+.pill-btn.active {
+  background:var(--accent);
+  color:#ffffff;
+  border-color:var(--accent);
+  box-shadow:0 0 15px var(--accent-glow);
+  font-weight:600;
+}
+.tensor-grid {
+  display:inline-grid;
+  gap:4px;
+  padding:16px;
+  background:rgba(0,0,0,0.3);
+  border-radius:10px;
+  border:1px solid var(--line);
+}
+.tcell {
+  width:36px;
+  height:36px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-size:10px;
+  font-family:var(--mono);
+  border-radius:4px;
+  font-weight:500;
+  transition:all 0.3s;
+}
+.viz-out {
+  margin-top:16px;
+  font-family:var(--mono);
+  font-size:13px;
+  color:var(--ink-2);
+  padding:14px 18px;
+  background:var(--bg-3);
+  border-radius:6px;
+  border-left:2px solid var(--accent);
+  white-space:pre-wrap;
+}
+.chart-box {
+  position:relative;
+  height:260px;
+  margin:16px 0 8px;
+  background:rgba(0,0,0,0.2);
+  border-radius:8px;
+  padding:8px;
+  border:1px solid var(--line);
+}
+.legend {
+  display:flex;
+  gap:18px;
+  font-size:11px;
+  color:var(--ink-3);
+  margin-top:10px;
+  flex-wrap:wrap;
+  font-family:var(--mono);
+}
+.legend-dot {
+  display:inline-block;
+  width:10px;
+  height:10px;
+  border-radius:50%;
+  margin-right:6px;
+  vertical-align:middle;
+}
+.graph-svg-wrap {
+  background:rgba(0,0,0,0.3);
+  border-radius:10px;
+  padding:16px;
+  margin:12px 0;
+  border:1px solid var(--line);
+}
+.metric-grid {
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(110px,1fr));
+  gap:10px;
+  margin:14px 0;
+}
+.metric {
+  background:rgba(0,0,0,0.3);
+  border:1px solid var(--line);
+  border-radius:8px;
+  padding:12px;
+}
+.metric-label {
+  font-family:var(--mono);
+  font-size:10px;
+  color:var(--ink-3);
+  text-transform:uppercase;
+  letter-spacing:1px;
+}
+.metric-value {
+  font-family:var(--mono);
+  font-size:18px;
+  color:var(--accent-2);
+  margin-top:4px;
+  font-weight:600;
+}
+
+/* ============ REFERENCES SECTION ============ */
+.references {
+  max-width:980px;
+  margin:80px auto 60px;
+  padding:0;
+}
+.refs-header {
+  text-align:center;
+  margin-bottom:40px;
+}
+.refs-header h2 {
+  font-family:var(--serif);
+  font-size:48px;
+  font-weight:400;
+  margin-bottom:12px;
+}
+.refs-header h2 .cyan-text { color:var(--ink) }
+.refs-header h2 .accent {
+  color:var(--accent);
+}
+.refs-header p {
+  color:var(--ink-3);
+  font-size:15px;
+  font-family:var(--serif);
+}
+.ref-card {
+  background:var(--panel);
+  border:1px solid var(--line);
+  border-radius:12px;
+  padding:24px 28px;
+  margin-bottom:22px;
+  display:flex;
+  gap:24px;
+  align-items:flex-start;
+  transition:all 0.2s;
+}
+.ref-card:hover {
+  border-color:var(--accent);
+  box-shadow:0 4px 24px var(--accent-glow);
+}
+.ref-card.pink-card { border-color:var(--line); }
+.ref-card.pink-card:hover {
+  border-color:var(--observe);
+  box-shadow:0 4px 24px rgba(139,92,246,0.12);
+}
+.ref-icon {
+  width:56px;
+  height:56px;
+  border-radius:12px;
+  background:rgba(99,102,241,0.08);
+  border:1px solid rgba(99,102,241,0.2);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-size:24px;
+  color:var(--accent-2);
+  flex-shrink:0;
+}
+.ref-card.pink-card .ref-icon {
+  background:rgba(139,92,246,0.08);
+  border-color:rgba(139,92,246,0.2);
+  color:var(--observe);
+}
+.ref-body { flex:1 }
+.ref-type {
+  font-family:var(--mono);
+  font-size:10px;
+  color:var(--ink-3);
+  font-weight:600;
+  letter-spacing:0.1em;
+  text-transform:uppercase;
+  margin-bottom:6px;
+}
+.ref-tagline {
+  font-size:14px;
+  color:var(--ink-2);
+  margin-bottom:12px;
+  font-family:var(--serif);
+  font-weight:300;
+}
+.ref-title {
+  font-family:var(--sans);
+  font-size:17px;
+  color:var(--ink);
+  font-weight:600;
+  margin-bottom:16px;
+}
+.ref-btn {
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  padding:8px 18px;
+  background:var(--bg-3);
+  border:1px solid var(--line-2);
+  color:var(--ink-2);
+  border-radius:6px;
+  font-size:12px;
+  font-weight:600;
+  letter-spacing:0.02em;
+  text-decoration:none;
+  transition:all 0.15s;
+  text-transform:uppercase;
+  font-family:var(--mono);
+}
+.ref-btn:hover {
+  background:var(--panel-2);
+  color:var(--ink);
+  border-color:var(--accent);
+}
+.ref-card.pink-card .ref-btn:hover {
+  border-color:var(--observe);
+}
+
+/* ============ SUMMARY TABLE ============ */
+.summary-box {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  padding: 24px;
+  margin: 20px 0;
+}
+
+/* ============ NEXT MODULE ============ */
+.module-nav{
+  margin-top:80px;padding:32px;
+  background:linear-gradient(135deg, var(--panel), var(--panel-2));
+  border:1px solid var(--line);border-radius:14px;
+  display:flex;justify-content:space-between;align-items:center;gap:24px;
+}
+.module-nav-label{font-family:var(--mono);font-size:10px;color:var(--ink-3);letter-spacing:0.15em;text-transform:uppercase}
+.module-nav-title{font-family:var(--serif);font-size:24px;font-weight:400;margin-top:6px}
+.module-nav-cta{
+  padding:12px 22px;background:var(--accent);color:#ffffff;
+  border-radius:8px;text-decoration:none;font-weight:600;font-size:13px;
+  white-space:nowrap;transition:all 0.15s;
+}
+.module-nav-cta:hover{background:var(--accent-2);transform:translateX(2px)}
+
+
+
+/* Sticky badge — moved to sidebar footer */
+.sidebar-footer{
+  margin-top:auto;
+  padding-top:24px;
+  border-top:1px solid rgba(255,255,255,0.04);
+}
+.depth-badge{
+  display:flex;align-items:center;gap:9px;
+  padding:11px 13px;
+  background:linear-gradient(135deg, rgba(99,102,241,0.06) 0%, rgba(13,17,23,0.8) 100%);
+  border:1px solid rgba(99,102,241,0.14);
+  border-radius:9px;
+  font-size:11px;font-family:var(--mono);
+  color:var(--ink-3);letter-spacing:0.03em;
+  box-shadow:0 1px 10px rgba(0,0,0,0.2);
+}
+.depth-badge .pulse{
+  width:5px;height:5px;flex-shrink:0;border-radius:50%;background:var(--accent);
+  box-shadow:0 0 6px rgba(99,102,241,0.7);
+  animation:pulse 2s infinite;
+}
+.depth-badge .badge-text{color:var(--ink-3);line-height:1.4}
+.depth-badge .badge-text strong{display:block;color:var(--ink-2);font-weight:500;font-size:11px;margin-bottom:1px}
+@keyframes pulse{0%,100%{opacity:0.5;transform:scale(1)}50%{opacity:1;transform:scale(1.3)}}
+
+/* Selection */
+::selection{background:var(--accent);color:#1a1a1a}
+
+/* Animation utilities */
+@keyframes fadeIn{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
+.fade-in{animation:fadeIn 0.6s ease forwards}
+
+/* Responsive type */
+@media(max-width:680px){
+  .hero h1{font-size:36px}
+  .hero-lede, .hero .subtitle{font-size:17px}
+  .section-title{font-size:26px}
+  p,li{font-size:16px}
+  .main{padding:40px 20px 80px}
+}
+</style>
+</head>
+<body>
+
+<div class="starfield"></div>
+<div class="stars" id="stars"></div>
+
+<div class="shell">
+<!-- ============ SIDEBAR ============ -->
+<aside class="sidebar">
+  <div class="brand">
+    <div class="brand-mark"><i class="ti ti-atom-2"></i></div>
+    <div>
+      <div class="brand-name">PyTorch Academy</div>
+      <div class="brand-sub">Data Science Track</div>
+    </div>
+  </div>
+  <div class="brand-divider"></div>
+  <div class="module-tag">
+    <div class="module-tag-label">Track 1 · Module 11.0</div>
+    <div class="module-tag-title">Distributed &amp; Acceleration</div>
+  </div>
+  <nav class="toc">
+    <div class="toc-label">In this module</div>
+    <a href="#sec-1" class="toc-link active"><span class="toc-num">01</span>CUDA</a>
+    <a href="#sec-2" class="toc-link"><span class="toc-num">02</span>AMP</a>
+    <a href="#sec-3" class="toc-link"><span class="toc-num">03</span>DDP</a>
+    <a href="#sec-4" class="toc-link"><span class="toc-num">04</span>Profiling</a>
+  </nav>
+  <div class="progress-rail">
+    <div class="progress-text">Reading progress</div>
+    <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+  </div>
+  <div class="sidebar-footer">
+    <div class="depth-badge">
+      <span class="pulse"></span>
+      <div class="badge-text">
+        <strong>Marevlo &middot; Premium Track</strong>
+        Track 1 · Module 11.0
+      </div>
+    </div>
+  </div>
+</aside>
+
+<!-- ============ MAIN CONTENT AREA ============ -->
+<main class="main">
+
+<!-- HERO -->
+<header class="hero">
+  <div class="hero-meta">
+    <span class="track-label">Track 1 · Data Science</span>
+    <span class="sep"></span>
+    <span>Module 11.0</span>
+    <span class="sep"></span>
+    <span>Course 01</span>
+    <span class="sep"></span>
+    <span class="level-badge">Core Bedrock</span>
+  </div>
+  <h1>Distributed &amp; <em>Acceleration.</em></h1>
+  <p class="subtitle">GPU mastery — CUDA fundamentals, mixed precision, multi-GPU DDP training, and profiling to find the real bottleneck.</p>
+  <div class="hero-stats">
+    <div class="hero-stat"><div class="hero-stat-num">4</div><div class="hero-stat-label">Module sections</div></div>
+    <div class="hero-stat"><div class="hero-stat-num">6</div><div class="hero-stat-label">Interactive widgets</div></div>
+    <div class="hero-stat"><div class="hero-stat-num">1</div><div class="hero-stat-label">Mini projects</div></div>
+    <div class="hero-stat"><div class="hero-stat-num">100%</div><div class="hero-stat-label">Vectorised code</div></div>
+  </div>
+</header>
+
+<div class="goal-callout">
+  <h3><i class="ti ti-target"></i> MODULE GOAL</h3>
+  <p>Use GPUs effectively. Understand how tensors move between CPU and GPU, use mixed precision to halve memory usage and double training speed, set up multi-GPU training with DDP, and profile your pipeline to find the actual bottleneck.</p>
+</div>
+
+<div class="content">
+
+  <!-- ============ SECTION 1 ============ -->
+  <section class="section" id="sec-1">
+    <div class="section-num">SECTION 01</div>
+    <h2>CUDA Fundamentals for PyTorch Users</h2>
+
+    <h3>The CPU vs GPU Mental Model</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th></th><th>CPU</th><th>GPU</th></tr></thead>
+        <tbody>
+          <tr><td>Cores</td><td>8–64 powerful cores</td><td>Thousands of small cores</td></tr>
+          <tr><td>Best for</td><td>Sequential logic, complex branching</td><td>Massively parallel math (matmul, convolutions)</td></tr>
+          <tr><td>Memory</td><td>RAM (GB–TB, fast access)</td><td>VRAM (4–80 GB, faster for tensors)</td></tr>
+          <tr><td>PyTorch</td><td>Default device</td><td>Opt-in via <code>.to("cuda")</code></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- INTERACTIVE WIDGET 1: Device Transfer Visualiser -->
+    <div class="widget">
+      <div class="widget-title">CPU ↔ GPU Tensor Transfers</div>
+      <div class="widget-subtitle">Every <code>.to("cuda")</code> moves bytes across the PCIe bus. Bigger tensors take proportionally longer. Click the transfer buttons to see which side holds your data.</div>
+      <div class="controls">
+        <div class="ctrl-row">
+          <span class="ctrl-label">Tensor shape</span>
+          <div class="btn-row">
+            <button class="pill-btn active" data-shape="small">(1k, 512)</button>
+            <button class="pill-btn" data-shape="medium">(10k, 512)</button>
+            <button class="pill-btn" data-shape="large">(100k, 1024)</button>
+            <button class="pill-btn" data-shape="huge">(1M, 2048)</button>
+          </div>
+        </div>
+        <div class="ctrl-row">
+          <span class="ctrl-label">dtype</span>
+          <div class="btn-row">
+            <button class="pill-btn active" data-dtype="float32">float32</button>
+            <button class="pill-btn" data-dtype="float16">float16</button>
+            <button class="pill-btn" data-dtype="int8">int8</button>
+          </div>
+        </div>
+        <div class="btn-row" style="justify-content:center;">
+          <button class="pill-btn" id="to-gpu"><i class="ti ti-arrow-right"></i> .to("cuda")</button>
+          <button class="pill-btn" id="to-cpu"><i class="ti ti-arrow-left"></i> .cpu()</button>
+        </div>
+      </div>
+      <div class="devices">
+        <div class="device-box cpu">
+          <div class="device-name"><i class="ti ti-cpu"></i> CPU (host)</div>
+          <div class="device-meta" id="cpu-meta">RAM • ~10–50 GB/s</div>
+          <div class="device-tensor" id="cpu-tiles"></div>
+        </div>
+        <div class="transfer-arrow">
+          <div class="arrow-label" id="bus-label">PCIe ×16</div>
+          <span id="bus-icon"><i class="ti ti-arrows-left-right"></i></span>
+          <div class="arrow-bottom" id="bus-rate">32 GB/s</div>
+        </div>
+        <div class="device-box gpu">
+          <div class="device-name"><i class="ti ti-cpu-2"></i> GPU (device)</div>
+          <div class="device-meta" id="gpu-meta">VRAM • ~500–1000 GB/s</div>
+          <div class="device-tensor" id="gpu-tiles"></div>
+        </div>
+      </div>
+      <div class="metric-grid">
+        <div class="metric"><div class="metric-label">Tensor size</div><div class="metric-value" id="dev-bytes">2.0 MB</div></div>
+        <div class="metric"><div class="metric-label">Transfer time</div><div class="metric-value" id="dev-time" style="font-size:14px;">62 μs</div></div>
+        <div class="metric"><div class="metric-label">Currently on</div><div class="metric-value" id="dev-loc" style="font-size:14px;">cpu</div></div>
+      </div>
+      <div class="viz-out" id="dev-out"></div>
+    </div>
+
+    <div class="code-block">
+      <div class="code-header"><span class="code-lang">python</span><button class="code-copy"><i class="ti ti-copy"></i> Copy</button></div>
+<pre><code><span class="kw">import</span> torch
+<span class="kw">import</span> torch.nn <span class="kw">as</span> nn
+
+<span class="co"># Check GPU availability and properties</span>
+<span class="fn">print</span>(<span class="st">f"CUDA available: {torch.cuda.is_available()}"</span>)
+<span class="fn">print</span>(<span class="st">f"Device count:   {torch.cuda.device_count()}"</span>)
+
+<span class="kw">if</span> torch.cuda.<span class="fn">is_available</span>():
+    <span class="fn">print</span>(<span class="st">f"Device name:    {torch.cuda.get_device_name(0)}"</span>)
+    props = torch.cuda.<span class="fn">get_device_properties</span>(<span class="st">0</span>)
+    <span class="fn">print</span>(<span class="st">f"Total VRAM:     {props.total_memory / 1e9:.1f} GB"</span>)
+
+device = torch.<span class="fn">device</span>(<span class="st">"cuda"</span> <span class="kw">if</span> torch.cuda.<span class="fn">is_available</span>() <span class="kw">else</span> <span class="st">"cpu"</span>)
+<span class="fn">print</span>(<span class="st">f"\nUsing device: {device}"</span>)</code></pre>
+    </div>
+    <div class="output">CUDA available: False
+Device count:   0
+
+Using device: cpu</div>
+
+    <h3>Moving Data to GPU</h3>
+    <div class="code-block">
+      <div class="code-header"><span class="code-lang">python</span><button class="code-copy"><i class="ti ti-copy"></i> Copy</button></div>
+<pre><code><span class="co"># The correct device management pattern</span>
+device = torch.<span class="fn">device</span>(<span class="st">"cuda"</span> <span class="kw">if</span> torch.cuda.<span class="fn">is_available</span>() <span class="kw">else</span> <span class="st">"cpu"</span>)
+
+<span class="co"># Tensors</span>
+x_cpu = torch.<span class="fn">randn</span>(<span class="st">1000</span>, <span class="st">512</span>)
+x_gpu = x_cpu.<span class="fn">to</span>(device)           <span class="co"># or x_cpu.cuda()</span>
+<span class="fn">print</span>(<span class="st">f"Tensor device: {x_gpu.device}"</span>)
+
+<span class="co"># Models — moves ALL parameters and buffers at once</span>
+model = nn.<span class="cls">Sequential</span>(nn.<span class="fn">Linear</span>(<span class="st">512</span>, <span class="st">256</span>), nn.<span class="fn">ReLU</span>(), nn.<span class="fn">Linear</span>(<span class="st">256</span>, <span class="st">10</span>))
+model = model.<span class="fn">to</span>(device)
+
+<span class="co"># Training loop — move batches to device</span>
+<span class="kw">def</span> <span class="fn">train_step</span>(model, X_batch, y_batch, opt, criterion):
+    X_batch = X_batch.<span class="fn">to</span>(device)          <span class="co"># Move batch to GPU</span>
+    y_batch = y_batch.<span class="fn">to</span>(device)
+    opt.<span class="fn">zero_grad</span>()
+    loss = <span class="fn">criterion</span>(<span class="fn">model</span>(X_batch), y_batch)
+    loss.<span class="fn">backward</span>()
+    opt.<span class="fn">step</span>()
+    <span class="kw">return</span> loss.<span class="fn">item</span>()                    <span class="co"># Pull scalar back to CPU</span>
+
+<span class="fn">print</span>(<span class="st">"Device management pattern defined."</span>)</code></pre>
+    </div>
+    <div class="output">Tensor device: cpu
+Device management pattern defined.</div>
+
+    <h3>Avoiding Common CUDA Errors</h3>
+    <div class="code-block">
+      <div class="code-header"><span class="code-lang">python</span><button class="code-copy"><i class="ti ti-copy"></i> Copy</button></div>
+<pre><code><span class="co"># ERROR: tensors on different devices</span>
+<span class="co"># x_cpu = torch.randn(4, 4)</span>
+<span class="co"># x_gpu = torch.randn(4, 4, device='cuda')</span>
+<span class="co"># x_cpu + x_gpu → RuntimeError: Expected all tensors on same device</span>
+
+<span class="co"># ERROR: accumulating GPU tensor in a Python list</span>
+<span class="co"># losses = []</span>
+<span class="co"># for batch in loader:</span>
+<span class="co">#     loss = train_step(...)</span>
+<span class="co">#     losses.append(loss)        # ← This keeps GPU memory alive!</span>
+<span class="co"># Fix: losses.append(loss.item())   # Pull to Python float first</span>
+
+<span class="co"># ERROR: calling .numpy() on GPU tensor</span>
+<span class="co"># t = torch.randn(4, device='cuda')</span>
+<span class="co"># t.numpy() → Error</span>
+<span class="co"># Fix:</span>
+<span class="co"># t.cpu().numpy()</span>
+<span class="co"># or: t.detach().cpu().numpy()</span>
+
+<span class="fn">print</span>(<span class="st">"Common CUDA error patterns documented — avoid these."</span>)</code></pre>
+    </div>
+    <div class="output">Common CUDA error patterns documented — avoid these.</div>
+
+    <div class="callout callout-warn">
+      <i class="ti ti-alert-triangle"></i>
+      <div class="callout-content">
+        <div class="callout-title">WARNING — Three CUDA mistakes that bite everyone</div>
+        Mixed-device tensors throw <code>RuntimeError</code>. Accumulating GPU tensors in a Python list (instead of <code>.item()</code>) silently leaks VRAM. Calling <code>.numpy()</code> directly on a GPU tensor errors — chain <code>.cpu().numpy()</code> instead.
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ SECTION 2 ============ -->
+  <section class="section" id="sec-2">
+    <div class="section-num">SECTION 02</div>
+    <h2>Mixed Precision Training</h2>
+
+    <!-- INTERACTIVE WIDGET 2: Mixed Precision Savings Calculator -->
+    <div class="widget">
+      <div class="widget-title">Mixed Precision Memory &amp; Speed Calculator</div>
+      <div class="widget-subtitle">FP16 uses 2 bytes per value vs FP32's 4 bytes. See exactly how much memory and time you save based on your model size, batch size, and sequence length.</div>
+      <div class="controls">
+        <div class="ctrl-row">
+          <span class="ctrl-label">Model parameters</span>
+          <input type="range" id="amp-params" min="1" max="1000" value="100" step="1">
+          <span class="ctrl-value" id="amp-params-v">100M</span>
+        </div>
+        <div class="ctrl-row">
+          <span class="ctrl-label">Batch size</span>
+          <input type="range" id="amp-batch" min="8" max="512" value="64" step="8">
+          <span class="ctrl-value" id="amp-batch-v">64</span>
+        </div>
+        <div class="ctrl-row">
+          <span class="ctrl-label">Activation factor</span>
+          <input type="range" id="amp-act" min="1" max="50" value="8" step="1">
+          <span class="ctrl-value" id="amp-act-v">8×</span>
+        </div>
+      </div>
+      <div class="prec-row">
+        <div class="prec-card fp32">
+          <div class="prec-title">FP32 (baseline)</div>
+          <div class="prec-row-mini"><span>Weights</span><span id="fp32-w">400 MB</span></div>
+          <div class="bytes-bar"><div class="bytes-bar-fill" id="fp32-w-bar" style="width:100%"></div></div>
+          <div class="prec-row-mini"><span>Optimizer state</span><span id="fp32-o">800 MB</span></div>
+          <div class="bytes-bar"><div class="bytes-bar-fill" id="fp32-o-bar" style="width:100%"></div></div>
+          <div class="prec-row-mini"><span>Activations</span><span id="fp32-a">1024 MB</span></div>
+          <div class="bytes-bar"><div class="bytes-bar-fill" id="fp32-a-bar" style="width:100%"></div></div>
+          <div class="prec-row-mini" style="margin-top:8px;font-weight:600;color:var(--text-primary);"><span>Total VRAM</span><span id="fp32-tot">2224 MB</span></div>
+        </div>
+        <div class="prec-card fp16">
+          <div class="prec-title">FP16 (autocast)</div>
+          <div class="prec-row-mini"><span>Weights</span><span id="fp16-w">200 MB</span></div>
+          <div class="bytes-bar"><div class="bytes-bar-fill" id="fp16-w-bar" style="width:50%"></div></div>
+          <div class="prec-row-mini"><span>Optimizer state</span><span id="fp16-o">800 MB</span></div>
+          <div class="bytes-bar"><div class="bytes-bar-fill" id="fp16-o-bar" style="width:100%"></div></div>
+          <div class="prec-row-mini"><span>Activations</span><span id="fp16-a">512 MB</span></div>
+          <div class="bytes-bar"><div class="bytes-bar-fill" id="fp16-a-bar" style="width:50%"></div></div>
+          <div class="prec-row-mini" style="margin-top:8px;font-weight:600;color:var(--success);"><span>Total VRAM</span><span id="fp16-tot">1512 MB</span></div>
+        </div>
+      </div>
+      <div class="metric-grid">
+        <div class="metric"><div class="metric-label">Memory saved</div><div class="metric-value" id="amp-saved" style="color:var(--success);">32%</div></div>
+        <div class="metric"><div class="metric-label">Expected speedup</div><div class="metric-value" id="amp-speed" style="color:var(--cyan);">~1.8×</div></div>
+        <div class="metric"><div class="metric-label">Max possible batch</div><div class="metric-value" id="amp-maxb" style="font-size:14px;">94</div></div>
+      </div>
+      <div class="viz-out" id="amp-out"></div>
+    </div>
+
+    <div class="code-block">
+      <div class="code-header"><span class="code-lang">python</span><button class="code-copy"><i class="ti ti-copy"></i> Copy</button></div>
+<pre><code><span class="kw">from</span> torch.amp <span class="kw">import</span> autocast, GradScaler
+
+<span class="kw">def</span> <span class="fn">train_with_amp</span>(model, loader_simulated, optimizer, criterion, device):
+    <span class="st">"""Full mixed precision training loop."""</span>
+    <span class="co"># Use 'cuda' scaler only when GPU available; CPU training doesn't need scaling</span>
+    device_str = <span class="fn">str</span>(device)
+    scaler = <span class="fn">GradScaler</span>(<span class="st">'cuda'</span>, enabled=(device_str == <span class="st">'cuda'</span>))
+    model.<span class="fn">train</span>()
+
+    <span class="kw">for</span> X_b, y_b <span class="kw">in</span> loader_simulated:
+        X_b, y_b = X_b.<span class="fn">to</span>(device), y_b.<span class="fn">to</span>(device)
+        optimizer.<span class="fn">zero_grad</span>()
+
+        <span class="co"># Forward pass in float16 where safe (no-op on CPU)</span>
+        <span class="kw">with</span> <span class="fn">autocast</span>(device_type=device_str, enabled=(device_str == <span class="st">'cuda'</span>)):
+            output = <span class="fn">model</span>(X_b)
+            loss   = <span class="fn">criterion</span>(output, y_b)
+
+        <span class="kw">if</span> device_str == <span class="st">'cuda'</span>:
+            scaler.<span class="fn">scale</span>(loss).<span class="fn">backward</span>()
+            scaler.<span class="fn">unscale_</span>(optimizer)
+            torch.nn.utils.<span class="fn">clip_grad_norm_</span>(model.<span class="fn">parameters</span>(), <span class="st">1.0</span>)
+            scaler.<span class="fn">step</span>(optimizer)
+            scaler.<span class="fn">update</span>()
+        <span class="kw">else</span>:
+            <span class="co"># CPU path: normal backward (no scaling needed)</span>
+            loss.<span class="fn">backward</span>()
+            torch.nn.utils.<span class="fn">clip_grad_norm_</span>(model.<span class="fn">parameters</span>(), <span class="st">1.0</span>)
+            optimizer.<span class="fn">step</span>()
+
+    <span class="kw">return</span> loss.<span class="fn">item</span>()
+
+
+<span class="co"># Simulate usage</span>
+model     = nn.<span class="cls">Sequential</span>(nn.<span class="fn">Linear</span>(<span class="st">32</span>, <span class="st">64</span>), nn.<span class="fn">ReLU</span>(), nn.<span class="fn">Linear</span>(<span class="st">64</span>, <span class="st">4</span>)).<span class="fn">to</span>(device)
+optimizer = torch.optim.<span class="fn">AdamW</span>(model.<span class="fn">parameters</span>(), lr=<span class="st">1e-3</span>)
+criterion = nn.<span class="fn">CrossEntropyLoss</span>()
+
+fake_loader = [(torch.<span class="fn">randn</span>(<span class="st">32</span>, <span class="st">32</span>), torch.<span class="fn">randint</span>(<span class="st">0</span>, <span class="st">4</span>, (<span class="st">32</span>,))) <span class="kw">for</span> _ <span class="kw">in</span> <span class="fn">range</span>(<span class="st">5</span>)]
+loss_val    = <span class="fn">train_with_amp</span>(model, fake_loader, optimizer, criterion, device)
+<span class="fn">print</span>(<span class="st">f"AMP training step complete. Loss: {loss_val:.4f}"</span>)</code></pre>
+    </div>
+    <div class="output">AMP training step complete. Loss: 1.4598</div>
+
+    <h3>Memory Savings Checklist</h3>
+
+    <!-- INTERACTIVE WIDGET 3: Memory Strategy Stacker -->
+    <div class="widget">
+      <div class="widget-title">Memory Optimisation Strategy Stacker</div>
+      <div class="widget-subtitle">Toggle each memory-saving technique and watch the live VRAM gauge. Many of these stack — but each one trades something away (speed, complexity, or numerical stability).</div>
+      <div class="mem-strats" id="mem-strats"></div>
+      <div class="chart-box" style="height:130px;"><canvas id="mem-chart"></canvas></div>
+      <div class="metric-grid">
+        <div class="metric"><div class="metric-label">Baseline VRAM</div><div class="metric-value" id="mem-base">12.0 GB</div></div>
+        <div class="metric"><div class="metric-label">Final VRAM</div><div class="metric-value" id="mem-final" style="color:var(--success);">12.0 GB</div></div>
+        <div class="metric"><div class="metric-label">Fits in</div><div class="metric-value" id="mem-fits" style="font-size:14px;">A100 40GB</div></div>
+        <div class="metric"><div class="metric-label">Speed cost</div><div class="metric-value" id="mem-speed" style="font-size:14px;">1.0× (baseline)</div></div>
+      </div>
+      <div class="viz-out" id="mem-out"></div>
+    </div>
+
+    <div class="code-block">
+      <div class="code-header"><span class="code-lang">python</span><button class="code-copy"><i class="ti ti-copy"></i> Copy</button></div>
+<pre><code><span class="kw">def</span> <span class="fn">print_memory_stats</span>():
+    <span class="kw">if</span> torch.cuda.<span class="fn">is_available</span>():
+        allocated = torch.cuda.<span class="fn">memory_allocated</span>() / <span class="st">1e9</span>
+        reserved  = torch.cuda.<span class="fn">memory_reserved</span>() / <span class="st">1e9</span>
+        <span class="fn">print</span>(<span class="st">f"GPU memory — allocated: {allocated:.2f} GB, reserved: {reserved:.2f} GB"</span>)
+    <span class="kw">else</span>:
+        <span class="fn">print</span>(<span class="st">"(CPU only — no GPU memory to report)"</span>)
+
+
+<span class="co"># Memory optimisation strategies:</span>
+<span class="co"># 1. Mixed precision (float16 vs float32) → 2× savings</span>
+<span class="co"># 2. Gradient accumulation → train with larger effective batch without OOM</span>
+<span class="co"># 3. Gradient checkpointing → recompute activations during backward (slower, less memory)</span>
+
+<span class="co"># Gradient checkpointing example</span>
+<span class="kw">from</span> torch.utils.checkpoint <span class="kw">import</span> checkpoint
+
+<span class="kw">class</span> <span class="cls">CheckpointedBlock</span>(nn.Module):
+    <span class="kw">def</span> <span class="fn">__init__</span>(self):
+        <span class="fn">super</span>().<span class="fn">__init__</span>()
+        self.layers = nn.<span class="cls">Sequential</span>(
+            nn.<span class="fn">Linear</span>(<span class="st">128</span>, <span class="st">256</span>), nn.<span class="fn">ReLU</span>(),
+            nn.<span class="fn">Linear</span>(<span class="st">256</span>, <span class="st">128</span>), nn.<span class="fn">ReLU</span>()
+        )
+
+    <span class="kw">def</span> <span class="fn">forward</span>(self, x):
+        <span class="co"># Checkpointed: don't store activations; recompute in backward</span>
+        <span class="kw">return</span> <span class="fn">checkpoint</span>(self.layers, x, use_reentrant=<span class="kw">False</span>)
+
+
+<span class="fn">print_memory_stats</span>()</code></pre>
+    </div>
+    <div class="output">(CPU only — no GPU memory to report)</div>
+  </section>
+
+  <!-- ============ SECTION 3 ============ -->
+  <section class="section" id="sec-3">
+    <div class="section-num">SECTION 03</div>
+    <h2>Multi-GPU: DDP Basics</h2>
+
+    <p>DDP (DistributedDataParallel) is the standard way to train on multiple GPUs. Each GPU runs a full copy of the model; gradients are synchronised after each backward pass.</p>
+
+    <!-- INTERACTIVE WIDGET 4: DDP Gradient Sync Simulator -->
+    <div class="widget">
+      <div class="widget-title">DDP Gradient All-Reduce Simulator</div>
+      <div class="widget-subtitle">N GPUs each compute gradients on their local data shard, then synchronise. The all-reduce averages gradients across all GPUs — every GPU ends up with identical updated weights.</div>
+      <div class="controls">
+        <div class="ctrl-row">
+          <span class="ctrl-label">World size (GPUs)</span>
+          <div class="btn-row">
+            <button class="pill-btn" data-ws="2">2</button>
+            <button class="pill-btn active" data-ws="4">4</button>
+            <button class="pill-btn" data-ws="8">8</button>
+          </div>
+        </div>
+        <div class="ctrl-row">
+          <span class="ctrl-label">Phase</span>
+          <div class="btn-row">
+            <button class="pill-btn" data-phase="forward">1. Forward</button>
+            <button class="pill-btn" data-phase="backward">2. Backward (local)</button>
+            <button class="pill-btn" data-phase="sync">3. All-reduce sync</button>
+            <button class="pill-btn" data-phase="step">4. Optimizer step</button>
+          </div>
+        </div>
+        <div class="btn-row" style="justify-content:flex-end;">
+          <button class="pill-btn" id="ddp-play"><i class="ti ti-player-play"></i> Play full cycle</button>
+        </div>
+      </div>
+      <div class="gpu-cluster" id="gpu-cluster"></div>
+      <div class="metric-grid">
+        <div class="metric"><div class="metric-label">Effective batch size</div><div class="metric-value" id="ddp-batch">256</div></div>
+        <div class="metric"><div class="metric-label">Per-GPU batch</div><div class="metric-value" id="ddp-perGpu">64</div></div>
+        <div class="metric"><div class="metric-label">Comm overhead</div><div class="metric-value" id="ddp-overhead" style="font-size:14px;">~5%</div></div>
+        <div class="metric"><div class="metric-label">Theoretical speedup</div><div class="metric-value" id="ddp-speedup" style="color:var(--success);">3.8×</div></div>
+      </div>
+      <div class="viz-out" id="ddp-out"></div>
+    </div>
+
+    <div class="code-block">
+      <div class="code-header"><span class="code-lang">python</span><button class="code-copy"><i class="ti ti-copy"></i> Copy</button></div>
+<pre><code><span class="co"># DDP requires a proper launch script (torchrun or mp.spawn)</span>
+<span class="co"># Here is the template — run as a script, not a notebook cell</span>
+
+DDP_TEMPLATE = <span class="st">'''
+import torch
+import torch.nn as nn
+import torch.distributed as dist
+from torch.nn.parallel import DistributedDataParallel as DDP
+from torch.utils.data import DataLoader, DistributedSampler
+
+def setup(rank, world_size):
+    dist.init_process_group("nccl", rank=rank, world_size=world_size)
+    torch.cuda.set_device(rank)
+
+def cleanup():
+    dist.destroy_process_group()
+
+def train(rank, world_size, dataset):
+    setup(rank, world_size)
+    device = torch.device(f"cuda:{rank}")
+
+    # Each GPU gets a non-overlapping shard of the dataset
+    sampler    = DistributedSampler(dataset, num_replicas=world_size, rank=rank)
+    dataloader = DataLoader(dataset, batch_size=64, sampler=sampler)
+
+    model     = MyModel().to(device)
+    model     = DDP(model, device_ids=[rank])               # Wrap with DDP
+    optimizer = torch.optim.AdamW(model.parameters())
+    criterion = nn.CrossEntropyLoss()
+
+    for epoch in range(10):
+        sampler.set_epoch(epoch)                             # Important: reshuffle each epoch
+        for X_b, y_b in dataloader:
+            X_b, y_b = X_b.to(device), y_b.to(device)
+            optimizer.zero_grad()
+            loss = criterion(model(X_b), y_b)
+            loss.backward()                                 # Gradients synced automatically
+            optimizer.step()
+
+        if rank == 0:                                   # Only rank-0 saves/logs
+            print(f"Epoch {epoch}: loss={loss.item():.4f}")
+
+    cleanup()
+
+if __name__ == "__main__":
+    import torch.multiprocessing as mp
+    world_size = torch.cuda.device_count()
+    mp.spawn(train, args=(world_size, dataset), nprocs=world_size)
+'''</span>
+
+<span class="fn">print</span>(<span class="st">"DDP template written."</span>)
+<span class="fn">print</span>(<span class="st">"Launch with: torchrun --nproc_per_node=NUM_GPUS train.py"</span>)</code></pre>
+    </div>
+    <div class="output">DDP template written.
+Launch with: torchrun --nproc_per_node=NUM_GPUS train.py</div>
+
+    <div class="callout callout-tip">
+      <i class="ti ti-bulb"></i>
+      <div class="callout-content">
+        <div class="callout-title">TIP — DDP gotchas to remember</div>
+        Always call <code>sampler.set_epoch(epoch)</code> — without it, every epoch sees the same shuffle. Only rank 0 should save checkpoints and log to disk. Use NCCL backend on Nvidia GPUs (Gloo for CPU-only). When in doubt: <code>torchrun --nproc_per_node=NUM_GPUS train.py</code>.
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ SECTION 4 ============ -->
+  <section class="section" id="sec-4">
+    <div class="section-num">SECTION 04</div>
+    <h2>Profiling: Find the Bottleneck</h2>
+
+    <!-- INTERACTIVE WIDGET 5: Profiler Trace Explorer -->
+    <div class="widget">
+      <div class="widget-title">Profiler Trace Explorer</div>
+      <div class="widget-subtitle">Top 8 slowest operations from <code>torch.profiler</code>. Click an "optimisation" pill to see how each common fix changes the hottest paths.</div>
+      <div class="controls">
+        <div class="ctrl-row">
+          <span class="ctrl-label">Optimisation</span>
+          <div class="btn-row">
+            <button class="pill-btn active" data-opt="none">No optimisation</button>
+            <button class="pill-btn" data-opt="amp">+ AMP / float16</button>
+            <button class="pill-btn" data-opt="larger">+ Larger batch</button>
+            <button class="pill-btn" data-opt="numworkers">+ Num workers fix</button>
+            <button class="pill-btn" data-opt="all">All optimisations</button>
+          </div>
+        </div>
+      </div>
+      <div class="prof-list" id="prof-list"></div>
+      <div class="metric-grid">
+        <div class="metric"><div class="metric-label">Total step time</div><div class="metric-value" id="prof-total" style="font-size:14px;">10.76 ms</div></div>
+        <div class="metric"><div class="metric-label">Compute %</div><div class="metric-value" id="prof-compute" style="font-size:14px;">68%</div></div>
+        <div class="metric"><div class="metric-label">Data load %</div><div class="metric-value" id="prof-data" style="font-size:14px;color:var(--warn);">14%</div></div>
+        <div class="metric"><div class="metric-label">Optim %</div><div class="metric-value" id="prof-opt-pct" style="font-size:14px;">18%</div></div>
+      </div>
+      <div class="viz-out" id="prof-out"></div>
+    </div>
+
+    <div class="code-block">
+      <div class="code-header"><span class="code-lang">python</span><button class="code-copy"><i class="ti ti-copy"></i> Copy</button></div>
+<pre><code><span class="co"># PyTorch Profiler — find what's slow</span>
+<span class="kw">import</span> torch.profiler <span class="kw">as</span> profiler
+
+model = nn.<span class="cls">Sequential</span>(nn.<span class="fn">Linear</span>(<span class="st">256</span>, <span class="st">512</span>), nn.<span class="fn">ReLU</span>(), nn.<span class="fn">Linear</span>(<span class="st">512</span>, <span class="st">10</span>)).<span class="fn">to</span>(device)
+x     = torch.<span class="fn">randn</span>(<span class="st">64</span>, <span class="st">256</span>).<span class="fn">to</span>(device)
+y     = torch.<span class="fn">randint</span>(<span class="st">0</span>, <span class="st">10</span>, (<span class="st">64</span>,)).<span class="fn">to</span>(device)
+opt   = torch.optim.<span class="fn">AdamW</span>(model.<span class="fn">parameters</span>())
+crit  = nn.<span class="fn">CrossEntropyLoss</span>()
+
+<span class="co"># Profile a few steps</span>
+<span class="kw">with</span> profiler.<span class="fn">profile</span>(
+    activities=[profiler.ProfilerActivity.CPU],
+    record_shapes=<span class="kw">True</span>,
+    profile_memory=<span class="kw">True</span>,
+) <span class="kw">as</span> prof:
+    <span class="kw">for</span> _ <span class="kw">in</span> <span class="fn">range</span>(<span class="st">5</span>):
+        opt.<span class="fn">zero_grad</span>()
+        loss = <span class="fn">crit</span>(<span class="fn">model</span>(x), y)
+        loss.<span class="fn">backward</span>()
+        opt.<span class="fn">step</span>()
+
+<span class="co"># Print top-10 slowest operations</span>
+<span class="fn">print</span>(prof.<span class="fn">key_averages</span>().<span class="fn">table</span>(sort_by=<span class="st">"cpu_time_total"</span>, row_limit=<span class="st">8</span>))</code></pre>
+    </div>
+    <div class="output">-------------------------------------------------  -----------  -----------
+                                              Name    Self CPU %    Self CPU
+-------------------------------------------------  -----------  -----------
+                       Optimizer.step#AdamW.step       20.07%      2.159ms
+   autograd::engine::evaluate_function: AddmmBack        1.16%       125.2us
+                                    AddmmBackward0       4.39%       472.5us
+                                      aten::linear       0.53%        56.5us
+                                       aten::addmm       9.26%       996.8us
+                                          aten::to       1.52%       164.1us
+                                          aten::mm       7.46%       803.1us
+                                    aten::_to_copy       4.58%       492.4us
+-------------------------------------------------  -----------  -----------
+Self CPU time total: 10.761ms</div>
+
+    <!-- INTERACTIVE WIDGET 6: Throughput Benchmark -->
+    <div class="widget">
+      <div class="widget-title">Throughput Benchmark Comparator</div>
+      <div class="widget-subtitle">Compare samples/sec across different device + batch + precision combinations. The simple <code>warmup → synchronize → time</code> pattern is reliable for benchmarking.</div>
+      <div class="controls">
+        <div class="ctrl-row">
+          <span class="ctrl-label">Device</span>
+          <div class="btn-row">
+            <button class="pill-btn active" data-dev="cpu">CPU</button>
+            <button class="pill-btn" data-dev="v100">V100</button>
+            <button class="pill-btn" data-dev="a100">A100</button>
+            <button class="pill-btn" data-dev="h100">H100</button>
+          </div>
+        </div>
+        <div class="ctrl-row">
+          <span class="ctrl-label">Precision</span>
+          <div class="btn-row">
+            <button class="pill-btn active" data-tp-prec="fp32">FP32</button>
+            <button class="pill-btn" data-tp-prec="fp16">FP16 (AMP)</button>
+            <button class="pill-btn" data-tp-prec="bf16">BF16</button>
+          </div>
+        </div>
+        <div class="ctrl-row">
+          <span class="ctrl-label">Batch size</span>
+          <input type="range" id="tp-batch" min="32" max="2048" value="256" step="32">
+          <span class="ctrl-value" id="tp-batch-v">256</span>
+        </div>
+      </div>
+      <div class="chart-box" style="height:280px;"><canvas id="tp-chart"></canvas></div>
+      <div class="metric-grid">
+        <div class="metric"><div class="metric-label">Throughput</div><div class="metric-value" id="tp-rate" style="color:var(--success);font-size:15px;">838K /s</div></div>
+        <div class="metric"><div class="metric-label">Time / 100 batches</div><div class="metric-value" id="tp-time" style="font-size:14px;">0.031 s</div></div>
+        <div class="metric"><div class="metric-label">Speedup vs CPU</div><div class="metric-value" id="tp-speedup">1.0×</div></div>
+      </div>
+      <div class="viz-out" id="tp-out"></div>
+    </div>
+
+    <div class="code-block">
+      <div class="code-header"><span class="code-lang">python</span><button class="code-copy"><i class="ti ti-copy"></i> Copy</button></div>
+<pre><code><span class="co"># Simple throughput benchmark</span>
+<span class="kw">import</span> time
+
+<span class="kw">def</span> <span class="fn">benchmark_throughput</span>(model, batch_size=<span class="st">256</span>, n_batches=<span class="st">100</span>, input_dim=<span class="st">256</span>):
+    model.<span class="fn">eval</span>()
+    x = torch.<span class="fn">randn</span>(batch_size, input_dim).<span class="fn">to</span>(device)
+
+    <span class="co"># Warmup</span>
+    <span class="kw">with</span> torch.<span class="fn">no_grad</span>():
+        <span class="kw">for</span> _ <span class="kw">in</span> <span class="fn">range</span>(<span class="st">5</span>): <span class="fn">model</span>(x)
+
+    <span class="kw">if</span> torch.cuda.<span class="fn">is_available</span>():
+        torch.cuda.<span class="fn">synchronize</span>()
+
+    start = time.<span class="fn">time</span>()
+    <span class="kw">with</span> torch.<span class="fn">no_grad</span>():
+        <span class="kw">for</span> _ <span class="kw">in</span> <span class="fn">range</span>(n_batches): <span class="fn">model</span>(x)
+
+    <span class="kw">if</span> torch.cuda.<span class="fn">is_available</span>():
+        torch.cuda.<span class="fn">synchronize</span>()
+
+    elapsed = time.<span class="fn">time</span>() - start
+    samples_per_sec = (n_batches * batch_size) / elapsed
+    <span class="fn">print</span>(<span class="st">f"Throughput: {samples_per_sec:,.0f} samples/sec "</span>
+          <span class="st">f"({elapsed:.3f}s for {n_batches} batches of {batch_size})"</span>)
+
+
+<span class="fn">benchmark_throughput</span>(model)</code></pre>
+    </div>
+    <div class="output">Throughput: 838,586 samples/sec     (0.031s for 100 batches of 256)</div>
+  </section>
+
+  <!-- ============ SUMMARY ============ -->
+  <section class="section" id="sec-summary">
+    <div class="section-num">RECAP</div>
+    <h2>Module Summary</h2>
+    <div class="summary-box">
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Concept</th><th>Key Takeaway</th></tr></thead>
+          <tbody>
+            <tr><td>Device management</td><td><code>model.to(device)</code> and <code>batch.to(device)</code> every iteration.</td></tr>
+            <tr><td>Mixed precision</td><td><code>autocast</code> + <code>GradScaler</code> — ~2× speed, ~50% memory on compatible GPUs.</td></tr>
+            <tr><td>Gradient checkpointing</td><td>Trade compute for memory — useful for large models.</td></tr>
+            <tr><td>DDP</td><td>Each GPU has a full model copy; gradients synced after backward. Use <code>torchrun</code>.</td></tr>
+            <tr><td>Profiling</td><td><code>torch.profiler</code> identifies slow ops; benchmark throughput to confirm fixes.</td></tr>
+            <tr><td>Common CUDA errors</td><td>Wrong device, <code>.numpy()</code> on GPU tensor, accumulating GPU tensors in lists.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <h3>What's Next</h3>
+    <p>Module 12 — Packaging &amp; Deployment closes the loop: export your trained model, serve it via FastAPI, monitor latency and drift in production, and structure a rollback-safe deployment.</p>
+  </section>
+</div>
+
+<!-- ============ REFERENCES ============ -->
+<section class="references">
+  <div class="refs-header">
+    <h2><span class="cyan-text">Learn &amp;</span> <span class="accent">Practice</span></h2>
+    <p>Explore curated resources and practice with real code</p>
+  </div>
+
+  <div class="ref-card">
+    <div class="ref-icon"><i class="ti ti-bulb"></i></div>
+    <div class="ref-body">
+      <div class="ref-type">Progressive Article</div>
+      <div class="ref-tagline">Stuck? Start here — beginner-friendly explanation</div>
+      <div class="ref-title">Automatic Mixed Precision — PyTorch Tutorial</div>
+      <a href="https://docs.pytorch.org/tutorials/recipes/recipes/amp_recipe.html" target="_blank" rel="noopener" class="ref-btn"><i class="ti ti-external-link"></i> Read Article</a>
+    </div>
+  </div>
+
+  <div class="ref-card">
+    <div class="ref-icon"><i class="ti ti-file-text"></i></div>
+    <div class="ref-body">
+      <div class="ref-type">Canonical Article</div>
+      <div class="ref-tagline">Authoritative source — official docs and tutorials</div>
+      <div class="ref-title">Getting Started with Distributed Data Parallel</div>
+      <a href="https://docs.pytorch.org/tutorials/intermediate/ddp_tutorial.html" target="_blank" rel="noopener" class="ref-btn"><i class="ti ti-external-link"></i> Read Canonical</a>
+    </div>
+  </div>
+
+  <div class="ref-card pink-card">
+    <div class="ref-icon"><i class="ti ti-brand-github"></i></div>
+    <div class="ref-body">
+      <div class="ref-type">GitHub Repository</div>
+      <div class="ref-tagline">Hands-on — reference implementation &amp; examples</div>
+      <div class="ref-title">pytorch / examples — DDP, AMP, and profiling examples</div>
+      <a href="https://github.com/pytorch/examples/tree/main/distributed/ddp" target="_blank" rel="noopener" class="ref-btn"><i class="ti ti-external-link"></i> Explore Repo</a>
+    </div>
+  </div>
+
+  <div class="ref-card">
+    <div class="ref-icon"><i class="ti ti-book-2"></i></div>
+    <div class="ref-body">
+      <div class="ref-type">API Reference</div>
+      <div class="ref-tagline">Profiler &amp; CUDA memory reference</div>
+      <div class="ref-title">torch.profiler &amp; CUDA Memory Management Docs</div>
+      <a href="https://docs.pytorch.org/docs/stable/profiler.html" target="_blank" rel="noopener" class="ref-btn"><i class="ti ti-external-link"></i> Open Docs</a>
+    </div>
+  </div>
+</section>
+
+<!-- =================== NEXT MODULE =================== -->
+<div class="module-nav">
+  <div>
+    <div class="module-nav-label">Next up · Module 12.0</div>
+    <div class="module-nav-title">Module 12.0 — Production-Grade Model Deployment</div>
+    <p style="font-size:14px;color:var(--ink-3);margin:10px 0 0;max-width:520px">Learn TorchScript, ONNX conversions, quantization, and shipping PyTorch models into low-latency production APIs.</p>
+    <div style="display:flex;flex-wrap:wrap;gap:18px;margin-top:14px;font-family:var(--mono);font-size:11px;color:var(--ink-3)">
+      <span>ESTIMATED · <span style="color:var(--ink-2)">~90 min</span></span>
+      <span>TYPE · <span style="color:var(--ink-2)">Deployment</span></span>
+      <span>CODE · <span style="color:var(--ink-2)">Python/API</span></span>
+      <span>DIFFICULTY · <span style="color:var(--accent)">★★★★★</span>
+    </div>
+  </div>
+  <a class="module-nav-cta" href="module_12_deployment.html">Begin Module 12.0 →</a>
+</div>
+
+<div style="margin-top:32px;text-align:center;font-family:var(--mono);font-size:10px;color:var(--ink-4);letter-spacing:0.15em">
+  AGENTIC AI ACADEMY // COURSE 02 — AUTONOMOUS SYSTEMS // MODULE 11.0 — END OF TRANSMISSION
+</div>
+</main>
+</div>
+
+<div class="scroll-dots" id="scroll-dots">
+  <div class="scroll-dot active" data-target="sec-1" data-label="CUDA"></div>
+  <div class="scroll-dot" data-target="sec-2" data-label="AMP"></div>
+  <div class="scroll-dot" data-target="sec-3" data-label="DDP"></div>
+  <div class="scroll-dot" data-target="sec-4" data-label="Profiling"></div>
+  <div class="scroll-dot" data-target="sec-summary" data-label="Summary"></div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+/* Starfield */
+(function(){
+  const sf = document.getElementById('stars');
+  for (let i = 0; i < 120; i++) {
+    const s = document.createElement('div');
+    s.className = 'star';
+    const sz = Math.random() * 2 + 0.5;
+    s.style.width = sz + 'px'; s.style.height = sz + 'px';
+    s.style.left = Math.random() * 100 + '%';
+    s.style.top = Math.random() * 100 + '%';
+    s.style.setProperty('--dur', (2 + Math.random() * 4) + 's');
+    s.style.animationDelay = Math.random() * 4 + 's';
+    sf.appendChild(s);
+  }
+})();
+
+/* Nav + scroll dots */
+/* ============ SCROLL DOTS + TOC NAV ACTIVE + PROGRESS ============ */
+(function(){
+  const dots = document.querySelectorAll('.scroll-dot');
+  const tocLinks = document.querySelectorAll('.toc-link');
+  const sections = document.querySelectorAll('.section');
+  const progressFill = document.getElementById('progressFill');
+
+  dots.forEach(d => {
+    d.addEventListener('click', () => {
+      const target = document.getElementById(d.dataset.target);
+      if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  });
+
+  tocLinks.forEach(a => {
+    a.addEventListener('click', (e) => {
+      e.preventDefault();
+      const id = a.getAttribute('href').slice(1);
+      const t = document.getElementById(id);
+      if (t) t.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  });
+
+  function updateActive() {
+    let current = sections[0].id;
+    let currentIndex = -1;
+    sections.forEach((s, i) => {
+      const rect = s.getBoundingClientRect();
+      if (rect.top < window.innerHeight * 0.35) {
+        current = s.id;
+        currentIndex = i;
+      }
+    });
+
+    dots.forEach(d => d.classList.toggle('active', d.dataset.target === current));
+    tocLinks.forEach((l, i) => {
+      const isActive = l.getAttribute('href') === '#' + current;
+      const isPast = currentIndex > -1 && i < currentIndex;
+      l.classList.toggle('active', isActive);
+      l.classList.toggle('past', isPast && !isActive);
+    });
+
+    const docHeight = document.documentElement.scrollHeight - window.innerHeight;
+    const scrolled = window.scrollY / docHeight * 100;
+    if (progressFill) progressFill.style.width = Math.min(100, scrolled) + '%';
+  }
+
+  window.addEventListener('scroll', updateActive, { passive: true });
+  updateActive();
+})();
+
+/* Copy */
+document.querySelectorAll('.code-copy').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const code = btn.closest('.code-block').querySelector('pre').innerText;
+    navigator.clipboard.writeText(code).then(() => {
+      const orig = btn.innerHTML;
+      btn.innerHTML = '<i class="ti ti-check"></i> Copied';
+      setTimeout(() => btn.innerHTML = orig, 1200);
+    });
+  });
+});
+
+/* WIDGET 1: Device Transfer */
+(function(){
+  const shapes = {
+    'small': { n: 1000, d: 512, name: '(1k, 512)' },
+    'medium': { n: 10000, d: 512, name: '(10k, 512)' },
+    'large': { n: 100000, d: 1024, name: '(100k, 1024)' },
+    'huge': { n: 1000000, d: 2048, name: '(1M, 2048)' }
+  };
+  const dtypes = { 'float32': 4, 'float16': 2, 'int8': 1 };
+  let curShape = 'small', curDtype = 'float32', loc = 'cpu';
+
+  const cpuTiles = document.getElementById('cpu-tiles');
+  const gpuTiles = document.getElementById('gpu-tiles');
+
+  function buildTiles() {
+    cpuTiles.innerHTML = '';
+    gpuTiles.innerHTML = '';
+    const n = 24;
+    for (let i = 0; i < n; i++) {
+      const t1 = document.createElement('div');
+      t1.className = 'tile' + (loc === 'cpu' ? ' present' : '');
+      cpuTiles.appendChild(t1);
+      const t2 = document.createElement('div');
+      t2.className = 'tile' + (loc === 'gpu' ? ' present' : '');
+      gpuTiles.appendChild(t2);
+    }
+  }
+
+  function fmtBytes(b) {
+    if (b >= 1e9) return (b / 1e9).toFixed(2) + ' GB';
+    if (b >= 1e6) return (b / 1e6).toFixed(1) + ' MB';
+    if (b >= 1e3) return (b / 1e3).toFixed(0) + ' KB';
+    return b + ' B';
+  }
+  function fmtTime(us) {
+    if (us >= 1e6) return (us / 1e6).toFixed(2) + ' s';
+    if (us >= 1e3) return (us / 1e3).toFixed(1) + ' ms';
+    return us.toFixed(0) + ' μs';
+  }
+
+  function update() {
+    const s = shapes[curShape];
+    const bytesPerEl = dtypes[curDtype];
+    const totalBytes = s.n * s.d * bytesPerEl;
+    document.getElementById('dev-bytes').textContent = fmtBytes(totalBytes);
+    // Transfer rate: PCIe 4.0 x16 ~ 32 GB/s
+    const rate = 32e9;
+    const timeS = totalBytes / rate;
+    document.getElementById('dev-time').textContent = fmtTime(timeS * 1e6);
+    document.getElementById('dev-loc').textContent = loc;
+    document.getElementById('dev-loc').style.color = loc === 'gpu' ? 'var(--pink)' : 'var(--cyan-soft)';
+    buildTiles();
+    let advice;
+    if (totalBytes < 1e6) advice = '>>> Tiny tensor. Transfer cost is negligible (~μs).\n    The .to() call itself takes longer than the actual copy.';
+    else if (totalBytes < 1e8) advice = '>>> Medium tensor — ' + fmtTime(timeS * 1e6) + ' transfer time.\n    Acceptable per batch, but avoid moving the same data back and forth.';
+    else if (totalBytes < 5e9) advice = '>>> Large tensor — ' + fmtTime(timeS * 1e6) + ' is starting to bite.\n    Use pin_memory=True in your DataLoader for async transfers.\n    Pre-fetch with num_workers > 0.';
+    else advice = '>>> HUGE tensor (' + fmtBytes(totalBytes) + ').\n    Single transfer takes ' + fmtTime(timeS * 1e6) + ' — major bottleneck.\n    Consider keeping it on GPU permanently, or shard across devices.';
+    document.getElementById('dev-out').textContent = advice;
+  }
+
+  document.querySelectorAll('[data-shape]').forEach(b => b.addEventListener('click', () => {
+    document.querySelectorAll('[data-shape]').forEach(x => x.classList.remove('active'));
+    b.classList.add('active');
+    curShape = b.dataset.shape;
+    update();
+  }));
+  document.querySelectorAll('[data-dtype]').forEach(b => b.addEventListener('click', () => {
+    document.querySelectorAll('[data-dtype]').forEach(x => x.classList.remove('active'));
+    b.classList.add('active');
+    curDtype = b.dataset.dtype;
+    update();
+  }));
+  document.getElementById('to-gpu').addEventListener('click', () => { loc = 'gpu'; update(); });
+  document.getElementById('to-cpu').addEventListener('click', () => { loc = 'cpu'; update(); });
+  update();
+})();
+
+/* WIDGET 2: Mixed Precision */
+(function(){
+  const pEl = document.getElementById('amp-params');
+  const bEl = document.getElementById('amp-batch');
+  const aEl = document.getElementById('amp-act');
+  const pV = document.getElementById('amp-params-v');
+  const bV = document.getElementById('amp-batch-v');
+  const aV = document.getElementById('amp-act-v');
+
+  function fmt(mb) {
+    if (mb >= 1024) return (mb / 1024).toFixed(2) + ' GB';
+    return Math.round(mb) + ' MB';
+  }
+
+  function update() {
+    const params = +pEl.value;  // in millions
+    const batch = +bEl.value;
+    const actFactor = +aEl.value;
+    pV.textContent = params + 'M';
+    bV.textContent = batch;
+    aV.textContent = actFactor + '×';
+
+    // Sizes in MB
+    const weightsFp32 = params * 4;     // 4 bytes per param
+    const weightsFp16 = params * 2;
+    // Adam optimizer state: 2 * 4 = 8 bytes per param (m & v in fp32)
+    const optFp32 = params * 8;
+    const optFp16 = params * 8;  // AMP still uses fp32 master weights for optimizer
+    // Activations: scales with batch_size * actFactor * (some constant from depth)
+    const actFp32 = batch * actFactor * 2;  // arbitrary scale to MB
+    const actFp16 = batch * actFactor * 1;
+
+    const totFp32 = weightsFp32 + optFp32 + actFp32;
+    const totFp16 = weightsFp16 + optFp16 + actFp16;
+
+    document.getElementById('fp32-w').textContent = fmt(weightsFp32);
+    document.getElementById('fp32-o').textContent = fmt(optFp32);
+    document.getElementById('fp32-a').textContent = fmt(actFp32);
+    document.getElementById('fp32-tot').textContent = fmt(totFp32);
+    document.getElementById('fp16-w').textContent = fmt(weightsFp16);
+    document.getElementById('fp16-o').textContent = fmt(optFp16);
+    document.getElementById('fp16-a').textContent = fmt(actFp16);
+    document.getElementById('fp16-tot').textContent = fmt(totFp16);
+
+    // bars relative to FP32 totals
+    document.getElementById('fp32-w-bar').style.width = '100%';
+    document.getElementById('fp32-o-bar').style.width = '100%';
+    document.getElementById('fp32-a-bar').style.width = '100%';
+    document.getElementById('fp16-w-bar').style.width = '50%';
+    document.getElementById('fp16-o-bar').style.width = '100%';
+    document.getElementById('fp16-a-bar').style.width = '50%';
+
+    const saved = ((totFp32 - totFp16) / totFp32 * 100);
+    document.getElementById('amp-saved').textContent = saved.toFixed(0) + '%';
+    // speedup depends on matmul intensity
+    let speedup;
+    if (params < 30) speedup = 1.2;
+    else if (params < 200) speedup = 1.8;
+    else speedup = 2.3;
+    document.getElementById('amp-speed').textContent = '~' + speedup.toFixed(1) + '×';
+    // max possible batch when memory fits in 16GB
+    const cap = 16 * 1024;  // 16 GB in MB
+    const maxBatch = Math.floor(batch * (cap - weightsFp16 - optFp16) / (actFp16 + 1));
+    document.getElementById('amp-maxb').textContent = Math.max(batch, Math.min(maxBatch, batch * 4));
+    let advice;
+    if (params < 30) advice = '>>> Small model. AMP gives modest gains (~1.2×) — matmul isn\'t the bottleneck.\n    Consider only enabling it if you\'re memory-bound.';
+    else if (params < 200) advice = '>>> Medium model. AMP is a clear win: ' + speedup.toFixed(1) + '× speed, ' + saved.toFixed(0) + '% memory.\n    Use autocast + GradScaler. Watch for fp16 overflow in custom loss functions.';
+    else advice = '>>> Large model. AMP is essentially required.\n    Combine with gradient checkpointing for activation memory.\n    Consider bf16 instead of fp16 on Ampere/Hopper — same range as fp32, no scaler needed.';
+    document.getElementById('amp-out').textContent = advice;
+  }
+  pEl.addEventListener('input', update);
+  bEl.addEventListener('input', update);
+  aEl.addEventListener('input', update);
+  update();
+})();
+
+/* WIDGET 3: Memory Strategy Stacker */
+(function(){
+  const strats = [
+    { id: 'amp', name: 'Mixed Precision (AMP)', desc: 'fp16 weights + activations, fp32 master copy', mem: 0.45, speed: 0.55, on: false },
+    { id: 'gradacc', name: 'Gradient Accumulation', desc: 'Smaller per-step batch, accumulate grads over N steps', mem: 0.6, speed: 0.95, on: false },
+    { id: 'grad-ck', name: 'Gradient Checkpointing', desc: 'Recompute activations in backward instead of storing', mem: 0.4, speed: 1.3, on: false },
+    { id: 'cpu-off', name: 'CPU Offloading', desc: 'Push optimizer states to CPU RAM', mem: 0.6, speed: 1.5, on: false },
+    { id: 'flash', name: 'Flash / Fused Attention', desc: 'Memory-efficient attention kernels', mem: 0.7, speed: 0.85, on: false }
+  ];
+  const baselineMem = 12;  // GB
+  const wrap = document.getElementById('mem-strats');
+
+  const ctx = document.getElementById('mem-chart').getContext('2d');
+  const chart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: ['baseline', 'after stack'],
+      datasets: [
+        { label: 'VRAM (GB)', data: [baselineMem, baselineMem], backgroundColor: ['rgba(154, 168, 196, 0.5)', 'rgba(107, 255, 157, 0.6)'], borderColor: ['#9aa8c4', '#6bff9d'], borderWidth: 1.5, borderRadius: 4 }
+      ]
+    },
+    options: {
+      indexAxis: 'y',
+      responsive: true, maintainAspectRatio: false, animation: { duration: 300 },
+      plugins: { legend: { display: false }, title: { display: true, text: 'VRAM (GB)', color: '#9aa8c4', font: { size: 11 } } },
+      scales: {
+        x: { grid: { color: 'rgba(0,229,255,0.07)' }, ticks: { color: '#6b7896' }, max: baselineMem + 1 },
+        y: { grid: { display: false }, ticks: { color: '#6b7896' } }
+      }
+    }
+  });
+
+  function update() {
+    wrap.innerHTML = '';
+    strats.forEach(s => {
+      const card = document.createElement('div');
+      card.className = 'mem-strat' + (s.on ? ' on' : '');
+      card.innerHTML =
+        '<div class="mem-strat-head">' +
+          '<span class="mem-strat-name">' + s.name + '</span>' +
+          '<span class="mem-strat-toggle">' + (s.on ? '<i class="ti ti-check"></i> ON' : 'off') + '</span>' +
+        '</div>' +
+        '<div class="mem-strat-desc">' + s.desc + '</div>' +
+        '<div class="mem-strat-cost"><span>mem ×<span>' + s.mem.toFixed(2) + '</span></span><span>speed ×<span>' + s.speed.toFixed(2) + '</span></span></div>';
+      card.addEventListener('click', () => {
+        s.on = !s.on;
+        update();
+      });
+      wrap.appendChild(card);
+    });
+    // Stack effects multiplicatively
+    let mem = baselineMem, speed = 1;
+    strats.forEach(s => { if (s.on) { mem *= s.mem; speed *= s.speed; } });
+    chart.data.datasets[0].data = [baselineMem, mem];
+    chart.update('none');
+    document.getElementById('mem-base').textContent = baselineMem.toFixed(1) + ' GB';
+    document.getElementById('mem-final').textContent = mem.toFixed(1) + ' GB';
+    document.getElementById('mem-final').style.color = mem < baselineMem * 0.6 ? 'var(--success)' : (mem < baselineMem * 0.9 ? 'var(--cyan)' : 'var(--text-primary)');
+    let fits;
+    if (mem <= 8) fits = 'RTX 3070 8GB';
+    else if (mem <= 12) fits = 'RTX 3060 12GB';
+    else if (mem <= 16) fits = 'RTX 4080 16GB';
+    else if (mem <= 24) fits = 'RTX 4090 24GB';
+    else if (mem <= 40) fits = 'A100 40GB';
+    else if (mem <= 80) fits = 'A100/H100 80GB';
+    else fits = 'multi-GPU only';
+    document.getElementById('mem-fits').textContent = fits;
+    document.getElementById('mem-speed').textContent = speed.toFixed(2) + '× ' + (speed < 1 ? '(faster)' : speed > 1.1 ? '(slower)' : '');
+    document.getElementById('mem-speed').style.color = speed < 1 ? 'var(--success)' : (speed > 1.2 ? 'var(--warn)' : 'var(--cyan)');
+    const onCount = strats.filter(s => s.on).length;
+    let advice;
+    if (onCount === 0) advice = '>>> Baseline: ' + baselineMem.toFixed(1) + ' GB. Click strategies to compose them.\n    Start with AMP — it gives ~2× speed AND saves memory.';
+    else if (mem > baselineMem * 0.7 && speed > 1.2) advice = '>>> You\'ve added memory savings but slowed things down.\n    Toggle off the slowest one (likely CPU Offloading or Gradient Checkpointing)\n    if you don\'t actually need the extra memory.';
+    else if (mem < baselineMem * 0.4) advice = '>>> Aggressive stack — model fits in ' + mem.toFixed(1) + ' GB.\n    You\'re probably ready to scale to a bigger model or longer sequences.';
+    else advice = '>>> Healthy balance: ' + ((1 - mem / baselineMem) * 100).toFixed(0) + '% memory saved, '
+      + (speed < 1 ? 'faster' : speed > 1 ? speed.toFixed(2) + '× slower' : 'same speed') + '.\n    AMP + gradient accumulation is the safest combo.';
+    document.getElementById('mem-out').textContent = advice;
+  }
+  update();
+})();
+
+/* WIDGET 4: DDP Simulator */
+(function(){
+  let ws = 4, phase = 'forward';
+  const cluster = document.getElementById('gpu-cluster');
+  let timer = null;
+
+  function render() {
+    document.querySelectorAll('[data-ws]').forEach(x => x.classList.toggle('active', +x.dataset.ws === ws));
+    document.querySelectorAll('[data-phase]').forEach(x => x.classList.toggle('active', x.dataset.phase === phase));
+    cluster.innerHTML = '';
+    cluster.style.gridTemplateColumns = '1fr';
+    for (let i = 0; i < ws; i++) {
+      const node = document.createElement('div');
+      const syncing = phase === 'sync';
+      node.className = 'gpu-node' + (syncing ? ' syncing' : '');
+      let status, gradPct;
+      // Per-GPU local gradient values (each one is different in backward, same after sync)
+      const baseGrad = 30 + ((i * 17) % 60);
+      if (phase === 'forward') {
+        status = 'running forward pass on local batch shard';
+        gradPct = 0;
+      } else if (phase === 'backward') {
+        status = 'computed LOCAL gradient (shard ' + i + ' of ' + ws + ')';
+        gradPct = baseGrad;
+      } else if (phase === 'sync') {
+        status = 'all-reduce: averaging gradients across ' + ws + ' GPUs';
+        gradPct = 65; // averaged value
+      } else {
+        status = 'applied averaged gradient — weights updated identically';
+        gradPct = 0;
+      }
+      node.innerHTML =
+        '<div class="gpu-id">GPU ' + i + '</div>' +
+        '<div>' +
+          '<div class="gpu-grad"><div class="gpu-grad-fill" style="width:' + gradPct + '%;"></div></div>' +
+          '<div class="gpu-status" style="margin-top:6px;">' + status + '</div>' +
+        '</div>' +
+        '<div class="gpu-status" style="text-align:right;color:var(--cyan-soft);">' +
+          (phase === 'backward' ? '∇<sub>local</sub> = ' + (gradPct / 100).toFixed(2) : phase === 'sync' ? '∇<sub>sync</sub> = 0.65' : phase === 'step' ? 'weights ← updated' : 'idle') +
+        '</div>';
+      cluster.appendChild(node);
+    }
+    const perGpu = 64;
+    const effBatch = perGpu * ws;
+    document.getElementById('ddp-batch').textContent = effBatch;
+    document.getElementById('ddp-perGpu').textContent = perGpu;
+    const overhead = (ws === 2 ? 3 : ws === 4 ? 5 : 8);
+    document.getElementById('ddp-overhead').textContent = '~' + overhead + '%';
+    const ideal = ws;
+    const real = ws * (100 - overhead) / 100;
+    document.getElementById('ddp-speedup').textContent = real.toFixed(1) + '×';
+    let advice;
+    if (phase === 'forward') advice = '>>> Each GPU processes a different shard (64 samples each).\n    DistributedSampler ensures no overlap — total batch covered: ' + effBatch + ' samples.';
+    else if (phase === 'backward') advice = '>>> Each GPU computes a LOCAL gradient on its own shard.\n    These gradients are DIFFERENT — they only see 1/' + ws + ' of the batch.';
+    else if (phase === 'sync') advice = '>>> NCCL all-reduce: gradients are averaged across all GPUs.\n    After this step, every GPU has the SAME averaged gradient.\n    This happens automatically inside loss.backward() when model is wrapped in DDP.';
+    else advice = '>>> Each GPU applies the (now identical) gradient via optimizer.step().\n    Since they all start with the same weights and apply the same gradient,\n    all GPUs stay synchronised throughout training.';
+    document.getElementById('ddp-out').textContent = advice;
+  }
+
+  document.querySelectorAll('[data-ws]').forEach(b => b.addEventListener('click', () => {
+    ws = +b.dataset.ws;
+    render();
+  }));
+  document.querySelectorAll('[data-phase]').forEach(b => b.addEventListener('click', () => {
+    phase = b.dataset.phase;
+    render();
+  }));
+  document.getElementById('ddp-play').addEventListener('click', () => {
+    if (timer) { clearInterval(timer); timer = null; return; }
+    const phases = ['forward', 'backward', 'sync', 'step'];
+    let i = 0;
+    phase = phases[0];
+    render();
+    timer = setInterval(() => {
+      i++;
+      if (i >= phases.length) { clearInterval(timer); timer = null; return; }
+      phase = phases[i];
+      render();
+    }, 1100);
+  });
+  render();
+})();
+
+/* WIDGET 5: Profiler Trace */
+(function(){
+  const baseOps = [
+    { name: 'Optimizer.step#AdamW.step', time: 2.159, hot: true },
+    { name: 'aten::addmm  (matmul)', time: 0.997, hot: true },
+    { name: 'aten::mm  (matmul)', time: 0.803, hot: true },
+    { name: 'aten::_to_copy  (host→device)', time: 0.492, hot: true },
+    { name: 'AddmmBackward0', time: 0.473, hot: false },
+    { name: 'aten::to', time: 0.164, hot: false },
+    { name: 'evaluate_function: AddmmBackward0', time: 0.125, hot: false },
+    { name: 'aten::linear', time: 0.057, hot: false }
+  ];
+  let opt = 'none';
+  const list = document.getElementById('prof-list');
+
+  function getOps() {
+    const ops = baseOps.map(o => ({ ...o }));
+    if (opt === 'amp' || opt === 'all') {
+      // AMP halves matmul times
+      ops.forEach(o => {
+        if (o.name.includes('addmm') || o.name.includes('aten::mm') || o.name.includes('linear')) o.time *= 0.55;
+      });
+    }
+    if (opt === 'larger' || opt === 'all') {
+      // larger batch: optimizer step has same cost but spread over more samples; effective per-sample time drops
+      ops.forEach(o => {
+        if (o.name.includes('Optimizer')) { /* same */ }
+        else o.time *= 0.85;
+      });
+    }
+    if (opt === 'numworkers' || opt === 'all') {
+      // num_workers fix removes the host→device copy bottleneck
+      ops.forEach(o => {
+        if (o.name.includes('_to_copy') || o.name.includes('aten::to')) o.time *= 0.15;
+      });
+    }
+    return ops;
+  }
+
+  function update() {
+    document.querySelectorAll('[data-opt]').forEach(x => x.classList.toggle('active', x.dataset.opt === opt));
+    const ops = getOps();
+    const totalTime = ops.reduce((a, b) => a + b.time, 0);
+    list.innerHTML = '';
+    const maxT = Math.max(...ops.map(o => o.time));
+    ops.forEach(o => {
+      const pct = (o.time / totalTime * 100);
+      const row = document.createElement('div');
+      row.className = 'prof-row' + (o.hot && o.time > 0.5 ? ' hot' : '');
+      row.innerHTML =
+        '<div class="prof-name">' + o.name + '</div>' +
+        '<div class="prof-time">' + (o.time * 1000).toFixed(0) + ' μs</div>' +
+        '<div class="prof-bar-wrap"><div class="prof-bar" style="width:' + (o.time / maxT * 100) + '%;"></div></div>' +
+        '<div class="prof-pct">' + pct.toFixed(0) + '%</div>';
+      list.appendChild(row);
+    });
+    document.getElementById('prof-total').textContent = totalTime.toFixed(2) + ' ms';
+    // proportions
+    const compute = ops.filter(o => o.name.includes('mm') || o.name.includes('linear') || o.name.includes('Backward')).reduce((a, b) => a + b.time, 0);
+    const data = ops.filter(o => o.name.includes('copy') || o.name === 'aten::to').reduce((a, b) => a + b.time, 0);
+    const optStep = ops.filter(o => o.name.includes('Optimizer')).reduce((a, b) => a + b.time, 0);
+    document.getElementById('prof-compute').textContent = (compute / totalTime * 100).toFixed(0) + '%';
+    document.getElementById('prof-data').textContent = (data / totalTime * 100).toFixed(0) + '%';
+    document.getElementById('prof-data').style.color = (data / totalTime > 0.15) ? 'var(--warn)' : 'var(--text-primary)';
+    document.getElementById('prof-opt-pct').textContent = (optStep / totalTime * 100).toFixed(0) + '%';
+    let advice;
+    if (opt === 'none') advice = '>>> Optimizer.step is the hot path (20%).\n    Two matmuls + the host→device copy (492 μs) are next.\n    A 14% data load fraction suggests room for num_workers tuning.';
+    else if (opt === 'amp') advice = '>>> AMP cuts matmul times by ~45%.\n    Total step time drops from 10.76ms to ' + totalTime.toFixed(2) + 'ms.\n    The optimizer step is now an even bigger fraction — try fused optimizers.';
+    else if (opt === 'larger') advice = '>>> Larger batch amortises the optimizer step over more samples.\n    Per-sample throughput improves even though step time barely changes.';
+    else if (opt === 'numworkers') advice = '>>> Setting num_workers=4 + pin_memory=True hides the host→device copy.\n    Data load drops to ' + (data / totalTime * 100).toFixed(0) + '% — almost free.';
+    else advice = '>>> All three optimisations: down from 10.76ms to ' + totalTime.toFixed(2) + 'ms (~' + (10.76 / totalTime).toFixed(1) + '× faster).\n    Optimizer step is now the dominant cost — that\'s the next thing to attack.';
+    document.getElementById('prof-out').textContent = advice;
+  }
+  document.querySelectorAll('[data-opt]').forEach(b => b.addEventListener('click', () => {
+    opt = b.dataset.opt;
+    update();
+  }));
+  update();
+})();
+
+/* WIDGET 6: Throughput Benchmark */
+(function(){
+  const devSpeed = { cpu: 1, v100: 35, a100: 70, h100: 160 };
+  const precSpeed = { fp32: 1, fp16: 2.0, bf16: 1.9 };
+  let dev = 'cpu', prec = 'fp32';
+  const bEl = document.getElementById('tp-batch');
+  const bV = document.getElementById('tp-batch-v');
+
+  const ctx = document.getElementById('tp-chart').getContext('2d');
+  const chart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: ['CPU', 'V100', 'A100', 'H100'],
+      datasets: [{
+        label: 'samples/sec',
+        data: [],
+        backgroundColor: ['rgba(154,168,196,0.55)', 'rgba(0,229,255,0.5)', 'rgba(0,229,255,0.7)', 'rgba(255,92,192,0.7)'],
+        borderColor: ['#9aa8c4', '#00e5ff', '#00e5ff', '#ff5cc0'],
+        borderWidth: 1.5,
+        borderRadius: 4
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: { duration: 300 },
+      plugins: { legend: { display: false }, title: { display: true, text: 'Throughput (samples/sec, log scale)', color: '#9aa8c4', font: { size: 11 } } },
+      scales: {
+        x: { grid: { color: 'rgba(0,229,255,0.07)' }, ticks: { color: '#6b7896' } },
+        y: { type: 'logarithmic', grid: { color: 'rgba(0,229,255,0.07)' }, ticks: { color: '#6b7896' } }
+      }
+    }
+  });
+
+  function fmt(n) {
+    if (n >= 1e6) return (n / 1e6).toFixed(1) + 'M /s';
+    if (n >= 1e3) return (n / 1e3).toFixed(0) + 'K /s';
+    return Math.round(n) + ' /s';
+  }
+
+  function update() {
+    const b = +bEl.value;
+    bV.textContent = b;
+    // base throughput for CPU at fp32, batch 256: 838586
+    const baseRate = 838586;
+    // batch dependence: throughput scales sublinearly with batch
+    const batchFactor = Math.pow(b / 256, 0.6);
+    const allRates = [];
+    ['cpu', 'v100', 'a100', 'h100'].forEach(d => {
+      const r = baseRate * devSpeed[d] * (d === 'cpu' ? 1 : precSpeed[prec]) * batchFactor;
+      allRates.push(r);
+    });
+    chart.data.datasets[0].data = allRates;
+    // highlight selected
+    chart.data.datasets[0].borderColor = ['#9aa8c4', '#00e5ff', '#00e5ff', '#ff5cc0'].map((c, i) => {
+      return (['cpu', 'v100', 'a100', 'h100'][i] === dev) ? '#fff' : c;
+    });
+    chart.data.datasets[0].borderWidth = [1.5, 1.5, 1.5, 1.5].map((w, i) => {
+      return (['cpu', 'v100', 'a100', 'h100'][i] === dev) ? 3 : 1.5;
+    });
+    chart.update('none');
+    const curRate = baseRate * devSpeed[dev] * (dev === 'cpu' ? 1 : precSpeed[prec]) * batchFactor;
+    const totalSamples = 100 * b;
+    const elapsed = totalSamples / curRate;
+    document.getElementById('tp-rate').textContent = fmt(curRate);
+    document.getElementById('tp-time').textContent = elapsed.toFixed(3) + ' s';
+    document.getElementById('tp-speedup').textContent = (curRate / baseRate).toFixed(1) + '×';
+    let advice;
+    if (dev === 'cpu') advice = '>>> CPU baseline: ' + fmt(curRate) + '.\n    Reference number — every GPU comparison should improve on this.';
+    else {
+      let extra = '';
+      if (prec === 'fp16') extra = '\n    AMP doubles throughput on Volta+ with no accuracy loss for most tasks.';
+      else if (prec === 'bf16') extra = '\n    BF16 has fp32 range but fp16 precision — no GradScaler needed.';
+      advice = '>>> ' + dev.toUpperCase() + ' + ' + prec.toUpperCase() + ': ' + fmt(curRate) + ' (' + (curRate / baseRate).toFixed(0) + '× over CPU).' + extra;
+    }
+    document.getElementById('tp-out').textContent = advice;
+  }
+  document.querySelectorAll('[data-dev]').forEach(b => b.addEventListener('click', () => {
+    document.querySelectorAll('[data-dev]').forEach(x => x.classList.remove('active'));
+    b.classList.add('active');
+    dev = b.dataset.dev;
+    update();
+  }));
+  document.querySelectorAll('[data-tp-prec]').forEach(b => b.addEventListener('click', () => {
+    document.querySelectorAll('[data-tp-prec]').forEach(x => x.classList.remove('active'));
+    b.classList.add('active');
+    prec = b.dataset.tpPrec;
+    update();
+  }));
+  bEl.addEventListener('input', update);
+  update();
+})();
+</script>
+</body>
+</html>

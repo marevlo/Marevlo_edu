@@ -1,0 +1,617 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Restore IP Addresses</title>
+    <style>
+        :root {
+            --bg-page: #070b14;
+            --bg-surface: rgba(255, 255, 255, 0.045);
+            --bg-input: rgba(255, 255, 255, 0.04);
+            --border-main: rgba(255, 255, 255, 0.10);
+            --btn-bg: rgba(255, 255, 255, 0.05);
+            --btn-hover: rgba(255, 255, 255, 0.10);
+            --text-main: #e8eefb;
+            --text-dim: #8b98b3;
+            --accent-orange: #f5a524;   /* DFS path / cursor          */
+            --accent-blue:   #06b6d4;    /* edges / links              */
+            --accent-green:  #22c55e;    /* complete valid leaf        */
+            --accent-red:    #f43f5e;    /* dead end / pruned branch   */
+            --accent-purple: #a855f7;    /* root / current node        */
+            --mono: ui-monospace, 'SF Mono', 'Cascadia Code', 'Courier New', monospace;
+            --sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+            --shell: 980px;
+        }
+
+        * { box-sizing: border-box; }
+        html, body { overflow-x: hidden; }
+        body {
+            background:
+                radial-gradient(1100px 600px at 15% -10%, rgba(168, 85, 247, 0.12), transparent 60%),
+                radial-gradient(900px 600px at 100% 10%, rgba(6, 182, 212, 0.10), transparent 55%),
+                linear-gradient(160deg, #070b14 0%, #0b1120 55%, #0a0f1c 100%);
+            background-attachment: fixed;
+            color: var(--text-main); font-family: var(--sans); margin: 0;
+            display: flex; flex-direction: column; align-items: center; min-height: 100vh;
+            padding-bottom: 48px; -webkit-font-smoothing: antialiased;
+        }
+        body::before, body::after { content: ''; position: fixed; border-radius: 50%; filter: blur(70px); pointer-events: none; z-index: 0; opacity: 0.45; }
+        body::before { width: 380px; height: 380px; top: 8%; left: -120px; background: radial-gradient(circle, rgba(168,85,247,0.30), transparent 70%); }
+        body::after  { width: 420px; height: 420px; bottom: 4%; right: -140px; background: radial-gradient(circle, rgba(6,182,212,0.22), transparent 70%); }
+        body > * { position: relative; z-index: 1; }
+
+        .input-bar {
+            width: 100%; background: rgba(10, 15, 28, 0.55);
+            backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+            padding: 14px 16px; display: flex; justify-content: center; align-items: center; gap: 10px;
+            border-bottom: 1px solid var(--border-main); flex-wrap: wrap; position: sticky; top: 0; z-index: 50;
+        }
+        label.ui-label, .ui-label { font-family: var(--mono); font-size: 13px; color: var(--text-dim); letter-spacing: 0.2px; }
+        input[type="text"] {
+            background: var(--bg-input); border: 1px solid var(--border-main); color: var(--text-main);
+            height: 34px; border-radius: 9px; padding: 0 12px; font-size: 13px; font-family: var(--mono); width: 200px;
+            transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+        }
+        input[type="text"]:focus { outline: none; border-color: var(--accent-purple); box-shadow: 0 0 0 3px rgba(168, 85, 247, 0.18); background: rgba(168, 85, 247, 0.06); }
+
+        button {
+            height: 34px; border-radius: 9px; padding: 0 14px; background: var(--btn-bg);
+            border: 1px solid var(--border-main); color: var(--text-main); font-size: 13px; font-weight: 600; cursor: pointer;
+            transition: transform 0.15s ease, background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+        }
+        button:hover { background: var(--btn-hover); border-color: rgba(168, 85, 247, 0.5); box-shadow: 0 0 18px rgba(168, 85, 247, 0.18); transform: translateY(-1px); }
+        button:active { transform: translateY(0); }
+        #play-btn { background: linear-gradient(135deg, rgba(168,85,247,0.22), rgba(168,85,247,0.10)); border-color: rgba(168, 85, 247, 0.45); color: #e9d5ff; min-width: 80px; }
+
+        .shell { width: var(--shell); max-width: 95%; margin: 24px auto 0; display: flex; flex-direction: column; gap: 16px; }
+
+        .title-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+        .title-row h1 { font-size: 18px; font-weight: 800; margin: 0; letter-spacing: 0.2px; }
+        .title-row .sub { color: var(--text-dim); font-weight: 500; font-size: 13px; }
+        .step-badge { font-family: var(--mono); font-size: 12px; font-weight: 700; color: #e9d5ff; background: rgba(168,85,247,0.12); border: 1px solid rgba(168,85,247,0.3); padding: 4px 10px; border-radius: 999px; white-space: nowrap; }
+        .progress-track { height: 4px; width: 100%; background: rgba(255,255,255,0.07); border-radius: 999px; overflow: hidden; margin-top: -6px; }
+        .progress-fill { height: 100%; width: 0%; border-radius: 999px; background: linear-gradient(90deg, var(--accent-purple), var(--accent-blue)); box-shadow: 0 0 12px rgba(168,85,247,0.5); transition: width 0.45s cubic-bezier(0.34,1.1,0.64,1); }
+
+        .res-feed { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; min-height: 26px; }
+        .res-chip { font-family: var(--mono); font-size: 12px; font-weight: 800; padding: 4px 10px; border-radius: 8px; border: 1px solid rgba(34,197,94,0.4); color: #bbf7d0; background: rgba(34,197,94,0.12); opacity: 0; transform: scale(.6); transition: opacity .3s, transform .3s cubic-bezier(.34,1.5,.64,1); }
+        .res-chip.show { opacity: 1; transform: scale(1); }
+        .res-label { font-family: var(--mono); font-size: 12px; color: var(--text-dim); }
+
+        .narration { background: var(--bg-surface); border: 1px solid rgba(168,85,247,0.22); border-radius: 12px; padding: 12px 18px; font-family: var(--mono); font-size: 14px; line-height: 1.5; color: #ede9fe; min-height: 48px; display: flex; align-items: center; gap: 10px; transition: border-color 0.3s, background 0.3s; }
+        .narration::before { content: '\25B8'; color: var(--accent-purple); font-size: 13px; }
+        .narration.done { border-color: rgba(34,197,94,0.4); background: rgba(34,197,94,0.06); }
+        .narration.done::before { content: '\2713'; color: var(--accent-green); }
+        .narration.miss { border-color: rgba(244,63,94,0.4); background: rgba(244,63,94,0.06); }
+        .narration.miss::before { content: '\2717'; color: var(--accent-red); }
+        .narration code { background: rgba(168,85,247,0.14); color: #d8b4fe; padding: 1px 6px; border-radius: 5px; font-size: 12.5px; }
+        .narration b { color: #fff; }
+
+        .stage-card { background: var(--bg-surface); border: 1px solid var(--border-main); border-radius: 18px; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); box-shadow: 0 12px 38px rgba(0,0,0,0.4); overflow: hidden; }
+        .stage-screen { position: relative; margin: 14px; border-radius: 14px; background: radial-gradient(700px 300px at 50% -10%, rgba(168,85,247,0.08), transparent 70%), #090d18; border: 1px solid rgba(255,255,255,0.06); }
+        .tree-stage { position: relative; width: 100%; height: 430px; overflow: auto; scrollbar-width: thin; cursor: grab; }
+        .tree-stage.grabbing { cursor: grabbing; }
+        .tree-stage::-webkit-scrollbar { height: 7px; width: 7px; }
+        .tree-stage::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 8px; }
+        .tree-canvas { position: relative; }
+        .tree-inner { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
+        .zoom-bar { position: absolute; right: 14px; bottom: 12px; display: flex; gap: 6px; z-index: 12; }
+        .zoom-bar button { height: 30px; min-width: 30px; padding: 0 9px; border-radius: 8px; font-size: 15px; font-weight: 700; background: rgba(10,15,28,0.7); backdrop-filter: blur(6px); }
+        .zoom-bar .fit { font-size: 12px; }
+        #edges { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; z-index: 1; }
+        .edge-ln { stroke: var(--accent-blue); stroke-width: 2.2; fill: none; opacity: 0.5; transition: stroke 0.35s, opacity 0.35s; }
+        .edge-ln.on-path { stroke: var(--accent-orange); opacity: 1; filter: drop-shadow(0 0 6px rgba(245,165,36,0.6)); }
+        .edge-ln.pruned { stroke: var(--accent-red); opacity: 0.55; stroke-dasharray: 4 4; }
+        .edge-lbl { font-family: var(--mono); font-size: 12px; font-weight: 800; fill: var(--text-dim); }
+        .edge-lbl.on-path { fill: var(--accent-orange); }
+        .edge-lbl.pruned { fill: var(--accent-red); }
+
+        .tnode { position: absolute; min-width: 34px; height: 34px; padding: 0 9px; margin-left: 0; display: flex; align-items: center; justify-content: center;
+            border-radius: 9px; font-family: var(--mono); font-weight: 800; font-size: 13px; transform: translate(-50%, 0);
+            border: 2px solid var(--border-main); background: rgba(255,255,255,0.06); color: var(--text-main); white-space: nowrap;
+            z-index: 2; will-change: transform, left, top; transition: background 0.35s, border-color 0.35s, color 0.35s, box-shadow 0.35s; }
+        .tnode.root { border-color: var(--accent-purple); background: linear-gradient(180deg, rgba(168,85,247,0.30), rgba(168,85,247,0.12)); color: #e9d5ff; }
+        .tnode.on-path { border-color: var(--accent-orange); box-shadow: 0 0 16px rgba(245,165,36,0.45); color: #fff; }
+        .tnode.current { border-color: var(--accent-purple); box-shadow: 0 0 22px rgba(168,85,247,0.6); color: #fff; }
+        .tnode.complete { border-color: var(--accent-green); background: linear-gradient(180deg, #2fe08f, #21c275); color: #06251a; box-shadow: 0 0 16px rgba(34,197,94,0.45); }
+        .tnode.pruned { border-color: rgba(244,63,94,0.55); background: rgba(244,63,94,0.10); color: #fda4af; font-size: 11.5px; }
+        .tnode.pruned.current { box-shadow: 0 0 18px rgba(244,63,94,0.5); border-color: var(--accent-red); color: #fff; }
+        .tnode.dim { opacity: 0.30; }
+
+        .controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: center; }
+        .controls .kbd-hint { font-size: 11px; color: var(--text-dim); font-family: var(--mono); margin-left: 4px; }
+        .kbd { background: rgba(255,255,255,0.07); border: 1px solid var(--border-main); border-radius: 5px; padding: 1px 6px; font-size: 10px; }
+        input[type="range"] { accent-color: var(--accent-purple); width: 110px; cursor: pointer; }
+        #confetti { position: fixed; left: 0; right: 0; top: 30%; height: 0; overflow: visible; pointer-events: none; z-index: 60; }
+        .confetti-piece { position: absolute; top: 0; left: 50%; width: 8px; height: 13px; border-radius: 2px; opacity: 0; animation: confettiFall ease-out forwards; }
+
+        .details-toggle { align-self: center; height: 32px; padding: 0 16px; border-radius: 999px; cursor: pointer; background: rgba(255,255,255,0.04); border: 1px solid var(--border-main); color: var(--text-dim); font-family: var(--mono); font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; gap: 8px; transition: color 0.2s, border-color 0.2s, background 0.2s; }
+        .details-toggle:hover { color: var(--text-main); border-color: rgba(168,85,247,0.4); background: rgba(168,85,247,0.06); }
+        .details-toggle .chev { transition: transform 0.3s ease; }
+        .details-wrap.open .details-toggle .chev { transform: rotate(180deg); }
+        .details-body { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.4s ease; }
+        .details-wrap.open .details-body { grid-template-rows: 1fr; }
+        .details-inner { overflow: hidden; min-height: 0; }
+        .details-grid { display: flex; flex-direction: column; gap: 14px; padding-top: 14px; }
+
+        .panel-card { background: var(--bg-surface); border: 1px solid var(--border-main); border-radius: 16px; backdrop-filter: blur(10px); box-shadow: 0 8px 30px rgba(0,0,0,0.35); }
+        .panel-head { display: flex; align-items: center; gap: 8px; padding: 11px 16px; border-bottom: 1px solid var(--border-main); font-size: 11px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; color: var(--text-dim); }
+        .panel-head .pip { width: 7px; height: 7px; border-radius: 50%; background: var(--accent-purple); box-shadow: 0 0 8px var(--accent-purple); }
+        .state-pills { display: flex; flex-wrap: wrap; gap: 8px; padding: 12px 16px; }
+        .pill { font-family: var(--mono); font-size: 12px; padding: 5px 11px; border-radius: 9px; border: 1px solid var(--border-main); background: rgba(255,255,255,0.04); color: var(--text-dim); display: flex; gap: 7px; align-items: center; }
+        .pill b { color: var(--text-main); font-weight: 800; }
+        .pill .k { color: var(--text-dim); }
+        .pill.idx b { color: var(--accent-orange); }
+        .pill.seg b { color: var(--accent-blue); }
+        .pill.found b { color: var(--accent-green); }
+        .code-body { padding: 12px 6px 14px; font-family: var(--mono); font-size: 12.5px; line-height: 1.7; }
+        .code-line { display: flex; gap: 12px; padding: 1px 16px; border-left: 2px solid transparent; transition: background 0.3s, border-color 0.3s; white-space: pre; }
+        .code-line .lno { color: #4b5772; width: 16px; text-align: right; user-select: none; }
+        .code-line .src { color: #c4cee0; }
+        .code-line .kw { color: #c792ea; }
+        .code-line .fn { color: #82aaff; }
+        .code-line.active { background: rgba(168,85,247,0.12); border-left-color: var(--accent-purple); }
+        .code-line.active .src, .code-line.active .lno { color: #e8eefb; }
+
+        .log-panel { border-radius: 14px; padding: 12px 16px; height: 110px; overflow-y: auto; font-family: var(--mono); font-size: 12.5px; line-height: 1.5; background: var(--bg-surface); border: 1px solid var(--border-main); }
+        .log-panel::-webkit-scrollbar { width: 8px; }
+        .log-panel::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 8px; }
+
+        @keyframes confettiFall { 0%{ opacity:1; transform: translate(-50%, 0) rotate(0deg); } 100%{ opacity:0; transform: translate(calc(-50% + var(--x)), 240px) rotate(var(--rot)); } }
+        @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; } }
+    </style>
+</head>
+<body>
+
+    <div class="input-bar">
+        <label class="ui-label">string =</label>
+        <input type="text" id="str-input" value="25525511135" maxlength="12" placeholder="25525511135">
+        <button onclick="loadCustom()">Load</button>
+        <span class="ui-label" style="opacity:.5">|</span>
+        <button onclick="loadExample(0)">Ex 1 (25525511135)</button>
+        <button onclick="loadExample(1)">Ex 2 (0000)</button>
+    </div>
+
+    <div class="shell">
+        <div class="title-row">
+            <h1>Restore IP Addresses <span class="sub">&middot; backtracking &middot; 4 segments, each 1&ndash;3 digits, 0&ndash;255, no leading zeros</span></h1>
+            <span class="step-badge" id="step-badge">Step 1 / 1</span>
+        </div>
+        <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+
+        <div class="res-feed"><span class="res-label">valid IPs:</span><span id="res-feed"></span></div>
+
+        <div class="narration" id="main-panel">&mdash;</div>
+
+        <div class="stage-card">
+            <div class="stage-screen">
+                <div class="tree-stage" id="tree-stage">
+                    <div class="tree-canvas" id="tree-canvas">
+                        <div class="tree-inner" id="tree-inner">
+                            <svg id="edges"></svg>
+                        </div>
+                    </div>
+                </div>
+                <div class="zoom-bar">
+                    <button onclick="zoomBy(0.8)" title="Zoom out">&#8722;</button>
+                    <button class="fit" onclick="fitView()" title="Fit whole tree">Fit</button>
+                    <button onclick="zoomBy(1.25)" title="Zoom in">+</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="controls">
+            <button onclick="resetSim()">&#8634; Reset</button>
+            <button onclick="prevStep()">&#8592; Back</button>
+            <button onclick="togglePlay()" id="play-btn">Play</button>
+            <button onclick="nextStep()">Next &#8594;</button>
+            <span class="ui-label" style="margin-left:6px; font-size:11px">Speed</span>
+            <input type="range" id="speed" min="0" max="2" value="1">
+            <span class="kbd-hint"><span class="kbd">&#8592;</span> <span class="kbd">&#8594;</span> step &middot; <span class="kbd">space</span> play</span>
+        </div>
+
+        <div class="details-wrap" id="details-wrap">
+            <button class="details-toggle" onclick="toggleDetails()" aria-expanded="false">
+                <span id="details-label">Show code &amp; log</span> <span class="chev">&#9662;</span>
+            </button>
+            <div class="details-body">
+                <div class="details-inner">
+                    <div class="details-grid">
+                        <div class="panel-card">
+                            <div class="panel-head"><span class="pip"></span> Algorithm</div>
+                            <div class="code-body" id="code-panel"></div>
+                        </div>
+                        <div class="panel-card">
+                            <div class="panel-head"><span class="pip"></span> State</div>
+                            <div class="state-pills" id="state-pills"></div>
+                        </div>
+                        <div class="log-panel" id="log"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div id="confetti"></div>
+
+    <script>
+        'use strict';
+
+        // ───────── Motion engine ─────────
+        const REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        const FRAME = 1000 / 60;
+        function sampleSpring(stiffness, damping, mass) {
+            const dt = 1 / 60; let x = 1, v = 0; const out = [];
+            for (let i = 0; i < 240; i++) { const a = (-stiffness * x - damping * v) / mass; v += a * dt; x += v * dt; out.push(1 - x); if (Math.abs(x) < 0.0015 && Math.abs(v) < 0.0015) break; }
+            out.push(1); return out;
+        }
+        const SPRING_POP = sampleSpring(520, 17, 1);
+        const durOf = (a) => a.length * FRAME;
+        const Motion = {
+            pop(el) {
+                if (REDUCED) { el.style.opacity = '1'; return; }
+                const base = el.style.transform.replace(/ scale\([^)]*\)/, '');
+                const kf = SPRING_POP.map(p => ({ opacity: Math.min(1, p * 2).toFixed(3), transform: `${base} scale(${(0.3 + 0.7 * p).toFixed(3)})` }));
+                const a = el.animate(kf, { duration: durOf(SPRING_POP), easing: 'linear' });
+                a.onfinish = () => { el.style.transform = base; el.style.opacity = '1'; };
+            },
+        };
+
+        // ───────── State ─────────
+        let S = "25525511135";          // input string
+        let nodes = [];                  // full recursion tree
+        let steps = [];
+        let stepIdx = 0;
+        let timer = null;
+        let confettiArmed = true;
+        const delays = [1300, 700, 320];
+        const nodeEls = {};
+        const edgeEls = {};
+        let viewScale = 1, autoFit = true, contentW = 0, contentH = 0;
+
+        const CODE = [
+            [['kw','def '],['fn','backtrack'],['src','(start, segs, ip):']],
+            [['kw','  if '],['src','segs == 4:']],
+            [['kw','    if '],['src','start == len(s): results.append(ip)']],
+            [['kw','    return']],
+            [['kw','  for '],['src','len in (1, 2, 3):']],
+            [['src','    seg = s[start : start+len]']],
+            [['kw','    if '],['src','len(seg)>1 and seg[0]=="0": continue']],
+            [['kw','    if '],['src','int(seg) > 255: continue']],
+            [['src','    backtrack(start+len, segs+1, ip+seg)']],
+        ];
+        function buildCodePanel() {
+            const panel = document.getElementById('code-panel'); panel.innerHTML = '';
+            CODE.forEach((tokens, i) => {
+                const line = document.createElement('div'); line.className = 'code-line'; line.dataset.line = i;
+                const lno = document.createElement('span'); lno.className = 'lno'; lno.textContent = i + 1; line.appendChild(lno);
+                const src = document.createElement('span');
+                tokens.forEach(([cls, txt]) => { const s = document.createElement('span'); s.className = cls; s.textContent = txt; src.appendChild(s); });
+                line.appendChild(src); panel.appendChild(line);
+            });
+        }
+        function highlightCode(arr) { document.querySelectorAll('.code-line').forEach(el => el.classList.toggle('active', arr && arr.includes(+el.dataset.line))); }
+        function toggleDetails() {
+            const wrap = document.getElementById('details-wrap'); const open = wrap.classList.toggle('open');
+            wrap.querySelector('.details-toggle').setAttribute('aria-expanded', open ? 'true' : 'false');
+            document.getElementById('details-label').textContent = open ? 'Hide code & log' : 'Show code & log';
+        }
+
+        // ───────── helpers ─────────
+        function isValidSeg(seg) {
+            if (seg.length === 0 || seg.length > 3) return false;
+            if (seg.length > 1 && seg[0] === '0') return false;
+            return parseInt(seg, 10) <= 255;
+        }
+        function escIP(ip) { return ip === '' ? '&epsilon;' : ip; }
+
+        // ───────── build the full recursion tree + DFS preorder steps ─────────
+        // Each tree node = one backtrack(start, segs) call. Edges carry the chosen
+        // candidate segment. Invalid candidates spawn red "pruned" leaves so the
+        // backtracking visibly prunes branches.
+        function generateSteps() {
+            nodes = []; steps = [];
+            const byKey = new Map();
+            let uid = 0;
+            function addNode(parent, label, ip, start, segs, kind) {
+                const key = 'k' + (uid++);
+                const node = { key, parent, label, ip, start, segs, kind, complete: kind === 'complete', pruned: kind === 'prune' };
+                nodes.push(node); byKey.set(key, node); return node;
+            }
+            const results = [];
+            // order: list of { node, code, panel, log, narClass } in true DFS/iteration order
+            const order = [];
+            const L = S.length;
+
+            const root = addNode(null, null, '', 0, 0, 'call');
+            order.push({ node: root, code: [0], event: 'call',
+                panel: `Call <code>backtrack(start=0, segs=0)</code> on <code>"${S}"</code>. Need 4 segments, each 1&ndash;3 digits in 0&ndash;255, no leading zeros.`,
+                log: `backtrack(0, 0, "")` });
+
+            (function dfs(node) {
+                // base case: 4 segments placed
+                if (node.segs === 4) {
+                    if (node.start === L) {
+                        node.kind = 'complete'; node.complete = true; results.push(node.ip);
+                        order.push({ node, code: [1, 2, 3], event: 'found',
+                            panel: `<code>segs == 4</code> and all ${L} digits consumed &#8594; <b>valid IP found:</b> <code>${node.ip}</code>. Record it, then backtrack.`,
+                            log: `✓ found "${node.ip}"` });
+                    } else {
+                        node.kind = 'prune'; node.pruned = true;
+                        order.push({ node, code: [1, 3], event: 'prune',
+                            panel: `<code>segs == 4</code> but ${L - node.start} digit(s) remain unused &#8594; <b>dead end</b>, prune and backtrack.`,
+                            log: `✗ 4 segs, leftover digits → prune` });
+                    }
+                    return;
+                }
+                // try segment lengths 1..3
+                for (let len = 1; len <= 3; len++) {
+                    if (node.start + len > L) break;
+                    const seg = S.substring(node.start, node.start + len);
+                    if (isValidSeg(seg)) {
+                        const newIP = node.segs === 0 ? seg : node.ip + '.' + seg;
+                        const child = addNode(node.key, seg, newIP, node.start + len, node.segs + 1, 'call');
+                        order.push({ node: child, code: [4, 5, 8], event: 'call',
+                            panel: `From <code>backtrack(${node.start}, ${node.segs})</code> take segment <code>"${seg}"</code> (valid) &#8594; recurse <code>backtrack(${child.start}, ${child.segs})</code>, IP so far <code>${newIP}</code>.`,
+                            log: `  "${seg}" ok → backtrack(${child.start}, ${child.segs})` });
+                        dfs(child);
+                    } else {
+                        // pruned candidate -> red leaf
+                        const reason = (seg.length > 1 && seg[0] === '0') ? 'leading zero' : '&gt; 255';
+                        const leaf = addNode(node.key, seg, node.ip, node.start, node.segs, 'prune');
+                        const codeLines = (seg.length > 1 && seg[0] === '0') ? [4, 5, 6] : [4, 5, 7];
+                        order.push({ node: leaf, code: codeLines, event: 'prune',
+                            panel: `Candidate <code>"${seg}"</code> is invalid (${reason}) &#8594; <code>continue</code>, prune this branch.`,
+                            log: `  "${seg}" bad (${reason === '&gt; 255' ? '>255' : 'leading 0'}) → skip` });
+                    }
+                }
+            })(root);
+
+            const totalResults = results.length;
+
+            // ---- assemble immutable per-step snapshots ----
+            const visible = new Set();
+            let found = 0;
+            order.forEach((ev, k) => {
+                const node = ev.node;
+                visible.add(node.key);
+                // path from this node up to root
+                const path = new Set(); let cur = node;
+                while (cur) { path.add(cur.key); cur = cur.parent != null ? byKey.get(cur.parent) : null; }
+                const vis = new Set(visible);
+                let narClass = '';
+                if (ev.event === 'found') { found++; narClass = 'done'; }
+                else if (ev.event === 'prune') narClass = 'miss';
+
+                steps.push({
+                    visible: vis, current: node.key, path, found,
+                    confetti: ev.event === 'found',
+                    complete: ev.event === 'found',
+                    miss: ev.event === 'prune',
+                    code: ev.code,
+                    panel: ev.panel,
+                    log: ev.log,
+                    idx: node.start, segs: node.segs,
+                    segLabel: node.label,
+                });
+            });
+
+            // intro step (root only) prepended is already first order entry; add final summary
+            steps.push({
+                visible: new Set(nodes.map(n => n.key)), current: null, path: new Set(),
+                found: totalResults, complete: true, confetti: true, done: true,
+                code: [], results: [...results],
+                panel: `Search complete &#8594; <b>${totalResults}</b> valid IP address${totalResults !== 1 ? 'es' : ''} for <code>"${S}"</code>: ${results.map(r => '<code>' + r + '</code>').join(', ') || '<b>none</b>'}.`,
+                log: `done  ${totalResults} result(s)`,
+                idx: L, segs: 4, segLabel: null,
+            });
+        }
+
+        // ───────── layout (tidy top-down tree, leaf-packed) ─────────
+        const PADX = 52, PADY = 24, ROW = 70;
+        function layout() {
+            const byKey = new Map(); nodes.forEach(n => byKey.set(n.key, Object.assign({}, n, { kids: [], depth: n.segs + (n.pruned && n.segs < 4 ? 1 : 0) })));
+            // depth = number of segments chosen along the path; pruned candidate leaves
+            // sit one row below their parent.
+            byKey.forEach(n => {
+                // recompute depth as path length to be exact
+                let d = 0, cur = n; while (cur.parent != null && byKey.has(cur.parent)) { d++; cur = byKey.get(cur.parent); }
+                n.depth = d;
+            });
+            byKey.forEach(n => { if (n.parent != null && byKey.has(n.parent)) byKey.get(n.parent).kids.push(n); });
+            const cnt = nodes.length;
+            const COL = cnt > 60 ? 46 : cnt > 30 ? 58 : 80;
+            let nextX = 0;
+            const rootNode = nodes[0] ? byKey.get(nodes[0].key) : null;
+            (function place(n) {
+                n.y = n.depth * ROW + PADY;
+                if (n.kids.length === 0) { n.x = nextX * COL + PADX; nextX++; }
+                else { n.kids.forEach(place); n.x = (n.kids[0].x + n.kids[n.kids.length - 1].x) / 2; }
+            })(rootNode);
+            const width = Math.max(nextX, 1) * COL + PADX * 2 - COL;
+            let maxDepth = 0; byKey.forEach(n => { if (n.depth > maxDepth) maxDepth = n.depth; });
+            const height = maxDepth * ROW + PADY * 2 + 34;
+            return { byKey, width, height };
+        }
+
+        // ───────── render ─────────
+        function renderStep(idx) {
+            stepIdx = idx; const step = steps[idx]; if (!step) return;
+            const { byKey, width, height } = layout();
+            contentW = width; contentH = height;
+            const inner = document.getElementById('tree-inner');
+            const svg = document.getElementById('edges');
+            inner.style.width = width + 'px'; inner.style.height = height + 'px';
+            svg.setAttribute('width', width); svg.setAttribute('height', height);
+
+            const used = new Set();
+            byKey.forEach((n, key) => {
+                if (!step.visible.has(key)) return;
+                const elKey = 'n:' + key; used.add(elKey);
+                let el = nodeEls[elKey]; const fresh = !el;
+                if (!el) { el = document.createElement('div'); el.className = 'tnode'; inner.appendChild(el); nodeEls[elKey] = el; }
+                const isRoot = n.parent == null;
+                el.textContent = n.pruned ? n.label : (isRoot ? 'ε' : n.ip);
+                const onPath = step.path.has(key);
+                const isCur = step.current === key;
+                el.className = 'tnode'
+                    + (isRoot ? ' root' : '')
+                    + (n.complete ? ' complete' : '')
+                    + (n.pruned ? ' pruned' : '')
+                    + (onPath && !isCur && !n.complete && !n.pruned ? ' on-path' : '')
+                    + (isCur ? ' current' : '')
+                    + (!onPath && !n.complete && !n.pruned && step.current ? ' dim' : '');
+                el.style.left = n.x + 'px'; el.style.top = n.y + 'px';
+                el.style.transform = 'translate(-50%, 0)';
+                if (fresh) { el.style.opacity = '0'; Motion.pop(el); }
+            });
+
+            const usedE = new Set();
+            byKey.forEach((n, key) => {
+                if (n.parent == null || !step.visible.has(key)) return;
+                const par = byKey.get(n.parent); if (!par || !step.visible.has(n.parent)) return;
+                const eKey = 'e:' + key; usedE.add(eKey);
+                let rec = edgeEls[eKey];
+                if (!rec) {
+                    const ln = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                    const lbl = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                    lbl.setAttribute('text-anchor', 'middle');
+                    svg.appendChild(ln); svg.appendChild(lbl); rec = { ln, lbl }; edgeEls[eKey] = rec;
+                }
+                const x1 = par.x, y1 = par.y + 34, x2 = n.x, y2 = n.y;
+                const my = (y1 + y2) / 2;
+                rec.ln.setAttribute('d', `M ${x1} ${y1} C ${x1} ${my}, ${x2} ${my}, ${x2} ${y2}`);
+                const on = step.path.has(key) && step.path.has(n.parent);
+                const cls = n.pruned ? 'pruned' : (on ? 'on-path' : '');
+                rec.ln.setAttribute('class', 'edge-ln' + (cls ? ' ' + cls : ''));
+                rec.lbl.textContent = n.label;
+                rec.lbl.setAttribute('x', (x1 + x2) / 2); rec.lbl.setAttribute('y', my - 2);
+                rec.lbl.setAttribute('class', 'edge-lbl' + (cls ? ' ' + cls : ''));
+            });
+
+            Object.keys(nodeEls).forEach(k => { if (!used.has(k)) { nodeEls[k].remove(); delete nodeEls[k]; } });
+            Object.keys(edgeEls).forEach(k => { if (!usedE.has(k)) { edgeEls[k].ln.remove(); edgeEls[k].lbl.remove(); delete edgeEls[k]; } });
+
+            // results feed
+            renderResFeed(step.found);
+
+            const mp = document.getElementById('main-panel');
+            mp.innerHTML = step.panel || '&mdash;';
+            mp.classList.toggle('done', !!step.complete && !step.miss);
+            mp.classList.toggle('miss', !!step.miss);
+            highlightCode(step.code);
+            renderStatePills(step);
+
+            if (step.confetti) { if (confettiArmed) { fireConfetti(); confettiArmed = false; } } else confettiArmed = true;
+
+            document.getElementById('step-badge').textContent = `Step ${idx + 1} / ${steps.length}`;
+            document.getElementById('progress-fill').style.width = `${(idx / Math.max(1, steps.length - 1)) * 100}%`;
+
+            const logEl = document.getElementById('log');
+            logEl.innerHTML = steps.slice(0, idx + 1).map(s => `<div style="margin:3px 0;white-space:pre-wrap;">${s.log}</div>`).join('');
+            logEl.scrollTop = logEl.scrollHeight;
+
+            if (autoFit) fitView(); else applyView();
+        }
+
+        function renderStatePills(step) {
+            const host = document.getElementById('state-pills');
+            const segTxt = step.segLabel != null ? `"${step.segLabel}"` : '&mdash;';
+            host.innerHTML =
+                `<span class="pill idx"><span class="k">start</span> <b>${step.idx}</b></span>` +
+                `<span class="pill seg"><span class="k">segments</span> <b>${step.segs}</b> / 4</span>` +
+                `<span class="pill"><span class="k">segment</span> <b>${segTxt}</b></span>` +
+                `<span class="pill found"><span class="k">valid IPs</span> <b>${step.found}</b></span>`;
+        }
+
+        // show one green chip per valid IP discovered so far
+        function renderResFeed(found) {
+            const feed = document.getElementById('res-feed');
+            const all = nodes.filter(n => n.complete).map(n => n.ip);
+            feed.innerHTML = '';
+            if (all.length === 0) { feed.innerHTML = '<span class="res-label" style="opacity:.6">&mdash;</span>'; return; }
+            all.forEach((r, i) => {
+                const chip = document.createElement('span'); chip.className = 'res-chip' + (i < found ? ' show' : '');
+                chip.textContent = r; feed.appendChild(chip);
+            });
+        }
+
+        function fireConfetti() {
+            const host = document.getElementById('confetti'); if (!host || REDUCED) return;
+            const colors = ['#22c55e', '#06b6d4', '#a855f7', '#f5a524', '#f43f5e'];
+            for (let i = 0; i < 36; i++) {
+                const p = document.createElement('div'); p.className = 'confetti-piece';
+                p.style.setProperty('--x', ((Math.random() * 2 - 1) * 260) + 'px');
+                p.style.setProperty('--rot', ((Math.random() * 720 - 360)) + 'deg');
+                p.style.background = colors[i % colors.length];
+                p.style.animationDuration = (0.9 + Math.random() * 0.8) + 's';
+                p.style.animationDelay = (Math.random() * 0.15) + 's';
+                host.appendChild(p); setTimeout(() => p.remove(), 1900);
+            }
+        }
+
+        // ───────── view: fit / zoom / pan ─────────
+        function applyView() {
+            const inner = document.getElementById('tree-inner'), canvas = document.getElementById('tree-canvas'), stage = document.getElementById('tree-stage');
+            if (!inner || !canvas || !stage) return;
+            inner.style.transform = 'scale(' + viewScale + ')';
+            const sw = contentW * viewScale, sh = contentH * viewScale;
+            canvas.style.width = sw + 'px'; canvas.style.height = sh + 'px';
+            canvas.style.marginLeft = Math.max(0, (stage.clientWidth - sw) / 2) + 'px';
+            canvas.style.marginTop = Math.max(0, (stage.clientHeight - sh) / 2) + 'px';
+        }
+        function fitView() {
+            autoFit = true;
+            const stage = document.getElementById('tree-stage');
+            if (!stage || !contentW || !contentH) { viewScale = 1; applyView(); return; }
+            const s = Math.min((stage.clientWidth - 18) / contentW, (stage.clientHeight - 18) / contentH, 1.3);
+            viewScale = Math.max(0.12, s); applyView();
+        }
+        function zoomBy(f) { autoFit = false; viewScale = Math.max(0.12, Math.min(2.6, viewScale * f)); applyView(); }
+        (function setupPanZoom() {
+            const stage = document.getElementById('tree-stage'); if (!stage) return;
+            stage.addEventListener('wheel', (e) => { e.preventDefault(); zoomBy(e.deltaY < 0 ? 1.12 : 0.9); }, { passive: false });
+            let drag = false, sx = 0, sy = 0, sl = 0, st = 0;
+            stage.addEventListener('mousedown', (e) => { drag = true; stage.classList.add('grabbing'); sx = e.clientX; sy = e.clientY; sl = stage.scrollLeft; st = stage.scrollTop; });
+            window.addEventListener('mousemove', (e) => { if (!drag) return; stage.scrollLeft = sl - (e.clientX - sx); stage.scrollTop = st - (e.clientY - sy); });
+            window.addEventListener('mouseup', () => { drag = false; stage.classList.remove('grabbing'); });
+        })();
+        let _rsT; window.addEventListener('resize', () => { clearTimeout(_rsT); _rsT = setTimeout(() => { if (autoFit) fitView(); else applyView(); }, 120); });
+
+        // ───────── controls ─────────
+        function nextStep() { if (stepIdx < steps.length - 1) renderStep(stepIdx + 1); else pause(); }
+        function prevStep() { if (stepIdx > 0) renderStep(stepIdx - 1); }
+        function resetSim() { pause(); renderStep(0); }
+        function togglePlay() {
+            const btn = document.getElementById('play-btn');
+            if (timer) { pause(); return; }
+            btn.textContent = 'Pause';
+            if (stepIdx >= steps.length - 1) renderStep(0);
+            timer = setInterval(() => { if (stepIdx < steps.length - 1) nextStep(); else pause(); }, delays[document.getElementById('speed').value]);
+        }
+        function pause() { clearInterval(timer); timer = null; document.getElementById('play-btn').textContent = 'Play'; }
+
+        function clearDom() { Object.keys(nodeEls).forEach(k => { nodeEls[k].remove(); delete nodeEls[k]; }); Object.keys(edgeEls).forEach(k => { edgeEls[k].ln.remove(); edgeEls[k].lbl.remove(); delete edgeEls[k]; }); confettiArmed = true; }
+        function loadStr(str) { pause(); S = str; clearDom(); generateSteps(); renderStep(0); }
+        function loadCustom() {
+            const v = (document.getElementById('str-input').value || '').trim();
+            if (!v || !/^\d+$/.test(v)) { document.getElementById('str-input').focus(); return; }
+            loadStr(v.slice(0, 12));
+        }
+        function loadExample(ex) {
+            const v = ex === 0 ? '25525511135' : '0000';
+            document.getElementById('str-input').value = v; loadStr(v);
+        }
+
+        document.addEventListener('keydown', (e) => {
+            const tag = (e.target.tagName || '').toLowerCase(); if (tag === 'input' || tag === 'textarea') return;
+            if (e.key === 'ArrowRight') { e.preventDefault(); pause(); nextStep(); }
+            else if (e.key === 'ArrowLeft') { e.preventDefault(); pause(); prevStep(); }
+            else if (e.key === ' ') { e.preventDefault(); togglePlay(); }
+        });
+        document.getElementById('str-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') loadCustom(); });
+
+        buildCodePanel();
+        window.onload = () => loadExample(0);
+    </script>
+</body>
+</html>

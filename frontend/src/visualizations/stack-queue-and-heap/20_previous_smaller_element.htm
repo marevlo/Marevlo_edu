@@ -1,0 +1,632 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Previous Smaller Element</title>
+    <style>
+        :root {
+            --bg-page: #070b14;
+            --bg-surface: rgba(255, 255, 255, 0.045);
+            --bg-input: rgba(255, 255, 255, 0.04);
+            --border-main: rgba(255, 255, 255, 0.10);
+            --btn-bg: rgba(255, 255, 255, 0.05);
+            --btn-hover: rgba(255, 255, 255, 0.10);
+            --text-main: #e8eefb;
+            --text-dim: #8b98b3;
+            --accent-orange: #f5a524;   /* current scan element            */
+            --accent-blue:   #06b6d4;   /* TOP pointer / chrome             */
+            --accent-green:  #22c55e;   /* settled / answer found           */
+            --accent-red:    #f43f5e;   /* popped / none                    */
+            --accent-purple: #a855f7;   /* monotonic stack                  */
+            --mono: ui-monospace, 'SF Mono', 'Cascadia Code', 'Courier New', monospace;
+            --sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+            --shell: 880px;
+        }
+
+        * { box-sizing: border-box; }
+        html, body { overflow-x: hidden; }
+        body {
+            background:
+                radial-gradient(1100px 600px at 15% -10%, rgba(6, 182, 212, 0.10), transparent 60%),
+                radial-gradient(900px 600px at 100% 10%, rgba(168, 85, 247, 0.10), transparent 55%),
+                linear-gradient(160deg, #070b14 0%, #0b1120 55%, #0a0f1c 100%);
+            background-attachment: fixed;
+            color: var(--text-main); font-family: var(--sans); margin: 0;
+            display: flex; flex-direction: column; align-items: center; min-height: 100vh;
+            padding-bottom: 48px; -webkit-font-smoothing: antialiased;
+        }
+        body::before, body::after { content: ''; position: fixed; border-radius: 50%; filter: blur(70px); pointer-events: none; z-index: 0; opacity: 0.45; }
+        body::before { width: 380px; height: 380px; top: 8%; left: -120px; background: radial-gradient(circle, rgba(6,182,212,0.30), transparent 70%); }
+        body::after  { width: 420px; height: 420px; bottom: 4%; right: -140px; background: radial-gradient(circle, rgba(168,85,247,0.22), transparent 70%); }
+        body > * { position: relative; z-index: 1; }
+
+        .input-bar {
+            width: 100%; background: rgba(10, 15, 28, 0.55);
+            backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+            padding: 14px 16px; display: flex; justify-content: center; align-items: center; gap: 10px;
+            border-bottom: 1px solid var(--border-main); flex-wrap: wrap; position: sticky; top: 0; z-index: 50;
+        }
+        label.ui-label, .ui-label { font-family: var(--mono); font-size: 13px; color: var(--text-dim); letter-spacing: 0.2px; }
+        input[type="text"], input[type="number"] {
+            background: var(--bg-input); border: 1px solid var(--border-main); color: var(--text-main);
+            height: 34px; border-radius: 9px; padding: 0 12px; font-size: 13px; font-family: var(--mono); width: 200px;
+            transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+        }
+        input:focus { outline: none; border-color: var(--accent-blue); box-shadow: 0 0 0 3px rgba(6,182,212,0.18); background: rgba(6,182,212,0.06); }
+
+        button {
+            height: 34px; border-radius: 9px; padding: 0 14px; background: var(--btn-bg);
+            border: 1px solid var(--border-main); color: var(--text-main); font-size: 13px; font-weight: 600; cursor: pointer;
+            transition: transform 0.15s ease, background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+        }
+        button:hover { background: var(--btn-hover); border-color: rgba(6, 182, 212, 0.5); box-shadow: 0 0 18px rgba(6, 182, 212, 0.18); transform: translateY(-1px); }
+        button:active { transform: translateY(0); }
+        #play-btn { background: linear-gradient(135deg, rgba(6,182,212,0.22), rgba(6,182,212,0.10)); border-color: rgba(6, 182, 212, 0.45); color: #a5f3fc; min-width: 80px; }
+        .load-btn { font-family: var(--mono); border-color: rgba(6,182,212,0.4); color: #a5f3fc; }
+
+        .shell { width: var(--shell); max-width: 95%; margin: 24px auto 0; display: flex; flex-direction: column; gap: 16px; }
+
+        .title-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+        .title-row h1 { font-size: 18px; font-weight: 800; margin: 0; letter-spacing: 0.2px; }
+        .title-row .sub { color: var(--text-dim); font-weight: 500; font-size: 13px; }
+        .step-badge { font-family: var(--mono); font-size: 12px; font-weight: 700; color: #a5f3fc; background: rgba(6,182,212,0.12); border: 1px solid rgba(6,182,212,0.3); padding: 4px 10px; border-radius: 999px; white-space: nowrap; }
+        .progress-track { height: 4px; width: 100%; background: rgba(255,255,255,0.07); border-radius: 999px; overflow: hidden; margin-top: -6px; }
+        .progress-fill { height: 100%; width: 0%; border-radius: 999px; background: linear-gradient(90deg, var(--accent-blue), var(--accent-purple)); box-shadow: 0 0 12px rgba(6,182,212,0.5); transition: width 0.45s cubic-bezier(0.34,1.1,0.64,1); }
+
+        .op-feed { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+        .op-chip { font-family: var(--mono); font-size: 11px; font-weight: 700; padding: 4px 9px; border-radius: 8px; border: 1px solid var(--border-main); color: var(--text-dim); background: rgba(255,255,255,0.03); transition: all 0.3s; white-space: nowrap; }
+        .op-chip.done { opacity: 0.45; }
+        .op-chip.current { color: #fff; border-color: rgba(245,165,36,0.6); background: rgba(245,165,36,0.16); box-shadow: 0 0 12px rgba(245,165,36,0.3); }
+
+        .narration { background: var(--bg-surface); border: 1px solid rgba(6,182,212,0.22); border-radius: 12px; padding: 12px 18px; font-family: var(--mono); font-size: 14px; line-height: 1.5; color: #cfe9f5; min-height: 48px; display: flex; align-items: center; gap: 10px; transition: border-color 0.3s, background 0.3s; }
+        .narration::before { content: '\25B8'; color: var(--accent-blue); font-size: 13px; }
+        .narration.done { border-color: rgba(34,197,94,0.4); background: rgba(34,197,94,0.06); }
+        .narration.done::before { content: '\2713'; color: var(--accent-green); }
+        .narration.miss { border-color: rgba(244,63,94,0.4); background: rgba(244,63,94,0.06); }
+        .narration.miss::before { content: '\2717'; color: var(--accent-red); }
+        .narration code { background: rgba(6,182,212,0.14); color: #7dd3fc; padding: 1px 6px; border-radius: 5px; font-size: 12.5px; }
+        .narration b { color: #fff; }
+
+        .stage-card { background: var(--bg-surface); border: 1px solid var(--border-main); border-radius: 18px; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); box-shadow: 0 12px 38px rgba(0,0,0,0.4); overflow: hidden; }
+        .stage-screen { position: relative; margin: 14px; border-radius: 14px; background: radial-gradient(700px 300px at 50% -10%, rgba(6,182,212,0.08), transparent 70%), #090d18; border: 1px solid rgba(255,255,255,0.06); padding: 22px 18px; }
+
+        /* ── horizontal scan row (input array) ── */
+        .row-label { font-family: var(--mono); font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--text-dim); margin: 0 0 8px 2px; }
+        .arr-row { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; min-height: 70px; }
+        .cell { width: 58px; height: 58px; border-radius: 11px; display: flex; flex-direction: column; align-items: center; justify-content: center;
+            font-family: var(--mono); font-weight: 800; font-size: 19px; position: relative; will-change: transform;
+            border: 2px solid var(--border-main); background: rgba(255,255,255,0.04); color: var(--text-main);
+            transition: background 0.35s, border-color 0.35s, color 0.35s, box-shadow 0.35s, transform 0.3s; }
+        .cell .ci { position: absolute; bottom: -17px; font-size: 10px; color: var(--text-dim); font-weight: 700; }
+        .cell.done    { border-color: rgba(255,255,255,0.16); background: rgba(255,255,255,0.05); color: var(--text-dim); }
+        .cell.current { border-color: var(--accent-orange); background: rgba(245,165,36,0.16); color: #ffd591; box-shadow: 0 0 22px rgba(245,165,36,0.5); transform: translateY(-4px); }
+        .cell.instack { border-color: var(--accent-purple); background: rgba(168,85,247,0.12); color: #e9d5ff; }
+        .cell.psource { border-color: var(--accent-green); background: rgba(34,197,94,0.14); color: #d6ffe8; box-shadow: 0 0 18px rgba(34,197,94,0.4); }
+
+        /* ── the vertical monotonic stack (index 0 at bottom; top grows up) ── */
+        .board { display: flex; align-items: flex-end; justify-content: center; gap: 70px; margin-top: 26px; }
+        .stack-wrap { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+        .stack-col { display: flex; flex-direction: column-reverse; gap: 8px; position: relative; min-height: 222px; justify-content: flex-end; }
+        .slot { width: 150px; height: 42px; border-radius: 11px; display: flex; align-items: center; justify-content: center; gap: 10px;
+            font-family: var(--mono); font-weight: 800; font-size: 17px; position: relative; will-change: transform;
+            border: 2px solid rgba(168,85,247,0.45); background: rgba(168,85,247,0.10); color: #e9d5ff;
+            transition: background 0.35s, border-color 0.35s, color 0.35s, box-shadow 0.35s, transform 0.3s; }
+        .slot.toptile  { border-color: var(--accent-blue); background: rgba(6,182,212,0.14); color: #a5f3fc; box-shadow: 0 0 20px rgba(6,182,212,0.45); }
+        .slot.pushing  { border-color: var(--accent-orange); background: rgba(245,165,36,0.16); color: #ffd591; box-shadow: 0 0 22px rgba(245,165,36,0.55); }
+        .slot.popping  { border-color: var(--accent-red); background: rgba(244,63,94,0.16); color: #fecdd3; box-shadow: 0 0 22px rgba(244,63,94,0.5); }
+        .slot.answer   { border-color: var(--accent-green); background: rgba(34,197,94,0.16); color: #d6ffe8; box-shadow: 0 0 22px rgba(34,197,94,0.5); }
+        .slot .sx { font-size: 11px; color: var(--text-dim); font-weight: 700; }
+        .base-line { width: 178px; height: 4px; border-radius: 3px; background: linear-gradient(90deg, transparent, rgba(168,85,247,0.4), transparent); margin-top: 2px; }
+        .stack-empty { font-family: var(--mono); font-size: 12px; color: var(--text-dim); opacity: 0.7; padding: 10px 0; align-self: center; }
+
+        /* TOP pointer pill that glides to the current top slot */
+        .top-ptr { position: absolute; right: -84px; display: flex; align-items: center; gap: 6px; opacity: 0; will-change: transform;
+            font-family: var(--mono); font-size: 12px; font-weight: 800; }
+        .top-ptr .arrow { color: var(--accent-blue); font-size: 16px; }
+        .top-ptr .tag { background: var(--accent-blue); color: #04222a; padding: 3px 10px; border-radius: 8px; box-shadow: 0 0 14px rgba(6,182,212,0.6); white-space: nowrap; }
+
+        /* ── result row (previous-smaller values) ── */
+        .res-row { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+        .rcell { width: 48px; height: 48px; border-radius: 10px; display: flex; align-items: center; justify-content: center;
+            font-family: var(--mono); font-weight: 800; font-size: 16px; position: relative;
+            border: 2px dashed rgba(255,255,255,0.14); background: rgba(255,255,255,0.02); color: var(--text-dim);
+            transition: background 0.35s, border-color 0.35s, color 0.35s, box-shadow 0.35s, transform 0.35s; }
+        .rcell .ci { position: absolute; bottom: -16px; font-size: 10px; color: var(--text-dim); font-weight: 700; }
+        .rcell.filled { border-style: solid; border-color: rgba(34,197,94,0.5); background: rgba(34,197,94,0.10); color: #d6ffe8; }
+        .rcell.none   { border-style: solid; border-color: rgba(244,63,94,0.4); background: rgba(244,63,94,0.08); color: #fecdd3; }
+        .rcell.justset { box-shadow: 0 0 22px rgba(34,197,94,0.5); transform: scale(1.1); }
+
+        .action-stage { position: relative; min-height: 70px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; }
+        .action-word { font-family: var(--mono); font-weight: 800; font-size: 18px; letter-spacing: 0.4px; min-height: 22px; text-align: center; transition: color 0.3s; }
+        #confetti { position: absolute; inset: 0; overflow: visible; pointer-events: none; }
+        .confetti-piece { position: absolute; top: 0; left: 50%; width: 8px; height: 13px; border-radius: 2px; opacity: 0; animation: confettiFall ease-out forwards; }
+
+        .controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: center; }
+        .controls .kbd-hint { font-size: 11px; color: var(--text-dim); font-family: var(--mono); margin-left: 4px; }
+        .kbd { background: rgba(255,255,255,0.07); border: 1px solid var(--border-main); border-radius: 5px; padding: 1px 6px; font-size: 10px; }
+        input[type="range"] { accent-color: var(--accent-blue); width: 110px; cursor: pointer; }
+
+        .details-toggle { align-self: center; height: 32px; padding: 0 16px; border-radius: 999px; cursor: pointer; background: rgba(255,255,255,0.04); border: 1px solid var(--border-main); color: var(--text-dim); font-family: var(--mono); font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; gap: 8px; transition: color 0.2s, border-color 0.2s, background 0.2s; }
+        .details-toggle:hover { color: var(--text-main); border-color: rgba(6,182,212,0.4); background: rgba(6,182,212,0.06); }
+        .details-toggle .chev { transition: transform 0.3s ease; }
+        .details-wrap.open .details-toggle .chev { transform: rotate(180deg); }
+        .details-body { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.4s ease; }
+        .details-wrap.open .details-body { grid-template-rows: 1fr; }
+        .details-inner { overflow: hidden; min-height: 0; }
+        .details-grid { display: flex; flex-direction: column; gap: 14px; padding-top: 14px; }
+
+        .panel-card { background: var(--bg-surface); border: 1px solid var(--border-main); border-radius: 16px; backdrop-filter: blur(10px); box-shadow: 0 8px 30px rgba(0,0,0,0.35); }
+        .panel-head { display: flex; align-items: center; gap: 8px; padding: 11px 16px; border-bottom: 1px solid var(--border-main); font-size: 11px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; color: var(--text-dim); }
+        .panel-head .pip { width: 7px; height: 7px; border-radius: 50%; background: var(--accent-blue); box-shadow: 0 0 8px var(--accent-blue); }
+        .code-body { padding: 12px 6px 14px; font-family: var(--mono); font-size: 12.5px; line-height: 1.7; }
+        .code-line { display: flex; gap: 12px; padding: 1px 16px; border-left: 2px solid transparent; transition: background 0.3s, border-color 0.3s; white-space: pre; }
+        .code-line .lno { color: #4b5772; width: 16px; text-align: right; user-select: none; }
+        .code-line .src { color: #c4cee0; }
+        .code-line .kw { color: #c792ea; }
+        .code-line .fn { color: #82aaff; }
+        .code-line.active { background: rgba(6,182,212,0.12); border-left-color: var(--accent-blue); }
+        .code-line.active .src, .code-line.active .lno { color: #e8eefb; }
+
+        .state-strip { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 0 2px; }
+        .pill { display: inline-flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 12px; color: var(--text-dim); background: rgba(255,255,255,0.04); border: 1px solid var(--border-main); border-radius: 999px; padding: 4px 11px; }
+        .pill b { color: var(--text-main); font-weight: 800; }
+        .pill.i b { color: var(--accent-orange); } .pill.t b { color: var(--accent-blue); } .pill.s b { color: var(--accent-purple); }
+
+        .log-panel { border-radius: 14px; padding: 12px 16px; height: 110px; overflow-y: auto; font-family: var(--mono); font-size: 12.5px; line-height: 1.5; background: var(--bg-surface); border: 1px solid var(--border-main); }
+        .log-panel::-webkit-scrollbar { width: 8px; }
+        .log-panel::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 8px; }
+
+        @keyframes confettiFall { 0%{ opacity:1; transform: translate(-50%, 0) rotate(0deg); } 100%{ opacity:0; transform: translate(calc(-50% + var(--x)), 220px) rotate(var(--rot)); } }
+        @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; } }
+    </style>
+</head>
+<body>
+
+    <div class="input-bar">
+        <label class="ui-label">Array</label>
+        <input type="text" id="arr-input" value="[4, 5, 2, 10, 8]" placeholder="[4, 5, 2, 10, 8]">
+        <button class="load-btn" onclick="loadCustom()">Load</button>
+        <span class="ui-label" style="opacity:.5">|</span>
+        <button onclick="loadExample(0)">Example 1</button>
+        <button onclick="loadExample(1)">Example 2</button>
+        <button onclick="resetSim()">&#8634; Reset</button>
+    </div>
+
+    <div class="shell">
+        <div class="title-row">
+            <h1>Previous Smaller Element <span class="sub">&middot; monotonic increasing stack &middot; O(n) &middot; each index pushed / popped once</span></h1>
+            <span class="step-badge" id="step-badge">Step 1 / 1</span>
+        </div>
+        <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+
+        <div class="op-feed" id="op-feed"></div>
+
+        <div class="narration" id="main-panel">&mdash;</div>
+
+        <div class="stage-card">
+            <div class="stage-screen">
+                <div class="row-label">Input array &mdash; scan left &#8594; right</div>
+                <div class="arr-row" id="arr-row"></div>
+
+                <div class="board">
+                    <div class="stack-wrap">
+                        <div class="row-label" style="text-align:center; color:#cdb4ff;">Monotonic stack (indices)</div>
+                        <div class="stack-col" id="stack-col"></div>
+                        <div class="base-line"></div>
+                    </div>
+                </div>
+
+                <div style="margin-top:30px;">
+                    <div class="row-label">Result &mdash; previous-smaller value per index (&#8722;1 = none)</div>
+                    <div class="res-row" id="res-row"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="action-stage">
+            <div id="confetti"></div>
+            <div class="action-word" id="action-word"></div>
+        </div>
+
+        <div class="controls">
+            <button onclick="resetSim()">&#8634; Reset</button>
+            <button onclick="prevStep()">&#8592; Back</button>
+            <button onclick="togglePlay()" id="play-btn">Play</button>
+            <button onclick="nextStep()">Next &#8594;</button>
+            <span class="ui-label" style="margin-left:6px; font-size:11px">Speed</span>
+            <input type="range" id="speed" min="0" max="2" value="1">
+            <span class="kbd-hint"><span class="kbd">&#8592;</span> <span class="kbd">&#8594;</span> step &middot; <span class="kbd">space</span> play</span>
+        </div>
+
+        <div class="details-wrap" id="details-wrap">
+            <button class="details-toggle" onclick="toggleDetails()" aria-expanded="false">
+                <span id="details-label">Show code, state &amp; log</span> <span class="chev">&#9662;</span>
+            </button>
+            <div class="details-body">
+                <div class="details-inner">
+                    <div class="details-grid">
+                        <div class="state-strip">
+                            <span class="pill i">i <b id="st-i">&minus;</b></span>
+                            <span class="pill">value <b id="st-val">&minus;</b></span>
+                            <span class="pill t">prev-smaller <b id="st-ps">&minus;</b></span>
+                            <span class="pill s">stack <b id="st-stack">[ ]</b></span>
+                        </div>
+                        <div class="panel-card">
+                            <div class="panel-head"><span class="pip"></span> Algorithm</div>
+                            <div class="code-body" id="code-panel"></div>
+                        </div>
+                        <div class="log-panel" id="log"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        'use strict';
+
+        // ───────── Motion engine (spring, zero deps) ─────────
+        const REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        const FRAME = 1000 / 60;
+        function sampleSpring(stiffness, damping, mass) {
+            const dt = 1 / 60; let x = 1, v = 0; const out = [];
+            for (let i = 0; i < 240; i++) { const a = (-stiffness * x - damping * v) / mass; v += a * dt; x += v * dt; out.push(1 - x); if (Math.abs(x) < 0.0015 && Math.abs(v) < 0.0015) break; }
+            out.push(1); return out;
+        }
+        const SPRING_POS = sampleSpring(320, 30, 1);
+        const SPRING_POP = sampleSpring(520, 17, 1);
+        const durOf = (a) => a.length * FRAME;
+        const Motion = {
+            glide(el, y) {
+                const prev = el._y; el.style.opacity = '1';
+                const commit = `translateY(${y.toFixed(2)}px)`;
+                if (REDUCED || prev == null || Math.abs(y - prev) < 0.5) { el._y = y; el.style.transform = commit; return; }
+                const dy = y - prev;
+                const kf = SPRING_POS.map(p => ({ transform: `translateY(${(prev + dy * p).toFixed(2)}px)` }));
+                el.animate(kf, { duration: durOf(SPRING_POS), easing: 'linear' });
+                el._y = y; el.style.transform = commit;
+            },
+            pop(el, fromY) {
+                if (REDUCED) { el.style.opacity = '1'; return; }
+                const kf = SPRING_POP.map(p => ({ opacity: Math.min(1, p * 2).toFixed(3), transform: `translateY(${((fromY || -16) * (1 - p)).toFixed(2)}px) scale(${(0.4 + 0.6 * p).toFixed(3)})` }));
+                el.animate(kf, { duration: durOf(SPRING_POP), easing: 'linear', fill: 'backwards' });
+            },
+        };
+
+        // ───────── State ─────────
+        let arr = [];
+        let steps = [];
+        let stepIdx = 0;
+        let timer = null;
+        let confettiArmed = true;
+        const delays = [1500, 800, 380];
+        const slotEls = {};    // stack-depth -> element
+
+        const CODE = [
+            [['kw','def '],['fn','prevSmaller'],['src','(arr):']],
+            [['src','    res = [-1] * len(arr)']],
+            [['src','    stack = []          ']],
+            [['kw','    for '],['src','i, x '],['kw','in '],['fn','enumerate'],['src','(arr):']],
+            [['kw','        while '],['src','stack '],['kw','and '],['src','arr[stack[-1]] >= x:']],
+            [['src','            stack.pop()']],
+            [['kw','        if '],['src','stack: res[i] = arr[stack[-1]]']],
+            [['src','        stack.append(i)']],
+            [['kw','    return '],['src','res']],
+        ];
+        function buildCodePanel() {
+            const panel = document.getElementById('code-panel'); panel.innerHTML = '';
+            CODE.forEach((tokens, i) => {
+                const line = document.createElement('div'); line.className = 'code-line'; line.dataset.line = i;
+                const lno = document.createElement('span'); lno.className = 'lno'; lno.textContent = i + 1; line.appendChild(lno);
+                const src = document.createElement('span');
+                tokens.forEach(([cls, txt]) => { const s = document.createElement('span'); s.className = cls; s.textContent = txt; src.appendChild(s); });
+                line.appendChild(src); panel.appendChild(line);
+            });
+        }
+        function highlightCode(a) { document.querySelectorAll('.code-line').forEach(el => el.classList.toggle('active', a && a.includes(+el.dataset.line))); }
+        function toggleDetails() {
+            const wrap = document.getElementById('details-wrap'); const open = wrap.classList.toggle('open');
+            wrap.querySelector('.details-toggle').setAttribute('aria-expanded', open ? 'true' : 'false');
+            document.getElementById('details-label').textContent = open ? 'Hide code, state & log' : 'Show code, state & log';
+        }
+
+        // ───────── step generation ─────────
+        // Each step is an immutable snapshot. Stack holds INDICES (monotonic increasing by value).
+        function generateSteps() {
+            steps = [];
+            const n = arr.length;
+            const result = new Array(n).fill(-1);
+            const stack = []; // indices
+
+            const snap = (extra) => Object.assign({
+                arr: [...arr], result: [...result], stack: [...stack],
+                i: -1, code: [], pushIdx: null, popIdx: null, psIdx: null, justSet: null,
+                action: '', actionColor: 'var(--accent-blue)', tile: null, miss: false,
+            }, extra);
+
+            steps.push(snap({ code: [0, 1, 2], action: 'SCAN START', actionColor: 'var(--accent-blue)',
+                panel: `<b>Previous Smaller Element.</b> For each <code>i</code>, find the nearest value to its <b>left</b> that is strictly smaller. Keep a stack of indices whose values are <b>increasing</b> bottom &#8594; top, so the top is always the closest smaller candidate.`,
+                log: `init  arr = [${arr.join(', ')}],  res = [-1]*${n}` }));
+
+            for (let i = 0; i < n; i++) {
+                const x = arr[i];
+                steps.push(snap({ i, code: [3], action: 'VISIT i=' + i, actionColor: 'var(--accent-orange)', tile: x,
+                    panel: `Visit index <b>${i}</b>, value <code>${x}</code>. Pop every stacked index whose value is <b>&#8805; ${x}</b> &mdash; those can never be the previous-smaller for anyone to the right.`,
+                    log: `visit i=${i}  x=${x}` }));
+
+                // pop while stack top value >= x
+                while (stack.length > 0 && arr[stack[stack.length - 1]] >= x) {
+                    const popped = stack[stack.length - 1];
+                    steps.push(snap({ i, code: [4, 5], action: 'POP ' + arr[popped], actionColor: 'var(--accent-red)', popIdx: popped, tile: x,
+                        panel: `Top is index <code>${popped}</code> (value <code>${arr[popped]}</code>) which is <b>&#8805; ${x}</b> &#8594; pop it.`,
+                        log: `  pop idx ${popped} (val ${arr[popped]} >= ${x})` }));
+                    stack.pop();
+                }
+
+                // assign result
+                if (stack.length > 0) {
+                    const top = stack[stack.length - 1];
+                    result[i] = arr[top];
+                    steps.push(snap({ i, code: [6], action: 'PS = ' + result[i], actionColor: 'var(--accent-green)', psIdx: top, justSet: i,
+                        panel: `Stack top is now index <code>${top}</code> (value <code>${arr[top]}</code>) &#8804; first value smaller than ${x} on the left. Set <code>res[${i}] = ${result[i]}</code>.`,
+                        log: `  res[${i}] = ${result[i]}  (from idx ${top})` }));
+                } else {
+                    steps.push(snap({ i, code: [6], action: 'PS = -1', actionColor: 'var(--accent-red)', miss: true, justSet: i,
+                        panel: `Stack is empty &#8594; no value to the left is smaller than <code>${x}</code>. Leave <code>res[${i}] = &#8722;1</code>.`,
+                        log: `  res[${i}] = -1  (none smaller)` }));
+                }
+
+                // push current index
+                stack.push(i);
+                steps.push(snap({ i, code: [7], action: 'PUSH i=' + i, actionColor: 'var(--accent-purple)', pushIdx: i, tile: x,
+                    panel: `Push index <code>${i}</code> (value <code>${x}</code>). The stack stays increasing, ready as a smaller-candidate for indices to the right.`,
+                    log: `  push idx ${i} (val ${x})` }));
+            }
+
+            steps.push(snap({ i: n, code: [8], complete: true, confetti: true, action: '✓ DONE', actionColor: 'var(--accent-green)',
+                panel: `Scan complete. Previous-smaller result: <code>[${result.join(', ')}]</code>. Every index was pushed and popped at most once &#8594; overall <b>O(n)</b>.`,
+                log: `done  res = [${result.join(', ')}]` }));
+        }
+
+        // ───────── render (persistent-DOM reconciliation) ─────────
+        const SLOT_H = 42, SLOT_GAP = 8;
+
+        function renderStep(idx) {
+            stepIdx = idx; const step = steps[idx]; if (!step) return;
+            const inStack = new Set(step.stack);
+
+            renderArrRow(step, inStack);
+            renderStack(step);
+            renderResRow(step);
+            renderOpFeed(step);
+
+            // narration / action / chrome
+            const mp = document.getElementById('main-panel');
+            mp.innerHTML = step.panel || '&mdash;';
+            mp.classList.toggle('done', !!step.complete);
+            mp.classList.toggle('miss', !!step.miss);
+            const aw = document.getElementById('action-word'); aw.textContent = step.action || ''; aw.style.color = step.actionColor || 'var(--text-dim)';
+            highlightCode(step.code);
+
+            if (step.confetti) { if (confettiArmed) { fireConfetti(); confettiArmed = false; } } else confettiArmed = true;
+
+            // state strip
+            document.getElementById('st-i').textContent = step.i >= 0 && step.i < step.arr.length ? step.i : '−';
+            document.getElementById('st-val').textContent = step.i >= 0 && step.i < step.arr.length ? step.arr[step.i] : '−';
+            const ps = (step.i >= 0 && step.i < step.arr.length) ? step.result[step.i] : null;
+            document.getElementById('st-ps').textContent = ps == null ? '−' : ps;
+            document.getElementById('st-stack').textContent = '[' + step.stack.join(', ') + ']';
+
+            document.getElementById('step-badge').textContent = `Step ${idx + 1} / ${steps.length}`;
+            document.getElementById('progress-fill').style.width = `${(idx / Math.max(1, steps.length - 1)) * 100}%`;
+
+            const logEl = document.getElementById('log');
+            logEl.innerHTML = steps.slice(0, idx + 1).map(s => `<div style="margin:3px 0;white-space:pre-wrap;">${s.log}</div>`).join('');
+            logEl.scrollTop = logEl.scrollHeight;
+        }
+
+        const arrCells = {}; // i -> el
+        function renderArrRow(step, inStack) {
+            const row = document.getElementById('arr-row');
+            const used = new Set();
+            step.arr.forEach((v, i) => {
+                used.add(String(i));
+                let el = arrCells[i];
+                if (!el) {
+                    el = document.createElement('div'); el.className = 'cell';
+                    el.innerHTML = `<span class="cv"></span><span class="ci"></span>`;
+                    arrCells[i] = el; row.appendChild(el);
+                }
+                el.querySelector('.cv').textContent = v;
+                el.querySelector('.ci').textContent = i;
+                let cls = 'cell';
+                if (i === step.i) cls += ' current';
+                else if (i === step.psIdx) cls += ' psource';
+                else if (inStack.has(i)) cls += ' instack';
+                else if (step.i >= 0 && i < step.i) cls += ' done';
+                el.className = cls;
+            });
+            Object.keys(arrCells).forEach(k => { if (!used.has(k)) { arrCells[k].remove(); delete arrCells[k]; } });
+        }
+
+        function renderStack(step) {
+            const col = document.getElementById('stack-col');
+            const depth = step.stack.length;
+            const used = new Set();
+            // empty placeholder
+            let empty = document.getElementById('stack-empty');
+            if (depth === 0) {
+                if (!empty) { empty = document.createElement('div'); empty.id = 'stack-empty'; empty.className = 'stack-empty'; empty.textContent = 'stack empty'; col.appendChild(empty); }
+            } else if (empty) { empty.remove(); }
+
+            for (let d = 0; d < depth; d++) {
+                used.add(String(d));
+                const arrIdx = step.stack[d];
+                let el = slotEls[d];
+                if (!el) {
+                    el = document.createElement('div'); el.className = 'slot';
+                    el.innerHTML = `<span class="sv"></span><span class="sx"></span>`;
+                    slotEls[d] = el; col.appendChild(el);
+                }
+                el.querySelector('.sv').textContent = arr[arrIdx];
+                el.querySelector('.sx').textContent = '@' + arrIdx;
+                const isTop = d === depth - 1;
+                let cls = 'slot';
+                if (isTop && step.pushIdx != null && step.stack[depth - 1] === step.pushIdx) cls += ' pushing';
+                else if (isTop && step.psIdx != null) cls += ' answer';
+                else if (isTop) cls += ' toptile';
+                el.className = cls;
+                if (isTop && step.pushIdx != null && step.stack[depth - 1] === step.pushIdx) Motion.pop(el, -18);
+            }
+            // popping: briefly show the value being removed just above current top
+            if (step.popIdx != null) {
+                const d = depth; // the slot one above the surviving top
+                let el = slotEls[d];
+                if (!el) {
+                    el = document.createElement('div'); el.className = 'slot';
+                    el.innerHTML = `<span class="sv"></span><span class="sx"></span>`;
+                    slotEls[d] = el; col.appendChild(el);
+                }
+                used.add(String(d));
+                el.querySelector('.sv').textContent = arr[step.popIdx];
+                el.querySelector('.sx').textContent = '@' + step.popIdx;
+                el.className = 'slot popping';
+            }
+            Object.keys(slotEls).forEach(k => { if (!used.has(k)) { slotEls[k].remove(); delete slotEls[k]; } });
+
+            renderTopPtr(step, depth);
+        }
+
+        function renderTopPtr(step, depth) {
+            const col = document.getElementById('stack-col');
+            let ptr = document.getElementById('top-ptr');
+            if (!ptr) { ptr = document.createElement('div'); ptr.id = 'top-ptr'; ptr.className = 'top-ptr'; ptr.innerHTML = `<span class="tag">top</span><span class="arrow">&#8592;</span>`; col.appendChild(ptr); }
+            const visDepth = step.popIdx != null ? depth + 1 : depth; // include the transient popping slot
+            if (visDepth <= 0) { ptr.style.opacity = '0'; ptr._y = null; return; }
+            const topLevel = visDepth - 1;
+            const fromBottom = topLevel * (SLOT_H + SLOT_GAP) + SLOT_H / 2;
+            const colH = col.offsetHeight || (visDepth * SLOT_H + (visDepth - 1) * SLOT_GAP);
+            const y = colH - fromBottom - 11;
+            ptr.style.top = '0px';
+            Motion.glide(ptr, y);
+        }
+
+        const resCells = {}; // i -> el
+        function renderResRow(step) {
+            const row = document.getElementById('res-row');
+            const used = new Set();
+            step.arr.forEach((v, i) => {
+                used.add(String(i));
+                let el = resCells[i];
+                if (!el) {
+                    el = document.createElement('div'); el.className = 'rcell';
+                    el.innerHTML = `<span class="rv"></span><span class="ci"></span>`;
+                    resCells[i] = el; row.appendChild(el);
+                }
+                el.querySelector('.ci').textContent = i;
+                const r = step.result[i];
+                const assigned = (step.i >= 0 && i <= step.i) || step.complete;
+                el.querySelector('.rv').textContent = assigned ? (r === -1 ? '−1' : r) : '·';
+                let cls = 'rcell';
+                if (assigned) cls += r === -1 ? ' none' : ' filled';
+                if (i === step.justSet) cls += ' justset';
+                el.className = cls;
+            });
+            Object.keys(resCells).forEach(k => { if (!used.has(k)) { resCells[k].remove(); delete resCells[k]; } });
+        }
+
+        function renderOpFeed(step) {
+            const feed = document.getElementById('op-feed');
+            const used = new Set();
+            arr.forEach((v, i) => {
+                used.add(String(i));
+                let chip = document.getElementById('opchip-' + i);
+                if (!chip) { chip = document.createElement('div'); chip.id = 'opchip-' + i; chip.className = 'op-chip'; feed.appendChild(chip); }
+                chip.textContent = `[${i}]=${v}`;
+                let cls = 'op-chip';
+                if (step.complete) cls += ' done';
+                else if (i === step.i) cls += ' current';
+                else if (step.i >= 0 && i < step.i) cls += ' done';
+                chip.className = cls;
+            });
+            Array.from(feed.children).forEach(c => { const id = c.id.replace('opchip-', ''); if (!used.has(id)) c.remove(); });
+        }
+
+        function fireConfetti() {
+            const host = document.getElementById('confetti'); if (!host || REDUCED) return;
+            const colors = ['#22c55e', '#06b6d4', '#a855f7', '#f5a524', '#f43f5e'];
+            for (let i = 0; i < 38; i++) {
+                const p = document.createElement('div'); p.className = 'confetti-piece';
+                p.style.setProperty('--x', ((Math.random() * 2 - 1) * 220) + 'px');
+                p.style.setProperty('--rot', ((Math.random() * 720 - 360)) + 'deg');
+                p.style.background = colors[i % colors.length];
+                p.style.animationDuration = (0.9 + Math.random() * 0.8) + 's';
+                p.style.animationDelay = (Math.random() * 0.15) + 's';
+                host.appendChild(p); setTimeout(() => p.remove(), 1900);
+            }
+        }
+
+        // ───────── controls ─────────
+        function nextStep() { if (stepIdx < steps.length - 1) renderStep(stepIdx + 1); else pause(); }
+        function prevStep() { if (stepIdx > 0) renderStep(stepIdx - 1); }
+        function resetSim() { pause(); renderStep(0); }
+        function togglePlay() {
+            const btn = document.getElementById('play-btn');
+            if (timer) { pause(); return; }
+            btn.textContent = 'Pause';
+            if (stepIdx >= steps.length - 1) renderStep(0);
+            timer = setInterval(() => { if (stepIdx < steps.length - 1) nextStep(); else pause(); }, delays[document.getElementById('speed').value]);
+        }
+        function pause() { clearInterval(timer); timer = null; document.getElementById('play-btn').textContent = 'Play'; }
+
+        function clearDom() {
+            Object.keys(slotEls).forEach(k => { slotEls[k].remove(); delete slotEls[k]; });
+            Object.keys(arrCells).forEach(k => { arrCells[k].remove(); delete arrCells[k]; });
+            Object.keys(resCells).forEach(k => { resCells[k].remove(); delete resCells[k]; });
+            const p = document.getElementById('top-ptr'); if (p) p.remove();
+            const e = document.getElementById('stack-empty'); if (e) e.remove();
+            document.getElementById('op-feed').innerHTML = '';
+            confettiArmed = true;
+        }
+        function loadArray(newArr) {
+            pause(); arr = newArr.slice(0, 12); clearDom(); generateSteps(); renderStep(0);
+        }
+        function loadCustom() {
+            const raw = document.getElementById('arr-input').value;
+            try {
+                const parsed = JSON.parse(raw.replace(/'/g, '"'));
+                if (!Array.isArray(parsed) || parsed.length === 0) throw 0;
+                const clean = parsed.map(Number).filter(v => !Number.isNaN(v));
+                if (clean.length === 0) throw 0;
+                loadArray(clean);
+            } catch (e) {
+                const mp = document.getElementById('main-panel');
+                mp.classList.add('miss');
+                mp.innerHTML = `Could not parse that. Enter an array of numbers like <code>[4, 5, 2, 10, 8]</code>.`;
+            }
+        }
+        const examples = [
+            [4, 5, 2, 10, 8],
+            [1, 3, 0, 2, 5],
+        ];
+        function loadExample(n) {
+            const ex = examples[n];
+            document.getElementById('arr-input').value = '[' + ex.join(', ') + ']';
+            loadArray(ex);
+        }
+
+        document.addEventListener('keydown', (e) => {
+            const tag = (e.target.tagName || '').toLowerCase(); if (tag === 'input' || tag === 'textarea') return;
+            if (e.key === 'ArrowRight') { e.preventDefault(); pause(); nextStep(); }
+            else if (e.key === 'ArrowLeft') { e.preventDefault(); pause(); prevStep(); }
+            else if (e.key === ' ') { e.preventDefault(); togglePlay(); }
+        });
+        document.getElementById('arr-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') loadCustom(); });
+        window.addEventListener('resize', () => renderStep(stepIdx));
+
+        buildCodePanel();
+        window.onload = () => loadExample(0);
+    </script>
+</body>
+</html>

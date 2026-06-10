@@ -1,0 +1,2156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>RAG Academy • Module 7.4 — Auth, Rate Limiting & Multi-Tenancy</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  if (typeof console !== 'undefined') {
+    const origWarn = console.warn;
+    console.warn = function(...args) {
+      if (args[0] && typeof args[0] === 'string' && args[0].includes('cdn.tailwindcss.com')) return;
+      origWarn.apply(console, args);
+    };
+  }
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700;800;900&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+<style>
+  :root {
+    --bg-deep: #02030a;
+    --bg-mid: #060818;
+    --bg-card: rgba(12, 16, 38, 0.6);
+    --neon-cyan: #00f0ff;
+    --neon-blue: #4d8eff;
+    --neon-purple: #b86bff;
+    --neon-pink: #ff4dcf;
+    --neon-amber: #ffb84d;
+    --neon-green: #4dffb8;
+    --neon-red: #ff5577;
+    --text-primary: #e8efff;
+    --text-secondary: #8a96b8;
+    --border-glow: rgba(0, 240, 255, 0.25);
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+
+  body {
+    margin: 0;
+    font-family: 'Inter', sans-serif;
+    background: var(--bg-deep);
+    color: var(--text-primary);
+    overflow-x: hidden;
+    min-height: 100vh;
+  }
+
+  .font-display { font-family: 'Orbitron', sans-serif; letter-spacing: 0.02em; }
+  .font-mono { font-family: 'JetBrains Mono', monospace; }
+
+  /* ===== STARFIELD ===== */
+  #starfield { position: fixed; inset: 0; z-index: 0; pointer-events: none; }
+
+  .nebula {
+    position: fixed;
+    border-radius: 50%;
+    filter: blur(120px);
+    opacity: 0.35;
+    pointer-events: none;
+    z-index: 0;
+  }
+  .nebula-1 { top: -10%; left: -5%; width: 50vw; height: 50vw; background: radial-gradient(circle, #4d8eff, transparent 70%); animation: drift1 22s ease-in-out infinite; }
+  .nebula-2 { top: 30%; right: -10%; width: 45vw; height: 45vw; background: radial-gradient(circle, #b86bff, transparent 70%); animation: drift2 28s ease-in-out infinite; }
+  .nebula-3 { bottom: -10%; left: 20%; width: 40vw; height: 40vw; background: radial-gradient(circle, #00f0ff, transparent 70%); animation: drift3 25s ease-in-out infinite; opacity: 0.22; }
+
+  @keyframes drift1 { 0%,100% { transform: translate(0,0); } 50% { transform: translate(40px, 60px); } }
+  @keyframes drift2 { 0%,100% { transform: translate(0,0); } 50% { transform: translate(-50px, 40px); } }
+  @keyframes drift3 { 0%,100% { transform: translate(0,0); } 50% { transform: translate(30px, -50px); } }
+
+  /* ===== NAV ===== */
+  .top-nav {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    z-index: 50;
+    backdrop-filter: blur(20px);
+    background: rgba(2, 3, 10, 0.7);
+    border-bottom: 1px solid rgba(0, 240, 255, 0.15);
+  }
+  .nav-logo {
+    background: linear-gradient(135deg, var(--neon-cyan), var(--neon-purple));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  /* ===== HOLO CARDS ===== */
+  .holo-card {
+    background: linear-gradient(135deg, rgba(12, 16, 38, 0.7), rgba(20, 12, 50, 0.5));
+    border: 1px solid rgba(0, 240, 255, 0.18);
+    border-radius: 18px;
+    backdrop-filter: blur(14px);
+    position: relative;
+    overflow: hidden;
+    transition: all 0.4s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  .holo-card::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, transparent 40%, rgba(0, 240, 255, 0.08) 50%, transparent 60%);
+    transform: translateX(-100%);
+    transition: transform 0.8s ease;
+    pointer-events: none;
+  }
+  .holo-card:hover::before { transform: translateX(100%); }
+  .holo-card:hover {
+    border-color: rgba(0, 240, 255, 0.5);
+    box-shadow: 0 0 40px rgba(0, 240, 255, 0.15), inset 0 0 30px rgba(77, 142, 255, 0.05);
+    transform: translateY(-4px);
+  }
+
+  /* ===== GRADIENT TEXT ===== */
+  .gradient-cyan { background: linear-gradient(135deg, #00f0ff, #4d8eff); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .gradient-purple { background: linear-gradient(135deg, #b86bff, #ff4dcf); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .gradient-amber { background: linear-gradient(135deg, #ffb84d, #ff4dcf); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .gradient-green { background: linear-gradient(135deg, #4dffb8, #00f0ff); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .gradient-multi { background: linear-gradient(135deg, #00f0ff 0%, #4d8eff 35%, #b86bff 70%, #ff4dcf 100%); -webkit-background-clip: text; background-clip: text; color: transparent; }
+
+  /* ===== BUTTONS ===== */
+  .btn-primary {
+    background: linear-gradient(135deg, #00f0ff, #4d8eff);
+    color: #02030a;
+    font-weight: 700;
+    padding: 14px 28px;
+    border-radius: 12px;
+    border: none;
+    position: relative;
+    overflow: hidden;
+    transition: all 0.3s ease;
+    cursor: pointer;
+    box-shadow: 0 0 30px rgba(0, 240, 255, 0.35);
+  }
+  .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 0 50px rgba(0, 240, 255, 0.6); }
+
+  .btn-ghost {
+    background: rgba(12, 16, 38, 0.5);
+    border: 1px solid rgba(0, 240, 255, 0.3);
+    color: var(--text-primary);
+    font-weight: 600;
+    padding: 14px 28px;
+    border-radius: 12px;
+    transition: all 0.3s ease;
+    cursor: pointer;
+  }
+  .btn-ghost:hover { border-color: var(--neon-cyan); background: rgba(0, 240, 255, 0.08); }
+
+  /* ===== HERO ===== */
+  .hero-title {
+    font-size: clamp(2.5rem, 7vw, 5.5rem);
+    line-height: 0.95;
+    font-weight: 900;
+  }
+  .scan-line {
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--neon-cyan), transparent);
+    animation: scan 4s linear infinite;
+  }
+  @keyframes scan { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }
+
+  /* ===== PILL ===== */
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 14px;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    border: 1px solid rgba(0, 240, 255, 0.3);
+    background: rgba(0, 240, 255, 0.06);
+    color: var(--neon-cyan);
+  }
+
+  /* ===== STAT ===== */
+  .stat-num {
+    font-family: 'Orbitron', sans-serif;
+    font-weight: 800;
+    font-size: 2.4rem;
+    background: linear-gradient(135deg, #00f0ff, #b86bff);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  /* ===== USE CASE ICON ===== */
+  .use-case-icon {
+    width: 56px; height: 56px;
+    border-radius: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 16px;
+  }
+
+  /* ===== CODE BLOCK ===== */
+  .code-block {
+    background: rgba(2, 3, 10, 0.85);
+    border: 1px solid rgba(0, 240, 255, 0.2);
+    border-radius: 14px;
+    padding: 24px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.82rem;
+    line-height: 1.7;
+    overflow-x: auto;
+    position: relative;
+  }
+  .code-block::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--neon-cyan), transparent);
+  }
+  .tok-keyword { color: #ff4dcf; }
+  .tok-string { color: #4dffb8; }
+  .tok-fn { color: #00f0ff; }
+  .tok-comment { color: #5a6788; font-style: italic; }
+  .tok-num { color: #ffb84d; }
+  .tok-var { color: #e8efff; }
+  .tok-dec { color: #b86bff; }
+  .code-label {
+    position: absolute;
+    top: 10px;
+    right: 14px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.65rem;
+    letter-spacing: 0.15em;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+  }
+
+  /* ===== PROGRESS BAR ===== */
+  .progress-bar {
+    height: 6px;
+    background: rgba(0, 240, 255, 0.1);
+    border-radius: 999px;
+    overflow: hidden;
+    position: relative;
+  }
+  .progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--neon-cyan), var(--neon-purple), var(--neon-pink));
+    border-radius: 999px;
+    transition: width 1.5s cubic-bezier(0.2, 0.8, 0.2, 1);
+    position: relative;
+  }
+  .progress-fill::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
+    animation: shimmer 2s linear infinite;
+  }
+  @keyframes shimmer { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }
+
+  /* ===== SIDE NAV DOTS ===== */
+  .side-dots {
+    position: fixed;
+    right: 24px;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 40;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  @media (max-width: 768px) { .side-dots { display: none; } }
+  .dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    background: rgba(0, 240, 255, 0.2);
+    border: 1px solid rgba(0, 240, 255, 0.4);
+    transition: all 0.3s ease;
+    cursor: pointer;
+  }
+  .dot.active { background: var(--neon-cyan); box-shadow: 0 0 15px var(--neon-cyan); transform: scale(1.3); }
+
+  /* ===== REVEAL ===== */
+  .reveal { transition: opacity 1s cubic-bezier(0.2, 0.8, 0.2, 1), transform 1s cubic-bezier(0.2, 0.8, 0.2, 1); }
+  .js-reveal .reveal { opacity: 0; transform: translateY(40px); }
+  .js-reveal .reveal.in { opacity: 1; transform: translateY(0); }
+
+  /* ===== FLOAT ===== */
+  .float-y { animation: floaty 6s ease-in-out infinite; }
+  @keyframes floaty { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-12px); } }
+
+  /* ===== CHECKPOINT ===== */
+  .checkpoint-glow {
+    background: radial-gradient(circle at center, rgba(0, 240, 255, 0.12), transparent 70%);
+    border: 1px solid rgba(0, 240, 255, 0.3);
+  }
+
+  /* ===== CALLOUT ===== */
+  .callout {
+    background: linear-gradient(135deg, rgba(255, 184, 77, 0.08), rgba(255, 77, 207, 0.04));
+    border-left: 3px solid var(--neon-amber);
+    border-radius: 8px;
+    padding: 16px 20px;
+  }
+  .callout-danger {
+    background: linear-gradient(135deg, rgba(255, 85, 119, 0.12), rgba(255, 77, 207, 0.04));
+    border-left: 3px solid var(--neon-red);
+    border-radius: 8px;
+    padding: 16px 20px;
+  }
+  .callout-info {
+    background: linear-gradient(135deg, rgba(0, 240, 255, 0.08), rgba(77, 142, 255, 0.04));
+    border-left: 3px solid var(--neon-cyan);
+    border-radius: 8px;
+    padding: 16px 20px;
+  }
+
+  /* ===== SCROLLBAR ===== */
+  ::-webkit-scrollbar { width: 10px; }
+  ::-webkit-scrollbar-track { background: var(--bg-deep); }
+  ::-webkit-scrollbar-thumb { background: linear-gradient(180deg, var(--neon-cyan), var(--neon-purple)); border-radius: 10px; }
+
+  /* ===== GRID FLOOR ===== */
+  .grid-floor {
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    height: 30vh;
+    background-image:
+      linear-gradient(rgba(0, 240, 255, 0.15) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0, 240, 255, 0.15) 1px, transparent 1px);
+    background-size: 50px 50px;
+    transform: perspective(500px) rotateX(60deg);
+    transform-origin: bottom;
+    opacity: 0.4;
+    mask-image: linear-gradient(180deg, transparent, black 50%);
+    -webkit-mask-image: linear-gradient(180deg, transparent, black 50%);
+  }
+
+  /* ===== AUTH SHIELD VISUAL ===== */
+  .shield-container {
+    position: relative;
+    width: 100%;
+    max-width: 460px;
+    aspect-ratio: 1;
+    margin: 0 auto;
+  }
+  .shield-core {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 130px; height: 150px;
+    background: linear-gradient(135deg, #00f0ff, #4d8eff, #b86bff);
+    clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+    box-shadow: 0 0 60px rgba(0, 240, 255, 0.6), 0 0 120px rgba(184, 107, 255, 0.3);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    animation: pulse-shield 3s ease-in-out infinite;
+  }
+  @keyframes pulse-shield {
+    0%,100% { box-shadow: 0 0 60px rgba(0, 240, 255, 0.6), 0 0 120px rgba(184, 107, 255, 0.3); }
+    50% { box-shadow: 0 0 90px rgba(0, 240, 255, 1), 0 0 160px rgba(184, 107, 255, 0.5); }
+  }
+  .shield-ring {
+    position: absolute;
+    top: 50%; left: 50%;
+    border-radius: 50%;
+    border: 1px dashed rgba(0, 240, 255, 0.25);
+    transform: translate(-50%, -50%);
+  }
+  .sring-1 { width: 55%; height: 55%; animation: spin 20s linear infinite; }
+  .sring-2 { width: 78%; height: 78%; animation: spin 30s linear infinite reverse; }
+  .sring-3 { width: 100%; height: 100%; animation: spin 45s linear infinite; }
+  @keyframes spin { from { transform: translate(-50%, -50%) rotate(0deg); } to { transform: translate(-50%, -50%) rotate(360deg); } }
+
+  .shield-planet {
+    position: absolute;
+    width: 44px; height: 44px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(255,255,255,0.2);
+  }
+  .shield-planet i { width: 20px; height: 20px; }
+
+  /* ===== RATE LIMITER BUCKET ===== */
+  .bucket-viz {
+    position: relative;
+    width: 100%;
+    height: 220px;
+    background: rgba(2, 3, 10, 0.6);
+    border: 1px solid rgba(0, 240, 255, 0.2);
+    border-radius: 14px;
+    overflow: hidden;
+  }
+  .bucket-tokens {
+    position: absolute;
+    bottom: 0;
+    left: 0; right: 0;
+    background: linear-gradient(180deg, rgba(0, 240, 255, 0.35), rgba(77, 142, 255, 0.7));
+    border-top: 2px solid var(--neon-cyan);
+    transition: height 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 0 -2px 20px rgba(0, 240, 255, 0.5);
+  }
+  .bucket-tokens.empty { background: linear-gradient(180deg, rgba(255, 85, 119, 0.3), rgba(255, 77, 207, 0.5)); border-top-color: var(--neon-red); box-shadow: 0 -2px 20px rgba(255, 85, 119, 0.5); }
+  .bucket-label {
+    position: absolute;
+    top: 12px; left: 14px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+    letter-spacing: 0.12em;
+    z-index: 2;
+  }
+  .bucket-count {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    font-family: 'Orbitron', sans-serif;
+    font-weight: 900;
+    font-size: 3.2rem;
+    color: white;
+    text-shadow: 0 0 20px rgba(0, 240, 255, 0.8);
+    z-index: 2;
+    pointer-events: none;
+  }
+
+  /* ===== TENANT ISO BOX ===== */
+  .tenant-box {
+    background: rgba(2, 3, 10, 0.6);
+    border: 1px solid rgba(0, 240, 255, 0.2);
+    border-radius: 12px;
+    padding: 16px;
+    transition: all 0.3s ease;
+  }
+  .tenant-box.active {
+    border-color: var(--neon-cyan);
+    box-shadow: 0 0 30px rgba(0, 240, 255, 0.3);
+  }
+
+  /* ===== AUTH MODE SELECTOR ===== */
+  .mode-tab {
+    padding: 10px 18px;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.78rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    border: 1px solid rgba(0, 240, 255, 0.2);
+    background: rgba(12, 16, 38, 0.5);
+    color: var(--text-secondary);
+    text-transform: uppercase;
+  }
+  .mode-tab.active {
+    background: linear-gradient(135deg, rgba(0, 240, 255, 0.2), rgba(184, 107, 255, 0.2));
+    border-color: var(--neon-cyan);
+    color: var(--text-primary);
+    box-shadow: 0 0 20px rgba(0, 240, 255, 0.25);
+  }
+  .mode-tab:hover:not(.active) { border-color: rgba(0, 240, 255, 0.5); color: var(--text-primary); }
+
+  /* ===== QUOTA RING ===== */
+  .quota-ring {
+    width: 110px; height: 110px;
+    position: relative;
+    margin: 0 auto;
+  }
+  .quota-ring svg { transform: rotate(-90deg); }
+  .quota-ring circle { fill: none; stroke-width: 8; }
+  .quota-ring .bg { stroke: rgba(0, 240, 255, 0.1); }
+  .quota-ring .fg { stroke-linecap: round; transition: stroke-dashoffset 1.2s cubic-bezier(0.2, 0.8, 0.2, 1); }
+  .quota-label {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    font-family: 'Orbitron', sans-serif;
+  }
+
+  /* ===== REQ LOG ===== */
+  .req-log {
+    background: rgba(2, 3, 10, 0.7);
+    border: 1px solid rgba(0, 240, 255, 0.15);
+    border-radius: 12px;
+    padding: 14px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.75rem;
+    max-height: 220px;
+    overflow-y: auto;
+  }
+  .req-log .row {
+    padding: 6px 0;
+    border-bottom: 1px solid rgba(0, 240, 255, 0.06);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+  }
+  .req-log .row:last-child { border-bottom: none; }
+  .req-allow { color: var(--neon-green); }
+  .req-deny { color: var(--neon-red); }
+
+  /* ===== QUIZ ===== */
+  .quiz-option {
+    background: rgba(12, 16, 38, 0.5);
+    border: 1px solid rgba(0, 240, 255, 0.2);
+    border-radius: 12px;
+    padding: 14px 18px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    text-align: left;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .quiz-option:hover { border-color: var(--neon-cyan); background: rgba(0, 240, 255, 0.06); }
+  .quiz-option.correct { border-color: var(--neon-green); background: rgba(77, 255, 184, 0.1); }
+  .quiz-option.wrong { border-color: var(--neon-red); background: rgba(255, 85, 119, 0.1); }
+  .quiz-option .badge {
+    width: 28px; height: 28px;
+    border-radius: 8px;
+    background: rgba(0, 240, 255, 0.12);
+    color: var(--neon-cyan);
+    font-family: 'Orbitron', sans-serif;
+    font-weight: 700;
+    font-size: 0.85rem;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+
+  /* ===== ALGO COMPARE ===== */
+  .algo-card {
+    background: rgba(12, 16, 38, 0.6);
+    border: 1px solid rgba(0, 240, 255, 0.15);
+    border-radius: 14px;
+    padding: 20px;
+    transition: all 0.3s ease;
+  }
+  .algo-card:hover { border-color: rgba(0, 240, 255, 0.4); transform: translateY(-3px); }
+
+
+
+  /* ===== LEARN & PRACTICE CARDS ===== */
+  .resource-stack {
+    max-width: 860px;
+    margin: 0 auto;
+    display: grid;
+    gap: 14px;
+  }
+  .resource-card {
+    background: linear-gradient(135deg, rgba(6, 8, 24, 0.92), rgba(10, 12, 34, 0.86));
+    border: 1px solid rgba(0, 240, 255, 0.32);
+    border-radius: 16px;
+    padding: 20px;
+    box-shadow: 0 0 28px rgba(0, 240, 255, 0.08);
+  }
+  .resource-card.repo {
+    border-color: rgba(255, 77, 207, 0.35);
+    box-shadow: 0 0 28px rgba(255, 77, 207, 0.08);
+  }
+  .resource-icon {
+    width: 34px;
+    height: 34px;
+    border-radius: 10px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid rgba(0, 240, 255, 0.4);
+    background: rgba(0, 240, 255, 0.08);
+    color: var(--neon-cyan);
+    flex-shrink: 0;
+  }
+  .resource-card.repo .resource-icon {
+    border-color: rgba(255, 77, 207, 0.45);
+    background: rgba(255, 77, 207, 0.1);
+    color: var(--neon-pink);
+  }
+  .resource-cta {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 12px;
+    padding: 10px 18px;
+    border-radius: 10px;
+    border: 1px solid rgba(0, 240, 255, 0.55);
+    color: var(--neon-cyan);
+    font-family: 'Orbitron', sans-serif;
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    background: rgba(0, 240, 255, 0.06);
+    transition: all 0.25s ease;
+  }
+  .resource-cta:hover {
+    background: rgba(0, 240, 255, 0.12);
+    box-shadow: 0 0 20px rgba(0, 240, 255, 0.22);
+  }
+  .resource-card.repo .resource-cta {
+    border-color: rgba(255, 77, 207, 0.55);
+    color: var(--neon-pink);
+    background: rgba(255, 77, 207, 0.08);
+  }
+  .resource-card.repo .resource-cta:hover {
+    background: rgba(255, 77, 207, 0.15);
+    box-shadow: 0 0 20px rgba(255, 77, 207, 0.24);
+  }
+
+</style>
+</head>
+
+<body>
+
+<!-- Backgrounds -->
+<div class="nebula nebula-1"></div>
+<div class="nebula nebula-2"></div>
+<div class="nebula nebula-3"></div>
+<canvas id="starfield"></canvas>
+
+<!-- TOP NAV -->
+<nav class="top-nav">
+  <div class="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
+    <div class="flex items-center gap-3">
+      <div class="w-10 h-10 rounded-xl flex items-center justify-center" style="background: linear-gradient(135deg, #00f0ff, #b86bff); box-shadow: 0 0 20px rgba(0,240,255,0.5);">
+        <i data-lucide="orbit" class="w-5 h-5 text-black"></i>
+      </div>
+      <div>
+        <div class="font-display font-bold text-lg nav-logo">RAG ACADEMY</div>
+        <div class="text-[10px] text-gray-400 tracking-widest -mt-1">TRACK 07 • MODULE 7.4</div>
+      </div>
+    </div>
+
+    <div class="hidden md:flex items-center gap-8 text-sm">
+      <a href="#hero" class="text-cyan-300 font-medium">Overview</a>
+      <a href="#auth" class="text-gray-300 hover:text-cyan-300 transition">Auth</a>
+      <a href="#ratelimit" class="text-gray-300 hover:text-cyan-300 transition">Rate Limiting</a>
+      <a href="#tenancy" class="text-gray-300 hover:text-cyan-300 transition">Multi-Tenancy</a>
+      <a href="#billing" class="text-gray-300 hover:text-cyan-300 transition">Quotas</a>
+      <a href="#checkpoint" class="text-gray-300 hover:text-cyan-300 transition">Checkpoint</a>
+    </div>
+
+    <div class="flex items-center gap-3">
+      <div class="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full" style="background: rgba(0,240,255,0.08); border: 1px solid rgba(0,240,255,0.25);">
+        <div class="w-2 h-2 rounded-full" style="background: #4dffb8; box-shadow: 0 0 8px #4dffb8;"></div>
+        <span class="text-xs font-mono text-cyan-200">CADET ONLINE</span>
+      </div>
+      <button class="btn-ghost text-sm py-2 px-4">Save Progress</button>
+    </div>
+  </div>
+  <div class="scan-line"></div>
+</nav>
+
+<!-- SIDE DOTS -->
+<div class="side-dots" id="sideDots">
+  <div class="dot active" data-target="hero" title="Hero"></div>
+  <div class="dot" data-target="objectives" title="Objectives"></div>
+  <div class="dot" data-target="auth" title="Auth"></div>
+  <div class="dot" data-target="ratelimit" title="Rate Limiting"></div>
+  <div class="dot" data-target="tenancy" title="Multi-Tenancy"></div>
+  <div class="dot" data-target="billing" title="Quotas"></div>
+  <div class="dot" data-target="abuse" title="Abuse"></div>
+  <div class="dot" data-target="quiz" title="Quiz"></div>
+  <div class="dot" data-target="checkpoint" title="Checkpoint"></div>
+</div>
+
+<!-- ========== HERO ========== -->
+<section id="hero" class="relative min-h-screen flex items-center pt-32 pb-24 px-6">
+  <div class="grid-floor"></div>
+
+  <div class="max-w-7xl mx-auto w-full grid lg:grid-cols-2 gap-16 items-center relative z-10">
+    <!-- LEFT -->
+    <div class="reveal">
+      <div class="flex items-center gap-3 mb-6 flex-wrap">
+        <span class="pill"><i data-lucide="shield-check" class="w-3 h-3"></i> Track 7 · Module 7.4</span>
+        <span class="text-xs text-gray-400 font-mono">EST. 45 MIN</span>
+      </div>
+
+      <h1 class="hero-title font-display mb-6">
+        <span class="block text-white">Gatekeepers of the</span>
+        <span class="block gradient-multi">RAG Universe</span>
+      </h1>
+
+      <p class="text-lg md:text-xl text-gray-300 leading-relaxed mb-8 max-w-xl">
+        Your RAG system is live, fast, and observable. Now it needs to handle <span class="text-cyan-300 font-semibold">thousands of users</span>,
+        keep each tenant's data <span class="text-purple-300 font-semibold">cryptographically isolated</span>,
+        survive <span class="text-pink-300 font-semibold">abuse attempts</span>, and meter usage for billing — without ever leaking, breaking, or going broke.
+      </p>
+
+      <div class="flex flex-wrap gap-4 mb-12">
+        <button class="btn-primary flex items-center gap-2" onclick="document.getElementById('objectives').scrollIntoView({behavior:'smooth'})">
+          <i data-lucide="play" class="w-4 h-4"></i> Begin Mission
+        </button>
+        <button class="btn-ghost flex items-center gap-2" onclick="document.getElementById('ratelimit').scrollIntoView({behavior:'smooth'})">
+          <i data-lucide="gauge" class="w-4 h-4"></i> Jump to Rate Limiting
+        </button>
+      </div>
+
+      <!-- HERO STATS -->
+      <div class="grid grid-cols-3 gap-4">
+        <div class="holo-card p-4">
+          <div class="stat-num"><span data-count="4">0</span></div>
+          <div class="text-xs text-gray-400 uppercase tracking-wider mt-1">Auth Modes</div>
+        </div>
+        <div class="holo-card p-4">
+          <div class="stat-num"><span data-count="2">0</span></div>
+          <div class="text-xs text-gray-400 uppercase tracking-wider mt-1">RL Algorithms</div>
+        </div>
+        <div class="holo-card p-4">
+          <div class="stat-num"><span data-count="100">0</span>%</div>
+          <div class="text-xs text-gray-400 uppercase tracking-wider mt-1">Isolation</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT — SHIELD VISUAL -->
+    <div class="reveal flex flex-col items-center">
+      <div class="shield-container float-y">
+        <div class="shield-ring sring-3"></div>
+        <div class="shield-ring sring-2"></div>
+        <div class="shield-ring sring-1"></div>
+        <div class="shield-core">
+          <i data-lucide="lock-keyhole" style="width:54px;height:54px;color:#02030a;"></i>
+        </div>
+
+        <div class="shield-planet" style="top: 4%; left: 50%; transform: translate(-50%,-50%); background: rgba(0, 240, 255, 0.25); color: #00f0ff;">
+          <i data-lucide="key-round"></i>
+        </div>
+        <div class="shield-planet" style="top: 50%; right: -2%; transform: translate(50%,-50%); background: rgba(184, 107, 255, 0.25); color: #b86bff;">
+          <i data-lucide="gauge"></i>
+        </div>
+        <div class="shield-planet" style="bottom: 4%; left: 50%; transform: translate(-50%,50%); background: rgba(255, 77, 207, 0.25); color: #ff4dcf;">
+          <i data-lucide="users"></i>
+        </div>
+        <div class="shield-planet" style="top: 50%; left: -2%; transform: translate(-50%,-50%); background: rgba(255, 184, 77, 0.25); color: #ffb84d;">
+          <i data-lucide="credit-card"></i>
+        </div>
+        <div class="shield-planet" style="top: 14%; right: 14%; background: rgba(77, 255, 184, 0.25); color: #4dffb8;">
+          <i data-lucide="ban"></i>
+        </div>
+        <div class="shield-planet" style="bottom: 14%; left: 14%; background: rgba(77, 142, 255, 0.25); color: #4d8eff;">
+          <i data-lucide="shield"></i>
+        </div>
+      </div>
+
+      <div class="text-center mt-6">
+        <div class="font-display text-xs tracking-[0.3em] text-cyan-300/70">THE TRUST PERIMETER</div>
+        <div class="text-sm text-gray-400 mt-1">Six layers protecting your production RAG core</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========== OBJECTIVES ========== -->
+<section id="objectives" class="relative py-24 px-6 z-10">
+  <div class="max-w-7xl mx-auto">
+    <div class="text-center mb-16 reveal">
+      <span class="pill mb-4"><i data-lucide="target" class="w-3 h-3"></i> Mission Briefing</span>
+      <h2 class="font-display text-4xl md:text-5xl font-bold mt-4">
+        <span class="gradient-cyan">Learning Objectives</span>
+      </h2>
+      <p class="text-gray-400 mt-4 max-w-2xl mx-auto">By the end of this module, you'll have shipped production-grade gatekeeping for a multi-tenant RAG SaaS — auth, throttling, isolation, quotas, and billing hooks.</p>
+    </div>
+
+    <div class="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div class="holo-card p-6 reveal">
+        <div class="use-case-icon" style="background: rgba(0, 240, 255, 0.12); color: #00f0ff;">
+          <i data-lucide="key-round" class="w-7 h-7"></i>
+        </div>
+        <h3 class="font-display font-bold text-lg mb-2">Issue & Rotate Keys</h3>
+        <p class="text-sm text-gray-400 leading-relaxed">Generate, hash, scope, and revoke API keys safely. Layer in JWT-based user auth.</p>
+      </div>
+
+      <div class="holo-card p-6 reveal">
+        <div class="use-case-icon" style="background: rgba(184, 107, 255, 0.12); color: #b86bff;">
+          <i data-lucide="gauge" class="w-7 h-7"></i>
+        </div>
+        <h3 class="font-display font-bold text-lg mb-2">Throttle Traffic</h3>
+        <p class="text-sm text-gray-400 leading-relaxed">Implement token bucket + sliding window rate limiters that handle burst and sustained load.</p>
+      </div>
+
+      <div class="holo-card p-6 reveal">
+        <div class="use-case-icon" style="background: rgba(255, 77, 207, 0.12); color: #ff4dcf;">
+          <i data-lucide="users" class="w-7 h-7"></i>
+        </div>
+        <h3 class="font-display font-bold text-lg mb-2">Isolate Tenants</h3>
+        <p class="text-sm text-gray-400 leading-relaxed">Use Qdrant payload filtering to keep tenant A's vectors invisible to tenant B — provably.</p>
+      </div>
+
+      <div class="holo-card p-6 reveal">
+        <div class="use-case-icon" style="background: rgba(255, 184, 77, 0.12); color: #ffb84d;">
+          <i data-lucide="credit-card" class="w-7 h-7"></i>
+        </div>
+        <h3 class="font-display font-bold text-lg mb-2">Meter & Bill</h3>
+        <p class="text-sm text-gray-400 leading-relaxed">Track tokens, enforce quotas, detect abuse patterns, and wire usage into Stripe for billing.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========== WHY THIS MATTERS ========== -->
+<section class="relative py-12 px-6 z-10">
+  <div class="max-w-5xl mx-auto reveal">
+    <div class="callout-danger">
+      <div class="flex items-start gap-3">
+        <i data-lucide="siren" class="w-6 h-6 mt-0.5" style="color: #ff5577;"></i>
+        <div>
+          <div class="font-display font-bold text-lg mb-1" style="color:#ff5577;">Why this module exists</div>
+          <p class="text-sm text-gray-300 leading-relaxed">A RAG demo with no auth, no rate limiting, and no tenant isolation will be exploited within hours of going public. One leaked key can cost <strong class="text-amber-300">$10K+/day</strong> in LLM bills. One missing tenant filter can land you in a <strong class="text-pink-300">data breach lawsuit</strong>. This module is the difference between "AI hackathon project" and "real product."</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========== AUTH SECTION ========== -->
+<section id="auth" class="relative py-24 px-6 z-10">
+  <div class="max-w-7xl mx-auto">
+    <div class="text-center mb-16 reveal">
+      <span class="pill mb-4"><i data-lucide="key-round" class="w-3 h-3"></i> Layer 01</span>
+      <h2 class="font-display text-4xl md:text-5xl font-bold mt-4">
+        Authentication <span class="gradient-cyan">Modes</span>
+      </h2>
+      <p class="text-gray-400 mt-4 max-w-3xl mx-auto">Four auth patterns, four use cases. Most production RAG APIs use <strong class="text-cyan-300">two or three together</strong> in different layers.</p>
+    </div>
+
+    <!-- AUTH MODE TABS -->
+    <div class="reveal mb-8 flex flex-wrap gap-3 justify-center">
+      <button class="mode-tab active" data-mode="apikey"><i data-lucide="key-round" class="inline w-3 h-3 mr-1"></i> API Key</button>
+      <button class="mode-tab" data-mode="jwt"><i data-lucide="ticket" class="inline w-3 h-3 mr-1"></i> JWT</button>
+      <button class="mode-tab" data-mode="oauth"><i data-lucide="link-2" class="inline w-3 h-3 mr-1"></i> OAuth 2.0</button>
+      <button class="mode-tab" data-mode="mtls"><i data-lucide="badge-check" class="inline w-3 h-3 mr-1"></i> mTLS</button>
+    </div>
+
+    <div class="reveal grid lg:grid-cols-2 gap-6 items-start">
+      <!-- DESCRIPTION -->
+      <div class="holo-card p-7" id="authDescBox">
+        <!-- Filled by JS -->
+      </div>
+
+      <!-- CODE -->
+      <div class="code-block">
+        <span class="code-label" id="authCodeLabel">FastAPI</span>
+        <pre id="authCodeBlock" style="margin:0;white-space:pre-wrap;"></pre>
+      </div>
+    </div>
+
+    <!-- API KEY LIFECYCLE -->
+    <div class="reveal mt-16">
+      <div class="text-center mb-10">
+        <h3 class="font-display text-2xl md:text-3xl font-bold">The API Key <span class="gradient-purple">Lifecycle</span></h3>
+        <p class="text-gray-400 mt-2 text-sm">Five states every production key passes through</p>
+      </div>
+
+      <div class="grid md:grid-cols-5 gap-4">
+        <div class="holo-card p-5 text-center">
+          <div class="use-case-icon mx-auto" style="background: rgba(0,240,255,0.12); color: #00f0ff;">
+            <i data-lucide="sparkles" class="w-7 h-7"></i>
+          </div>
+          <div class="font-mono text-[10px] text-gray-500 tracking-widest">STAGE 01</div>
+          <h4 class="font-display font-bold text-base mt-1" style="color:#00f0ff;">Generate</h4>
+          <p class="text-xs text-gray-400 mt-2 leading-relaxed"><code class="font-mono text-cyan-300">secrets.token_urlsafe(32)</code> with a prefix like <code class="font-mono text-cyan-300">rag_live_</code></p>
+        </div>
+        <div class="holo-card p-5 text-center">
+          <div class="use-case-icon mx-auto" style="background: rgba(77,142,255,0.12); color: #4d8eff;">
+            <i data-lucide="hash" class="w-7 h-7"></i>
+          </div>
+          <div class="font-mono text-[10px] text-gray-500 tracking-widest">STAGE 02</div>
+          <h4 class="font-display font-bold text-base mt-1" style="color:#4d8eff;">Hash & Store</h4>
+          <p class="text-xs text-gray-400 mt-2 leading-relaxed">Store SHA-256 of the key, never the raw value. Show raw only once.</p>
+        </div>
+        <div class="holo-card p-5 text-center">
+          <div class="use-case-icon mx-auto" style="background: rgba(184,107,255,0.12); color: #b86bff;">
+            <i data-lucide="check-circle-2" class="w-7 h-7"></i>
+          </div>
+          <div class="font-mono text-[10px] text-gray-500 tracking-widest">STAGE 03</div>
+          <h4 class="font-display font-bold text-base mt-1" style="color:#b86bff;">Verify</h4>
+          <p class="text-xs text-gray-400 mt-2 leading-relaxed">Constant-time compare on each request. Cache in Redis with 60s TTL.</p>
+        </div>
+        <div class="holo-card p-5 text-center">
+          <div class="use-case-icon mx-auto" style="background: rgba(255,77,207,0.12); color: #ff4dcf;">
+            <i data-lucide="refresh-cw" class="w-7 h-7"></i>
+          </div>
+          <div class="font-mono text-[10px] text-gray-500 tracking-widest">STAGE 04</div>
+          <h4 class="font-display font-bold text-base mt-1" style="color:#ff4dcf;">Rotate</h4>
+          <p class="text-xs text-gray-400 mt-2 leading-relaxed">Allow two active keys per user for zero-downtime rotation every 90 days.</p>
+        </div>
+        <div class="holo-card p-5 text-center">
+          <div class="use-case-icon mx-auto" style="background: rgba(255,184,77,0.12); color: #ffb84d;">
+            <i data-lucide="trash-2" class="w-7 h-7"></i>
+          </div>
+          <div class="font-mono text-[10px] text-gray-500 tracking-widest">STAGE 05</div>
+          <h4 class="font-display font-bold text-base mt-1" style="color:#ffb84d;">Revoke</h4>
+          <p class="text-xs text-gray-400 mt-2 leading-relaxed">Invalidate cache instantly. Log every revocation as a security event.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="callout mt-10 reveal text-sm text-gray-300 max-w-4xl mx-auto">
+      <strong class="text-amber-300">⚠️ Never log raw API keys.</strong> Use <code class="font-mono text-amber-200">rag_live_abc123•••</code> truncation in logs. If a key ever lands in a logfile, treat it as leaked — rotate immediately and audit access.
+    </div>
+  </div>
+</section>
+
+<!-- ========== RATE LIMITING ========== -->
+<section id="ratelimit" class="relative py-24 px-6 z-10">
+  <div class="max-w-7xl mx-auto">
+    <div class="text-center mb-16 reveal">
+      <span class="pill mb-4"><i data-lucide="gauge" class="w-3 h-3"></i> Layer 02</span>
+      <h2 class="font-display text-4xl md:text-5xl font-bold mt-4">
+        Rate <span class="gradient-purple">Limiting</span>
+      </h2>
+      <p class="text-gray-400 mt-4 max-w-3xl mx-auto">Two algorithms power 95% of production rate limiters. Pick the one that matches your traffic shape.</p>
+    </div>
+
+    <!-- INTERACTIVE BUCKET DEMO -->
+    <div class="reveal holo-card p-8 mb-12">
+      <div class="grid lg:grid-cols-2 gap-8 items-center">
+        <div>
+          <div class="font-mono text-xs text-cyan-300 tracking-widest mb-2">LIVE SIMULATION</div>
+          <h3 class="font-display font-bold text-2xl mb-3">Token Bucket — Try It</h3>
+          <p class="text-sm text-gray-400 leading-relaxed mb-4">A bucket holds up to <strong class="text-cyan-300">10 tokens</strong>. The system refills <strong class="text-cyan-300">1 token per second</strong>. Each request consumes one. Click "Send Request" rapidly — watch what happens when the bucket runs dry.</p>
+
+          <div class="flex flex-wrap gap-3 mb-4">
+            <button id="sendReqBtn" class="btn-primary text-sm flex items-center gap-2">
+              <i data-lucide="send" class="w-4 h-4"></i> Send Request
+            </button>
+            <button id="burst10Btn" class="btn-ghost text-sm flex items-center gap-2">
+              <i data-lucide="zap" class="w-4 h-4"></i> Burst 10
+            </button>
+            <button id="resetBktBtn" class="btn-ghost text-sm flex items-center gap-2">
+              <i data-lucide="rotate-ccw" class="w-4 h-4"></i> Reset
+            </button>
+          </div>
+
+          <div class="grid grid-cols-3 gap-3 text-center">
+            <div class="holo-card p-3">
+              <div class="font-mono text-xs text-gray-400 tracking-wider">ALLOWED</div>
+              <div class="font-display font-bold text-2xl mt-1" style="color:#4dffb8;" id="allowCount">0</div>
+            </div>
+            <div class="holo-card p-3">
+              <div class="font-mono text-xs text-gray-400 tracking-wider">DENIED</div>
+              <div class="font-display font-bold text-2xl mt-1" style="color:#ff5577;" id="denyCount">0</div>
+            </div>
+            <div class="holo-card p-3">
+              <div class="font-mono text-xs text-gray-400 tracking-wider">FILL RATE</div>
+              <div class="font-display font-bold text-2xl mt-1" style="color:#00f0ff;">1/s</div>
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <div class="bucket-viz">
+            <div class="bucket-label">BUCKET CAPACITY · 10 TOKENS</div>
+            <div class="bucket-tokens" id="bucketFill" style="height: 100%;"></div>
+            <div class="bucket-count" id="bucketCount">10</div>
+          </div>
+          <div class="req-log mt-4" id="reqLog">
+            <div class="row"><span class="text-gray-500">Idle. Click Send Request to begin.</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ALGO COMPARE -->
+    <div class="reveal">
+      <div class="text-center mb-8">
+        <h3 class="font-display text-2xl md:text-3xl font-bold">Token Bucket <span class="vs-divider mx-3" style="background:linear-gradient(135deg,#00f0ff,#b86bff);-webkit-background-clip:text;background-clip:text;color:transparent;font-family:Orbitron;font-weight:900;">VS</span> Sliding Window</h3>
+      </div>
+
+      <div class="grid md:grid-cols-2 gap-6">
+        <div class="algo-card">
+          <div class="flex items-center gap-3 mb-4">
+            <div class="w-12 h-12 rounded-xl flex items-center justify-center" style="background: rgba(0, 240, 255, 0.15);">
+              <i data-lucide="bucket" class="w-6 h-6" style="color: #00f0ff;"></i>
+            </div>
+            <div>
+              <div class="text-xs text-gray-400 uppercase tracking-wider">Algorithm A</div>
+              <h4 class="font-display font-bold text-xl" style="color:#00f0ff;">Token Bucket</h4>
+            </div>
+          </div>
+          <p class="text-sm text-gray-300 leading-relaxed mb-4">Bucket of capacity C refills at rate R tokens/sec. Each request takes one token. Excess requests are dropped or queued.</p>
+
+          <div class="space-y-2 text-sm">
+            <div class="flex items-start gap-2"><i data-lucide="check" class="w-4 h-4 mt-0.5" style="color:#4dffb8;"></i><span class="text-gray-300"><strong>Allows bursts</strong> — full bucket = instant 10 reqs</span></div>
+            <div class="flex items-start gap-2"><i data-lucide="check" class="w-4 h-4 mt-0.5" style="color:#4dffb8;"></i><span class="text-gray-300"><strong>Smooth long-run</strong> — caps sustained rate at R</span></div>
+            <div class="flex items-start gap-2"><i data-lucide="check" class="w-4 h-4 mt-0.5" style="color:#4dffb8;"></i><span class="text-gray-300"><strong>O(1)</strong> memory & compute per request</span></div>
+            <div class="flex items-start gap-2"><i data-lucide="x" class="w-4 h-4 mt-0.5" style="color:#ff5577;"></i><span class="text-gray-300">Hard to reason about exact "N per minute"</span></div>
+          </div>
+
+          <div class="mt-4 pill" style="border-color:#00f0ff40;color:#00f0ff;background:#00f0ff10;">BEST FOR · USER-FACING APIs</div>
+        </div>
+
+        <div class="algo-card">
+          <div class="flex items-center gap-3 mb-4">
+            <div class="w-12 h-12 rounded-xl flex items-center justify-center" style="background: rgba(184, 107, 255, 0.15);">
+              <i data-lucide="clock" class="w-6 h-6" style="color: #b86bff;"></i>
+            </div>
+            <div>
+              <div class="text-xs text-gray-400 uppercase tracking-wider">Algorithm B</div>
+              <h4 class="font-display font-bold text-xl" style="color:#b86bff;">Sliding Window</h4>
+            </div>
+          </div>
+          <p class="text-sm text-gray-300 leading-relaxed mb-4">Count requests in the last N seconds. If count ≥ limit, deny. Implemented with sorted Redis sets or weighted-bucket approximation.</p>
+
+          <div class="space-y-2 text-sm">
+            <div class="flex items-start gap-2"><i data-lucide="check" class="w-4 h-4 mt-0.5" style="color:#4dffb8;"></i><span class="text-gray-300"><strong>Precise</strong> — "60 reqs / 60 sec" means exactly that</span></div>
+            <div class="flex items-start gap-2"><i data-lucide="check" class="w-4 h-4 mt-0.5" style="color:#4dffb8;"></i><span class="text-gray-300"><strong>No boundary spikes</strong> like fixed-window has</span></div>
+            <div class="flex items-start gap-2"><i data-lucide="check" class="w-4 h-4 mt-0.5" style="color:#4dffb8;"></i><span class="text-gray-300">Headers like <code class="font-mono text-purple-300">X-RateLimit-Remaining</code> are easy</span></div>
+            <div class="flex items-start gap-2"><i data-lucide="x" class="w-4 h-4 mt-0.5" style="color:#ff5577;"></i><span class="text-gray-300">More memory per user (timestamp log)</span></div>
+          </div>
+
+          <div class="mt-4 pill" style="border-color:#b86bff40;color:#b86bff;background:#b86bff10;">BEST FOR · BILLING-GRADE METERING</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CODE EXAMPLE -->
+    <div class="reveal mt-12 grid lg:grid-cols-2 gap-6">
+      <div class="code-block">
+        <span class="code-label">TOKEN BUCKET · REDIS</span>
+<pre style="margin:0;"><span class="tok-comment"># Lua script — atomic check + decrement in Redis</span>
+<span class="tok-keyword">local</span> key <span class="tok-keyword">=</span> KEYS[<span class="tok-num">1</span>]
+<span class="tok-keyword">local</span> capacity <span class="tok-keyword">=</span> <span class="tok-fn">tonumber</span>(ARGV[<span class="tok-num">1</span>])
+<span class="tok-keyword">local</span> refill_rate <span class="tok-keyword">=</span> <span class="tok-fn">tonumber</span>(ARGV[<span class="tok-num">2</span>])
+<span class="tok-keyword">local</span> now <span class="tok-keyword">=</span> <span class="tok-fn">tonumber</span>(ARGV[<span class="tok-num">3</span>])
+
+<span class="tok-keyword">local</span> bucket <span class="tok-keyword">=</span> redis.<span class="tok-fn">call</span>(<span class="tok-string">'HMGET'</span>, key, <span class="tok-string">'tokens'</span>, <span class="tok-string">'ts'</span>)
+<span class="tok-keyword">local</span> tokens <span class="tok-keyword">=</span> <span class="tok-fn">tonumber</span>(bucket[<span class="tok-num">1</span>]) <span class="tok-keyword">or</span> capacity
+<span class="tok-keyword">local</span> last_ts <span class="tok-keyword">=</span> <span class="tok-fn">tonumber</span>(bucket[<span class="tok-num">2</span>]) <span class="tok-keyword">or</span> now
+
+<span class="tok-keyword">local</span> elapsed <span class="tok-keyword">=</span> now <span class="tok-keyword">-</span> last_ts
+tokens <span class="tok-keyword">=</span> math.<span class="tok-fn">min</span>(capacity, tokens <span class="tok-keyword">+</span> elapsed <span class="tok-keyword">*</span> refill_rate)
+
+<span class="tok-keyword">if</span> tokens <span class="tok-keyword">&lt;</span> <span class="tok-num">1</span> <span class="tok-keyword">then</span>
+  redis.<span class="tok-fn">call</span>(<span class="tok-string">'HMSET'</span>, key, <span class="tok-string">'tokens'</span>, tokens, <span class="tok-string">'ts'</span>, now)
+  <span class="tok-keyword">return</span> <span class="tok-num">0</span>  <span class="tok-comment">-- denied</span>
+<span class="tok-keyword">end</span>
+
+tokens <span class="tok-keyword">=</span> tokens <span class="tok-keyword">-</span> <span class="tok-num">1</span>
+redis.<span class="tok-fn">call</span>(<span class="tok-string">'HMSET'</span>, key, <span class="tok-string">'tokens'</span>, tokens, <span class="tok-string">'ts'</span>, now)
+redis.<span class="tok-fn">call</span>(<span class="tok-string">'EXPIRE'</span>, key, <span class="tok-num">3600</span>)
+<span class="tok-keyword">return</span> <span class="tok-num">1</span>  <span class="tok-comment">-- allowed</span></pre>
+      </div>
+
+      <div class="code-block">
+        <span class="code-label">SLIDING WINDOW · REDIS</span>
+<pre style="margin:0;"><span class="tok-keyword">async def</span> <span class="tok-fn">allow_request</span>(user_id: <span class="tok-fn">str</span>, limit: <span class="tok-fn">int</span> <span class="tok-keyword">=</span> <span class="tok-num">60</span>):
+    key <span class="tok-keyword">=</span> <span class="tok-string">f"rl:{user_id}"</span>
+    now <span class="tok-keyword">=</span> time.<span class="tok-fn">time</span>()
+    window <span class="tok-keyword">=</span> <span class="tok-num">60</span>  <span class="tok-comment"># seconds</span>
+
+    <span class="tok-comment"># Drop entries older than window</span>
+    <span class="tok-keyword">await</span> redis.<span class="tok-fn">zremrangebyscore</span>(key, <span class="tok-num">0</span>, now <span class="tok-keyword">-</span> window)
+
+    <span class="tok-comment"># Count what remains</span>
+    count <span class="tok-keyword">=</span> <span class="tok-keyword">await</span> redis.<span class="tok-fn">zcard</span>(key)
+
+    <span class="tok-keyword">if</span> count <span class="tok-keyword">&gt;=</span> limit:
+        <span class="tok-keyword">return</span> <span class="tok-keyword">False</span>, <span class="tok-num">0</span>
+
+    <span class="tok-comment"># Record this request</span>
+    <span class="tok-keyword">await</span> redis.<span class="tok-fn">zadd</span>(key, {<span class="tok-fn">str</span>(now): now})
+    <span class="tok-keyword">await</span> redis.<span class="tok-fn">expire</span>(key, window <span class="tok-keyword">*</span> <span class="tok-num">2</span>)
+    <span class="tok-keyword">return</span> <span class="tok-keyword">True</span>, limit <span class="tok-keyword">-</span> count <span class="tok-keyword">-</span> <span class="tok-num">1</span>
+
+<span class="tok-comment"># In FastAPI middleware:</span>
+<span class="tok-dec">@app.middleware</span>(<span class="tok-string">"http"</span>)
+<span class="tok-keyword">async def</span> <span class="tok-fn">rate_limit</span>(request, call_next):
+    user <span class="tok-keyword">=</span> request.state.user_id
+    ok, remaining <span class="tok-keyword">=</span> <span class="tok-keyword">await</span> <span class="tok-fn">allow_request</span>(user)
+    <span class="tok-keyword">if not</span> ok:
+        <span class="tok-keyword">return</span> <span class="tok-fn">JSONResponse</span>({<span class="tok-string">"error"</span>: <span class="tok-string">"rate_limited"</span>}, <span class="tok-num">429</span>)
+    response <span class="tok-keyword">=</span> <span class="tok-keyword">await</span> <span class="tok-fn">call_next</span>(request)
+    response.headers[<span class="tok-string">"X-RateLimit-Remaining"</span>] <span class="tok-keyword">=</span> <span class="tok-fn">str</span>(remaining)
+    <span class="tok-keyword">return</span> response</pre>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========== MULTI-TENANCY ========== -->
+<section id="tenancy" class="relative py-24 px-6 z-10">
+  <div class="max-w-7xl mx-auto">
+    <div class="text-center mb-16 reveal">
+      <span class="pill mb-4"><i data-lucide="users" class="w-3 h-3"></i> Layer 03</span>
+      <h2 class="font-display text-4xl md:text-5xl font-bold mt-4">
+        Multi-Tenant <span class="gradient-purple">Isolation</span>
+      </h2>
+      <p class="text-gray-400 mt-4 max-w-3xl mx-auto">When tenant A queries the index, results from tenant B must be <strong class="text-cyan-300">cryptographically invisible</strong>. Here are the three patterns — and the one Qdrant payload filtering enables.</p>
+    </div>
+
+    <!-- THREE PATTERNS -->
+    <div class="grid md:grid-cols-3 gap-6 mb-16">
+      <div class="holo-card p-7 reveal">
+        <div class="text-5xl font-display font-bold gradient-amber mb-4">01</div>
+        <h3 class="font-display font-bold text-xl mb-3">Collection per Tenant</h3>
+        <p class="text-gray-400 leading-relaxed text-sm mb-3">Each tenant gets its own Qdrant collection: <code class="font-mono text-amber-200">vectors_acme</code>, <code class="font-mono text-amber-200">vectors_globex</code>.</p>
+        <div class="space-y-1 text-xs">
+          <div class="text-emerald-300">✓ Hardest isolation — no shared state</div>
+          <div class="text-emerald-300">✓ Per-tenant index tuning</div>
+          <div class="text-rose-300">✗ Explodes at 10K+ tenants</div>
+          <div class="text-rose-300">✗ Cross-tenant analytics painful</div>
+        </div>
+        <div class="mt-3 font-mono text-xs text-gray-500">→ USE FOR: Enterprise, &lt;100 tenants</div>
+      </div>
+
+      <div class="holo-card p-7 reveal" style="border-color: rgba(0, 240, 255, 0.5); box-shadow: 0 0 30px rgba(0, 240, 255, 0.1);">
+        <div class="flex items-center justify-between mb-4">
+          <div class="text-5xl font-display font-bold gradient-cyan">02</div>
+          <span class="pill">RECOMMENDED</span>
+        </div>
+        <h3 class="font-display font-bold text-xl mb-3">Payload Filtering</h3>
+        <p class="text-gray-400 leading-relaxed text-sm mb-3">One shared collection. Every vector carries a <code class="font-mono text-cyan-300">tenant_id</code> in its payload. Queries <strong class="text-white">force</strong> a filter at the API gateway.</p>
+        <div class="space-y-1 text-xs">
+          <div class="text-emerald-300">✓ Scales to millions of tenants</div>
+          <div class="text-emerald-300">✓ Single index, cheaper</div>
+          <div class="text-emerald-300">✓ Gateway enforces filter — apps can't bypass</div>
+          <div class="text-rose-300">✗ One bug = cross-tenant leak</div>
+        </div>
+        <div class="mt-3 font-mono text-xs text-gray-500">→ USE FOR: SaaS, multi-tenant from day 1</div>
+      </div>
+
+      <div class="holo-card p-7 reveal">
+        <div class="text-5xl font-display font-bold gradient-purple mb-4">03</div>
+        <h3 class="font-display font-bold text-xl mb-3">Cluster per Tenant</h3>
+        <p class="text-gray-400 leading-relaxed text-sm mb-3">Each tenant gets a dedicated Qdrant cluster — usually their own VPC, region, or hardware.</p>
+        <div class="space-y-1 text-xs">
+          <div class="text-emerald-300">✓ Physical isolation</div>
+          <div class="text-emerald-300">✓ Per-tenant data residency (GDPR, HIPAA)</div>
+          <div class="text-rose-300">✗ 10–100× cost</div>
+          <div class="text-rose-300">✗ Heavy ops</div>
+        </div>
+        <div class="mt-3 font-mono text-xs text-gray-500">→ USE FOR: Regulated, Fortune 500</div>
+      </div>
+    </div>
+
+    <!-- INTERACTIVE TENANT DEMO -->
+    <div class="reveal holo-card p-8">
+      <div class="text-center mb-6">
+        <div class="font-mono text-xs text-cyan-300 tracking-widest mb-2">INTERACTIVE</div>
+        <h3 class="font-display font-bold text-2xl">Payload Filter — In Action</h3>
+        <p class="text-sm text-gray-400 mt-2">Click a tenant card. Watch how the same query against the same index returns different vectors.</p>
+      </div>
+
+      <div class="grid md:grid-cols-3 gap-4 mb-6" id="tenantPicker">
+        <button class="tenant-box active" data-tenant="acme">
+          <div class="flex items-center gap-3 mb-2">
+            <div class="w-9 h-9 rounded-lg flex items-center justify-center" style="background:rgba(0,240,255,0.15);"><i data-lucide="building-2" class="w-4 h-4" style="color:#00f0ff;"></i></div>
+            <div class="font-display font-bold text-base">ACME Corp</div>
+          </div>
+          <div class="font-mono text-xs text-gray-400">tenant_id: <span class="text-cyan-300">"acme"</span></div>
+          <div class="font-mono text-xs text-gray-500">12,481 vectors</div>
+        </button>
+        <button class="tenant-box" data-tenant="globex">
+          <div class="flex items-center gap-3 mb-2">
+            <div class="w-9 h-9 rounded-lg flex items-center justify-center" style="background:rgba(184,107,255,0.15);"><i data-lucide="rocket" class="w-4 h-4" style="color:#b86bff;"></i></div>
+            <div class="font-display font-bold text-base">Globex Inc</div>
+          </div>
+          <div class="font-mono text-xs text-gray-400">tenant_id: <span class="text-purple-300">"globex"</span></div>
+          <div class="font-mono text-xs text-gray-500">8,914 vectors</div>
+        </button>
+        <button class="tenant-box" data-tenant="initech">
+          <div class="flex items-center gap-3 mb-2">
+            <div class="w-9 h-9 rounded-lg flex items-center justify-center" style="background:rgba(255,77,207,0.15);"><i data-lucide="bug" class="w-4 h-4" style="color:#ff4dcf;"></i></div>
+            <div class="font-display font-bold text-base">Initech LLC</div>
+          </div>
+          <div class="font-mono text-xs text-gray-400">tenant_id: <span class="text-pink-300">"initech"</span></div>
+          <div class="font-mono text-xs text-gray-500">3,206 vectors</div>
+        </button>
+      </div>
+
+      <div class="grid lg:grid-cols-2 gap-6">
+        <div class="code-block">
+          <span class="code-label">QUERY · GATEWAY</span>
+<pre style="margin:0;" id="tenantQuery"></pre>
+        </div>
+
+        <div>
+          <div class="font-mono text-xs text-gray-400 tracking-widest mb-3">TOP-3 RESULTS</div>
+          <div class="space-y-2" id="tenantResults"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- LEAK PREVENTION -->
+    <div class="reveal mt-12 callout-danger">
+      <div class="flex items-start gap-3">
+        <i data-lucide="shield-alert" class="w-6 h-6 mt-0.5" style="color: #ff5577;"></i>
+        <div>
+          <div class="font-display font-bold text-lg mb-1" style="color:#ff5577;">The #1 Multi-Tenant RAG Bug</div>
+          <p class="text-sm text-gray-300 leading-relaxed">A dev refactors the search function. They forget to thread the <code class="font-mono text-pink-200">tenant_id</code> through. Now <strong class="text-white">every</strong> query is unscoped. Tenant A sees Tenant B's data — silently. <strong class="text-amber-300">Defense:</strong> enforce the filter at the gateway middleware, not the application code. Make it impossible to call the vector DB without a tenant scope.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========== QUOTAS & BILLING ========== -->
+<section id="billing" class="relative py-24 px-6 z-10">
+  <div class="max-w-7xl mx-auto">
+    <div class="text-center mb-16 reveal">
+      <span class="pill mb-4"><i data-lucide="credit-card" class="w-3 h-3"></i> Layer 04</span>
+      <h2 class="font-display text-4xl md:text-5xl font-bold mt-4">
+        Quotas & <span class="gradient-amber">Billing</span>
+      </h2>
+      <p class="text-gray-400 mt-4 max-w-3xl mx-auto">Metering is what turns a RAG demo into a SaaS. Track tokens, enforce ceilings, send to Stripe.</p>
+    </div>
+
+    <!-- QUOTA DASHBOARD -->
+    <div class="reveal holo-card p-8 mb-12">
+      <div class="flex flex-wrap items-center justify-between gap-4 mb-8">
+        <div>
+          <h3 class="font-display font-bold text-xl">Tenant Usage Dashboard</h3>
+          <p class="text-sm text-gray-400 mt-1">Real-time meters · resets monthly</p>
+        </div>
+        <span class="pill"><i data-lucide="activity" class="w-3 h-3"></i> LIVE</span>
+      </div>
+
+      <div class="grid md:grid-cols-4 gap-6">
+        <div class="text-center">
+          <div class="quota-ring">
+            <svg viewBox="0 0 110 110" width="110" height="110">
+              <circle class="bg" cx="55" cy="55" r="48"></circle>
+              <circle class="fg" cx="55" cy="55" r="48" stroke="#00f0ff" stroke-dasharray="301.6" stroke-dashoffset="60.3" style="filter: drop-shadow(0 0 6px #00f0ff);"></circle>
+            </svg>
+            <div class="quota-label">
+              <div class="text-xl font-bold gradient-cyan">80%</div>
+              <div class="text-[10px] text-gray-400 font-mono mt-0.5">TOKENS</div>
+            </div>
+          </div>
+          <div class="font-mono text-xs text-gray-400 mt-3">8.0M / 10M</div>
+        </div>
+
+        <div class="text-center">
+          <div class="quota-ring">
+            <svg viewBox="0 0 110 110" width="110" height="110">
+              <circle class="bg" cx="55" cy="55" r="48"></circle>
+              <circle class="fg" cx="55" cy="55" r="48" stroke="#b86bff" stroke-dasharray="301.6" stroke-dashoffset="120.6" style="filter: drop-shadow(0 0 6px #b86bff);"></circle>
+            </svg>
+            <div class="quota-label">
+              <div class="text-xl font-bold gradient-purple">60%</div>
+              <div class="text-[10px] text-gray-400 font-mono mt-0.5">QUERIES</div>
+            </div>
+          </div>
+          <div class="font-mono text-xs text-gray-400 mt-3">60K / 100K</div>
+        </div>
+
+        <div class="text-center">
+          <div class="quota-ring">
+            <svg viewBox="0 0 110 110" width="110" height="110">
+              <circle class="bg" cx="55" cy="55" r="48"></circle>
+              <circle class="fg" cx="55" cy="55" r="48" stroke="#ff4dcf" stroke-dasharray="301.6" stroke-dashoffset="226.2" style="filter: drop-shadow(0 0 6px #ff4dcf);"></circle>
+            </svg>
+            <div class="quota-label">
+              <div class="text-xl font-bold gradient-purple">25%</div>
+              <div class="text-[10px] text-gray-400 font-mono mt-0.5">DOCS</div>
+            </div>
+          </div>
+          <div class="font-mono text-xs text-gray-400 mt-3">125 / 500</div>
+        </div>
+
+        <div class="text-center">
+          <div class="quota-ring">
+            <svg viewBox="0 0 110 110" width="110" height="110">
+              <circle class="bg" cx="55" cy="55" r="48"></circle>
+              <circle class="fg" cx="55" cy="55" r="48" stroke="#ffb84d" stroke-dasharray="301.6" stroke-dashoffset="30.16" style="filter: drop-shadow(0 0 6px #ffb84d);"></circle>
+            </svg>
+            <div class="quota-label">
+              <div class="text-xl font-bold gradient-amber">90%</div>
+              <div class="text-[10px] text-gray-400 font-mono mt-0.5">$ COST</div>
+            </div>
+          </div>
+          <div class="font-mono text-xs text-gray-400 mt-3">$1,800 / $2,000</div>
+        </div>
+      </div>
+
+      <div class="mt-8 callout text-sm text-gray-300">
+        <strong class="text-amber-300">💸 Cost guard active.</strong> Tenant approaching 90% of monthly cap. Next request triggers soft warning email at 95%, hard block at 100%. Override available via support.
+      </div>
+    </div>
+
+    <!-- TIER PRICING -->
+    <div class="reveal mb-12">
+      <div class="text-center mb-8">
+        <h3 class="font-display text-2xl md:text-3xl font-bold">Tiered <span class="gradient-amber">Plans</span></h3>
+        <p class="text-gray-400 mt-2 text-sm">How quotas map to billing tiers — wire these straight into Stripe metered subscriptions</p>
+      </div>
+
+      <div class="grid md:grid-cols-3 gap-6">
+        <div class="holo-card p-6">
+          <div class="text-xs text-gray-400 uppercase tracking-wider">Tier 01</div>
+          <h4 class="font-display font-bold text-2xl mt-1">Free</h4>
+          <div class="text-3xl font-display font-bold mt-2" style="color:#4dffb8;">$0</div>
+          <div class="text-xs text-gray-500 font-mono mb-4">/ month</div>
+          <div class="space-y-2 text-sm text-gray-300">
+            <div class="flex items-center gap-2"><i data-lucide="check" class="w-4 h-4" style="color:#4dffb8;"></i> 100K tokens / mo</div>
+            <div class="flex items-center gap-2"><i data-lucide="check" class="w-4 h-4" style="color:#4dffb8;"></i> 10 req / min</div>
+            <div class="flex items-center gap-2"><i data-lucide="check" class="w-4 h-4" style="color:#4dffb8;"></i> 5 documents</div>
+            <div class="flex items-center gap-2"><i data-lucide="x" class="w-4 h-4" style="color:#5a6788;"></i> No rerankers</div>
+          </div>
+        </div>
+
+        <div class="holo-card p-6" style="border-color:rgba(184,107,255,0.5);box-shadow:0 0 30px rgba(184,107,255,0.15);">
+          <div class="flex items-center justify-between">
+            <div class="text-xs text-gray-400 uppercase tracking-wider">Tier 02</div>
+            <span class="pill" style="border-color:#b86bff40;color:#b86bff;background:#b86bff10;">POPULAR</span>
+          </div>
+          <h4 class="font-display font-bold text-2xl mt-1 gradient-purple">Pro</h4>
+          <div class="text-3xl font-display font-bold mt-2 gradient-purple">$99</div>
+          <div class="text-xs text-gray-500 font-mono mb-4">/ month + usage</div>
+          <div class="space-y-2 text-sm text-gray-300">
+            <div class="flex items-center gap-2"><i data-lucide="check" class="w-4 h-4" style="color:#4dffb8;"></i> 10M tokens included</div>
+            <div class="flex items-center gap-2"><i data-lucide="check" class="w-4 h-4" style="color:#4dffb8;"></i> 100 req / min</div>
+            <div class="flex items-center gap-2"><i data-lucide="check" class="w-4 h-4" style="color:#4dffb8;"></i> 500 documents</div>
+            <div class="flex items-center gap-2"><i data-lucide="check" class="w-4 h-4" style="color:#4dffb8;"></i> Reranking on</div>
+          </div>
+        </div>
+
+        <div class="holo-card p-6">
+          <div class="text-xs text-gray-400 uppercase tracking-wider">Tier 03</div>
+          <h4 class="font-display font-bold text-2xl mt-1 gradient-amber">Enterprise</h4>
+          <div class="text-3xl font-display font-bold mt-2 gradient-amber">Custom</div>
+          <div class="text-xs text-gray-500 font-mono mb-4">contact sales</div>
+          <div class="space-y-2 text-sm text-gray-300">
+            <div class="flex items-center gap-2"><i data-lucide="check" class="w-4 h-4" style="color:#4dffb8;"></i> Unlimited tokens</div>
+            <div class="flex items-center gap-2"><i data-lucide="check" class="w-4 h-4" style="color:#4dffb8;"></i> Custom limits</div>
+            <div class="flex items-center gap-2"><i data-lucide="check" class="w-4 h-4" style="color:#4dffb8;"></i> Dedicated cluster</div>
+            <div class="flex items-center gap-2"><i data-lucide="check" class="w-4 h-4" style="color:#4dffb8;"></i> SLA + SSO + audit logs</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- STRIPE INTEGRATION -->
+    <div class="reveal code-block">
+      <span class="code-label">STRIPE METERED BILLING</span>
+<pre style="margin:0;"><span class="tok-comment"># After each RAG query, report usage to Stripe</span>
+<span class="tok-keyword">async def</span> <span class="tok-fn">record_usage</span>(tenant_id: <span class="tok-fn">str</span>, tokens_used: <span class="tok-fn">int</span>):
+    <span class="tok-comment"># 1. Update internal counter (Redis HINCRBY for atomic increment)</span>
+    <span class="tok-keyword">await</span> redis.<span class="tok-fn">hincrby</span>(<span class="tok-string">f"usage:{tenant_id}:2026-05"</span>, <span class="tok-string">"tokens"</span>, tokens_used)
+
+    <span class="tok-comment"># 2. Check quota</span>
+    used <span class="tok-keyword">=</span> <span class="tok-keyword">await</span> redis.<span class="tok-fn">hget</span>(<span class="tok-string">f"usage:{tenant_id}:2026-05"</span>, <span class="tok-string">"tokens"</span>)
+    quota <span class="tok-keyword">=</span> <span class="tok-keyword">await</span> <span class="tok-fn">get_tenant_quota</span>(tenant_id)
+
+    <span class="tok-keyword">if</span> <span class="tok-fn">int</span>(used) <span class="tok-keyword">&gt;=</span> quota <span class="tok-keyword">*</span> <span class="tok-num">0.95</span>:
+        <span class="tok-keyword">await</span> <span class="tok-fn">send_warning_email</span>(tenant_id, percent<span class="tok-keyword">=</span><span class="tok-num">95</span>)
+
+    <span class="tok-comment"># 3. Push to Stripe (batched every 5 min to avoid rate limits)</span>
+    <span class="tok-keyword">await</span> usage_queue.<span class="tok-fn">push</span>({
+        <span class="tok-string">"subscription_item"</span>: <span class="tok-keyword">await</span> <span class="tok-fn">get_stripe_item</span>(tenant_id),
+        <span class="tok-string">"quantity"</span>: tokens_used,
+        <span class="tok-string">"timestamp"</span>: <span class="tok-fn">int</span>(time.<span class="tok-fn">time</span>()),
+        <span class="tok-string">"action"</span>: <span class="tok-string">"increment"</span>,
+    })</pre>
+    </div>
+  </div>
+</section>
+
+<!-- ========== ABUSE DETECTION ========== -->
+<section id="abuse" class="relative py-24 px-6 z-10">
+  <div class="max-w-7xl mx-auto">
+    <div class="text-center mb-16 reveal">
+      <span class="pill mb-4"><i data-lucide="ban" class="w-3 h-3"></i> Layer 05</span>
+      <h2 class="font-display text-4xl md:text-5xl font-bold mt-4">
+        Abuse <span class="gradient-purple">Detection</span>
+      </h2>
+      <p class="text-gray-400 mt-4 max-w-3xl mx-auto">Five attack patterns every public RAG API will see. Detect early, throttle silently, ban hard.</p>
+    </div>
+
+    <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+      <div class="holo-card p-6 reveal">
+        <div class="use-case-icon" style="background: linear-gradient(135deg, rgba(255,77,207,0.15), rgba(255,184,77,0.05)); color: #ff4dcf;">
+          <i data-lucide="user-x" class="w-7 h-7"></i>
+        </div>
+        <h3 class="font-display font-bold text-lg mb-2">Credential Stuffing</h3>
+        <p class="text-sm text-gray-400 leading-relaxed">Botnets try millions of leaked passwords on your login. Solution: per-IP login limits, captcha after 3 failures, account lockout policies.</p>
+        <div class="mt-4"><span class="pill" style="border-color:#ff4dcf40;color:#ff4dcf;background:#ff4dcf10;">HIGH FREQUENCY</span></div>
+      </div>
+
+      <div class="holo-card p-6 reveal">
+        <div class="use-case-icon" style="background: linear-gradient(135deg, rgba(255,184,77,0.15), rgba(255,77,207,0.05)); color: #ffb84d;">
+          <i data-lucide="dollar-sign" class="w-7 h-7"></i>
+        </div>
+        <h3 class="font-display font-bold text-lg mb-2">Cost-Bomb Queries</h3>
+        <p class="text-sm text-gray-400 leading-relaxed">Attacker sends 50K-token contexts to drain your OpenAI budget. Solution: cap input tokens per request, alert on cost-per-user spikes.</p>
+        <div class="mt-4"><span class="pill" style="border-color:#ffb84d40;color:#ffb84d;background:#ffb84d10;">$$$ DRAIN</span></div>
+      </div>
+
+      <div class="holo-card p-6 reveal">
+        <div class="use-case-icon" style="background: linear-gradient(135deg, rgba(184,107,255,0.15), rgba(0,240,255,0.05)); color: #b86bff;">
+          <i data-lucide="copy" class="w-7 h-7"></i>
+        </div>
+        <h3 class="font-display font-bold text-lg mb-2">Scraping</h3>
+        <p class="text-sm text-gray-400 leading-relaxed">Competitor crawls your public RAG endpoint to extract proprietary data. Solution: anomaly detection on query diversity, hidden honeypot docs.</p>
+        <div class="mt-4"><span class="pill" style="border-color:#b86bff40;color:#b86bff;background:#b86bff10;">SLOW BURN</span></div>
+      </div>
+
+      <div class="holo-card p-6 reveal">
+        <div class="use-case-icon" style="background: linear-gradient(135deg, rgba(0,240,255,0.15), rgba(77,142,255,0.05)); color: #00f0ff;">
+          <i data-lucide="zap-off" class="w-7 h-7"></i>
+        </div>
+        <h3 class="font-display font-bold text-lg mb-2">DDoS / Layer 7</h3>
+        <p class="text-sm text-gray-400 leading-relaxed">Flood your endpoint with auth-less traffic. Solution: Cloudflare / AWS WAF in front, IP reputation lists, JA3 fingerprinting.</p>
+        <div class="mt-4"><span class="pill" style="border-color:#00f0ff40;color:#00f0ff;background:#00f0ff10;">VOLUMETRIC</span></div>
+      </div>
+
+      <div class="holo-card p-6 reveal">
+        <div class="use-case-icon" style="background: linear-gradient(135deg, rgba(77,255,184,0.15), rgba(0,240,255,0.05)); color: #4dffb8;">
+          <i data-lucide="key" class="w-7 h-7"></i>
+        </div>
+        <h3 class="font-display font-bold text-lg mb-2">Leaked Keys</h3>
+        <p class="text-sm text-gray-400 leading-relaxed">Dev commits a key to a public GitHub repo. Solution: GitHub secret scanning, prefix-based detection, automated revocation pipelines.</p>
+        <div class="mt-4"><span class="pill" style="border-color:#4dffb840;color:#4dffb8;background:#4dffb810;">CATASTROPHIC</span></div>
+      </div>
+
+      <div class="holo-card p-6 reveal">
+        <div class="use-case-icon" style="background: linear-gradient(135deg, rgba(255,85,119,0.15), rgba(255,77,207,0.05)); color: #ff5577;">
+          <i data-lucide="terminal" class="w-7 h-7"></i>
+        </div>
+        <h3 class="font-display font-bold text-lg mb-2">Prompt Injection (free tier)</h3>
+        <p class="text-sm text-gray-400 leading-relaxed">Free users probe for jailbreaks at high volume to find your system prompt. Solution: lower free-tier limits, behavioral fingerprinting, shadow-ban suspicious accounts.</p>
+        <div class="mt-4"><span class="pill" style="border-color:#ff557740;color:#ff5577;background:#ff557710;">EXFILTRATION</span></div>
+      </div>
+    </div>
+
+    <div class="callout-info mt-10 reveal text-sm text-gray-300 max-w-4xl mx-auto">
+      <strong class="text-cyan-300">🔭 Detection &gt; reaction.</strong> Pipe all auth + rate-limit + quota events into your observability stack from Module 7.2. Build dashboards that alert on <em>velocity</em>: spike in 429s from one IP, spike in token-per-request average, spike in unique queries per minute. The fastest tenants to ban are the ones you spotted before they did damage.
+    </div>
+  </div>
+</section>
+
+<!-- ========== KNOWLEDGE CHECK / QUIZ ========== -->
+<section id="quiz" class="relative py-24 px-6 z-10">
+  <div class="max-w-4xl mx-auto">
+    <div class="text-center mb-12 reveal">
+      <span class="pill mb-4"><i data-lucide="brain-circuit" class="w-3 h-3"></i> Knowledge Check</span>
+      <h2 class="font-display text-4xl md:text-5xl font-bold mt-4">
+        Lock It <span class="gradient-cyan">In</span>
+      </h2>
+      <p class="text-gray-400 mt-4 max-w-2xl mx-auto">Three checkpoint questions. Answer all three to unlock the module checkpoint.</p>
+    </div>
+
+    <div class="space-y-8" id="quizContainer">
+      <!-- Q1 -->
+      <div class="holo-card p-7 reveal" data-q="0">
+        <div class="font-mono text-xs text-cyan-300 tracking-widest mb-2">QUESTION 01 · AUTH</div>
+        <h3 class="font-display font-bold text-lg mb-4">You store API keys in your database. What value should the database row contain?</h3>
+        <div class="grid gap-3" data-correct="1">
+          <button class="quiz-option" data-i="0"><div class="badge">A</div> The raw key as plain text — fast lookup</button>
+          <button class="quiz-option" data-i="1"><div class="badge">B</div> The SHA-256 hash of the key, never the raw value</button>
+          <button class="quiz-option" data-i="2"><div class="badge">C</div> The key encrypted with AES — decrypt on each compare</button>
+          <button class="quiz-option" data-i="3"><div class="badge">D</div> The bcrypt of the key (like passwords)</button>
+        </div>
+        <div class="mt-4 text-sm text-gray-400 hidden" data-explain>
+          <strong class="text-emerald-300">Correct: B.</strong> SHA-256 is fast (millions/sec), one-way, and sufficient for tokens with high entropy. Bcrypt is for passwords — too slow per request. Encrypted keys mean if your DB leaks, so do all keys.
+        </div>
+      </div>
+
+      <!-- Q2 -->
+      <div class="holo-card p-7 reveal" data-q="1">
+        <div class="font-mono text-xs text-purple-300 tracking-widest mb-2">QUESTION 02 · RATE LIMITING</div>
+        <h3 class="font-display font-bold text-lg mb-4">A user is allowed 60 requests per minute, but you want to allow a brief burst of 10 requests at once. Which algorithm fits best?</h3>
+        <div class="grid gap-3" data-correct="1">
+          <button class="quiz-option" data-i="0"><div class="badge">A</div> Fixed window — count resets every minute</button>
+          <button class="quiz-option" data-i="1"><div class="badge">B</div> Token bucket — capacity 10, refill 1/sec</button>
+          <button class="quiz-option" data-i="2"><div class="badge">C</div> Leaky bucket — strict drip rate</button>
+          <button class="quiz-option" data-i="3"><div class="badge">D</div> Sliding window — exactly 60/min</button>
+        </div>
+        <div class="mt-4 text-sm text-gray-400 hidden" data-explain>
+          <strong class="text-emerald-300">Correct: B.</strong> Token bucket is the canonical answer for "long-run rate + short bursts." Sliding window is precise but spreads requests evenly. Fixed window allows boundary spikes. Leaky bucket forces even drip.
+        </div>
+      </div>
+
+      <!-- Q3 -->
+      <div class="holo-card p-7 reveal" data-q="2">
+        <div class="font-mono text-xs text-pink-300 tracking-widest mb-2">QUESTION 03 · MULTI-TENANCY</div>
+        <h3 class="font-display font-bold text-lg mb-4">A junior dev refactors the search endpoint and forgets to pass <code class="font-mono text-pink-200">tenant_id</code> into the Qdrant query. What's the architectural fix?</h3>
+        <div class="grid gap-3" data-correct="2">
+          <button class="quiz-option" data-i="0"><div class="badge">A</div> Code review checklists for every PR</button>
+          <button class="quiz-option" data-i="1"><div class="badge">B</div> Migrate to collection-per-tenant immediately</button>
+          <button class="quiz-option" data-i="2"><div class="badge">C</div> Force the tenant filter in the gateway middleware — app code can't call Qdrant directly</button>
+          <button class="quiz-option" data-i="3"><div class="badge">D</div> Add a try/catch that logs missing tenant_id</button>
+        </div>
+        <div class="mt-4 text-sm text-gray-400 hidden" data-explain>
+          <strong class="text-emerald-300">Correct: C.</strong> Defense in depth — humans forget, code reviews miss things. Make it <em>structurally impossible</em> to query the vector DB without a tenant scope. The gateway is the single chokepoint where the filter is injected. App code never touches Qdrant directly.
+        </div>
+      </div>
+    </div>
+
+    <div class="text-center mt-10 reveal">
+      <div class="font-mono text-xs text-gray-400 tracking-widest mb-2">QUIZ PROGRESS</div>
+      <div class="max-w-md mx-auto progress-bar">
+        <div class="progress-fill" id="quizProgress" style="width: 0%;"></div>
+      </div>
+      <div class="text-sm text-gray-400 mt-2 font-mono" id="quizScore">0 / 3 answered</div>
+    </div>
+  </div>
+</section>
+
+<!-- ========== CHECKPOINT ========== -->
+
+<!-- RESOURCE SECTION -->
+<section class="relative py-16 px-6 z-10">
+  <div class="max-w-7xl mx-auto">
+    <div class="text-center mb-12 reveal">
+      <span class="pill mb-4"><i data-lucide="book" class="w-3 h-3"></i> Continue Learning</span>
+      <h3 class="font-display text-4xl md:text-5xl font-bold mt-4">Learn &amp; <span class="gradient-purple">Practice</span></h3>
+      <p class="text-gray-400 mt-2">Explore curated resources and practice with real code</p>
+    </div>
+
+    <div class="resource-stack mb-12">
+      <article class="resource-card">
+        <div class="flex items-start gap-3">
+          <div class="resource-icon">
+            <i data-lucide="lightbulb" class="w-4 h-4"></i>
+          </div>
+          <div class="min-w-0 flex-1">
+            <h4 class="font-display text-2xl font-bold leading-none">Progressive Article</h4>
+            <p class="text-xs text-gray-400 mt-1">Stuck? Start here - beginner-friendly explanation</p>
+            <p class="text-lg font-semibold mt-4 text-cyan-300">Scaling Multi-Tenant SaaS</p>
+            <a href="https://peerlist.io/jagss/articles/multitenancy--authentication-how-it-works-under-the-hood" target="_blank" rel="noopener noreferrer" class="resource-cta" title="Scaling Multi-Tenant SaaS">
+              <i data-lucide="external-link" class="w-4 h-4"></i> Read Article
+            </a>
+          </div>
+        </div>
+      </article>
+      <article class="resource-card">
+        <div class="flex items-start gap-3">
+          <div class="resource-icon">
+            <i data-lucide="file-text" class="w-4 h-4"></i>
+          </div>
+          <div class="min-w-0 flex-1">
+            <h4 class="font-display text-2xl font-bold leading-none">Canonical Article</h4>
+            <p class="text-xs text-gray-400 mt-1">Authoritative source - official docs or research</p>
+            <p class="text-lg font-semibold mt-4 text-cyan-300">Zuplo - API Gateway for Multi-Tenant SaaS</p>
+            <a href="https://zuplo.com/learning-center/api-gateway-for-multi-tenant-saas" target="_blank" rel="noopener noreferrer" class="resource-cta" title="Zuplo - API Gateway for Multi-Tenant SaaS">
+              <i data-lucide="external-link" class="w-4 h-4"></i> Read Canonical
+            </a>
+          </div>
+        </div>
+      </article>
+      <article class="resource-card repo">
+        <div class="flex items-start gap-3">
+          <div class="resource-icon">
+            <i data-lucide="github" class="w-4 h-4"></i>
+          </div>
+          <div class="min-w-0 flex-1">
+            <h4 class="font-display text-2xl font-bold leading-none">GitHub Repository</h4>
+            <p class="text-xs text-gray-400 mt-1">Hands-on - reference implementation & examples</p>
+            <p class="text-lg font-semibold mt-4 text-pink-400">SlowAPI</p>
+            <a href="https://github.com/laurents/slowapi" target="_blank" rel="noopener noreferrer" class="resource-cta" title="SlowAPI">
+              <i data-lucide="external-link" class="w-4 h-4"></i> Explore Repo
+            </a>
+          </div>
+        </div>
+      </article>
+      <article class="resource-card repo">
+        <div class="flex items-start gap-3">
+          <div class="resource-icon">
+            <i data-lucide="github" class="w-4 h-4"></i>
+          </div>
+          <div class="min-w-0 flex-1">
+            <h4 class="font-display text-2xl font-bold leading-none">GitHub Repository</h4>
+            <p class="text-xs text-gray-400 mt-1">Hands-on - reference implementation & examples</p>
+            <p class="text-lg font-semibold mt-4 text-pink-400">FastAPI Users</p>
+            <a href="https://github.com/fastapi-users/fastapi-users" target="_blank" rel="noopener noreferrer" class="resource-cta" title="FastAPI Users">
+              <i data-lucide="external-link" class="w-4 h-4"></i> Explore Repo
+            </a>
+          </div>
+        </div>
+      </article>
+    </div>
+  </div>
+</section>
+
+<section id="checkpoint" class="relative py-24 px-6 z-10">
+  <div class="max-w-5xl mx-auto">
+    <div class="checkpoint-glow holo-card p-10 md:p-16 reveal text-center">
+      <div class="inline-flex items-center justify-center w-20 h-20 rounded-full mb-6" style="background: linear-gradient(135deg, #00f0ff, #b86bff); box-shadow: 0 0 60px rgba(0,240,255,0.5);">
+        <i data-lucide="flag" class="w-9 h-9 text-black"></i>
+      </div>
+
+      <span class="pill mb-4"><i data-lucide="check-circle" class="w-3 h-3"></i> Module 7.4 · Checkpoint</span>
+      <h2 class="font-display text-3xl md:text-5xl font-bold mt-4 mb-4">
+        <span class="gradient-multi">Mission 7.4 Complete</span>
+      </h2>
+      <p class="text-gray-300 max-w-2xl mx-auto mb-8">You've built the trust perimeter — auth, rate limiting, tenant isolation, quotas, and abuse detection. Your RAG system is now safe to onboard real paying customers.</p>
+
+      <!-- Self-check questions -->
+      <div class="grid md:grid-cols-3 gap-4 text-left mb-10">
+        <div class="holo-card p-5">
+          <div class="font-mono text-xs text-cyan-300 mb-2">CHECK 01</div>
+          <p class="text-sm text-gray-300">Can you sketch the full <span class="text-cyan-300 font-semibold">API key lifecycle</span> — generate, hash, verify, rotate, revoke?</p>
+        </div>
+        <div class="holo-card p-5">
+          <div class="font-mono text-xs text-purple-300 mb-2">CHECK 02</div>
+          <p class="text-sm text-gray-300">Can you explain when to choose <span class="text-purple-300 font-semibold">token bucket vs sliding window</span> rate limiting?</p>
+        </div>
+        <div class="holo-card p-5">
+          <div class="font-mono text-xs text-pink-300 mb-2">CHECK 03</div>
+          <p class="text-sm text-gray-300">Can you defend against the <span class="text-pink-300 font-semibold">tenant_id forgetting bug</span> at the architecture level?</p>
+        </div>
+      </div>
+
+      <div class="flex flex-wrap gap-4 justify-center mb-8">
+        <button class="btn-primary flex items-center gap-2" onclick="completeModule()">
+          <i data-lucide="check" class="w-4 h-4"></i> Mark Module Complete
+        </button>
+        <button class="btn-ghost flex items-center gap-2">
+          <i data-lucide="arrow-right" class="w-4 h-4"></i> Module 7.5 · Security & Cost for RAG
+        </button>
+      </div>
+
+      <!-- Course progress -->
+      <div class="max-w-md mx-auto">
+        <div class="flex justify-between text-xs text-gray-400 mb-2 font-mono">
+          <span>COURSE PROGRESS</span>
+          <span id="progressText">24 / 38 modules</span>
+        </div>
+        <div class="progress-bar"><div class="progress-fill" id="courseProgress" style="width: 60.5%;"></div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer class="relative py-12 px-6 z-10 border-t border-cyan-500/10">
+  <div class="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4 text-sm text-gray-500">
+    <div class="flex items-center gap-3">
+      <i data-lucide="orbit" class="w-4 h-4 text-cyan-400"></i>
+      <span class="font-display tracking-wider">RAG ACADEMY · GENAI GALAXY</span>
+    </div>
+    <div class="font-mono text-xs">v1.0.0 · Module 7.4 · Stardate 2026.05</div>
+  </div>
+</footer>
+
+<!-- ============== SCRIPTS ============== -->
+<script>
+  function safeCreateIcons() {
+    try {
+      if (typeof lucide !== 'undefined' && lucide.createIcons) {
+        lucide.createIcons();
+      }
+    } catch (e) { console.warn('Lucide init skipped:', e); }
+  }
+  safeCreateIcons();
+
+  // ===== STARFIELD =====
+  const canvas = document.getElementById('starfield');
+  const ctx = canvas.getContext('2d');
+  let stars = [];
+
+  function resizeCanvas() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    initStars();
+  }
+
+  function initStars() {
+    stars = [];
+    const count = Math.floor((canvas.width * canvas.height) / 8000);
+    for (let i = 0; i < count; i++) {
+      stars.push({
+        x: Math.random() * canvas.width,
+        y: Math.random() * canvas.height,
+        z: Math.random() * 1.5 + 0.3,
+        size: Math.random() * 1.5,
+        twinkle: Math.random() * Math.PI * 2
+      });
+    }
+  }
+
+  function drawStars() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const now = Date.now() * 0.001;
+    stars.forEach(s => {
+      const alpha = 0.4 + 0.6 * Math.abs(Math.sin(s.twinkle + now * s.z));
+      ctx.beginPath();
+      ctx.fillStyle = `rgba(${180 + s.z*30}, ${220 + s.z*20}, 255, ${alpha})`;
+      ctx.arc(s.x, s.y, s.size * s.z, 0, Math.PI * 2);
+      ctx.fill();
+      s.y += s.z * 0.08;
+      if (s.y > canvas.height) { s.y = 0; s.x = Math.random() * canvas.width; }
+    });
+    requestAnimationFrame(drawStars);
+  }
+
+  window.addEventListener('resize', resizeCanvas);
+  resizeCanvas();
+  drawStars();
+
+  // ===== REVEAL =====
+  document.documentElement.classList.add('js-reveal');
+  const revealEls = document.querySelectorAll('.reveal');
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('in');
+        observer.unobserve(entry.target);
+      }
+    });
+  }, { threshold: 0.05, rootMargin: '0px 0px -50px 0px' });
+  revealEls.forEach(el => observer.observe(el));
+
+  function revealVisibleNow() {
+    revealEls.forEach(el => {
+      const rect = el.getBoundingClientRect();
+      if (rect.top < window.innerHeight && rect.bottom > 0) {
+        el.classList.add('in');
+      }
+    });
+  }
+  revealVisibleNow();
+  setTimeout(revealVisibleNow, 100);
+  setTimeout(revealVisibleNow, 500);
+  setTimeout(() => { revealEls.forEach(el => el.classList.add('in')); }, 2000);
+
+  // ===== COUNTERS =====
+  function animateCounters() {
+    document.querySelectorAll('[data-count]').forEach(el => {
+      const target = parseInt(el.dataset.count);
+      let current = 0;
+      const step = Math.max(1, Math.ceil(target / 40));
+      const timer = setInterval(() => {
+        current += step;
+        if (current >= target) { current = target; clearInterval(timer); }
+        el.textContent = current;
+      }, 40);
+    });
+  }
+  setTimeout(animateCounters, 600);
+
+  // ===== AUTH MODE TABS =====
+  const authModes = {
+    apikey: {
+      label: 'FastAPI · header',
+      title: 'API Key',
+      icon: 'key-round',
+      color: '#00f0ff',
+      desc: 'A long, random secret sent with every request — usually in the <code class="font-mono text-cyan-300">Authorization</code> header. Simple, ubiquitous, and the default for service-to-service or developer-facing APIs.',
+      bullets: [
+        'High entropy: <code class="font-mono text-cyan-300">secrets.token_urlsafe(32)</code> = 256-bit randomness',
+        'Prefix keys for instant identification: <code class="font-mono text-cyan-300">rag_live_xxx</code>',
+        'Cache SHA-256 lookups in Redis (60s TTL) to avoid DB hits',
+        'Never log or display in full — show only last 4 chars'
+      ],
+      code: `<span class="tok-keyword">from</span> fastapi <span class="tok-keyword">import</span> Depends, HTTPException, Header
+<span class="tok-keyword">import</span> hashlib
+
+<span class="tok-keyword">async def</span> <span class="tok-fn">verify_key</span>(authorization: <span class="tok-fn">str</span> <span class="tok-keyword">=</span> <span class="tok-fn">Header</span>(...)):
+    <span class="tok-keyword">if not</span> authorization.<span class="tok-fn">startswith</span>(<span class="tok-string">"Bearer "</span>):
+        <span class="tok-keyword">raise</span> <span class="tok-fn">HTTPException</span>(<span class="tok-num">401</span>, <span class="tok-string">"missing bearer"</span>)
+    raw <span class="tok-keyword">=</span> authorization.<span class="tok-fn">split</span>(<span class="tok-string">" "</span>, <span class="tok-num">1</span>)[<span class="tok-num">1</span>]
+    hashed <span class="tok-keyword">=</span> hashlib.<span class="tok-fn">sha256</span>(raw.<span class="tok-fn">encode</span>()).<span class="tok-fn">hexdigest</span>()
+    record <span class="tok-keyword">=</span> <span class="tok-keyword">await</span> db.<span class="tok-fn">fetch_key</span>(hashed)
+    <span class="tok-keyword">if not</span> record <span class="tok-keyword">or</span> record.revoked:
+        <span class="tok-keyword">raise</span> <span class="tok-fn">HTTPException</span>(<span class="tok-num">403</span>, <span class="tok-string">"invalid key"</span>)
+    <span class="tok-keyword">return</span> record
+
+<span class="tok-dec">@app.post</span>(<span class="tok-string">"/query"</span>)
+<span class="tok-keyword">async def</span> <span class="tok-fn">query</span>(q: <span class="tok-fn">str</span>, key<span class="tok-keyword">=</span><span class="tok-fn">Depends</span>(verify_key)):
+    <span class="tok-keyword">return await</span> <span class="tok-fn">rag</span>(q, tenant_id<span class="tok-keyword">=</span>key.tenant_id)`
+    },
+    jwt: {
+      label: 'PyJWT · stateless',
+      title: 'JSON Web Token',
+      icon: 'ticket',
+      color: '#b86bff',
+      desc: 'A self-contained, signed token carrying the user identity and claims. Stateless — no DB lookup per request. Used for end-user sessions in web/mobile apps.',
+      bullets: [
+        'Claims like <code class="font-mono text-purple-300">user_id</code>, <code class="font-mono text-purple-300">tenant_id</code>, <code class="font-mono text-purple-300">scopes</code>, <code class="font-mono text-purple-300">exp</code>',
+        'Short-lived access (15 min) + long-lived refresh tokens',
+        'Sign with RS256 (asymmetric) for multi-service systems',
+        'Never put secrets in JWT — they\'re Base64, not encrypted'
+      ],
+      code: `<span class="tok-keyword">from</span> jose <span class="tok-keyword">import</span> jwt, JWTError
+<span class="tok-keyword">from</span> datetime <span class="tok-keyword">import</span> datetime, timedelta
+
+PUBLIC_KEY <span class="tok-keyword">=</span> <span class="tok-fn">open</span>(<span class="tok-string">"jwt.pub"</span>).<span class="tok-fn">read</span>()
+
+<span class="tok-keyword">async def</span> <span class="tok-fn">verify_jwt</span>(authorization: <span class="tok-fn">str</span> <span class="tok-keyword">=</span> <span class="tok-fn">Header</span>(...)):
+    token <span class="tok-keyword">=</span> authorization.<span class="tok-fn">replace</span>(<span class="tok-string">"Bearer "</span>, <span class="tok-string">""</span>)
+    <span class="tok-keyword">try</span>:
+        payload <span class="tok-keyword">=</span> jwt.<span class="tok-fn">decode</span>(
+            token,
+            PUBLIC_KEY,
+            algorithms<span class="tok-keyword">=</span>[<span class="tok-string">"RS256"</span>],
+            audience<span class="tok-keyword">=</span><span class="tok-string">"rag-api"</span>,
+        )
+        <span class="tok-keyword">return</span> {
+            <span class="tok-string">"user_id"</span>: payload[<span class="tok-string">"sub"</span>],
+            <span class="tok-string">"tenant_id"</span>: payload[<span class="tok-string">"tid"</span>],
+            <span class="tok-string">"scopes"</span>: payload.<span class="tok-fn">get</span>(<span class="tok-string">"scp"</span>, []),
+        }
+    <span class="tok-keyword">except</span> JWTError:
+        <span class="tok-keyword">raise</span> <span class="tok-fn">HTTPException</span>(<span class="tok-num">401</span>, <span class="tok-string">"bad token"</span>)`
+    },
+    oauth: {
+      label: 'OAuth 2.0 · delegated',
+      title: 'OAuth 2.0 / OIDC',
+      icon: 'link-2',
+      color: '#ff4dcf',
+      desc: 'Delegated authorization. User logs in via Google / GitHub / Okta — your service never sees their password. You get a token + identity claims.',
+      bullets: [
+        'Authorization code flow + PKCE for web/mobile clients',
+        'Client credentials flow for service-to-service',
+        'Pair with OIDC for full identity (email, name, picture)',
+        'Use a library — <strong>never roll your own OAuth</strong>'
+      ],
+      code: `<span class="tok-keyword">from</span> authlib.integrations.starlette_client <span class="tok-keyword">import</span> OAuth
+
+oauth <span class="tok-keyword">=</span> <span class="tok-fn">OAuth</span>()
+oauth.<span class="tok-fn">register</span>(
+    name<span class="tok-keyword">=</span><span class="tok-string">"google"</span>,
+    server_metadata_url<span class="tok-keyword">=</span><span class="tok-string">"https://accounts.google.com/.well-known/openid-configuration"</span>,
+    client_id<span class="tok-keyword">=</span>GOOGLE_CLIENT_ID,
+    client_secret<span class="tok-keyword">=</span>GOOGLE_CLIENT_SECRET,
+    client_kwargs<span class="tok-keyword">=</span>{<span class="tok-string">"scope"</span>: <span class="tok-string">"openid email profile"</span>},
+)
+
+<span class="tok-dec">@app.get</span>(<span class="tok-string">"/auth/login"</span>)
+<span class="tok-keyword">async def</span> <span class="tok-fn">login</span>(request):
+    redirect_uri <span class="tok-keyword">=</span> request.<span class="tok-fn">url_for</span>(<span class="tok-string">"callback"</span>)
+    <span class="tok-keyword">return await</span> oauth.google.<span class="tok-fn">authorize_redirect</span>(request, redirect_uri)
+
+<span class="tok-dec">@app.get</span>(<span class="tok-string">"/auth/callback"</span>)
+<span class="tok-keyword">async def</span> <span class="tok-fn">callback</span>(request):
+    token <span class="tok-keyword">=</span> <span class="tok-keyword">await</span> oauth.google.<span class="tok-fn">authorize_access_token</span>(request)
+    user <span class="tok-keyword">=</span> token[<span class="tok-string">"userinfo"</span>]  <span class="tok-comment"># email, sub, name, picture</span>
+    <span class="tok-comment"># Mint your own JWT for downstream calls</span>
+    <span class="tok-keyword">return</span> <span class="tok-fn">mint_jwt</span>(user)`
+    },
+    mtls: {
+      label: 'mTLS · zero trust',
+      title: 'Mutual TLS',
+      icon: 'badge-check',
+      color: '#ffb84d',
+      desc: 'Cryptographic certificates on both sides. Client proves identity with a cert, server verifies against a CA. Used in zero-trust enterprise networks and SSO-backed RAG deployments.',
+      bullets: [
+        'No shared secret — strongest auth available',
+        'Certificate rotation handled by short-lived issuance (e.g. SPIFFE)',
+        'Typically terminated at the load balancer, not your app',
+        'Pair with header injection for tenant/user attribution downstream'
+      ],
+      code: `<span class="tok-comment"># nginx — terminate mTLS, forward identity headers</span>
+server {
+    listen <span class="tok-num">443</span> ssl;
+    ssl_certificate         /certs/server.crt;
+    ssl_certificate_key     /certs/server.key;
+    ssl_client_certificate  /certs/ca.crt;
+    ssl_verify_client       on;
+    ssl_verify_depth        <span class="tok-num">2</span>;
+
+    location / {
+        proxy_pass http://rag-api:<span class="tok-num">8000</span>;
+        proxy_set_header X-Client-Cert-DN  $ssl_client_s_dn;
+        proxy_set_header X-Client-Cert-Sub $ssl_client_s_dn_cn;
+        proxy_set_header X-Tenant-ID       $ssl_client_s_dn_ou;
+    }
+}
+
+<span class="tok-comment"># FastAPI — trust nginx headers</span>
+<span class="tok-keyword">async def</span> <span class="tok-fn">mtls_identity</span>(
+    x_client_cert_sub: <span class="tok-fn">str</span> <span class="tok-keyword">=</span> <span class="tok-fn">Header</span>(...),
+    x_tenant_id: <span class="tok-fn">str</span> <span class="tok-keyword">=</span> <span class="tok-fn">Header</span>(...),
+):
+    <span class="tok-keyword">return</span> {<span class="tok-string">"user"</span>: x_client_cert_sub, <span class="tok-string">"tenant_id"</span>: x_tenant_id}`
+    },
+  };
+
+  function setAuthMode(mode) {
+    const m = authModes[mode];
+    document.querySelectorAll('.mode-tab').forEach(t => t.classList.toggle('active', t.dataset.mode === mode));
+    document.getElementById('authCodeLabel').textContent = m.label;
+    document.getElementById('authCodeBlock').innerHTML = m.code;
+    document.getElementById('authDescBox').innerHTML = `
+      <div class="flex items-center gap-3 mb-4">
+        <div class="w-12 h-12 rounded-xl flex items-center justify-center" style="background: ${m.color}20;">
+          <i data-lucide="${m.icon}" class="w-6 h-6" style="color: ${m.color};"></i>
+        </div>
+        <div>
+          <div class="text-xs text-gray-400 uppercase tracking-wider">Auth Mode</div>
+          <h4 class="font-display font-bold text-xl" style="color:${m.color};">${m.title}</h4>
+        </div>
+      </div>
+      <p class="text-gray-300 leading-relaxed mb-4">${m.desc}</p>
+      <ul class="space-y-2 text-sm">
+        ${m.bullets.map(b => `<li class="flex items-start gap-2"><i data-lucide="check" class="w-4 h-4 mt-0.5" style="color:${m.color};"></i><span class="text-gray-300">${b}</span></li>`).join('')}
+      </ul>
+    `;
+    safeCreateIcons();
+  }
+
+  document.querySelectorAll('.mode-tab').forEach(tab => {
+    tab.addEventListener('click', () => setAuthMode(tab.dataset.mode));
+  });
+  setAuthMode('apikey');
+
+  // ===== RATE LIMITER BUCKET DEMO =====
+  let bucketState = { tokens: 10, capacity: 10, refillRate: 1, lastRefill: Date.now(), allow: 0, deny: 0 };
+  const fillEl = document.getElementById('bucketFill');
+  const countEl = document.getElementById('bucketCount');
+  const allowEl = document.getElementById('allowCount');
+  const denyEl = document.getElementById('denyCount');
+  const logEl = document.getElementById('reqLog');
+
+  function refillBucket() {
+    const now = Date.now();
+    const elapsed = (now - bucketState.lastRefill) / 1000;
+    const added = elapsed * bucketState.refillRate;
+    bucketState.tokens = Math.min(bucketState.capacity, bucketState.tokens + added);
+    bucketState.lastRefill = now;
+  }
+
+  function renderBucket() {
+    const pct = (bucketState.tokens / bucketState.capacity) * 100;
+    fillEl.style.height = pct + '%';
+    fillEl.classList.toggle('empty', bucketState.tokens < 1);
+    countEl.textContent = Math.floor(bucketState.tokens);
+    allowEl.textContent = bucketState.allow;
+    denyEl.textContent = bucketState.deny;
+  }
+
+  function logRow(allowed, n) {
+    const ts = new Date().toLocaleTimeString();
+    const row = document.createElement('div');
+    row.className = 'row';
+    row.innerHTML = `
+      <span class="text-gray-400">${ts} · req #${n}</span>
+      <span class="${allowed ? 'req-allow' : 'req-deny'}">${allowed ? '✓ 200 ALLOW' : '✗ 429 DENY'}</span>
+    `;
+    // Remove placeholder
+    if (logEl.firstChild && logEl.firstChild.textContent.includes('Idle.')) logEl.innerHTML = '';
+    logEl.insertBefore(row, logEl.firstChild);
+    // Cap log length
+    while (logEl.children.length > 10) logEl.removeChild(logEl.lastChild);
+  }
+
+  function sendRequest() {
+    refillBucket();
+    const totalReqs = bucketState.allow + bucketState.deny + 1;
+    if (bucketState.tokens >= 1) {
+      bucketState.tokens -= 1;
+      bucketState.allow += 1;
+      logRow(true, totalReqs);
+    } else {
+      bucketState.deny += 1;
+      logRow(false, totalReqs);
+    }
+    renderBucket();
+  }
+
+  document.getElementById('sendReqBtn').addEventListener('click', sendRequest);
+  document.getElementById('burst10Btn').addEventListener('click', () => {
+    let i = 0;
+    const interval = setInterval(() => {
+      sendRequest();
+      i++;
+      if (i >= 10) clearInterval(interval);
+    }, 50);
+  });
+  document.getElementById('resetBktBtn').addEventListener('click', () => {
+    bucketState = { tokens: 10, capacity: 10, refillRate: 1, lastRefill: Date.now(), allow: 0, deny: 0 };
+    logEl.innerHTML = '<div class="row"><span class="text-gray-500">Idle. Click Send Request to begin.</span></div>';
+    renderBucket();
+  });
+
+  // Continuous refill animation
+  setInterval(() => {
+    refillBucket();
+    renderBucket();
+  }, 500);
+  renderBucket();
+
+  // ===== MULTI-TENANT DEMO =====
+  const tenants = {
+    acme: {
+      query: `<span class="tok-comment"># Gateway injects tenant_id automatically</span>
+results <span class="tok-keyword">=</span> <span class="tok-keyword">await</span> qdrant.<span class="tok-fn">search</span>(
+    collection_name<span class="tok-keyword">=</span><span class="tok-string">"rag_index"</span>,
+    query_vector<span class="tok-keyword">=</span>embed(<span class="tok-string">"refund policy"</span>),
+    query_filter<span class="tok-keyword">=</span>{
+        <span class="tok-string">"must"</span>: [
+            {<span class="tok-string">"key"</span>: <span class="tok-string">"tenant_id"</span>,
+             <span class="tok-string">"match"</span>: {<span class="tok-string">"value"</span>: <span class="tok-string">"acme"</span>}}
+        ]
+    },
+    limit<span class="tok-keyword">=</span><span class="tok-num">3</span>,
+)`,
+      color: '#00f0ff',
+      results: [
+        { score: 0.91, snippet: 'ACME refund policy v3.2 — section 4.1', doc: 'refunds_policy.pdf' },
+        { score: 0.87, snippet: '"All ACME purchases under $500 qualify for..."', doc: 'kb/refunds_under_500.md' },
+        { score: 0.83, snippet: 'ACME Help Center: Returns FAQ updated 2026-04', doc: 'helpdesk/faq_returns.html' },
+      ]
+    },
+    globex: {
+      query: `<span class="tok-comment"># Same query, different tenant</span>
+results <span class="tok-keyword">=</span> <span class="tok-keyword">await</span> qdrant.<span class="tok-fn">search</span>(
+    collection_name<span class="tok-keyword">=</span><span class="tok-string">"rag_index"</span>,
+    query_vector<span class="tok-keyword">=</span>embed(<span class="tok-string">"refund policy"</span>),
+    query_filter<span class="tok-keyword">=</span>{
+        <span class="tok-string">"must"</span>: [
+            {<span class="tok-string">"key"</span>: <span class="tok-string">"tenant_id"</span>,
+             <span class="tok-string">"match"</span>: {<span class="tok-string">"value"</span>: <span class="tok-string">"globex"</span>}}
+        ]
+    },
+    limit<span class="tok-keyword">=</span><span class="tok-num">3</span>,
+)`,
+      color: '#b86bff',
+      results: [
+        { score: 0.89, snippet: 'Globex Returns & Refunds Manual — Chapter 7', doc: 'globex_returns_2026.pdf' },
+        { score: 0.84, snippet: '"Globex enterprise customers: 30-day window..."', doc: 'enterprise/refund_terms.md' },
+        { score: 0.79, snippet: 'Globex Customer Support — refund SLAs', doc: 'support/refund_sla.html' },
+      ]
+    },
+    initech: {
+      query: `<span class="tok-comment"># Yet again — same index, scoped output</span>
+results <span class="tok-keyword">=</span> <span class="tok-keyword">await</span> qdrant.<span class="tok-fn">search</span>(
+    collection_name<span class="tok-keyword">=</span><span class="tok-string">"rag_index"</span>,
+    query_vector<span class="tok-keyword">=</span>embed(<span class="tok-string">"refund policy"</span>),
+    query_filter<span class="tok-keyword">=</span>{
+        <span class="tok-string">"must"</span>: [
+            {<span class="tok-string">"key"</span>: <span class="tok-string">"tenant_id"</span>,
+             <span class="tok-string">"match"</span>: {<span class="tok-string">"value"</span>: <span class="tok-string">"initech"</span>}}
+        ]
+    },
+    limit<span class="tok-keyword">=</span><span class="tok-num">3</span>,
+)`,
+      color: '#ff4dcf',
+      results: [
+        { score: 0.86, snippet: 'Initech TPS Refund Process — internal wiki', doc: 'wiki/refund_process.md' },
+        { score: 0.81, snippet: '"All Initech refund requests require Bill\'s sign-off..."', doc: 'policies/finance.pdf' },
+        { score: 0.74, snippet: 'Initech support tickets · refund category · 2026', doc: 'tickets/refunds_dump.json' },
+      ]
+    },
+  };
+
+  function setTenant(t) {
+    document.querySelectorAll('.tenant-box').forEach(b => b.classList.toggle('active', b.dataset.tenant === t));
+    const data = tenants[t];
+    document.getElementById('tenantQuery').innerHTML = data.query;
+    document.getElementById('tenantResults').innerHTML = data.results.map((r, i) => `
+      <div class="holo-card p-4">
+        <div class="flex items-center justify-between mb-1">
+          <div class="font-mono text-xs" style="color:${data.color};">#${i+1} · score ${r.score}</div>
+          <div class="font-mono text-[10px] text-gray-500">${r.doc}</div>
+        </div>
+        <div class="text-sm text-gray-200">${r.snippet}</div>
+      </div>
+    `).join('');
+    safeCreateIcons();
+  }
+  document.querySelectorAll('.tenant-box').forEach(b => {
+    b.addEventListener('click', () => setTenant(b.dataset.tenant));
+  });
+  setTenant('acme');
+
+  // ===== QUIZ =====
+  let answered = new Set();
+  document.querySelectorAll('#quizContainer [data-q]').forEach(qBlock => {
+    const qIdx = qBlock.dataset.q;
+    const optsContainer = qBlock.querySelector('[data-correct]');
+    const correct = parseInt(optsContainer.dataset.correct);
+    const explain = qBlock.querySelector('[data-explain]');
+    qBlock.querySelectorAll('.quiz-option').forEach(opt => {
+      opt.addEventListener('click', () => {
+        if (answered.has(qIdx)) return;
+        const i = parseInt(opt.dataset.i);
+        qBlock.querySelectorAll('.quiz-option').forEach((o, idx) => {
+          if (idx === correct) o.classList.add('correct');
+          else if (idx === i) o.classList.add('wrong');
+          o.style.pointerEvents = 'none';
+        });
+        explain.classList.remove('hidden');
+        answered.add(qIdx);
+        updateQuizProgress();
+      });
+    });
+  });
+
+  function updateQuizProgress() {
+    const pct = (answered.size / 3) * 100;
+    document.getElementById('quizProgress').style.width = pct + '%';
+    document.getElementById('quizScore').textContent = `${answered.size} / 3 answered`;
+  }
+
+  // ===== SIDE DOTS =====
+  const sections = ['hero', 'objectives', 'auth', 'ratelimit', 'tenancy', 'billing', 'abuse', 'quiz', 'checkpoint'];
+  const dots = document.querySelectorAll('.dot');
+
+  dots.forEach(dot => {
+    dot.addEventListener('click', () => {
+      document.getElementById(dot.dataset.target).scrollIntoView({ behavior: 'smooth' });
+    });
+  });
+
+  window.addEventListener('scroll', () => {
+    const scrollPos = window.scrollY + window.innerHeight / 2;
+    sections.forEach((id, i) => {
+      const el = document.getElementById(id);
+      if (el && el.offsetTop <= scrollPos && el.offsetTop + el.offsetHeight > scrollPos) {
+        dots.forEach(d => d.classList.remove('active'));
+        dots[i]?.classList.add('active');
+      }
+    });
+  });
+
+  // ===== MODULE COMPLETION =====
+  function completeModule() {
+    const fill = document.getElementById('courseProgress');
+    const txt = document.getElementById('progressText');
+    fill.style.width = '63.2%';
+    txt.textContent = '24 / 38 modules ✓';
+
+    try {
+      const saved = JSON.parse(localStorage.getItem('rag_academy_progress') || '{}');
+      const completed = new Set(saved.completed || []);
+      completed.add('7.4');
+      localStorage.setItem('rag_academy_progress', JSON.stringify({
+        completed: Array.from(completed),
+        lastModule: '7.4'
+      }));
+    } catch(e) {}
+
+    const burst = document.createElement('div');
+    burst.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);font-family:Orbitron,sans-serif;font-size:2rem;font-weight:900;color:#00f0ff;text-shadow:0 0 30px #00f0ff;z-index:9999;pointer-events:none;opacity:0;transition:all 0.8s ease;text-align:center;';
+    burst.innerHTML = '✦ MISSION 7.4 COMPLETE ✦<br><span style="font-size:0.9rem;color:#b86bff;text-shadow:0 0 20px #b86bff;">TRUST PERIMETER · ESTABLISHED</span>';
+    document.body.appendChild(burst);
+    requestAnimationFrame(() => {
+      burst.style.opacity = '1';
+      burst.style.transform = 'translate(-50%, -50%) scale(1.2)';
+    });
+    setTimeout(() => { burst.style.opacity = '0'; setTimeout(() => burst.remove(), 800); }, 2000);
+  }
+  window.completeModule = completeModule;
+
+  // ===== LOAD PROGRESS =====
+  try {
+    const saved = JSON.parse(localStorage.getItem('rag_academy_progress') || '{}');
+    if (saved.completed && saved.completed.includes('7.4')) {
+      document.getElementById('courseProgress').style.width = '63.2%';
+      document.getElementById('progressText').textContent = '24 / 38 modules ✓';
+    }
+  } catch(e) {}
+</script>
+
+</body>
+</html>

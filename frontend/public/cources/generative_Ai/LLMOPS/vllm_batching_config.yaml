@@ -1,0 +1,114 @@
+# ═══════════════════════════════════════════════════════════════════════════
+# vllm_batching_config.yaml
+#
+# Production vLLM config for Nexus v5: continuous batching + EAGLE-2
+# speculative decoding + deadline-aware scheduling. The full M5 stack
+# deployed together. Every knob annotated with why this value.
+#
+# Usage:
+#   vllm serve --model meta-llama/Meta-Llama-3-70B-Instruct \
+#              --config-file vllm_batching_config.yaml
+# ═══════════════════════════════════════════════════════════════════════════
+
+model: meta-llama/Meta-Llama-3-70B-Instruct
+tokenizer: meta-llama/Meta-Llama-3-70B-Instruct
+revision: main  # production: pin to a SHA
+
+# ─── Quantization (inherited from M2 + M4) ──────────────────────────────────
+quantization: awq
+kv_cache_dtype: fp8_e4m3
+calibrated_kv_scales_path: /models/nexus/kv_scales_fraud_detection.safetensors
+
+# ─── Context + paging (inherited from M4) ───────────────────────────────────
+max_model_len: 16384
+block_size: 32
+enable_prefix_caching: true
+enable_chunked_prefill: true
+max_num_batched_tokens_prefill_chunk: 512
+
+# ─── Batching · the M5 core ─────────────────────────────────────────────────
+# batching_throughput_model.py output on Nexus hardware:
+#   Llama-3-70B-FP8 on H200, 15ms TPOT SLO, 2K mean context
+#   → SLO-compliant best batch = 64. Going higher blows TPOT.
+max_num_seqs: 64
+# Token budget per scheduler step. Higher = more prefill parallelism;
+# lower = less decode interference. For batch=64 and 16K max_model_len,
+# 32768 gives enough headroom for prefill while keeping decode lock-free.
+max_num_batched_tokens: 32768
+
+# ─── Speculative decoding · EAGLE-2 ─────────────────────────────────────────
+# speculative_decoding_calculator.py recommends:
+#   α=0.85, K=5, draft=1.2ms, target=12ms → speedup 2.77×
+# Nexus v5 observed acceptance rate in production: 0.82-0.87 (weekly band)
+# If your α drops below 0.70 for 1h sustained, alarm fires. The fix is
+# always the same: retrain the draft model on recent traffic.
+speculative_config:
+  model: /models/nexus/draft_1b_v6  # 1B distilled from target
+  num_speculative_tokens: 5         # K
+  use_v2_block_manager: true        # EAGLE-2 block manager
+  # Weekly retraining is mandatory. Without it, α drifts and speedup dies.
+  # See M8 war story #6 and break_speculation_acceptance.py.
+
+# ─── Scheduler policy ───────────────────────────────────────────────────────
+# For mixed-SLO workloads (interactive + standard + batch) FIFO is a bad
+# default — it treats all requests identically and lets batch requests
+# starve interactive ones. scheduler_simulator.py shows:
+#   FIFO      at 750 req/s:  3.8% interactive SLO compliance (failure)
+#   priority  at 750 req/s: 100.0% interactive / 15.7% batch
+#   EDF       at 750 req/s: balanced, slightly worse on interactive
+#
+# For Nexus v5 we use priority with tenant classes defined at gateway.
+scheduling_policy: priority
+# Priority tiers — lowest number = highest priority
+tenant_priority_tiers:
+  interactive: 0   # chat, live fraud checks
+  standard:    1   # general API requests
+  batch:       2   # async background scoring
+
+# Deadline-aware optional: if supported by engine, compute deadline =
+# arrival_ms + slo_ttft_ms and prefer tighter deadlines among same tier.
+enable_deadline_aware: true
+
+# ─── Preemption (M4 setting, still relevant) ────────────────────────────────
+enable_preemption: true
+preemption_mode: swap
+
+# ─── Admission control ──────────────────────────────────────────────────────
+# Drop requests that have waited longer than this, with a 503 response.
+# Prevents queueing from destroying latency for downstream requests.
+request_timeout_seconds: 60
+# Per-tenant rate limits — enforced at the gateway, not here.
+# See artifacts/m04_kv_cache and M7 for the gateway config.
+
+# ─── Parallelism ────────────────────────────────────────────────────────────
+tensor_parallel_size: 4
+pipeline_parallel_size: 1
+
+# ─── Observability ──────────────────────────────────────────────────────────
+enable_prometheus_metrics: true
+metrics_port: 8001
+
+# M5-specific metrics to alert on:
+#   vllm:speculation_accept_rate      → alarm if 7-day mean < 0.70
+#   vllm:time_per_output_token_seconds → alarm on TPOT p99 regression
+#   vllm:num_preemptions_total        → alarm on >5% preemption rate
+#   vllm:num_requests_waiting         → queue-depth signal for autoscaling
+#   vllm:spec_decode_tokens_per_step  → derived; should be ~(1+α×K)
+
+# ─── Engine tuning ──────────────────────────────────────────────────────────
+use_cuda_graphs: true
+cuda_graph_capture_sizes: [1, 4, 8, 16, 32, 48, 64]  # stop at max_num_seqs
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Pre-deploy verification (full list in operator_checklist.md):
+#
+#   1. Run batching_throughput_model.py on your model/hardware/SLO;
+#      confirm max_num_seqs recommendation matches deployed value.
+#   2. Run speculative_decoding_calculator.py with draft and target model
+#      step times; verify speedup >= 2.0 at expected α.
+#   3. Run scheduler_simulator.py with your arrival rate and class mix;
+#      confirm priority/EDF beats FIFO on interactive SLO.
+#   4. Confirm speculation_config.model path loads correctly before deploy.
+#   5. Verify weekly draft-model retraining pipeline is wired up BEFORE
+#      enabling speculation (otherwise α will drift unnoticed).
+# ═══════════════════════════════════════════════════════════════════════════

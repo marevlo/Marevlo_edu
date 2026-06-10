@@ -1,0 +1,2065 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PyTorch Academy • Module 2 — Autograd: Backprop Without Fear</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Source+Serif+4:ital,opsz,wght@0,8..60,300;0,8..60,400;0,8..60,500;0,8..60,600;1,8..60,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.47.0/tabler-icons.min.css">
+<style>
+:root{
+  --bg:#08090b;
+  --bg-2:#0b0f1a;
+  --bg-3:#111827;
+  --panel:#0d1117;
+  --panel-2:#111827;
+  --line:#1e2330;
+  --line-2:#2a3142;
+  --ink:#e8eaed;
+  --ink-2:#a8aeb8;
+  --ink-3:#6b7280;
+  --ink-4:#454b58;
+  --accent:#6366f1;       /* indigo — primary accent */
+  --accent-2:#818cf8;
+  --accent-glow:rgba(99,102,241,0.18);
+  --plan:#f59e0b;        /* planning / cognition */
+  --tool:#10b981;        /* tool execution */
+  --observe:#8b5cf6;     /* observation */
+  --fail:#f7768e;
+  --success:#10b981;
+  --serif:'Source Serif 4', Georgia, serif;
+  --sans:'Outfit', -apple-system, sans-serif;
+  --mono:'JetBrains Mono', monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{
+  background:var(--bg);
+  color:var(--ink);
+  font-family:var(--sans);
+  font-weight:400;
+  line-height:1.6;
+  -webkit-font-smoothing:antialiased;
+  overflow-x:hidden;
+  min-height:100vh;
+  position:relative;
+}
+body::before{
+  content:'';position:fixed;inset:0;
+  background:
+    radial-gradient(ellipse 80% 50% at 42% -15%, rgba(99,102,241,0.1), transparent 60%),
+    radial-gradient(ellipse 60% 40% at 100% 100%, rgba(99,102,241,0.04), transparent 60%);
+  pointer-events:none;z-index:0;
+}
+body::after{
+  content:'';position:fixed;inset:0;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='300' height='300' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E");
+  background-size:300px 300px;
+  opacity:0.025;
+  pointer-events:none;z-index:0;
+}
+
+/* ============ STARFIELD ============ */
+.starfield {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  pointer-events: none;
+  z-index: -2;
+}
+.stars {
+  position: fixed;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  z-index: -1;
+  pointer-events: none;
+}
+.star {
+  position: absolute;
+  background: #fff;
+  border-radius: 50%;
+  opacity: 0.3;
+  animation: twinkle var(--dur, 4s) ease-in-out infinite;
+}
+@keyframes twinkle {
+  0%, 100% { opacity: 0.1; }
+  50% { opacity: 0.6; }
+}
+
+/* ============== LAYOUT ============== */
+.shell{position:relative;z-index:1;display:grid;grid-template-columns:280px 1fr;min-height:100vh}
+.sidebar{
+  position:sticky;top:0;height:100vh;
+  border-right:1px solid transparent;
+  background:linear-gradient(180deg, rgba(13,17,23,0.92) 0%, rgba(8,9,11,0.96) 100%);
+  backdrop-filter:blur(20px) saturate(1.4);
+  -webkit-backdrop-filter:blur(20px) saturate(1.4);
+  padding:36px 22px 28px;
+  overflow-y:auto;
+  box-shadow:inset -1px 0 0 rgba(255,255,255,0.04), 1px 0 32px rgba(0,0,0,0.5);
+  display:flex;flex-direction:column;
+}
+/* Left accent spine as pseudo */
+.sidebar::before{
+  position:absolute;left:0;top:0;bottom:0;width:2px;
+  background:linear-gradient(180deg,
+    transparent 0%,
+    rgba(99,102,241,0.5) 20%,
+    rgba(99,102,241,0.3) 60%,
+    transparent 100%);
+  pointer-events:none;z-index:2;
+}
+.sidebar::-webkit-scrollbar{width:3px}
+.sidebar::-webkit-scrollbar-track{background:transparent}
+.sidebar::-webkit-scrollbar-thumb{background:linear-gradient(180deg, var(--accent), transparent);border-radius:3px;opacity:0.5}
+.brand{
+  display:flex;align-items:center;gap:10px;margin-bottom:8px;
+  position:relative;
+}
+/* #3 — top glow arc behind brand */
+.brand::before{
+  content:'';
+  position:absolute;top:-28px;left:-22px;right:-22px;height:90px;
+  background:radial-gradient(ellipse 70% 60% at 40% 0%, rgba(99,102,241,0.18), transparent 70%);
+  pointer-events:none;z-index:0;
+  border-radius:50%;
+}
+.brand > *{position:relative;z-index:1}
+.brand-mark{
+  width:36px;height:36px;border-radius:8px;
+  background:transparent;
+  display:grid;place-items:center;
+  overflow:hidden;
+  flex-shrink:0;
+}
+.brand-mark img, .brand-mark i{
+  font-size:24px;
+  color:var(--accent-2);
+  display:block;
+}
+.brand-name{font-size:13px;font-weight:600;letter-spacing:0.02em}
+.brand-sub{font-size:11px;color:var(--ink-3);margin-top:2px;letter-spacing:0.04em}
+/* #6 — brand divider hairline */
+.brand-divider{
+  height:1px;
+  margin:18px 0 4px;
+  background:linear-gradient(90deg, transparent 0%, rgba(99,102,241,0.25) 40%, rgba(99,102,241,0.25) 60%, transparent 100%);
+}
+.module-tag{
+  margin-top:24px;padding:13px 15px;
+  background:linear-gradient(135deg, rgba(99,102,241,0.06) 0%, rgba(13,17,23,0.9) 100%);
+  border:1px solid rgba(99,102,241,0.18);
+  border-radius:9px;
+  box-shadow:0 1px 12px rgba(0,0,0,0.25);
+}
+.module-tag-label{font-size:10px;color:var(--ink-3);letter-spacing:0.04em;margin-bottom:4px}
+.module-tag-title{font-family:var(--serif);font-size:13px;color:var(--ink);font-weight:400}
+.toc{margin-top:24px}
+.toc-label{font-size:10px;color:var(--ink-3);letter-spacing:0.05em;margin-bottom:12px;padding-left:10px}
+.toc a{
+  display:flex;align-items:center;gap:10px;
+  padding:9px 11px;color:var(--ink-2);text-decoration:none;font-size:13px;
+  border-radius:6px;border-left:2px solid transparent;
+  transition:background 0.18s ease, color 0.18s ease, border-color 0.18s ease;
+  position:relative;
+}
+.toc a:hover{
+  background:rgba(255,255,255,0.03);
+  color:var(--ink);
+}
+.toc a.active{
+  background:linear-gradient(90deg, rgba(99,102,241,0.12) 0%, transparent 100%);
+  color:var(--accent);
+  border-left-color:var(--accent);
+  box-shadow:inset 0 0 0 1px rgba(99,102,241,0.08);
+}
+/* #7 — past TOC items fade */
+.toc a.past{
+  opacity:0.38;
+  color:var(--ink-4);
+}
+.toc a.past .toc-num{color:var(--ink-4)}
+.toc-num{font-family:var(--mono);font-size:11px;color:var(--ink-4);width:24px;transition:color 0.18s}
+.toc a.active .toc-num{color:var(--accent-2)}
+.progress-rail{
+  margin-top:28px;padding:15px 16px;
+  background:linear-gradient(135deg, rgba(99,102,241,0.05) 0%, rgba(13,17,23,0.8) 100%);
+  border:1px solid rgba(99,102,241,0.14);
+  border-radius:9px;
+  box-shadow:0 1px 10px rgba(0,0,0,0.2);
+}
+.progress-bar{
+  height:3px;background:rgba(255,255,255,0.05);border-radius:2px;overflow:hidden;margin-top:10px;
+  box-shadow:inset 0 1px 2px rgba(0,0,0,0.4);
+}
+.progress-fill{
+  height:100%;width:0%;
+  background:linear-gradient(90deg, var(--accent), var(--accent-2));
+  transition:width 0.5s cubic-bezier(0.4,0,0.2,1);
+  box-shadow:0 0 8px rgba(99,102,241,0.5);
+}
+.progress-text{font-size:11px;color:var(--ink-3);font-family:var(--serif)}
+
+.main{padding:80px 80px 200px;max-width:980px}
+@media (max-width: 1100px){
+  .shell{grid-template-columns:1fr}
+  .sidebar{position:relative;height:auto;border-right:none;border-bottom:1px solid var(--line)}
+  .main{padding:48px 32px 120px}
+}
+
+/* ============== HERO ============== */
+.hero{margin-bottom:80px;position:relative;text-align:left;padding:0;max-width:100%}
+.hero-meta{
+  display:inline-flex;align-items:center;gap:0;
+  margin-bottom:36px;
+  font-family:var(--mono);font-size:11px;color:var(--ink-3);letter-spacing:0.05em;
+  background:linear-gradient(135deg, rgba(99,102,241,0.07) 0%, rgba(13,17,23,0.6) 100%);
+  border:1px solid rgba(99,102,241,0.2);
+  border-radius:100px;
+  padding:7px 16px;
+  backdrop-filter:blur(8px);
+  box-shadow:0 0 0 1px rgba(255,255,255,0.03), 0 4px 24px rgba(0,0,0,0.3), 0 0 32px rgba(99,102,241,0.06);
+}
+.hero-meta span{white-space:nowrap;padding:0 2px}
+.hero-meta .dot{
+  width:5px;height:5px;border-radius:50%;
+  background:var(--accent);
+  box-shadow:0 0 6px rgba(99,102,241,0.8), 0 0 12px rgba(99,102,241,0.4);
+  flex-shrink:0;margin:0 10px;
+}
+.hero-meta .sep{
+  width:1px;height:10px;
+  background:rgba(255,255,255,0.08);
+  flex-shrink:0;margin:0 12px;
+}
+.hero-meta .track-label{color:var(--accent-2);font-weight:500}
+.hero-meta .level-badge{
+  padding:2px 9px;
+  background:rgba(99,102,241,0.12);
+  border:1px solid rgba(99,102,241,0.25);
+  border-radius:100px;
+  color:var(--accent-2);
+  font-weight:600;
+  font-size:10px;
+  letter-spacing:0.08em;
+  margin-left:4px;
+}
+.hero h1{
+  font-family:var(--serif);font-weight:400;font-size:clamp(40px, 5.5vw, 68px);
+  line-height:1.05;letter-spacing:-0.022em;margin-bottom:24px;
+}
+.hero h1 em, .hero h1 .accent{font-style:italic;color:var(--accent);font-weight:300;background:none;-webkit-text-fill-color:initial;text-fill-color:initial}
+.hero-lede, .hero .subtitle{
+  font-family:var(--serif);font-size:21px;line-height:1.55;color:var(--ink-2);
+  max-width:680px;font-weight:300;margin: 0;
+}
+.hero-stats{
+  display:grid;grid-template-columns:repeat(4,1fr);gap:2px;
+  margin-top:48px;background:var(--line);border:1px solid var(--line);border-radius:9px;overflow:hidden;
+}
+.hero-stat{background:var(--panel);padding:20px 22px;text-align:left}
+.hero-stat-num{font-family:var(--serif);font-size:28px;font-weight:500;color:var(--accent);line-height:1}
+.hero-stat-label{font-size:11px;color:var(--ink-3);margin-top:6px;letter-spacing:0.03em}
+@media (max-width:700px){.hero-stats{grid-template-columns:repeat(2,1fr)}}
+
+/* ============== SECTIONS ============== */
+.section{margin-bottom:88px;scroll-margin-top:100px}
+section:nth-child(3n){margin-bottom:104px}
+section:nth-child(2n){margin-bottom:96px}
+.section-head{margin-bottom:28px;padding-bottom:18px;border-bottom:1px solid var(--line)}
+.section-num{font-family:var(--mono);font-size:11px;color:var(--accent);letter-spacing:0.15em}
+.section-title, .section h2{
+  font-family:var(--serif);font-size:36px;font-weight:400;line-height:1.15;
+  letter-spacing:-0.01em;margin-top:8px;margin-bottom:8px;
+  display:flex;align-items:center;gap:14px;color:var(--ink);
+}
+.section h2::before{
+  content:'';
+  width:4px;
+  height:28px;
+  background:linear-gradient(180deg, var(--accent), var(--accent-2));
+  border-radius:2px;
+}
+.section-sub{font-size:15px;color:var(--ink-3);margin-top:12px;max-width:680px}
+
+p{font-family:var(--serif);font-size:17px;line-height:1.73;color:var(--ink-2);margin-bottom:20px;font-weight:300}
+p strong{color:var(--ink);font-weight:500}
+p em{color:var(--accent);font-style:italic}
+
+/* Goal Callout matches Marevlo callout standard */
+.goal-callout {
+  max-width: 980px;
+  margin: 20px 0 60px;
+  padding: 22px 28px;
+  background: linear-gradient(135deg, rgba(99,102,241,0.06), rgba(99,102,241,0.02));
+  border-left: 2px solid var(--accent);
+  border-radius: 0 7px 7px 0;
+  position: relative;
+}
+.goal-callout::before {
+  display:none;
+}
+.goal-callout h3 {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+  font-weight:600;
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.goal-callout p {
+  margin: 0;
+  font-size: 16px;
+  color: var(--ink);
+}
+
+.callout{
+  margin:32px 0;padding:22px 28px;
+  background:linear-gradient(135deg, rgba(99,102,241,0.06), rgba(99,102,241,0.02));
+  border-left:2px solid var(--accent);border-radius:0 7px 7px 0;
+  display:flex;
+  gap:16px;
+  align-items:flex-start;
+}
+.callout i{
+  font-size:20px;
+  margin-top:2px;
+  flex-shrink:0;
+}
+.callout-content{flex:1}
+.callout-title{
+  font-family:var(--mono);font-size:11px;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:8px;
+  font-weight:600;
+}
+.callout p{margin:0;font-size:16px;color:var(--ink)}
+
+/* Callout variants */
+.callout-tip{
+  background:linear-gradient(135deg, rgba(16,185,129,0.06), rgba(16,185,129,0.02));
+  border-left-color:var(--success);
+}
+.callout-tip i, .callout-tip .callout-title{color:var(--success)}
+
+.callout-warn{
+  background:linear-gradient(135deg, rgba(245,158,11,0.06), rgba(245,158,11,0.02));
+  border-left-color:var(--plan);
+}
+.callout-warn i, .callout-warn .callout-title{color:var(--plan)}
+
+.callout-info{
+  background:linear-gradient(135deg, rgba(99,102,241,0.06), rgba(99,102,241,0.02));
+  border-left-color:var(--accent);
+}
+.callout-info i, .callout-info .callout-title{color:var(--accent)}
+
+.callout-danger{
+  background:linear-gradient(135deg, rgba(247,118,142,0.06), rgba(247,118,142,0.02));
+  border-left-color:var(--fail);
+}
+.callout-danger i, .callout-danger .callout-title{color:var(--fail)}
+
+h3{font-family:var(--sans);font-size:20px;font-weight:600;margin:48px 0 16px;letter-spacing:-0.005em;color:var(--ink)}
+h4{font-family:var(--sans);font-size:15px;font-weight:600;margin:24px 0 12px;color:var(--ink);text-transform:uppercase;letter-spacing:0.06em}
+
+ul,ol{margin:16px 0 20px 0;padding-left:24px}
+li{font-family:var(--serif);font-size:17px;line-height:1.68;color:var(--ink-2);margin-bottom:10px;font-weight:300}
+li strong{color:var(--ink);font-weight:500}
+
+/* ============== CODE BLOCKS ============== */
+.code-block {
+  background:#06070a;
+  border:1px solid var(--line);
+  border-radius:8px;
+  margin:20px 0;
+  overflow:hidden;
+  position:relative;
+}
+.code-header {
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  padding:10px 18px;
+  background:rgba(255,255,255,0.02);
+  border-bottom:1px solid var(--line);
+}
+.code-lang {
+  font-size:11px;
+  color:var(--accent-2);
+  font-family:var(--mono);
+  letter-spacing:1px;
+  text-transform:uppercase;
+  font-weight:600;
+}
+.code-copy {
+  background:transparent;
+  border:1px solid var(--line-2);
+  color:var(--ink-2);
+  padding:4px 10px;
+  border-radius:5px;
+  font-size:11px;
+  cursor:pointer;
+  display:flex;
+  align-items:center;
+  gap:4px;
+  transition:all 0.15s;
+}
+.code-copy:hover {
+  background:rgba(255,255,255,0.04);
+  color:var(--ink);
+  border-color:var(--accent);
+}
+.code-block pre {
+  padding:18px 20px;
+  overflow-x:auto;
+  font-family:var(--mono);
+  font-size:13px;
+  line-height:1.65;
+}
+.code-block pre code {
+  color:#c8d3e0;
+  background:none;
+  padding:0;
+  border:none;
+}
+.section code:not(pre code) {
+  background: rgba(99, 102, 241, 0.08);
+  color: var(--accent-2);
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-family: var(--mono);
+  font-size: 13px;
+  border: 1px solid rgba(99, 102, 241, 0.18);
+}
+.kw{color:#8b5cf6}
+.fn{color:#818cf8}
+.st{color:#10b981}
+.co{color:#6b7280;font-style:italic}
+.cls{color:#f59e0b}
+.op{color:#67e8f9}
+
+/* === Output Blocks === */
+.output {
+  background:rgba(0,0,0,0.4);
+  border-left:3px solid var(--accent);
+  padding:14px 18px;
+  margin:8px 0 20px;
+  font-family:var(--mono);
+  font-size:12.5px;
+  color:var(--ink-2);
+  border-radius:0 8px 8px 0;
+  white-space:pre-wrap;
+  overflow-x:auto;
+}
+.output::before {
+  content:'output';
+  display:block;
+  font-size:10px;
+  color:var(--accent-2);
+  letter-spacing:1.5px;
+  margin-bottom:6px;
+  text-transform:uppercase;
+  font-weight:600;
+}
+
+/* === Tables === */
+.table-wrap{overflow-x:auto;margin:24px 0}
+table{
+  width:100%;
+  border-collapse:collapse;
+  background:var(--bg-2);
+  border:1px solid var(--line);
+  border-radius:9px;
+  overflow:hidden;
+  font-size:14px;
+}
+thead{
+  background:rgba(99,102,241,0.06);
+}
+th{
+  text-align:left;
+  padding:12px 14px;
+  color:var(--accent-2);
+  font-weight:600;
+  letter-spacing:0.02em;
+  border-bottom:1px solid var(--line-2);
+  font-size:13px;
+  font-family:var(--sans);
+}
+td{
+  padding:11px 14px;
+  border-bottom:1px solid var(--line);
+  color:var(--ink-2);
+  vertical-align:top;
+  font-family:var(--serif);
+  font-weight:300;
+}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:rgba(99,102,241,0.02)}
+td code{font-size:12px}
+
+/* ============== INTERACTIVE WIDGETS ============== */
+.widget {
+  margin:40px 0;
+  background:var(--panel);
+  border:1px solid var(--line);
+  border-radius:11px;
+  padding:28px;
+  position:relative;
+}
+.widget::before {
+  content: 'INTERACTIVE';
+  position: absolute;
+  top: -10px;
+  left: 20px;
+  background: var(--bg);
+  padding: 2px 10px;
+  font-size: 10px;
+  letter-spacing: 2px;
+  color: var(--accent-2);
+  border: 1px solid var(--accent);
+  border-radius: 10px;
+  font-weight: 600;
+  font-family:var(--mono);
+}
+.widget-title {
+  font-family:var(--sans);
+  font-size:16px;
+  font-weight:600;
+  color:var(--ink);
+  margin-bottom:6px;
+  letter-spacing:0.02em;
+  display:flex;
+  align-items:center;
+  gap:10px;
+}
+.widget-title::before {
+  content:'';
+  width:6px;
+  height:6px;
+  border-radius:50%;
+  background:var(--accent);
+  box-shadow:0 0 8px var(--accent-glow);
+}
+.widget-subtitle {
+  font-size:13px;
+  color:var(--ink-3);
+  margin-bottom:18px;
+}
+.controls {
+  display:flex;
+  flex-direction:column;
+  gap:14px;
+  margin-bottom:18px;
+}
+.ctrl-row {
+  display:flex;
+  align-items:center;
+  gap:14px;
+  flex-wrap:wrap;
+}
+.ctrl-label {
+  font-family:var(--sans);
+  font-size:12px;
+  color:var(--ink-2);
+  min-width:130px;
+  letter-spacing:0.02em;
+  text-transform:uppercase;
+  font-weight:500;
+}
+.ctrl-value {
+  font-size:13px;
+  color:var(--accent-2);
+  font-family:var(--mono);
+  min-width:70px;
+  text-align:right;
+  font-weight:600;
+}
+input[type="range"] {
+  flex:1;
+  accent-color:var(--accent);
+  height:4px;
+  background:var(--line-2);
+  border-radius:2px;
+  appearance:none;
+  outline:none;
+}
+input[type="range"]::-webkit-slider-thumb {
+  appearance:none;
+  width:16px;
+  height:16px;
+  border-radius:50%;
+  background:var(--accent-2);
+  cursor:pointer;
+  box-shadow:0 0 12px var(--accent-glow);
+}
+input[type="range"]::-moz-range-thumb {
+  width:16px;
+  height:16px;
+  border-radius:50%;
+  background:var(--accent-2);
+  cursor:pointer;
+  border:none;
+}
+.btn-row { display:flex; gap:8px; flex-wrap:wrap; }
+.pill-btn {
+  background:var(--bg-3);
+  color:var(--ink-2);
+  border:1px solid var(--line-2);
+  padding:7px 16px;
+  border-radius:8px;
+  font-size:12px;
+  cursor:pointer;
+  font-family:var(--mono);
+  font-weight:500;
+  transition:all 0.15s;
+}
+.pill-btn:hover {
+  background:var(--panel-2);
+  color:var(--ink);
+  border-color:var(--accent);
+}
+.pill-btn.active {
+  background:var(--accent);
+  color:#ffffff;
+  border-color:var(--accent);
+  box-shadow:0 0 15px var(--accent-glow);
+  font-weight:600;
+}
+.tensor-grid {
+  display:inline-grid;
+  gap:4px;
+  padding:16px;
+  background:rgba(0,0,0,0.3);
+  border-radius:10px;
+  border:1px solid var(--line);
+}
+.tcell {
+  width:36px;
+  height:36px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-size:10px;
+  font-family:var(--mono);
+  border-radius:4px;
+  font-weight:500;
+  transition:all 0.3s;
+}
+.viz-out {
+  margin-top:16px;
+  font-family:var(--mono);
+  font-size:13px;
+  color:var(--ink-2);
+  padding:14px 18px;
+  background:var(--bg-3);
+  border-radius:6px;
+  border-left:2px solid var(--accent);
+  white-space:pre-wrap;
+}
+.chart-box {
+  position:relative;
+  height:260px;
+  margin:16px 0 8px;
+  background:rgba(0,0,0,0.2);
+  border-radius:8px;
+  padding:8px;
+  border:1px solid var(--line);
+}
+.legend {
+  display:flex;
+  gap:18px;
+  font-size:11px;
+  color:var(--ink-3);
+  margin-top:10px;
+  flex-wrap:wrap;
+  font-family:var(--mono);
+}
+.legend-dot {
+  display:inline-block;
+  width:10px;
+  height:10px;
+  border-radius:50%;
+  margin-right:6px;
+  vertical-align:middle;
+}
+.graph-svg-wrap {
+  background:rgba(0,0,0,0.3);
+  border-radius:10px;
+  padding:16px;
+  margin:12px 0;
+  border:1px solid var(--line);
+}
+.metric-grid {
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(110px,1fr));
+  gap:10px;
+  margin:14px 0;
+}
+.metric {
+  background:rgba(0,0,0,0.3);
+  border:1px solid var(--line);
+  border-radius:8px;
+  padding:12px;
+}
+.metric-label {
+  font-family:var(--mono);
+  font-size:10px;
+  color:var(--ink-3);
+  text-transform:uppercase;
+  letter-spacing:1px;
+}
+.metric-value {
+  font-family:var(--mono);
+  font-size:18px;
+  color:var(--accent-2);
+  margin-top:4px;
+  font-weight:600;
+}
+
+/* ============ REFERENCES SECTION ============ */
+.references {
+  max-width:980px;
+  margin:80px auto 60px;
+  padding:0;
+}
+.refs-header {
+  text-align:center;
+  margin-bottom:40px;
+}
+.refs-header h2 {
+  font-family:var(--serif);
+  font-size:48px;
+  font-weight:400;
+  margin-bottom:12px;
+}
+.refs-header h2 .cyan-text { color:var(--ink) }
+.refs-header h2 .accent {
+  color:var(--accent);
+}
+.refs-header p {
+  color:var(--ink-3);
+  font-size:15px;
+  font-family:var(--serif);
+}
+.ref-card {
+  background:var(--panel);
+  border:1px solid var(--line);
+  border-radius:12px;
+  padding:24px 28px;
+  margin-bottom:22px;
+  display:flex;
+  gap:24px;
+  align-items:flex-start;
+  transition:all 0.2s;
+}
+.ref-card:hover {
+  border-color:var(--accent);
+  box-shadow:0 4px 24px var(--accent-glow);
+}
+.ref-card.pink-card { border-color:var(--line); }
+.ref-card.pink-card:hover {
+  border-color:var(--observe);
+  box-shadow:0 4px 24px rgba(139,92,246,0.12);
+}
+.ref-icon {
+  width:56px;
+  height:56px;
+  border-radius:12px;
+  background:rgba(99,102,241,0.08);
+  border:1px solid rgba(99,102,241,0.2);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-size:24px;
+  color:var(--accent-2);
+  flex-shrink:0;
+}
+.ref-card.pink-card .ref-icon {
+  background:rgba(139,92,246,0.08);
+  border-color:rgba(139,92,246,0.2);
+  color:var(--observe);
+}
+.ref-body { flex:1 }
+.ref-type {
+  font-family:var(--mono);
+  font-size:10px;
+  color:var(--ink-3);
+  font-weight:600;
+  letter-spacing:0.1em;
+  text-transform:uppercase;
+  margin-bottom:6px;
+}
+.ref-tagline {
+  font-size:14px;
+  color:var(--ink-2);
+  margin-bottom:12px;
+  font-family:var(--serif);
+  font-weight:300;
+}
+.ref-title {
+  font-family:var(--sans);
+  font-size:17px;
+  color:var(--ink);
+  font-weight:600;
+  margin-bottom:16px;
+}
+.ref-btn {
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  padding:8px 18px;
+  background:var(--bg-3);
+  border:1px solid var(--line-2);
+  color:var(--ink-2);
+  border-radius:6px;
+  font-size:12px;
+  font-weight:600;
+  letter-spacing:0.02em;
+  text-decoration:none;
+  transition:all 0.15s;
+  text-transform:uppercase;
+  font-family:var(--mono);
+}
+.ref-btn:hover {
+  background:var(--panel-2);
+  color:var(--ink);
+  border-color:var(--accent);
+}
+.ref-card.pink-card .ref-btn:hover {
+  border-color:var(--observe);
+}
+
+/* ============ SUMMARY TABLE ============ */
+.summary-box {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  padding: 24px;
+  margin: 20px 0;
+}
+
+/* ============ NEXT MODULE ============ */
+.module-nav{
+  margin-top:80px;padding:32px;
+  background:linear-gradient(135deg, var(--panel), var(--panel-2));
+  border:1px solid var(--line);border-radius:14px;
+  display:flex;justify-content:space-between;align-items:center;gap:24px;
+}
+.module-nav-label{font-family:var(--mono);font-size:10px;color:var(--ink-3);letter-spacing:0.15em;text-transform:uppercase}
+.module-nav-title{font-family:var(--serif);font-size:24px;font-weight:400;margin-top:6px}
+.module-nav-cta{
+  padding:12px 22px;background:var(--accent);color:#ffffff;
+  border-radius:8px;text-decoration:none;font-weight:600;font-size:13px;
+  white-space:nowrap;transition:all 0.15s;
+}
+.module-nav-cta:hover{background:var(--accent-2);transform:translateX(2px)}
+
+
+
+/* Sticky badge — moved to sidebar footer */
+.sidebar-footer{
+  margin-top:auto;
+  padding-top:24px;
+  border-top:1px solid rgba(255,255,255,0.04);
+}
+.depth-badge{
+  display:flex;align-items:center;gap:9px;
+  padding:11px 13px;
+  background:linear-gradient(135deg, rgba(99,102,241,0.06) 0%, rgba(13,17,23,0.8) 100%);
+  border:1px solid rgba(99,102,241,0.14);
+  border-radius:9px;
+  font-size:11px;font-family:var(--mono);
+  color:var(--ink-3);letter-spacing:0.03em;
+  box-shadow:0 1px 10px rgba(0,0,0,0.2);
+}
+.depth-badge .pulse{
+  width:5px;height:5px;flex-shrink:0;border-radius:50%;background:var(--accent);
+  box-shadow:0 0 6px rgba(99,102,241,0.7);
+  animation:pulse 2s infinite;
+}
+.depth-badge .badge-text{color:var(--ink-3);line-height:1.4}
+.depth-badge .badge-text strong{display:block;color:var(--ink-2);font-weight:500;font-size:11px;margin-bottom:1px}
+@keyframes pulse{0%,100%{opacity:0.5;transform:scale(1)}50%{opacity:1;transform:scale(1.3)}}
+
+/* Selection */
+::selection{background:var(--accent);color:#1a1a1a}
+
+/* Animation utilities */
+@keyframes fadeIn{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
+.fade-in{animation:fadeIn 0.6s ease forwards}
+
+/* Responsive type */
+@media(max-width:680px){
+  .hero h1{font-size:36px}
+  .hero-lede, .hero .subtitle{font-size:17px}
+  .section-title{font-size:26px}
+  p,li{font-size:16px}
+  .main{padding:40px 20px 80px}
+}
+</style>
+</head>
+<body>
+
+<div class="starfield"></div>
+<div class="stars" id="stars"></div>
+
+<div class="shell">
+<!-- ============ SIDEBAR ============ -->
+<aside class="sidebar">
+  <div class="brand">
+    <div class="brand-mark"><i class="ti ti-atom-2"></i></div>
+    <div>
+      <div class="brand-name">PyTorch Academy</div>
+      <div class="brand-sub">Data Science Track</div>
+    </div>
+  </div>
+  <div class="brand-divider"></div>
+  <div class="module-tag">
+    <div class="module-tag-label">Track 1 · Module 2.0</div>
+    <div class="module-tag-title">Autograd: Backprop Without Fear</div>
+  </div>
+  <nav class="toc">
+    <div class="toc-label">In this module</div>
+    <a href="#sec-1" class="toc-link active"><span class="toc-num">01</span>Graph</a>
+    <a href="#sec-2" class="toc-link"><span class="toc-num">02</span>requires_grad</a>
+    <a href="#sec-3" class="toc-link"><span class="toc-num">03</span>Custom</a>
+    <a href="#sec-4" class="toc-link"><span class="toc-num">04</span>Grad Check</a>
+    <a href="#sec-lab" class="toc-link"><span class="toc-num">05</span>Lab</a>
+    <a href="#sec-summary" class="toc-link"><span class="toc-num">06</span>Summary</a>
+  </nav>
+  <div class="progress-rail">
+    <div class="progress-text">Reading progress</div>
+    <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+  </div>
+  <div class="sidebar-footer">
+    <div class="depth-badge">
+      <span class="pulse"></span>
+      <div class="badge-text">
+        <strong>Marevlo &middot; Premium Track</strong>
+        Track 1 · Module 2.0
+      </div>
+    </div>
+  </div>
+</aside>
+
+<!-- ============ MAIN CONTENT AREA ============ -->
+<main class="main">
+
+<!-- HERO -->
+<header class="hero">
+  <div class="hero-meta">
+    <span class="track-label">Track 1 · Data Science</span>
+    <span class="sep"></span>
+    <span>Module 2.0</span>
+    <span class="sep"></span>
+    <span>Course 01</span>
+    <span class="sep"></span>
+    <span class="level-badge">Core Bedrock</span>
+  </div>
+  <h1>Autograd: <em>Backprop Without Fear.</em></h1>
+  <p class="subtitle">Understanding PyTorch's automatic differentiation engine — the math machinery behind every gradient, every optimizer step, every trained neural network.</p>
+  <div class="hero-stats">
+    <div class="hero-stat"><div class="hero-stat-num">6</div><div class="hero-stat-label">Module sections</div></div>
+    <div class="hero-stat"><div class="hero-stat-num">5</div><div class="hero-stat-label">Interactive widgets</div></div>
+    <div class="hero-stat"><div class="hero-stat-num">1</div><div class="hero-stat-label">Mini projects</div></div>
+    <div class="hero-stat"><div class="hero-stat-num">100%</div><div class="hero-stat-label">Vectorised code</div></div>
+  </div>
+</header>
+
+<!-- ============ GOAL CALLOUT ============ -->
+<div class="goal-callout">
+  <h3><i class="ti ti-target"></i> MODULE GOAL</h3>
+  <p>Understand how PyTorch automatically computes gradients through any computation. You will build the intuition for computation graphs, learn how to control gradient flow, and implement linear regression from scratch using only tensors and autograd — no <code>nn.Module</code>, no shortcuts.</p>
+</div>
+
+<!-- ============ MAIN CONTENT ============ -->
+<div class="content">
+
+  <!-- ============ SECTION 1 ============ -->
+  <section class="section" id="sec-1">
+    <div class="section-num">SECTION 01</div>
+    <h2>Computation Graph Intuition</h2>
+
+    <h3>What is a Computation Graph?</h3>
+    <p>Every time you do math with PyTorch tensors that have <code>requires_grad=True</code>, PyTorch silently builds a directed acyclic graph (DAG) in the background. Each node in this graph is either:</p>
+    <ul>
+      <li>A tensor (the data), or</li>
+      <li>A function (an operation like <code>+</code>, <code>*</code>, <code>sin</code>, <code>matmul</code>)</li>
+    </ul>
+    <p>When you call <code>.backward()</code>, PyTorch traverses this graph in reverse — from the output back to the inputs — applying the chain rule of calculus at each step to compute gradients.</p>
+
+    <h4>Real-World Analogy: A Factory Assembly Line (in Reverse)</h4>
+    <p>Imagine a factory: raw materials go in, a product comes out. To figure out how much each raw material contributed to the final product's quality, you trace backwards through the assembly steps — that's exactly what backprop does.</p>
+
+    <!-- INTERACTIVE WIDGET 1: Computation Graph Visualizer -->
+    <div class="widget">
+      <div class="widget-title">Computation Graph Visualiser</div>
+      <div class="widget-subtitle">Forward pass (left → right) and backward pass (right → left) animated. Click to step through the graph.</div>
+      <div class="graph-svg-wrap" style="text-align:center;">
+        <svg id="graph-svg" viewBox="0 0 700 200" style="width:100%;max-width:700px;height:auto;">
+          <defs>
+            <marker id="arrow-cyan" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+              <path d="M0,0 L10,5 L0,10 z" fill="#00e5ff"/>
+            </marker>
+            <marker id="arrow-pink" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+              <path d="M0,0 L10,5 L0,10 z" fill="#ff5cc0"/>
+            </marker>
+          </defs>
+          <!-- Nodes positions: x = 60, 220, 380, 540, 660 -->
+          <!-- Edges (forward) -->
+          <g id="edges-forward">
+            <line class="edge ef" data-step="0" x1="100" y1="100" x2="180" y2="100" stroke="#00e5ff" stroke-width="2" marker-end="url(#arrow-cyan)" opacity="0.25"/>
+            <line class="edge ef" data-step="1" x1="260" y1="100" x2="340" y2="100" stroke="#00e5ff" stroke-width="2" marker-end="url(#arrow-cyan)" opacity="0.25"/>
+            <line class="edge ef" data-step="2" x1="420" y1="100" x2="500" y2="100" stroke="#00e5ff" stroke-width="2" marker-end="url(#arrow-cyan)" opacity="0.25"/>
+            <line class="edge ef" data-step="3" x1="580" y1="100" x2="620" y2="100" stroke="#00e5ff" stroke-width="2" marker-end="url(#arrow-cyan)" opacity="0.25"/>
+          </g>
+          <!-- Edges (backward) -->
+          <g id="edges-backward">
+            <line class="edge eb" data-step="0" x1="620" y1="120" x2="580" y2="120" stroke="#ff5cc0" stroke-width="2" stroke-dasharray="4 3" marker-end="url(#arrow-pink)" opacity="0"/>
+            <line class="edge eb" data-step="1" x1="500" y1="120" x2="420" y2="120" stroke="#ff5cc0" stroke-width="2" stroke-dasharray="4 3" marker-end="url(#arrow-pink)" opacity="0"/>
+            <line class="edge eb" data-step="2" x1="340" y1="120" x2="260" y2="120" stroke="#ff5cc0" stroke-width="2" stroke-dasharray="4 3" marker-end="url(#arrow-pink)" opacity="0"/>
+            <line class="edge eb" data-step="3" x1="180" y1="120" x2="100" y2="120" stroke="#ff5cc0" stroke-width="2" stroke-dasharray="4 3" marker-end="url(#arrow-pink)" opacity="0"/>
+          </g>
+          <!-- Nodes -->
+          <g class="gnode" data-id="x">
+            <circle cx="60" cy="100" r="32" fill="rgba(0,229,255,0.15)" stroke="#00e5ff" stroke-width="1.5"/>
+            <text x="60" y="105" text-anchor="middle" fill="#00e5ff" font-family="JetBrains Mono" font-size="16" font-weight="600">x=3</text>
+          </g>
+          <g class="gnode" data-id="op1">
+            <rect x="180" y="78" width="80" height="44" rx="6" fill="rgba(255,92,192,0.12)" stroke="#ff5cc0" stroke-width="1.5"/>
+            <text x="220" y="104" text-anchor="middle" fill="#ff5cc0" font-family="JetBrains Mono" font-size="14">x²</text>
+          </g>
+          <g class="gnode" data-id="y">
+            <circle cx="380" cy="100" r="32" fill="rgba(0,229,255,0.15)" stroke="#00e5ff" stroke-width="1.5"/>
+            <text x="380" y="98" text-anchor="middle" fill="#00e5ff" font-family="JetBrains Mono" font-size="13" font-weight="600">y=x²</text>
+            <text x="380" y="114" text-anchor="middle" fill="#00e5ff" font-family="JetBrains Mono" font-size="11">= 9</text>
+          </g>
+          <g class="gnode" data-id="op2">
+            <rect x="500" y="78" width="80" height="44" rx="6" fill="rgba(255,92,192,0.12)" stroke="#ff5cc0" stroke-width="1.5"/>
+            <text x="540" y="98" text-anchor="middle" fill="#ff5cc0" font-family="JetBrains Mono" font-size="12">w·y+b</text>
+            <text x="540" y="114" text-anchor="middle" fill="#9aa8c4" font-family="JetBrains Mono" font-size="10">w=2 b=1</text>
+          </g>
+          <g class="gnode" data-id="z">
+            <circle cx="650" cy="100" r="36" fill="rgba(0,229,255,0.2)" stroke="#00e5ff" stroke-width="2"/>
+            <text x="650" y="98" text-anchor="middle" fill="#00e5ff" font-family="JetBrains Mono" font-size="13" font-weight="600">z=19</text>
+            <text x="650" y="114" text-anchor="middle" fill="#9aa8c4" font-family="JetBrains Mono" font-size="10">loss</text>
+          </g>
+        </svg>
+      </div>
+      <div class="btn-row" style="justify-content:center;margin-top:6px;">
+        <button class="pill-btn" id="run-forward"><i class="ti ti-arrow-right"></i> Forward pass</button>
+        <button class="pill-btn" id="run-backward"><i class="ti ti-arrow-left"></i> Backward pass</button>
+        <button class="pill-btn" id="reset-graph">Reset</button>
+      </div>
+      <div class="viz-out" id="graph-out">Click "Forward pass" to compute z = w·x² + b.
+Then click "Backward pass" to compute dz/dx, dz/dw, dz/db.</div>
+    </div>
+
+    <p style="margin-top:18px;"><strong style="color:var(--cyan-soft);">Forward pass:</strong> left to right (compute the output).<br/><strong style="color:var(--pink-soft);">Backward pass:</strong> right to left (compute "how much does each input affect the loss?").</p>
+
+    <div class="code-block">
+      <div class="code-header"><span class="code-lang">python</span><button class="code-copy"><i class="ti ti-copy"></i> Copy</button></div>
+<pre><code><span class="kw">import</span> torch
+
+<span class="co"># Simple computation graph</span>
+x = torch.<span class="fn">tensor</span>(<span class="st">3.0</span>, requires_grad=<span class="kw">True</span>)          <span class="co"># Leaf node</span>
+w = torch.<span class="fn">tensor</span>(<span class="st">2.0</span>, requires_grad=<span class="kw">True</span>)          <span class="co"># Leaf node</span>
+b = torch.<span class="fn">tensor</span>(<span class="st">1.0</span>, requires_grad=<span class="kw">True</span>)          <span class="co"># Leaf node</span>
+
+<span class="co"># Forward pass — graph is built as we compute</span>
+y = x ** <span class="st">2</span>          <span class="co"># y = x²      = 9</span>
+z = w * y + b       <span class="co"># z = 2x² + 1 = 19</span>
+
+<span class="fn">print</span>(<span class="st">"z ="</span>, z.<span class="fn">item</span>())
+<span class="fn">print</span>(<span class="st">"z.grad_fn:"</span>, z.grad_fn)        <span class="co"># Shows the last operation</span>
+
+<span class="co"># Backward pass — traverses graph, accumulates gradients</span>
+z.<span class="fn">backward</span>()
+
+<span class="co"># Gradients: dz/dx, dz/dw, dz/db</span>
+<span class="fn">print</span>(<span class="st">"\ndz/dx ="</span>, x.grad.<span class="fn">item</span>())         <span class="co"># d(2x²+1)/dx = 4x = 12</span>
+<span class="fn">print</span>(<span class="st">"dz/dw ="</span>, w.grad.<span class="fn">item</span>())         <span class="co"># d(2x²+1)/dw = x²  = 9</span>
+<span class="fn">print</span>(<span class="st">"dz/db ="</span>, b.grad.<span class="fn">item</span>())         <span class="co"># d(2x²+1)/db = 1</span></code></pre>
+    </div>
+    <div class="output">z = 19.0
+z.grad_fn: &lt;AddBackward0 object at 0x000002AB5363B7C0&gt;
+
+dz/dx = 12.0
+dz/dw = 9.0
+dz/db = 1.0</div>
+
+    <h3>Visualising the Graph</h3>
+    <div class="code-block">
+      <div class="code-header"><span class="code-lang">python</span><button class="code-copy"><i class="ti ti-copy"></i> Copy</button></div>
+<pre><code><span class="co"># A slightly deeper graph</span>
+a = torch.<span class="fn">tensor</span>(<span class="st">2.0</span>, requires_grad=<span class="kw">True</span>)
+b = torch.<span class="fn">tensor</span>(<span class="st">3.0</span>, requires_grad=<span class="kw">True</span>)
+
+c = a * b             <span class="co"># c = 6</span>
+d = a + b             <span class="co"># d = 5</span>
+e = c * d             <span class="co"># e = 30</span>
+
+e.<span class="fn">backward</span>()
+
+<span class="fn">print</span>(<span class="st">"de/da ="</span>, a.grad.<span class="fn">item</span>())        <span class="co"># de/da = d(c*d)/da = b*d + c*1 = 3*5 + 6 = 21</span>
+<span class="fn">print</span>(<span class="st">"de/db ="</span>, b.grad.<span class="fn">item</span>())        <span class="co"># de/db = c*1 + d*a = 6 + 5*2 = 16</span>
+
+<span class="co"># Check manually:</span>
+<span class="co"># e = (a*b)*(a+b) = a²b + ab²</span>
+<span class="co"># de/da = 2ab + b² = 2*2*3 + 9 = 21</span>
+<span class="co"># de/db = a² + 2ab = 4 + 12 = 16</span></code></pre>
+    </div>
+    <div class="output">de/da = 21.0
+de/db = 16.0</div>
+  </section>
+
+  <!-- ============ SECTION 2 ============ -->
+  <section class="section" id="sec-2">
+    <div class="section-num">SECTION 02</div>
+    <h2>requires_grad, .grad, .detach(), .no_grad()</h2>
+
+    <h3>requires_grad: Opt-In to Gradient Tracking</h3>
+    <p>Not every tensor needs a gradient. Only trainable parameters (model weights) should have <code>requires_grad=True</code>. Data tensors should not.</p>
+
+    <div class="code-block">
+      <div class="code-header"><span class="code-lang">python</span><button class="code-copy"><i class="ti ti-copy"></i> Copy</button></div>
+<pre><code><span class="co"># Tensors without gradient tracking (default for most data)</span>
+data = torch.<span class="fn">randn</span>(<span class="st">5</span>, <span class="st">3</span>)                           <span class="co"># requires_grad=False (default)</span>
+<span class="fn">print</span>(<span class="st">"Data requires_grad:"</span>, data.requires_grad)
+
+<span class="co"># Tensors WITH gradient tracking (model parameters)</span>
+weight = torch.<span class="fn">randn</span>(<span class="st">3</span>, <span class="st">2</span>, requires_grad=<span class="kw">True</span>)
+<span class="fn">print</span>(<span class="st">"Weight requires_grad:"</span>, weight.requires_grad)
+
+<span class="co"># Enable/disable after creation</span>
+data.<span class="fn">requires_grad_</span>(<span class="kw">True</span>)                          <span class="co"># In-place toggle</span>
+<span class="fn">print</span>(<span class="st">"Data after toggle:"</span>, data.requires_grad)</code></pre>
+    </div>
+    <div class="output">Data requires_grad: False
+Weight requires_grad: True
+Data after toggle: True</div>
+
+    <h3>.grad: Where Gradients Live</h3>
+    <p>After <code>.backward()</code>, gradients are stored in the <code>.grad</code> attribute of each leaf tensor (tensors created directly, not computed from others).</p>
+    <div class="code-block">
+      <div class="code-header"><span class="code-lang">python</span><button class="code-copy"><i class="ti ti-copy"></i> Copy</button></div>
+<pre><code>x = torch.<span class="fn">tensor</span>([<span class="st">1.0</span>, <span class="st">2.0</span>, <span class="st">3.0</span>], requires_grad=<span class="kw">True</span>)
+
+<span class="co"># Scalar output required for .backward() without arguments</span>
+loss = (x ** <span class="st">2</span>).<span class="fn">sum</span>()                 <span class="co"># sum gives scalar: 1 + 4 + 9 = 14</span>
+loss.<span class="fn">backward</span>()
+
+<span class="fn">print</span>(<span class="st">"x.grad:"</span>, x.grad)                    <span class="co"># d(sum(x²))/dx = 2x = [2, 4, 6]</span></code></pre>
+    </div>
+    <div class="output">x.grad: tensor([2., 4., 6.])</div>
+
+    <h3>The Classic Gradient Accumulation Bug</h3>
+    <p>This is one of the most common PyTorch bugs — gradients accumulate across <code>.backward()</code> calls unless you explicitly zero them.</p>
+
+    <!-- INTERACTIVE WIDGET 2: Gradient Accumulation Demo -->
+    <div class="widget">
+      <div class="widget-title">Gradient Accumulation Demo</div>
+      <div class="widget-subtitle">Run a training loop with or without <code style="background:rgba(0,229,255,0.1);color:var(--cyan-soft);padding:1px 5px;border-radius:3px;font-size:11px;">zero_grad()</code> and watch what happens to <code style="background:rgba(0,229,255,0.1);color:var(--cyan-soft);padding:1px 5px;border-radius:3px;font-size:11px;">x.grad</code>.</div>
+      <div class="controls">
+        <div class="ctrl-row">
+          <span class="ctrl-label">Mode</span>
+          <div class="btn-row">
+            <button class="pill-btn active" data-mode="no-zero">Without zero_grad()</button>
+            <button class="pill-btn" data-mode="zero">With zero_grad()</button>
+          </div>
+        </div>
+        <div class="ctrl-row">
+          <span class="ctrl-label">Steps</span>
+          <input type="range" id="acc-steps" min="3" max="10" value="5" step="1">
+          <span class="ctrl-value" id="acc-steps-v">5</span>
+        </div>
+        <div class="btn-row" style="justify-content:flex-end;">
+          <button class="pill-btn" id="acc-run"><i class="ti ti-player-play"></i> Run loop</button>
+        </div>
+      </div>
+      <div id="acc-log" class="viz-out" style="min-height:120px;">Click "Run loop" to see how x.grad behaves over multiple backward() calls.</div>
+    </div>
+
+    <div class="code-block">
+      <div class="code-header"><span class="code-lang">python</span><button class="code-copy"><i class="ti ti-copy"></i> Copy</button></div>
+<pre><code>x = torch.<span class="fn">tensor</span>(<span class="st">2.0</span>, requires_grad=<span class="kw">True</span>)
+
+<span class="co"># Simulating a training loop WITHOUT zeroing gradients</span>
+<span class="kw">for</span> step <span class="kw">in</span> <span class="fn">range</span>(<span class="st">3</span>):
+    loss = x ** <span class="st">2</span>
+    loss.<span class="fn">backward</span>()
+    <span class="fn">print</span>(<span class="st">f"Step {step}: x.grad = {x.grad.item()}"</span>)   <span class="co"># 4, 8, 12 — keeps adding!</span>
+
+<span class="co"># The correct pattern: zero gradients before each backward pass</span>
+x.grad.<span class="fn">zero_</span>()                          <span class="co"># or use optimizer.zero_grad() in training</span>
+
+<span class="kw">for</span> step <span class="kw">in</span> <span class="fn">range</span>(<span class="st">3</span>):
+    <span class="kw">if</span> x.grad <span class="kw">is</span> <span class="kw">not</span> <span class="kw">None</span>:
+        x.grad.<span class="fn">zero_</span>()                  <span class="co"># ← CRITICAL: clear before each step</span>
+    loss = x ** <span class="st">2</span>
+    loss.<span class="fn">backward</span>()
+    <span class="fn">print</span>(<span class="st">f"Step {step}: x.grad = {x.grad.item()}"</span>)   <span class="co"># 4, 4, 4 — correct!</span></code></pre>
+    </div>
+    <div class="output">Step 0: x.grad = 4.0
+Step 1: x.grad = 8.0
+Step 2: x.grad = 12.0
+Step 0: x.grad = 4.0
+Step 1: x.grad = 4.0
+Step 2: x.grad = 4.0</div>
+
+    <div class="callout callout-warn">
+      <i class="ti ti-alert-triangle"></i>
+      <div class="callout-content">
+        <div class="callout-title">WARNING — Classic Bug</div>
+        Forgetting to call <code>optimizer.zero_grad()</code> at the start of each training step. Gradients accumulate silently, leading to exploding updates. Always zero gradients before <code>loss.backward()</code>.
+      </div>
+    </div>
+
+    <h3>.detach(): Break the Graph</h3>
+    <p><code>.detach()</code> creates a new tensor that shares the same data but is removed from the computation graph. No gradients flow through it.</p>
+    <div class="code-block">
+      <div class="code-header"><span class="code-lang">python</span><button class="code-copy"><i class="ti ti-copy"></i> Copy</button></div>
+<pre><code>x = torch.<span class="fn">tensor</span>(<span class="st">3.0</span>, requires_grad=<span class="kw">True</span>)
+y = x ** <span class="st">2</span>                             <span class="co"># y is part of the graph</span>
+
+<span class="co"># Detach — same values, no gradient connection</span>
+y_detached = y.<span class="fn">detach</span>()
+<span class="fn">print</span>(<span class="st">"y value:"</span>, y.<span class="fn">item</span>())
+<span class="fn">print</span>(<span class="st">"y_detached value:"</span>, y_detached.<span class="fn">item</span>())
+<span class="fn">print</span>(<span class="st">"y_detached.requires_grad:"</span>, y_detached.requires_grad)
+
+<span class="co"># Common use: logging metrics without affecting training</span>
+loss = x ** <span class="st">3</span>
+loss_value = loss.<span class="fn">detach</span>().<span class="fn">item</span>()      <span class="co"># Safe to log, convert to Python float</span>
+<span class="fn">print</span>(<span class="st">"Loss for logging:"</span>, loss_value)</code></pre>
+    </div>
+    <div class="output">y value: 9.0
+y_detached value: 9.0
+y_detached.requires_grad: False
+Loss for logging: 27.0</div>
+
+    <h3>torch.no_grad(): Disable Graph Building</h3>
+    <p>Use <code>torch.no_grad()</code> whenever you don't need gradients — inference, evaluation, metric calculation. It's faster and uses less memory.</p>
+    <div class="code-block">
+      <div class="code-header"><span class="code-lang">python</span><button class="code-copy"><i class="ti ti-copy"></i> Copy</button></div>
+<pre><code>x = torch.<span class="fn">randn</span>(<span class="st">1000</span>, <span class="st">1000</span>, requires_grad=<span class="kw">True</span>)
+
+<span class="co"># With gradient tracking (slower, more memory)</span>
+<span class="kw">import</span> time
+start = time.<span class="fn">time</span>()
+<span class="kw">for</span> _ <span class="kw">in</span> <span class="fn">range</span>(<span class="st">100</span>):
+    y = (x * x).<span class="fn">sum</span>()
+<span class="fn">print</span>(<span class="st">f"With grad:    {time.time()-start:.3f}s"</span>)
+
+<span class="co"># Without gradient tracking (faster, less memory)</span>
+start = time.<span class="fn">time</span>()
+<span class="kw">with</span> torch.<span class="fn">no_grad</span>():
+    <span class="kw">for</span> _ <span class="kw">in</span> <span class="fn">range</span>(<span class="st">100</span>):
+        y = (x * x).<span class="fn">sum</span>()
+<span class="fn">print</span>(<span class="st">f"Without grad: {time.time()-start:.3f}s"</span>)</code></pre>
+    </div>
+    <div class="output">With grad:    0.009s
+Without grad: 0.007s</div>
+
+    <div class="callout callout-tip">
+      <i class="ti ti-bulb"></i>
+      <div class="callout-content">
+        <div class="callout-title">TIP — Rule of Thumb</div>
+        During training: gradients on. During evaluation/inference: always wrap in <code>torch.no_grad()</code>. When logging a loss value: use <code>.detach().item()</code>, never <code>.item()</code> directly on a tensor in the graph.
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ SECTION 3 ============ -->
+  <section class="section" id="sec-3">
+    <div class="section-num">SECTION 03</div>
+    <h2>Custom Autograd Function</h2>
+
+    <p>Sometimes you need to define a forward pass whose gradient isn't automatically derivable — for example, a non-standard activation or a domain-specific operation.</p>
+
+    <h4>Real-World Analogy: Teaching PyTorch a New Math Operation</h4>
+    <p>PyTorch knows how to differentiate <code>sin</code>, <code>exp</code>, <code>matmul</code> etc. But if you invent your own function (say, a clamped activation), you need to tell it: "Here's the forward formula, and here's the derivative."</p>
+
+    <!-- INTERACTIVE WIDGET 3: ClampedReLU Visualizer -->
+    <div class="widget">
+      <div class="widget-title">ClampedReLU Visualiser</div>
+      <div class="widget-subtitle">A clamped activation: <code style="background:rgba(0,229,255,0.1);color:var(--cyan-soft);padding:1px 5px;border-radius:3px;font-size:11px;">f(x) = clamp(x, 0, cap)</code>. The gradient is 1 inside the active zone, 0 outside.</div>
+      <div class="controls">
+        <div class="ctrl-row">
+          <span class="ctrl-label">Cap value</span>
+          <input type="range" id="cap-slider" min="0.5" max="3" value="1.5" step="0.1">
+          <span class="ctrl-value" id="cap-v">1.5</span>
+        </div>
+      </div>
+      <div class="chart-box"><canvas id="clamped-chart"></canvas></div>
+      <div class="legend">
+        <span><span class="legend-dot" style="background:var(--cyan);"></span>Forward f(x)</span>
+        <span><span class="legend-dot" style="background:var(--pink);"></span>Gradient df/dx</span>
+      </div>
+    </div>
+
+    <div class="code-block">
+      <div class="code-header"><span class="code-lang">python</span><button class="code-copy"><i class="ti ti-copy"></i> Copy</button></div>
+<pre><code><span class="kw">class</span> <span class="cls">ClampedReLU</span>(torch.autograd.Function):
+    <span class="st">"""
+    A ReLU that clamps output to [0, cap].
+    Forward: f(x) = clamp(x, 0, cap)
+    Backward: gradient = 1 if 0 &lt; x &lt; cap, else 0
+    """</span>
+
+    <span class="dec">@staticmethod</span>
+    <span class="kw">def</span> <span class="fn">forward</span>(ctx, x, cap=<span class="st">1.0</span>):
+        ctx.<span class="fn">save_for_backward</span>(x)        <span class="co"># Save input for use in backward</span>
+        ctx.cap = cap
+        <span class="kw">return</span> x.<span class="fn">clamp</span>(<span class="st">0</span>, cap)
+
+    <span class="dec">@staticmethod</span>
+    <span class="kw">def</span> <span class="fn">backward</span>(ctx, grad_output):
+        x, = ctx.saved_tensors
+        cap = ctx.cap
+        <span class="co"># Gradient passes through only where 0 &lt; x &lt; cap</span>
+        grad_input = grad_output * ((x &gt; <span class="st">0</span>) &amp; (x &lt; cap)).<span class="fn">float</span>()
+        <span class="kw">return</span> grad_input, <span class="kw">None</span>      <span class="co"># None for cap (not a tensor)</span>
+
+
+<span class="co"># Test it</span>
+x = torch.<span class="fn">tensor</span>([-<span class="st">1.0</span>, <span class="st">0.5</span>, <span class="st">1.5</span>, <span class="st">2.0</span>], requires_grad=<span class="kw">True</span>)
+y = ClampedReLU.<span class="fn">apply</span>(x, <span class="st">1.0</span>)
+<span class="fn">print</span>(<span class="st">"Forward:"</span>, y)                   <span class="co"># [0, 0.5, 1.0, 1.0]</span>
+
+loss = y.<span class="fn">sum</span>()
+loss.<span class="fn">backward</span>()
+<span class="fn">print</span>(<span class="st">"Gradients:"</span>, x.grad)            <span class="co"># [0, 1, 0, 0] — only middle value passes grad</span></code></pre>
+    </div>
+    <div class="output">Forward: tensor([0.0000, 0.5000, 1.0000, 1.0000], grad_fn=&lt;ClampedReLUBackward&gt;)
+Gradients: tensor([0., 1., 0., 0.])</div>
+  </section>
+
+  <!-- ============ SECTION 4 ============ -->
+  <section class="section" id="sec-4">
+    <div class="section-num">SECTION 04</div>
+    <h2>Numerical Gradient Checking</h2>
+
+    <p>How do you know your custom backward is correct? Numerical gradient checking computes the gradient by finite differences and compares it to your analytical gradient.</p>
+    <p>The finite difference formula: <code>df/dx ≈ (f(x+ε) - f(x-ε)) / (2ε)</code></p>
+
+    <!-- INTERACTIVE WIDGET 4: Gradient Check -->
+    <div class="widget">
+      <div class="widget-title">Numerical vs Analytical Gradient</div>
+      <div class="widget-subtitle">For <code style="background:rgba(0,229,255,0.1);color:var(--cyan-soft);padding:1px 5px;border-radius:3px;font-size:11px;">f(x) = x³</code>, analytical gradient is 3x². Adjust epsilon to see when finite differences become unreliable.</div>
+      <div class="controls">
+        <div class="ctrl-row">
+          <span class="ctrl-label">x</span>
+          <input type="range" id="gc-x" min="-3" max="3" value="2" step="0.1">
+          <span class="ctrl-value" id="gc-x-v">2.0</span>
+        </div>
+        <div class="ctrl-row">
+          <span class="ctrl-label">ε (epsilon)</span>
+          <input type="range" id="gc-eps" min="-8" max="-1" value="-5" step="0.5">
+          <span class="ctrl-value" id="gc-eps-v">1e-5</span>
+        </div>
+      </div>
+      <div class="metric-grid">
+        <div class="metric">
+          <div class="metric-label">Analytical 3x²</div>
+          <div class="metric-value" id="gc-ana">12.000</div>
+        </div>
+        <div class="metric">
+          <div class="metric-label">Numerical (FD)</div>
+          <div class="metric-value" id="gc-num">12.000</div>
+        </div>
+        <div class="metric">
+          <div class="metric-label">Abs diff</div>
+          <div class="metric-value" id="gc-diff" style="color:var(--success);">0.000</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="code-block">
+      <div class="code-header"><span class="code-lang">python</span><button class="code-copy"><i class="ti ti-copy"></i> Copy</button></div>
+<pre><code><span class="kw">def</span> <span class="fn">numerical_gradient</span>(f, x, eps=<span class="st">1e-5</span>):
+    <span class="st">"""Compute gradient of scalar function f at tensor x using finite differences."""</span>
+    grad = torch.<span class="fn">zeros_like</span>(x)
+    x_flat = x.<span class="fn">view</span>(-<span class="st">1</span>)
+    grad_flat = grad.<span class="fn">view</span>(-<span class="st">1</span>)
+
+    <span class="kw">for</span> i <span class="kw">in</span> <span class="fn">range</span>(<span class="fn">len</span>(x_flat)):
+        x_plus = x.<span class="fn">clone</span>(); x_plus.<span class="fn">view</span>(-<span class="st">1</span>)[i] += eps
+        x_minus = x.<span class="fn">clone</span>(); x_minus.<span class="fn">view</span>(-<span class="st">1</span>)[i] -= eps
+        grad_flat[i] = (<span class="fn">f</span>(x_plus) - <span class="fn">f</span>(x_minus)) / (<span class="st">2</span> * eps)
+
+    <span class="kw">return</span> grad
+
+
+<span class="co"># Test function: f(x) = sum(x^3)</span>
+<span class="kw">def</span> <span class="fn">f</span>(x):
+    <span class="kw">return</span> (x ** <span class="st">3</span>).<span class="fn">sum</span>()
+
+
+x = torch.<span class="fn">tensor</span>([<span class="st">1.0</span>, <span class="st">2.0</span>, <span class="st">3.0</span>], requires_grad=<span class="kw">True</span>)
+
+<span class="co"># Analytical gradient</span>
+y = <span class="fn">f</span>(x)
+y.<span class="fn">backward</span>()
+analytical = x.grad.<span class="fn">clone</span>()
+
+<span class="co"># Numerical gradient</span>
+numerical = <span class="fn">numerical_gradient</span>(f, x.<span class="fn">detach</span>())
+
+<span class="fn">print</span>(<span class="st">"Analytical gradient:"</span>, analytical)
+<span class="fn">print</span>(<span class="st">"Numerical gradient: "</span>, numerical)
+<span class="fn">print</span>(<span class="st">"Max difference:     "</span>, (analytical - numerical).<span class="fn">abs</span>().<span class="fn">max</span>().<span class="fn">item</span>())
+<span class="co"># Should be very small (&lt; 1e-5) — confirms our backward is correct</span></code></pre>
+    </div>
+    <div class="output">Analytical gradient: tensor([ 3., 12., 27.])
+Numerical gradient:  tensor([ 3.0518, 12.2070, 27.0844])
+Max difference:      0.20703125</div>
+  </section>
+
+  <!-- ============ LAB: LINEAR REGRESSION ============ -->
+  <section class="section" id="sec-lab">
+    <div class="section-num">HANDS-ON LAB</div>
+    <h2>Linear Regression from Scratch</h2>
+
+    <h3>The Challenge</h3>
+    <p>Implement full linear regression using only tensors and autograd. No <code>nn.Linear</code>, no <code>nn.MSELoss</code>, no <code>torch.optim</code>. Just raw math and <code>.backward()</code>.</p>
+    <p>This exercise builds the muscle memory that makes every higher-level PyTorch API click into place later.</p>
+
+    <h3>The Dataset</h3>
+    <div class="code-block">
+      <div class="code-header"><span class="code-lang">python</span><button class="code-copy"><i class="ti ti-copy"></i> Copy</button></div>
+<pre><code>torch.<span class="fn">manual_seed</span>(<span class="st">42</span>)
+
+<span class="co"># True relationship: y = 3x + 7 + noise</span>
+X_train = torch.<span class="fn">linspace</span>(-<span class="st">5</span>, <span class="st">5</span>, <span class="st">100</span>).<span class="fn">unsqueeze</span>(<span class="st">1</span>)                <span class="co"># (100, 1)</span>
+y_train = <span class="st">3.0</span> * X_train + <span class="st">7.0</span> + torch.<span class="fn">randn</span>(<span class="st">100</span>, <span class="st">1</span>) * <span class="st">1.5</span>         <span class="co"># (100, 1)</span>
+
+<span class="fn">print</span>(<span class="st">"X shape:"</span>, X_train.shape)
+<span class="fn">print</span>(<span class="st">"y shape:"</span>, y_train.shape)
+<span class="fn">print</span>(<span class="st">f"True params: w=3.0, b=7.0"</span>)</code></pre>
+    </div>
+    <div class="output">X shape: torch.Size([100, 1])
+y shape: torch.Size([100, 1])
+True params: w=3.0, b=7.0</div>
+
+    <!-- INTERACTIVE WIDGET 5: Live Linear Regression Trainer -->
+    <div class="widget">
+      <div class="widget-title">Live Linear Regression Trainer</div>
+      <div class="widget-subtitle">Watch gradient descent fit a line to noisy data y = 3x + 7. Adjust learning rate and run to see live training.</div>
+      <div class="controls">
+        <div class="ctrl-row">
+          <span class="ctrl-label">Learning rate</span>
+          <input type="range" id="lr-slider" min="0.001" max="0.05" value="0.01" step="0.001">
+          <span class="ctrl-value" id="lr-v">0.010</span>
+        </div>
+        <div class="ctrl-row">
+          <span class="ctrl-label">Total epochs</span>
+          <input type="range" id="ep-slider" min="50" max="400" value="200" step="10">
+          <span class="ctrl-value" id="ep-v">200</span>
+        </div>
+        <div class="btn-row" style="justify-content:flex-end;">
+          <button class="pill-btn active" id="train-run"><i class="ti ti-player-play"></i> Train</button>
+          <button class="pill-btn" id="train-reset">Reset</button>
+        </div>
+      </div>
+      <div class="chart-box" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;height:auto;">
+        <div style="position:relative;height:240px;"><canvas id="fit-chart"></canvas></div>
+        <div style="position:relative;height:240px;"><canvas id="loss-chart"></canvas></div>
+      </div>
+      <div class="metric-grid">
+        <div class="metric"><div class="metric-label">Epoch</div><div class="metric-value" id="m-ep">0</div></div>
+        <div class="metric"><div class="metric-label">w (true 3.0)</div><div class="metric-value" id="m-w">0.000</div></div>
+        <div class="metric"><div class="metric-label">b (true 7.0)</div><div class="metric-value" id="m-b">0.000</div></div>
+        <div class="metric"><div class="metric-label">Loss (MSE)</div><div class="metric-value" id="m-loss">—</div></div>
+      </div>
+    </div>
+
+    <h3>The Model and Training Loop</h3>
+    <div class="code-block">
+      <div class="code-header"><span class="code-lang">python</span><button class="code-copy"><i class="ti ti-copy"></i> Copy</button></div>
+<pre><code><span class="co"># Initialise parameters randomly</span>
+w = torch.<span class="fn">randn</span>(<span class="st">1</span>, <span class="st">1</span>, requires_grad=<span class="kw">True</span>)            <span class="co"># Weight</span>
+b = torch.<span class="fn">zeros</span>(<span class="st">1</span>,     requires_grad=<span class="kw">True</span>)            <span class="co"># Bias</span>
+
+learning_rate = <span class="st">0.01</span>
+n_epochs      = <span class="st">200</span>
+
+loss_history = []
+
+<span class="co"># Training loop</span>
+<span class="kw">for</span> epoch <span class="kw">in</span> <span class="fn">range</span>(n_epochs):
+    <span class="co"># 1. Forward pass: compute predictions</span>
+    y_pred = X_train @ w + b              <span class="co"># Matrix multiply + broadcast bias</span>
+
+    <span class="co"># 2. Compute loss (MSE)</span>
+    loss = ((y_pred - y_train) ** <span class="st">2</span>).<span class="fn">mean</span>()
+
+    <span class="co"># 3. Backward pass: compute gradients</span>
+    loss.<span class="fn">backward</span>()
+
+    <span class="co"># 4. Manual gradient descent step</span>
+    <span class="kw">with</span> torch.<span class="fn">no_grad</span>():                  <span class="co"># ← Don't track these updates in the graph</span>
+        w -= learning_rate * w.grad
+        b -= learning_rate * b.grad
+
+    <span class="co"># 5. Zero gradients (MUST do before next backward)</span>
+    w.grad.<span class="fn">zero_</span>()
+    b.grad.<span class="fn">zero_</span>()
+
+    loss_history.<span class="fn">append</span>(loss.<span class="fn">item</span>())
+
+    <span class="kw">if</span> epoch % <span class="st">40</span> == <span class="st">0</span>:
+        <span class="fn">print</span>(<span class="st">f"Epoch {epoch:3d}: loss={loss.item():.4f}  w={w.item():.3f}  b={b.item():.3f}"</span>)
+
+<span class="fn">print</span>(<span class="st">f"\nFinal: w={w.item():.3f} (true=3.0),  b={b.item():.3f} (true=7.0)"</span>)</code></pre>
+    </div>
+    <div class="output">Epoch   0: loss=160.0760  w=0.038  b=0.142
+Epoch  40: loss=12.1513   w=2.989  b=3.993
+Epoch  80: loss=4.1500    w=2.991  b=5.709
+Epoch 120: loss=2.5605    w=2.991  b=6.475
+Epoch 160: loss=2.2448    w=2.991  b=6.815
+
+Final: w=2.991 (true=3.0),  b=6.965 (true=7.0)</div>
+
+    <div class="code-block">
+      <div class="code-header"><span class="code-lang">python</span><button class="code-copy"><i class="ti ti-copy"></i> Copy</button></div>
+<pre><code><span class="co"># Evaluate on a test point</span>
+<span class="kw">with</span> torch.<span class="fn">no_grad</span>():
+    x_test = torch.<span class="fn">tensor</span>([[<span class="st">4.0</span>]])
+    y_test_pred = x_test @ w + b
+    y_test_true = <span class="st">3.0</span> * <span class="st">4.0</span> + <span class="st">7.0</span>
+
+<span class="fn">print</span>(<span class="st">f"\nPrediction at x=4.0: {y_test_pred.item():.3f}"</span>)
+<span class="fn">print</span>(<span class="st">f"True value at x=4.0: {y_test_true:.3f}"</span>)
+<span class="fn">print</span>(<span class="st">f"Final loss: {loss_history[-1]:.6f}"</span>)</code></pre>
+    </div>
+    <div class="output">Prediction at x=4.0: 18.930
+True value at x=4.0: 19.000
+Final loss: 2.182721</div>
+
+    <h3>Why Did Each Step Matter?</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Step</th><th>Code</th><th>Why</th></tr></thead>
+        <tbody>
+          <tr><td>Forward pass</td><td><code>y_pred = X @ w + b</code></td><td>Build the computation graph</td></tr>
+          <tr><td>Loss</td><td><code>((y_pred - y_train)**2).mean()</code></td><td>Scalar to differentiate</td></tr>
+          <tr><td>Backward</td><td><code>loss.backward()</code></td><td>Populate <code>.grad</code> on w and b</td></tr>
+          <tr><td>Update</td><td><code>w -= lr * w.grad</code></td><td>Gradient descent step</td></tr>
+          <tr><td>Zero grad</td><td><code>w.grad.zero_()</code></td><td>Prevent accumulation bug</td></tr>
+          <tr><td>no_grad on update</td><td><code>with torch.no_grad():</code></td><td>Don't track the update itself</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ============ MODULE SUMMARY ============ -->
+  <section class="section" id="sec-summary">
+    <div class="section-num">RECAP</div>
+    <h2>Module Summary</h2>
+    <div class="summary-box">
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Concept</th><th>Key Takeaway</th></tr></thead>
+          <tbody>
+            <tr><td>Computation graph</td><td>Built automatically during forward pass; consumed during backward.</td></tr>
+            <tr><td>requires_grad</td><td>Set to True only on trainable parameters, not on data.</td></tr>
+            <tr><td>Gradient accumulation bug</td><td>Always call <code>zero_grad()</code> before <code>loss.backward()</code>.</td></tr>
+            <tr><td>.detach()</td><td>Removes tensor from graph; use for logging and stopping gradient flow.</td></tr>
+            <tr><td>torch.no_grad()</td><td>Context manager for inference — faster and memory-efficient.</td></tr>
+            <tr><td>Custom autograd</td><td>Subclass <code>torch.autograd.Function</code> and implement forward/backward.</td></tr>
+            <tr><td>Gradient check</td><td>Finite differences verify custom backward implementations.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <h3>What's Next</h3>
+    <p>Module 3 — <code>nn.Module</code> takes the raw autograd machinery from this module and wraps it in clean, reusable building blocks. Instead of managing <code>w</code> and <code>b</code> by hand, you'll learn how PyTorch's module system tracks parameters automatically — and how to build anything from a simple linear layer to a deep network.</p>
+  </section>
+</div>
+
+<!-- ============ REFERENCES ============ -->
+<section class="references">
+  <div class="refs-header">
+    <h2><span class="cyan-text">Learn &amp;</span> <span class="accent">Practice</span></h2>
+    <p>Explore curated resources and practice with real code</p>
+  </div>
+
+  <div class="ref-card">
+    <div class="ref-icon"><i class="ti ti-bulb"></i></div>
+    <div class="ref-body">
+      <div class="ref-type">Progressive Article</div>
+      <div class="ref-tagline">Stuck? Start here — beginner-friendly explanation</div>
+      <div class="ref-title">A Gentle Introduction to torch.autograd</div>
+      <a href="https://docs.pytorch.org/tutorials/beginner/blitz/autograd_tutorial.html" target="_blank" rel="noopener" class="ref-btn"><i class="ti ti-external-link"></i> Read Article</a>
+    </div>
+  </div>
+
+  <div class="ref-card">
+    <div class="ref-icon"><i class="ti ti-file-text"></i></div>
+    <div class="ref-body">
+      <div class="ref-type">Canonical Article</div>
+      <div class="ref-tagline">Authoritative source — official docs and tutorials</div>
+      <div class="ref-title">Autograd mechanics — PyTorch Official Notes</div>
+      <a href="https://docs.pytorch.org/docs/stable/notes/autograd.html" target="_blank" rel="noopener" class="ref-btn"><i class="ti ti-external-link"></i> Read Canonical</a>
+    </div>
+  </div>
+
+  <div class="ref-card pink-card">
+    <div class="ref-icon"><i class="ti ti-brand-github"></i></div>
+    <div class="ref-body">
+      <div class="ref-type">GitHub Repository</div>
+      <div class="ref-tagline">Hands-on — reference implementation &amp; examples</div>
+      <div class="ref-title">karpathy / micrograd — autograd engine in 100 lines</div>
+      <a href="https://github.com/karpathy/micrograd" target="_blank" rel="noopener" class="ref-btn"><i class="ti ti-external-link"></i> Explore Repo</a>
+    </div>
+  </div>
+
+  <div class="ref-card">
+    <div class="ref-icon"><i class="ti ti-book-2"></i></div>
+    <div class="ref-body">
+      <div class="ref-type">API Reference</div>
+      <div class="ref-tagline">Every autograd primitive — searchable docs</div>
+      <div class="ref-title">torch.autograd — Automatic Differentiation Package</div>
+      <a href="https://docs.pytorch.org/docs/stable/autograd.html" target="_blank" rel="noopener" class="ref-btn"><i class="ti ti-external-link"></i> Open Docs</a>
+    </div>
+  </div>
+</section>
+
+<!-- =================== NEXT MODULE =================== -->
+<div class="module-nav">
+  <div>
+    <div class="module-nav-label">Next up · Module 3.0</div>
+    <div class="module-nav-title">Module 3.0 — Neural Network Modules (nn.Module)</div>
+    <p style="font-size:14px;color:var(--ink-3);margin:10px 0 0;max-width:520px">Master nn.Module, layers, activation functions, and building custom neural architectures block-by-block.</p>
+    <div style="display:flex;flex-wrap:wrap;gap:18px;margin-top:14px;font-family:var(--mono);font-size:11px;color:var(--ink-3)">
+      <span>ESTIMATED · <span style="color:var(--ink-2)">~75 min</span></span>
+      <span>TYPE · <span style="color:var(--ink-2)">Hands-on</span></span>
+      <span>CODE · <span style="color:var(--ink-2)">Python</span></span>
+      <span>DIFFICULTY · <span style="color:var(--accent)">★★★</span>☆☆</span>
+    </div>
+  </div>
+  <a class="module-nav-cta" href="module_3_nnmodule.html">Begin Module 3.0 →</a>
+</div>
+
+<div style="margin-top:32px;text-align:center;font-family:var(--mono);font-size:10px;color:var(--ink-4);letter-spacing:0.15em">
+  AGENTIC AI ACADEMY // COURSE 02 — AUTONOMOUS SYSTEMS // MODULE 2.0 — END OF TRANSMISSION
+</div>
+</main>
+</div>
+
+<!-- ============ SCROLL DOTS ============ -->
+<div class="scroll-dots" id="scroll-dots">
+  <div class="scroll-dot active" data-target="sec-1" data-label="Graph"></div>
+  <div class="scroll-dot" data-target="sec-2" data-label="requires_grad"></div>
+  <div class="scroll-dot" data-target="sec-3" data-label="Custom"></div>
+  <div class="scroll-dot" data-target="sec-4" data-label="Grad Check"></div>
+  <div class="scroll-dot" data-target="sec-lab" data-label="Lab"></div>
+  <div class="scroll-dot" data-target="sec-summary" data-label="Summary"></div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+/* ============ STARFIELD ============ */
+(function(){
+  const sf = document.getElementById('stars');
+  const n = 120;
+  for (let i = 0; i < n; i++) {
+    const s = document.createElement('div');
+    s.className = 'star';
+    const size = Math.random() * 2 + 0.5;
+    s.style.width = size + 'px';
+    s.style.height = size + 'px';
+    s.style.left = Math.random() * 100 + '%';
+    s.style.top = Math.random() * 100 + '%';
+    s.style.setProperty('--dur', (2 + Math.random() * 4) + 's');
+    s.style.animationDelay = Math.random() * 4 + 's';
+    sf.appendChild(s);
+  }
+})();
+
+/* ============ SCROLL DOTS + NAV ============ */
+/* ============ SCROLL DOTS + TOC NAV ACTIVE + PROGRESS ============ */
+(function(){
+  const dots = document.querySelectorAll('.scroll-dot');
+  const tocLinks = document.querySelectorAll('.toc-link');
+  const sections = document.querySelectorAll('.section');
+  const progressFill = document.getElementById('progressFill');
+
+  dots.forEach(d => {
+    d.addEventListener('click', () => {
+      const target = document.getElementById(d.dataset.target);
+      if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  });
+
+  tocLinks.forEach(a => {
+    a.addEventListener('click', (e) => {
+      e.preventDefault();
+      const id = a.getAttribute('href').slice(1);
+      const t = document.getElementById(id);
+      if (t) t.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  });
+
+  function updateActive() {
+    let current = sections[0].id;
+    let currentIndex = -1;
+    sections.forEach((s, i) => {
+      const rect = s.getBoundingClientRect();
+      if (rect.top < window.innerHeight * 0.35) {
+        current = s.id;
+        currentIndex = i;
+      }
+    });
+
+    dots.forEach(d => d.classList.toggle('active', d.dataset.target === current));
+    tocLinks.forEach((l, i) => {
+      const isActive = l.getAttribute('href') === '#' + current;
+      const isPast = currentIndex > -1 && i < currentIndex;
+      l.classList.toggle('active', isActive);
+      l.classList.toggle('past', isPast && !isActive);
+    });
+
+    const docHeight = document.documentElement.scrollHeight - window.innerHeight;
+    const scrolled = window.scrollY / docHeight * 100;
+    if (progressFill) progressFill.style.width = Math.min(100, scrolled) + '%';
+  }
+
+  window.addEventListener('scroll', updateActive, { passive: true });
+  updateActive();
+})();
+
+/* ============ COPY BUTTONS ============ */
+document.querySelectorAll('.code-copy').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const code = btn.closest('.code-block').querySelector('pre').innerText;
+    navigator.clipboard.writeText(code).then(() => {
+      const orig = btn.innerHTML;
+      btn.innerHTML = '<i class="ti ti-check"></i> Copied';
+      setTimeout(() => btn.innerHTML = orig, 1200);
+    });
+  });
+});
+
+/* ============ WIDGET 1: Computation Graph ============ */
+(function(){
+  const forwards = document.querySelectorAll('.ef');
+  const backwards = document.querySelectorAll('.eb');
+  const out = document.getElementById('graph-out');
+  let timer = null;
+
+  function reset() {
+    forwards.forEach(e => e.style.opacity = '0.25');
+    backwards.forEach(e => e.style.opacity = '0');
+    if (timer) { clearTimeout(timer); timer = null; }
+  }
+
+  document.getElementById('run-forward').addEventListener('click', () => {
+    reset();
+    backwards.forEach(e => e.style.opacity = '0');
+    const steps = [
+      'x = 3.0  (leaf, requires_grad=True)',
+      'y = x² = 9.0   →  edge built: SquareBackward',
+      'temp = w·y = 2·9 = 18.0   →  edge: MulBackward',
+      'z = temp + b = 18 + 1 = 19.0   →  edge: AddBackward'
+    ];
+    let i = 0;
+    function step() {
+      if (i >= forwards.length) {
+        out.textContent = 'FORWARD COMPLETE\n' + steps.join('\n') + '\n\nFinal z = 19.0\nGraph ready for backward pass.';
+        return;
+      }
+      forwards[i].style.opacity = '1';
+      forwards[i].setAttribute('stroke-width', '3');
+      out.textContent = 'FORWARD PASS — step ' + (i+1) + '/4\n' + steps.slice(0, i+1).join('\n');
+      i++;
+      timer = setTimeout(step, 700);
+    }
+    step();
+  });
+
+  document.getElementById('run-backward').addEventListener('click', () => {
+    if (timer) clearTimeout(timer);
+    // make sure forward edges are full
+    forwards.forEach(e => e.style.opacity = '1');
+    backwards.forEach(e => e.style.opacity = '0');
+    const steps = [
+      'Start: dz/dz = 1.0',
+      'Through AddBackward → dz/db = 1.0,  dz/dtemp = 1.0',
+      'Through MulBackward → dz/dw = y = 9.0,  dz/dy = w = 2.0',
+      'Through SquareBackward → dz/dx = 2·w·x = 2·2·3 = 12.0'
+    ];
+    let i = 0;
+    function step() {
+      if (i >= backwards.length) {
+        out.textContent = 'BACKWARD COMPLETE\n' + steps.join('\n') + '\n\nFinal: dz/dx = 12.0, dz/dw = 9.0, dz/db = 1.0';
+        return;
+      }
+      backwards[i].style.opacity = '1';
+      out.textContent = 'BACKWARD PASS — step ' + (i+1) + '/4\n' + steps.slice(0, i+1).join('\n');
+      i++;
+      timer = setTimeout(step, 700);
+    }
+    step();
+  });
+
+  document.getElementById('reset-graph').addEventListener('click', () => {
+    reset();
+    out.textContent = 'Click "Forward pass" to compute z = w·x² + b.\nThen click "Backward pass" to compute dz/dx, dz/dw, dz/db.';
+  });
+})();
+
+/* ============ WIDGET 2: Gradient Accumulation Demo ============ */
+(function(){
+  let mode = 'no-zero';
+  const log = document.getElementById('acc-log');
+  const stepsEl = document.getElementById('acc-steps');
+  const stepsV = document.getElementById('acc-steps-v');
+  stepsEl.addEventListener('input', () => stepsV.textContent = stepsEl.value);
+
+  document.querySelectorAll('[data-mode]').forEach(b => {
+    b.addEventListener('click', () => {
+      document.querySelectorAll('[data-mode]').forEach(x => x.classList.remove('active'));
+      b.classList.add('active');
+      mode = b.dataset.mode;
+    });
+  });
+
+  document.getElementById('acc-run').addEventListener('click', () => {
+    const n = +stepsEl.value;
+    let grad = 0;
+    const x = 2.0;
+    const lines = [`x = torch.tensor(${x}, requires_grad=True)`, ''];
+    lines.push(mode === 'zero' ? 'MODE: zero_grad() called each step' : 'MODE: gradients accumulate (BUG)');
+    lines.push('');
+    for (let i = 0; i < n; i++) {
+      if (mode === 'zero') grad = 0;
+      // loss = x^2, dloss/dx = 2x = 4
+      grad += 2 * x;
+      const flag = (mode === 'no-zero' && i > 0) ? '  ← keeps growing!' : (mode === 'zero' ? '  ← stays at 4 ✓' : '');
+      lines.push(`Step ${i}: loss.backward() → x.grad = ${grad.toFixed(1)}${flag}`);
+    }
+    log.textContent = lines.join('\n');
+    log.style.borderLeftColor = (mode === 'zero') ? 'var(--success)' : 'var(--danger)';
+  });
+})();
+
+/* ============ WIDGET 3: ClampedReLU Chart ============ */
+(function(){
+  const xs = [];
+  for (let v = -2; v <= 4; v += 0.05) xs.push(+v.toFixed(2));
+  const capEl = document.getElementById('cap-slider');
+  const capV = document.getElementById('cap-v');
+  const ctx = document.getElementById('clamped-chart').getContext('2d');
+
+  function compute(cap) {
+    const fwd = xs.map(x => Math.max(0, Math.min(cap, x)));
+    const grad = xs.map(x => (x > 0 && x < cap) ? 1 : 0);
+    return { fwd, grad };
+  }
+  const { fwd, grad } = compute(+capEl.value);
+  const chart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: xs,
+      datasets: [
+        { label: 'f(x)', data: fwd, borderColor: '#00e5ff', backgroundColor: 'rgba(0,229,255,0.12)', fill: true, borderWidth: 2, pointRadius: 0, tension: 0.0 },
+        { label: 'df/dx', data: grad, borderColor: '#ff5cc0', backgroundColor: 'rgba(255,92,192,0.08)', fill: false, borderWidth: 2, pointRadius: 0, stepped: true }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      animation: { duration: 200 },
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { grid: { color: 'rgba(0,229,255,0.07)' }, ticks: { color: '#6b7896', maxTicksLimit: 8 } },
+        y: { grid: { color: 'rgba(0,229,255,0.07)' }, ticks: { color: '#6b7896' }, suggestedMin: -0.2, suggestedMax: 3.2 }
+      }
+    }
+  });
+  capEl.addEventListener('input', () => {
+    const cap = +capEl.value;
+    capV.textContent = cap.toFixed(1);
+    const { fwd, grad } = compute(cap);
+    chart.data.datasets[0].data = fwd;
+    chart.data.datasets[1].data = grad;
+    chart.update('none');
+  });
+})();
+
+/* ============ WIDGET 4: Numerical Gradient Check ============ */
+(function(){
+  const xEl = document.getElementById('gc-x');
+  const xV = document.getElementById('gc-x-v');
+  const eEl = document.getElementById('gc-eps');
+  const eV = document.getElementById('gc-eps-v');
+  const ana = document.getElementById('gc-ana');
+  const num = document.getElementById('gc-num');
+  const diff = document.getElementById('gc-diff');
+
+  function update() {
+    const x = +xEl.value;
+    const epsExp = +eEl.value;
+    const eps = Math.pow(10, epsExp);
+    xV.textContent = x.toFixed(1);
+    eV.textContent = '1e' + epsExp.toFixed(1).replace('.0', '');
+    const analytical = 3 * x * x;
+    // f(x) = x^3
+    const numerical = (Math.pow(x + eps, 3) - Math.pow(x - eps, 3)) / (2 * eps);
+    const d = Math.abs(analytical - numerical);
+    ana.textContent = analytical.toFixed(3);
+    num.textContent = numerical.toFixed(3);
+    diff.textContent = d.toExponential(2);
+    if (d < 1e-3) diff.style.color = 'var(--success)';
+    else if (d < 1) diff.style.color = 'var(--warn)';
+    else diff.style.color = 'var(--danger)';
+  }
+  xEl.addEventListener('input', update);
+  eEl.addEventListener('input', update);
+  update();
+})();
+
+/* ============ WIDGET 5: Live Linear Regression ============ */
+(function(){
+  // generate dataset y = 3x + 7 + noise
+  const N = 100;
+  const xs = [];
+  const ys = [];
+  let seed = 42;
+  function rand() { seed = (seed * 9301 + 49297) % 233280; return seed / 233280; }
+  function randn() {
+    let u = 0, v = 0;
+    while (u === 0) u = rand();
+    while (v === 0) v = rand();
+    return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+  }
+  for (let i = 0; i < N; i++) {
+    const x = -5 + (10 * i / (N - 1));
+    const y = 3.0 * x + 7.0 + randn() * 1.5;
+    xs.push(+x.toFixed(3));
+    ys.push(+y.toFixed(3));
+  }
+
+  // chart 1: scatter + fitted line
+  const fitCtx = document.getElementById('fit-chart').getContext('2d');
+  const fitChart = new Chart(fitCtx, {
+    type: 'scatter',
+    data: {
+      datasets: [
+        { label: 'data', data: xs.map((x, i) => ({ x, y: ys[i] })), backgroundColor: 'rgba(0,229,255,0.45)', pointRadius: 3 },
+        { label: 'fit', type: 'line', data: [], borderColor: '#ff5cc0', borderWidth: 2.5, pointRadius: 0, fill: false }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false }, title: { display: true, text: 'Fit', color: '#9aa8c4', font: { size: 11 } } },
+      scales: {
+        x: { grid: { color: 'rgba(0,229,255,0.07)' }, ticks: { color: '#6b7896' }, type: 'linear' },
+        y: { grid: { color: 'rgba(0,229,255,0.07)' }, ticks: { color: '#6b7896' } }
+      }
+    }
+  });
+
+  // chart 2: loss
+  const lossCtx = document.getElementById('loss-chart').getContext('2d');
+  const lossChart = new Chart(lossCtx, {
+    type: 'line',
+    data: { labels: [], datasets: [{ data: [], borderColor: '#00e5ff', backgroundColor: 'rgba(0,229,255,0.12)', fill: true, borderWidth: 2, pointRadius: 0, tension: 0.2 }] },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      animation: false,
+      plugins: { legend: { display: false }, title: { display: true, text: 'Loss (MSE)', color: '#9aa8c4', font: { size: 11 } } },
+      scales: {
+        x: { grid: { color: 'rgba(0,229,255,0.07)' }, ticks: { color: '#6b7896', maxTicksLimit: 6 } },
+        y: { grid: { color: 'rgba(0,229,255,0.07)' }, ticks: { color: '#6b7896' }, type: 'logarithmic' }
+      }
+    }
+  });
+
+  const lrEl = document.getElementById('lr-slider');
+  const epEl = document.getElementById('ep-slider');
+  const lrV = document.getElementById('lr-v');
+  const epV = document.getElementById('ep-v');
+  const mEp = document.getElementById('m-ep');
+  const mW = document.getElementById('m-w');
+  const mB = document.getElementById('m-b');
+  const mLoss = document.getElementById('m-loss');
+
+  lrEl.addEventListener('input', () => lrV.textContent = (+lrEl.value).toFixed(3));
+  epEl.addEventListener('input', () => epV.textContent = epEl.value);
+
+  let timer = null;
+  let w = 0, b = 0;
+  let epoch = 0;
+  const lossHist = [];
+
+  function reset() {
+    if (timer) { clearInterval(timer); timer = null; }
+    w = randn() * 0.5;
+    b = 0;
+    epoch = 0;
+    lossHist.length = 0;
+    lossChart.data.labels = [];
+    lossChart.data.datasets[0].data = [];
+    fitChart.data.datasets[1].data = [{ x: -5, y: -5 * w + b }, { x: 5, y: 5 * w + b }];
+    fitChart.update('none');
+    lossChart.update('none');
+    mEp.textContent = '0';
+    mW.textContent = w.toFixed(3);
+    mB.textContent = b.toFixed(3);
+    mLoss.textContent = '—';
+  }
+
+  function step() {
+    const lr = +lrEl.value;
+    const target = +epEl.value;
+    // forward + backward (closed form gradient)
+    let sumSq = 0, gradW = 0, gradB = 0;
+    for (let i = 0; i < N; i++) {
+      const pred = w * xs[i] + b;
+      const err = pred - ys[i];
+      sumSq += err * err;
+      gradW += 2 * err * xs[i];
+      gradB += 2 * err;
+    }
+    const loss = sumSq / N;
+    gradW /= N; gradB /= N;
+    w -= lr * gradW;
+    b -= lr * gradB;
+    epoch++;
+    lossHist.push(loss);
+    if (epoch % 2 === 0 || epoch === target) {
+      lossChart.data.labels.push(epoch);
+      lossChart.data.datasets[0].data.push(loss);
+      lossChart.update('none');
+      fitChart.data.datasets[1].data = [{ x: -5, y: -5 * w + b }, { x: 5, y: 5 * w + b }];
+      fitChart.update('none');
+      mEp.textContent = epoch;
+      mW.textContent = w.toFixed(3);
+      mB.textContent = b.toFixed(3);
+      mLoss.textContent = loss.toFixed(3);
+    }
+    if (epoch >= target) {
+      clearInterval(timer);
+      timer = null;
+    }
+  }
+
+  document.getElementById('train-run').addEventListener('click', () => {
+    if (timer) return;
+    if (epoch >= +epEl.value) reset();
+    timer = setInterval(step, 30);
+  });
+  document.getElementById('train-reset').addEventListener('click', reset);
+  reset();
+})();
+</script>
+</body>
+</html>

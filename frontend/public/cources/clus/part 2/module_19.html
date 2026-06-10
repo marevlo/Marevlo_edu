@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Module 19 — Autoencoder-Based Deep Clustering</title>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Outfit:wght@300;400;500;600;700;800;900&family=Source+Serif+4:ital,wght@0,300;0,400;0,600;1,300;1,400&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+  <style>
+:root {
+  --bg-primary: #0a0a0f; --bg-card: #161622; --bg-code: #0d0d18; --text-primary: #e8e8f0; --text-secondary: #9898b0;
+  --accent-1: #6c5ce7; --accent-2: #00cec9; --accent-3: #fd79a8; --accent-4: #fdcb6e; --accent-5: #55efc4;
+  --gradient-line: linear-gradient(90deg, #6c5ce7, #00cec9, #fd79a8, #fdcb6e); --border-subtle: rgba(255,255,255,0.06); --radius: 12px; --radius-sm: 8px; --shadow-card: 0 4px 30px rgba(0,0,0,0.4);
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body { background: var(--bg-primary); color: var(--text-primary); font-family: 'Outfit', sans-serif; line-height: 1.7; overflow-x: hidden; -webkit-font-smoothing: antialiased; }
+.scroll-progress { position: fixed; top: 0; left: 0; height: 3px; z-index: 1000; background: var(--gradient-line); width: 0%; transition: width 0.1s linear; }
+.hero { min-height: 100vh; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; padding: 2rem; position: relative; overflow: hidden; }
+.hero::before { content: ''; position: absolute; inset: 0; background: radial-gradient(ellipse 620px 420px at 28% 40%, rgba(108,92,231,0.13), transparent), radial-gradient(ellipse 520px 360px at 72% 58%, rgba(0,206,201,0.09), transparent); pointer-events: none; }
+.hero-particles { position: absolute; inset: 0; pointer-events: none; }
+.hero-particles .dot { position: absolute; width: 3px; height: 3px; border-radius: 50%; background: var(--accent-2); opacity: 0; animation: floatDot 6s ease-in-out infinite; }
+@keyframes floatDot { 0%, 100% { opacity: 0; transform: translateY(0); } 50% { opacity: 0.6; transform: translateY(-40px); } }
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+@keyframes fadeInDown { from { opacity: 0; transform: translateY(-20px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes bounceArrow { 0%, 100% { transform: rotate(45deg) translateY(0); } 50% { transform: rotate(45deg) translateY(6px); } }
+.hero-label { display: inline-flex; align-items: center; gap: 8px; background: rgba(108,92,231,0.1); border: 1px solid rgba(108,92,231,0.25); border-radius: 999px; padding: 6px 18px; font-size: 0.8rem; font-weight: 500; color: var(--accent-1); letter-spacing: 1.5px; text-transform: uppercase; margin-bottom: 2rem; animation: fadeInDown 0.8s ease-out; position: relative; z-index: 1; }
+.dot-indicator { width: 6px; height: 6px; border-radius: 50%; background: var(--accent-2); animation: pulse 2s ease-in-out infinite; }
+.hero h1 { font-size: clamp(2.6rem, 6vw, 5rem); font-weight: 900; line-height: 1.08; letter-spacing: -2px; margin-bottom: 1.5rem; animation: fadeInDown 0.8s ease-out 0.1s both; position: relative; z-index: 1; }
+.gradient-text { background: var(--gradient-line); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+.hero-subtitle { font-family: 'Source Serif 4', serif; font-size: clamp(1.05rem, 2vw, 1.22rem); color: var(--text-secondary); max-width: 900px; line-height: 1.8; font-weight: 300; animation: fadeInDown 0.8s ease-out 0.2s both; position: relative; z-index: 1; }
+.hero-meta { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin-top: 1rem; animation: fadeInDown 0.8s ease-out 0.3s both; position: relative; z-index: 1; }
+.meta-pill { display: inline-flex; align-items: center; gap: 6px; background: rgba(0,206,201,0.1); border: 1px solid rgba(0,206,201,0.2); color: var(--accent-2); padding: 4px 12px; border-radius: 999px; font-family: 'JetBrains Mono', monospace; font-size: 0.7rem; font-weight: 500; cursor: pointer; transition: transform 0.2s ease, border-color 0.2s ease, background 0.2s ease; }
+.meta-pill:hover { transform: translateY(-1px); border-color: rgba(0,206,201,0.38); background: rgba(0,206,201,0.16); }
+.hero-scroll-cue { position: absolute; bottom: 3rem; display: flex; flex-direction: column; align-items: center; gap: 8px; color: var(--text-secondary); font-size: 0.75rem; letter-spacing: 2px; text-transform: uppercase; animation: fadeInDown 0.8s ease-out 0.5s both; }
+.hero-scroll-cue .arrow { width: 20px; height: 20px; border-right: 2px solid var(--text-secondary); border-bottom: 2px solid var(--text-secondary); transform: rotate(45deg); animation: bounceArrow 2s ease-in-out infinite; }
+.content-wrapper { max-width: 860px; margin: 0 auto; padding: 0 2rem 6rem; }
+.section { margin-bottom: 5rem; opacity: 0; transform: translateY(30px); transition: all 0.7s cubic-bezier(0.16, 1, 0.3, 1); }
+.section.visible { opacity: 1; transform: translateY(0); }
+.section-number { font-family: 'JetBrains Mono', monospace; font-size: 0.7rem; color: var(--accent-2); letter-spacing: 3px; text-transform: uppercase; margin-bottom: 0.75rem; display: flex; align-items: center; gap: 10px; }
+.section-number::after { content: ''; flex: 1; height: 1px; background: linear-gradient(90deg, var(--accent-2), transparent); opacity: 0.3; }
+h2 { font-size: clamp(1.8rem, 3.5vw, 2.4rem); font-weight: 700; letter-spacing: -0.5px; margin-bottom: 1.5rem; line-height: 1.2; }
+h3 { font-size: 1.3rem; font-weight: 600; margin: 2.2rem 0 1rem; }
+p { color: var(--text-secondary); margin-bottom: 1.25rem; font-size: 1.02rem; }
+p strong, li strong, td strong { color: var(--text-primary); font-weight: 600; }
+.gradient-divider { height: 2px; background: var(--gradient-line); border-radius: 2px; margin: 4rem 0; opacity: 0.5; }
+.interactive-card, .code-block, .formula-card, .table-card, .quiz-card, .callout, .list-card { background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: var(--radius); overflow: hidden; margin: 1.5rem 0; box-shadow: var(--shadow-card); }
+.interactive-card-header, .code-block-header, .table-card-header, .quiz-card-header { display: flex; align-items: center; justify-content: space-between; padding: 12px 20px; background: rgba(255,255,255,0.02); border-bottom: 1px solid var(--border-subtle); font-family: 'JetBrains Mono', monospace; font-size: 0.75rem; color: var(--text-secondary); }
+.tag { background: rgba(108,92,231,0.15); color: var(--accent-1); padding: 3px 10px; border-radius: 100px; font-size: 0.7rem; font-weight: 600; letter-spacing: 0.5px; }
+.interactive-card-body, .table-card-body, .quiz-card-body { padding: 24px; }
+.interactive-card-body canvas, .animation-frame canvas { width: 100%; max-width: 100%; height: auto; display: block; border-radius: var(--radius-sm); }
+.animation-grid { display: grid; grid-template-columns: 1fr; gap: 16px; padding: 24px; }
+.animation-frame { position: relative; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle); overflow: hidden; background: rgba(255,255,255,0.03); }
+.animation-caption { padding: 10px 12px 12px; font-size: 0.82rem; color: var(--text-secondary); border-top: 1px solid var(--border-subtle); background: rgba(13,13,24,0.35); }
+.equation-stage { padding: 28px; background: #05060a; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); }
+.equation-caption { font-family: 'JetBrains Mono', monospace; font-size: 0.72rem; color: var(--text-secondary); letter-spacing: 1px; text-transform: uppercase; margin-bottom: 18px; }
+.equation-line { font-family: 'Source Serif 4', serif; font-size: clamp(1.16rem, 2.35vw, 1.78rem); color: var(--text-primary); line-height: 1.5; overflow-x: auto; }
+.math-expression { color: var(--text-primary); }
+.katex-display { margin: 0.3rem 0; overflow-x: auto; overflow-y: hidden; }
+.formula-card { padding: 24px 28px; position: relative; }
+.formula-card::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--gradient-line); }
+.formula-label { font-family: 'JetBrains Mono', monospace; font-size: 0.7rem; color: var(--accent-1); letter-spacing: 1.5px; text-transform: uppercase; margin-bottom: 12px; }
+.formula-math { font-size: 1.05rem; color: var(--text-primary); font-weight: 300; letter-spacing: 0.35px; margin-bottom: 10px; font-family: 'Source Serif 4', serif; }
+.callout.note, .callout.insight, .callout.warning { padding: 20px 24px; position: relative; }
+.callout.note { background: linear-gradient(135deg, rgba(108,92,231,0.08), rgba(0,206,201,0.05)); border: 1px solid rgba(108,92,231,0.2); }
+.callout.insight { background: linear-gradient(135deg, rgba(0,206,201,0.08), rgba(108,92,231,0.05)); border: 1px solid rgba(0,206,201,0.2); }
+.callout.warning { background: linear-gradient(135deg, rgba(253,121,168,0.08), rgba(253,203,110,0.05)); border: 1px solid rgba(253,121,168,0.2); }
+.callout-title { font-family: 'JetBrains Mono', monospace; font-size: 0.72rem; letter-spacing: 1.5px; text-transform: uppercase; margin-bottom: 10px; color: var(--accent-4); }
+.list-card { padding: 18px 22px 10px; }
+ul, ol { margin: 0.3rem 0 1rem 1.2rem; color: var(--text-secondary); }
+li { margin-bottom: 0.55rem; }
+.table-card-body { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; min-width: 640px; }
+th, td { border-bottom: 1px solid var(--border-subtle); padding: 0.85rem 0.9rem; text-align: left; vertical-align: top; color: var(--text-secondary); }
+th { color: var(--text-primary); font-size: 0.92rem; background: rgba(255,255,255,0.02); }
+.code-block { background: var(--bg-code); }
+.code-header-actions { display: flex; align-items: center; gap: 10px; }
+.copy-code-btn, .btn { border: 1px solid var(--border-subtle); background: rgba(255,255,255,0.03); color: var(--text-secondary); border-radius: 999px; padding: 7px 14px; font-family: 'JetBrains Mono', monospace; font-size: 0.68rem; cursor: pointer; transition: all 0.2s ease; }
+.copy-code-btn:hover, .copy-code-btn.copied, .btn:hover { color: var(--accent-5); border-color: rgba(85,239,196,0.3); background: rgba(85,239,196,0.1); }
+.code-lang { font-family: 'JetBrains Mono', monospace; font-size: 0.7rem; color: var(--accent-2); display: flex; align-items: center; gap: 6px; }
+.code-lang::before { content: '●'; font-size: 8px; }
+.code-block pre { padding: 16px 20px; overflow-x: auto; font-family: 'JetBrains Mono', monospace; font-size: 0.82rem; line-height: 1.65; color: #c8c8d8; white-space: pre-wrap; }
+.code-block .kw { color: #c792ea; } .code-block .fn { color: #82aaff; } .code-block .str { color: #c3e88d; } .code-block .num { color: #f78c6c; } .code-block .cm { color: #546e7a; font-style: italic; }
+.comparison-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; }
+.stat-card { background: rgba(255,255,255,0.03); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 14px 16px; }
+.stat-label { font-family: 'JetBrains Mono', monospace; font-size: 0.67rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; }
+.stat-value { font-family: 'JetBrains Mono', monospace; font-size: 0.95rem; color: var(--text-primary); }
+.quiz-score { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 18px; margin: 1rem 0 1.5rem; background: rgba(255,255,255,0.03); border: 1px solid var(--border-subtle); border-radius: var(--radius); }
+.quiz-score-actions { display: flex; align-items: center; gap: 10px; }
+.quiz-score-label, .quiz-feedback-label { font-family: 'JetBrains Mono', monospace; font-size: 0.7rem; letter-spacing: 1.2px; text-transform: uppercase; color: var(--text-secondary); }
+.quiz-score-value { font-family: 'JetBrains Mono', monospace; font-size: 1.05rem; color: var(--accent-4); }
+.quiz-card-header { padding: 14px 20px; background: rgba(253,203,110,0.05); border-bottom: 1px solid var(--border-subtle); font-weight: 600; font-size: 0.9rem; }
+.quiz-question { font-size: 0.95rem; color: var(--text-primary); margin-bottom: 16px; line-height: 1.6; }
+.quiz-options { display: flex; flex-direction: column; gap: 8px; }
+.quiz-option { padding: 12px 16px; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); cursor: pointer; font-size: 0.9rem; color: var(--text-secondary); transition: all 0.25s; display: flex; align-items: center; gap: 10px; }
+.quiz-option:hover, .quiz-option.active { border-color: var(--accent-1); background: rgba(108,92,231,0.06); color: var(--text-primary); }
+.quiz-option.correct { border-color: rgba(85,239,196,0.4); background: rgba(85,239,196,0.12); color: var(--text-primary); }
+.quiz-option.incorrect { border-color: rgba(253,121,168,0.4); background: rgba(253,121,168,0.12); color: var(--text-primary); }
+.option-letter { font-family: 'JetBrains Mono', monospace; font-size: 0.7rem; font-weight: 600; width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; border-radius: 50%; border: 1px solid currentColor; flex-shrink: 0; }
+.quiz-feedback { margin-top: 12px; padding: 14px 16px; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle); background: rgba(255,255,255,0.03); display: none; }
+.quiz-feedback.visible { display: block; animation: fadeInDown 0.25s ease-out; }
+.quiz-feedback.correct { border-color: rgba(85,239,196,0.28); background: rgba(85,239,196,0.08); }
+.quiz-feedback.incorrect { border-color: rgba(253,121,168,0.28); background: rgba(253,121,168,0.08); }
+.quiz-feedback-text { color: var(--text-primary); font-size: 0.95rem; margin-top: 6px; }
+.answer-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(84px, 1fr)); gap: 12px; }
+.answer-pill { background: rgba(255,255,255,0.03); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 12px 10px; text-align: center; }
+.answer-q { font-family: 'JetBrains Mono', monospace; font-size: 0.7rem; color: var(--text-secondary); letter-spacing: 1px; text-transform: uppercase; margin-bottom: 4px; }
+.answer-a { font-family: 'JetBrains Mono', monospace; font-size: 1rem; color: var(--accent-5); font-weight: 700; }
+.footer-space { height: 2rem; }
+@media (max-width: 640px) { .content-wrapper { padding: 0 1rem 4rem; } .interactive-card-body, .table-card-body, .quiz-card-body, .animation-grid { padding: 16px; } .quiz-score { flex-direction: column; align-items: flex-start; } .quiz-score-actions { width: 100%; justify-content: space-between; } }
+  </style>
+</head>
+<body>
+  <div class="scroll-progress" id="scrollProgress"></div>
+  <section class="hero">
+    <div class="hero-particles" id="heroParticles"></div>
+    <div class="hero-label"><span class="dot-indicator"></span> Clustering · Module 19 of 21</div>
+    <h1>Autoencoder-Based <span class="gradient-text">Deep Clustering</span></h1>
+    <p class="hero-subtitle">Deep Embedding Clustering (DEC) moves clustering into a learned latent space. The autoencoder compresses the data, cluster centers live in that compressed representation, and KL-divergence sharpens assignments until cluster structure becomes more separable.</p>
+    <div class="hero-meta">
+      <span class="meta-pill" onclick="document.getElementById('why-deep').scrollIntoView({ behavior: 'smooth', block: 'start' })">Why Latent Space</span>
+      <span class="meta-pill" onclick="document.getElementById('math').scrollIntoView({ behavior: 'smooth', block: 'start' })">DEC Math</span>
+      <span class="meta-pill" onclick="document.getElementById('workflow').scrollIntoView({ behavior: 'smooth', block: 'start' })">Workflow</span>
+      <span class="meta-pill" onclick="document.getElementById('applications').scrollIntoView({ behavior: 'smooth', block: 'start' })">Applications</span>
+      <span class="meta-pill" onclick="document.getElementById('quiz').scrollIntoView({ behavior: 'smooth', block: 'start' })">Quiz</span>
+    </div>
+    <div class="hero-scroll-cue"><span>Begin</span><div class="arrow"></div></div>
+  </section>
+
+  <main class="content-wrapper">
+    <section class="section" id="why-deep">
+      <div class="section-number">01 — Why Deep Clustering</div>
+      <h2>Clustering Becomes Easier in a Learned Latent Space</h2>
+      <p>Standard clustering methods operate directly on raw inputs, but in high-dimensional spaces distances become unreliable because of the curse of dimensionality. Points start to look almost equidistant, which makes raw-feature clustering unstable or misleading.</p>
+      <div class="callout insight"><div class="callout-title">Core Idea</div><p>Autoencoder-based clustering first compresses the data into a latent representation where important structure is preserved and irrelevant variation is suppressed. Clustering is then performed in that learned space, not on the original raw features.</p></div>
+      <div class="comparison-grid">
+        <div class="stat-card"><div class="stat-label">Representation Learning</div><div class="stat-value">An autoencoder learns a compact embedding.</div></div>
+        <div class="stat-card"><div class="stat-label">Cluster Optimization</div><div class="stat-value">DEC refines cluster centers and assignments inside the latent space.</div></div>
+        <div class="stat-card"><div class="stat-label">Advantage</div><div class="stat-value">Nonlinear feature extraction plus clustering objective optimization in one framework.</div></div>
+      </div>
+      <div class="interactive-card"><div class="interactive-card-header"><span>Raw Space vs Latent Space</span><span class="tag">ANIMATED</span></div><div class="animation-grid"><figure class="animation-frame"><canvas class="viz-canvas" data-viz="latent-separation" data-label="Compression reorganizes difficult raw structure into clearer latent structure" height="300"></canvas><figcaption class="animation-caption">The encoder suppresses noise and redundant dimensions, so the latent space is far more cluster-friendly than the original representation.</figcaption></figure></div></div>
+    </section>
+
+    <div class="gradient-divider"></div>
+
+    <section class="section" id="math">
+      <div class="section-number">02 — Autoencoder and DEC Formulation</div>
+      <h2>Encoder, Decoder, and Reconstruction Loss</h2>
+      <p>Given a dataset <em>X = {x₁, x₂, …, xₙ}</em> with <em>xᵢ ∈ ℝᵈ</em>, the encoder maps each sample into a lower-dimensional latent vector <em>zᵢ ∈ ℝᵏ</em>, where <em>k ≪ d</em>. The decoder reconstructs the input from that latent code.</p>
+      <div class="interactive-card"><div class="interactive-card-header"><span>Autoencoder Representation</span><span class="tag">FORMULA</span></div><div class="interactive-card-body"><div class="equation-stage"><div class="equation-line"><span class="math-expression" data-expr="z_i = f_{\theta}(x_i)">z_i = f_theta(x_i)</span></div><div class="equation-line"><span class="math-expression" data-expr="\hat{x}_i = g_{\phi}(z_i)">xhat_i = g_phi(z_i)</span></div><div class="equation-line"><span class="math-expression" data-expr="L_r = \sum_{i=1}^{n} \lVert x_i - \hat{x}_i \rVert^2">L_r = sum_(i=1)^n ||x_i - xhat_i||^2</span></div></div></div></div>
+      <div class="callout note"><div class="callout-title">Why Reconstruction Matters</div><p>The reconstruction loss forces the encoder to retain only the information needed to rebuild the input. Noise and redundant structure are discarded, which makes the representation better suited to clustering.</p></div>
+
+      <h3>Soft Assignment in Latent Space</h3>
+      <p>After pretraining the autoencoder, the decoder is discarded. Cluster centers <em>μ₁, μ₂, …, μₖ</em> are defined in latent space, and the model computes the soft probability that latent point <em>zᵢ</em> belongs to cluster <em>j</em>.</p>
+      <div class="interactive-card"><div class="interactive-card-header"><span>Student’s t Soft Assignment</span><span class="tag">FORMULA</span></div><div class="interactive-card-body"><div class="equation-stage"><div class="equation-line"><span class="math-expression" data-expr="q_{ij} = \frac{(1 + \lVert z_i - \mu_j \rVert^2)^{-1}}{\sum_{j'} (1 + \lVert z_i - \mu_{j'} \rVert^2)^{-1}}">q_ij = (1 + ||z_i - mu_j||^2)^-1 / sum_(j') (1 + ||z_i - mu_j'||^2)^-1</span></div></div></div></div>
+      <div class="callout insight"><div class="callout-title">Why Student’s t?</div><p>The Student’s t-distribution has heavier tails than a Gaussian, so distant points still exert influence. This avoids compressing everything too tightly and helps prevent the crowding problem in latent space.</p></div>
+    </section>
+
+    <div class="gradient-divider"></div>
+
+    <section class="section" id="target-kl">
+      <div class="section-number">03 — Target Distribution and KL Objective</div>
+      <h2>Sharpening Assignments and Optimizing the Encoder</h2>
+      <p>DEC sharpens the soft assignments into a target distribution that emphasizes already-confident cluster memberships. That target then becomes the optimization signal.</p>
+      <div class="interactive-card"><div class="interactive-card-header"><span>Target Distribution</span><span class="tag">FORMULA</span></div><div class="interactive-card-body"><div class="equation-stage"><div class="equation-line"><span class="math-expression" data-expr="p_{ij} = \frac{q_{ij}^2 / f_j}{\sum_{j'} q_{ij'}^2 / f_{j'}}">p_ij = (q_ij^2 / f_j) / sum_(j') (q_ij'^2 / f_j')</span></div><div class="equation-line"><span class="math-expression" data-expr="f_j = \sum_i q_{ij}">f_j = sum_i q_ij</span></div></div></div></div>
+      <div class="interactive-card"><div class="interactive-card-header"><span>KL Divergence Objective</span><span class="tag">FORMULA</span></div><div class="interactive-card-body"><div class="equation-stage"><div class="equation-line"><span class="math-expression" data-expr="L_c = KL(P \parallel Q) = \sum_i \sum_j p_{ij} \log\frac{p_{ij}}{q_{ij}}">L_c = KL(P || Q) = sum_i sum_j p_ij log(p_ij / q_ij)</span></div></div></div></div>
+      <div class="interactive-card"><div class="interactive-card-header"><span>Assignment Sharpening</span><span class="tag">ANIMATED</span></div><div class="animation-grid"><figure class="animation-frame"><canvas class="viz-canvas" data-viz="sharpening" data-label="Soft assignments are sharpened into a stronger target distribution" height="300"></canvas><figcaption class="animation-caption">Confident points become even more decisive, while ambiguous points contribute less. This makes cluster boundaries progressively sharper over training iterations.</figcaption></figure></div></div>
+      <div class="callout warning"><div class="callout-title">Important Direction</div><p>The objective is <em>KL(P || Q)</em>, not the reverse. This matters because the sharpened target distribution becomes the anchor, forcing the network to match certainty instead of preserving ambiguity.</p></div>
+      <div class="callout insight"><div class="callout-title">Key Takeaway</div><p>DEC first learns a representation, then uses its own sharpened assignments to improve that representation further. It is a self-reinforcing clustering loop inside latent space.</p></div>
+    </section>
+
+    <div class="gradient-divider"></div>
+
+    <section class="section" id="workflow">
+      <div class="section-number">04 — Training Workflow</div>
+      <h2>From Autoencoder Pretraining to Stable Clusters</h2>
+      <div class="list-card"><ol><li>Train a standard autoencoder using reconstruction loss <em>Lᵣ</em>.</li><li>Encode the dataset to obtain latent embeddings <em>z</em>.</li><li>Run K-Means on the embeddings to initialize the latent cluster centers <em>μ</em>.</li><li>Compute the soft assignments <em>q</em> using Student’s t-distribution.</li><li>Compute the sharpened target distribution <em>p</em>.</li><li>Compute the KL divergence loss between <em>p</em> and <em>q</em>.</li><li>Use backpropagation to update the encoder and cluster centers.</li><li>Repeat until assignments stabilize.</li></ol></div>
+      <div class="interactive-card"><div class="interactive-card-header"><span>DEC Training Flow</span><span class="tag">ANIMATED</span></div><div class="animation-grid"><figure class="animation-frame"><canvas class="viz-canvas" data-viz="dec-pipeline" data-label="Autoencoder → latent space → K-Means init → q → p → KL optimization" height="300"></canvas><figcaption class="animation-caption">DEC first compresses the data, then iteratively sharpens cluster structure in the latent space instead of repeatedly clustering the raw inputs.</figcaption></figure></div></div>
+      <div class="comparison-grid">
+        <div class="stat-card"><div class="stat-label">Complexity</div><div class="stat-value"><span class="math-expression" data-expr="O(T \cdot n \cdot k)">O(T · n · k)</span>, driven mainly by neural-network forward and backward passes.</div></div>
+        <div class="stat-card"><div class="stat-label">Initialization</div><div class="stat-value">K-Means in latent space provides the starting cluster centers.</div></div>
+        <div class="stat-card"><div class="stat-label">Optimization Target</div><div class="stat-value">Only clustering loss is optimized after the initial pretraining step in DEC.</div></div>
+      </div>
+    </section>
+
+    <div class="gradient-divider"></div>
+
+    <section class="section" id="applications">
+      <div class="section-number">05 — Practical Use and Limits</div>
+      <h2>Where DEC Helps and Where It Breaks</h2>
+      <div class="table-card"><div class="table-card-header"><span>E-Commerce Segmentation Example</span><span class="tag">APPLICATION</span></div><div class="table-card-body"><table><thead><tr><th>User cluster</th><th>Behavior pattern</th><th>System action</th></tr></thead><tbody><tr><td>Budget shoppers</td><td>Price filters and discount sensitivity</td><td>Promotion targeting</td></tr><tr><td>Brand loyalists</td><td>Repeated purchases from specific brands</td><td>Brand-centered recommendations</td></tr><tr><td>Exploration users</td><td>Wide browsing across many categories</td><td>Discovery-oriented ranking</td></tr><tr><td>Premium buyers</td><td>High-value purchase patterns</td><td>Premium assortment surfacing</td></tr></tbody></table></div></div>
+      <div class="comparison-grid">
+        <div class="stat-card"><div class="stat-label">Strength</div><div class="stat-value">Learns nonlinear behavioral structure that raw clustering would miss.</div></div>
+        <div class="stat-card"><div class="stat-label">Weakness</div><div class="stat-value">Needs enough data and a meaningful latent representation to work well.</div></div>
+        <div class="stat-card"><div class="stat-label">Interpretability</div><div class="stat-value">Lower than simple centroid methods because decisions happen inside a neural latent space.</div></div>
+      </div>
+      <div class="table-card"><div class="table-card-header"><span>Limitations and Extensions</span><span class="tag">TABLE</span></div><div class="table-card-body"><table><thead><tr><th>Topic</th><th>Issue or extension</th></tr></thead><tbody><tr><td>Predefined clusters</td><td>DEC still requires the number of clusters in advance.</td></tr><tr><td>Initialization sensitivity</td><td>Poor K-Means initialization can lock the model into bad cluster centers.</td></tr><tr><td>Representation drift</td><td>Removing reconstruction loss can distort the latent space during clustering.</td></tr><tr><td>IDEC</td><td>Retains reconstruction loss during clustering to reduce drift.</td></tr><tr><td>DeepCluster</td><td>Popular in computer vision for iterative representation learning.</td></tr><tr><td>Transformers and generative models</td><td>Used in modern systems to build stronger encoders and richer cluster structure.</td></tr></tbody></table></div></div>
+      <div class="callout warning"><div class="callout-title">Not Suitable When</div><p>DEC is a poor fit when the dataset is small, the number of clusters is unknown, high interpretability is required, or the data are already low-dimensional and well-structured.</p></div>
+      <div class="callout note"><div class="callout-title">IDEC vs DEC</div><p>IDEC keeps reconstruction loss during clustering to prevent representation drift. That single design change addresses one of DEC’s biggest stability problems.</p></div>
+    </section>
+
+    <div class="gradient-divider"></div>
+
+    <section class="section" id="quiz">
+      <div class="section-number">06 — Quiz</div>
+      <h2>Quiz</h2>
+      <div class="quiz-score"><div><div class="quiz-score-label">Progress</div><div class="quiz-score-value" id="quizScoreValue">0 / 10 correct</div></div><div class="quiz-score-actions"><div><div class="quiz-score-label">Status</div><div class="quiz-score-value" id="quizScorePercent">0 answered</div></div><button class="btn" id="quizResetBtn" type="button">Reset Quiz</button></div></div>
+      <div class="quiz-card"><div class="quiz-card-header"><span>Quiz 1</span><span class="tag">REVIEW</span></div><div class="quiz-card-body"><div class="quiz-question">What is the primary purpose of the autoencoder in DEC?</div><div class="quiz-options"><div class="quiz-option"><span class="option-letter">A</span><span>To perform final clustering using K-Means.</span></div><div class="quiz-option"><span class="option-letter">B</span><span>To calculate KL divergence directly.</span></div><div class="quiz-option"><span class="option-letter">C</span><span>To learn a low-dimensional latent representation of high-dimensional input data.</span></div><div class="quiz-option"><span class="option-letter">D</span><span>To explicitly optimize a clustering objective like SOM.</span></div></div></div></div>
+      <div class="quiz-card"><div class="quiz-card-header"><span>Quiz 2</span><span class="tag">REVIEW</span></div><div class="quiz-card-body"><div class="quiz-question">Which main problem do autoencoders address in high-dimensional clustering?</div><div class="quiz-options"><div class="quiz-option"><span class="option-letter">A</span><span>Overfitting to training data.</span></div><div class="quiz-option"><span class="option-letter">B</span><span>The curse of dimensionality, where distances become unreliable.</span></div><div class="quiz-option"><span class="option-letter">C</span><span>The requirement for a predefined grid structure.</span></div><div class="quiz-option"><span class="option-letter">D</span><span>Training instability caused only by KL divergence.</span></div></div></div></div>
+      <div class="quiz-card"><div class="quiz-card-header"><span>Quiz 3</span><span class="tag">REVIEW</span></div><div class="quiz-card-body"><div class="quiz-question">DEC operates in which two main stages?</div><div class="quiz-options"><div class="quiz-option"><span class="option-letter">A</span><span>Standardization and normalization.</span></div><div class="quiz-option"><span class="option-letter">B</span><span>Representation learning and cluster optimization.</span></div><div class="quiz-option"><span class="option-letter">C</span><span>K-Means initialization and target-distribution calculation.</span></div><div class="quiz-option"><span class="option-letter">D</span><span>Encoder training and decoder discarding only.</span></div></div></div></div>
+      <div class="quiz-card"><div class="quiz-card-header"><span>Quiz 4</span><span class="tag">REVIEW</span></div><div class="quiz-card-body"><div class="quiz-question">What is the role of the reconstruction loss during autoencoder pretraining?</div><div class="quiz-options"><div class="quiz-option"><span class="option-letter">A</span><span>To sharpen cluster assignments.</span></div><div class="quiz-option"><span class="option-letter">B</span><span>To define the initial cluster centers.</span></div><div class="quiz-option"><span class="option-letter">C</span><span>To force the encoder to retain essential information needed to rebuild the input.</span></div><div class="quiz-option"><span class="option-letter">D</span><span>To calculate soft cluster probability directly.</span></div></div></div></div>
+      <div class="quiz-card"><div class="quiz-card-header"><span>Quiz 5</span><span class="tag">REVIEW</span></div><div class="quiz-card-body"><div class="quiz-question">Which distribution is used for the soft assignment q<sub>ij</sub> in DEC?</div><div class="quiz-options"><div class="quiz-option"><span class="option-letter">A</span><span>Gaussian distribution.</span></div><div class="quiz-option"><span class="option-letter">B</span><span>Poisson distribution.</span></div><div class="quiz-option"><span class="option-letter">C</span><span>Student’s t-distribution.</span></div><div class="quiz-option"><span class="option-letter">D</span><span>Binomial distribution.</span></div></div></div></div>
+      <div class="quiz-card"><div class="quiz-card-header"><span>Quiz 6</span><span class="tag">REVIEW</span></div><div class="quiz-card-body"><div class="quiz-question">Why does DEC use the Student’s t-distribution instead of a Gaussian?</div><div class="quiz-options"><div class="quiz-option"><span class="option-letter">A</span><span>It guarantees faster convergence.</span></div><div class="quiz-option"><span class="option-letter">B</span><span>Its heavier tails help avoid crowding and over-collapse in latent space.</span></div><div class="quiz-option"><span class="option-letter">C</span><span>It removes the need for KL divergence.</span></div><div class="quiz-option"><span class="option-letter">D</span><span>It directly encodes cluster frequency.</span></div></div></div></div>
+      <div class="quiz-card"><div class="quiz-card-header"><span>Quiz 7</span><span class="tag">REVIEW</span></div><div class="quiz-card-body"><div class="quiz-question">What is the main purpose of the target distribution p<sub>ij</sub>?</div><div class="quiz-options"><div class="quiz-option"><span class="option-letter">A</span><span>To increase the influence of uncertain points.</span></div><div class="quiz-option"><span class="option-letter">B</span><span>To initialize cluster centers randomly.</span></div><div class="quiz-option"><span class="option-letter">C</span><span>To sharpen soft assignments and force firmer clustering decisions.</span></div><div class="quiz-option"><span class="option-letter">D</span><span>To measure computational complexity.</span></div></div></div></div>
+      <div class="quiz-card"><div class="quiz-card-header"><span>Quiz 8</span><span class="tag">REVIEW</span></div><div class="quiz-card-body"><div class="quiz-question">Which metric is used as the final clustering objective in DEC?</div><div class="quiz-options"><div class="quiz-option"><span class="option-letter">A</span><span>Mean squared error.</span></div><div class="quiz-option"><span class="option-letter">B</span><span>Within-cluster sum of squares.</span></div><div class="quiz-option"><span class="option-letter">C</span><span>Kullback-Leibler divergence.</span></div><div class="quiz-option"><span class="option-letter">D</span><span>Cosine similarity.</span></div></div></div></div>
+      <div class="quiz-card"><div class="quiz-card-header"><span>Quiz 9</span><span class="tag">REVIEW</span></div><div class="quiz-card-body"><div class="quiz-question">What is the first step in the DEC workflow?</div><div class="quiz-options"><div class="quiz-option"><span class="option-letter">A</span><span>Run K-Means in the latent space.</span></div><div class="quiz-option"><span class="option-letter">B</span><span>Calculate softened assignments q.</span></div><div class="quiz-option"><span class="option-letter">C</span><span>Train a standard autoencoder using the reconstruction loss.</span></div><div class="quiz-option"><span class="option-letter">D</span><span>Calculate KL divergence.</span></div></div></div></div>
+      <div class="quiz-card"><div class="quiz-card-header"><span>Quiz 10</span><span class="tag">REVIEW</span></div><div class="quiz-card-body"><div class="quiz-question">Which DEC limitation does IDEC primarily address?</div><div class="quiz-options"><div class="quiz-option"><span class="option-letter">A</span><span>Predefined clusters.</span></div><div class="quiz-option"><span class="option-letter">B</span><span>Initialization sensitivity alone.</span></div><div class="quiz-option"><span class="option-letter">C</span><span>Representation drift by retaining reconstruction loss.</span></div><div class="quiz-option"><span class="option-letter">D</span><span>Large-data requirements only.</span></div></div></div></div>
+    </section>
+
+    <div class="footer-space"></div>
+  </main>
+
+  <script>
+const progressBar = document.getElementById('scrollProgress');
+const sections = document.querySelectorAll('.section');
+function updateProgress(){ const scrollTop = window.scrollY; const docHeight = document.documentElement.scrollHeight - window.innerHeight; const progress = docHeight > 0 ? (scrollTop / docHeight) * 100 : 0; progressBar.style.width = `${progress}%`; }
+function revealSections(){ sections.forEach(section => { const rect = section.getBoundingClientRect(); if(rect.top < window.innerHeight * 0.85) section.classList.add('visible'); }); }
+function makeParticles(){ const holder = document.getElementById('heroParticles'); const positions = [[12,70,0],[22,56,1],[35,76,2],[49,30,0.7],[62,68,1.6],[74,44,2.3],[86,62,0.9]]; positions.forEach(([left, top, delay]) => { const dot = document.createElement('span'); dot.className = 'dot'; dot.style.left = `${left}%`; dot.style.top = `${top}%`; dot.style.animationDelay = `${delay}s`; holder.appendChild(dot); }); }
+function renderKatexMath(){ document.querySelectorAll('.math-expression').forEach(node => { const expr = node.dataset.expr; if(!expr || !window.katex) return; window.katex.render(expr, node, { throwOnError: false, displayMode: true }); }); }
+function fitCanvas(canvas) {
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  const width = Math.max(280, rect.width || canvas.parentElement.clientWidth || 320);
+  const attrHeight = Number(canvas.getAttribute('height')) || 280;
+  const height = Number(canvas.dataset.cssHeight || attrHeight);
+  canvas.dataset.cssHeight = String(height);
+
+  const targetWidth = Math.round(width * dpr);
+  const targetHeight = Math.round(height * dpr);
+  if (canvas.width !== targetWidth || canvas.height !== targetHeight) {
+    canvas.width = targetWidth;
+    canvas.height = targetHeight;
+    canvas.style.height = `${height}px`;
+  }
+
+  const ctx = canvas.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  return { ctx, width, height };
+}
+function shell(ctx,w,h,label){ ctx.clearRect(0,0,w,h); ctx.fillStyle='#05060a'; ctx.fillRect(0,0,w,h); const pad=18; ctx.strokeStyle='rgba(255,255,255,0.10)'; for(let x=pad;x<w-pad;x+=36){ ctx.beginPath(); ctx.moveTo(x,pad); ctx.lineTo(x,h-pad); ctx.stroke(); } for(let y=pad;y<h-pad;y+=28){ ctx.beginPath(); ctx.moveTo(pad,y); ctx.lineTo(w-pad,y); ctx.stroke(); } if(label){ ctx.fillStyle='#d7deea'; ctx.font='600 11px "JetBrains Mono"'; ctx.fillText(label.slice(0,56),18,24); } }
+function node(ctx,x,y,color,r=5){ ctx.fillStyle=color; ctx.beginPath(); ctx.arc(x,y,r,0,Math.PI*2); ctx.fill(); }
+function drawLatent(ctx,w,h,t){ const raw=[[w*0.16,h*0.36],[w*0.22,h*0.58],[w*0.3,h*0.42],[w*0.36,h*0.62],[w*0.44,h*0.34],[w*0.52,h*0.54],[w*0.24,h*0.24],[w*0.48,h*0.72]]; raw.forEach(([x,y],i)=>node(ctx,x,y,['#6c5ce7','#fd79a8','#00cec9','#fdcb6e'][i%4],5)); ctx.fillStyle='#d7deea'; ctx.font='600 11px "JetBrains Mono"'; ctx.fillText('Raw features',34,42); ctx.fillText('Latent space',w*0.63,42); const latent=[[w*0.68,h*0.34],[w*0.74,h*0.38],[w*0.82,h*0.32],[w*0.7,h*0.58],[w*0.78,h*0.62],[w*0.86,h*0.56]]; latent.forEach(([x,y],i)=>node(ctx,x,y,i<3?'#6c5ce7':'#00cec9',6)); }
+function drawSharpening(ctx,w,h,t){ const labels=['q','p']; const vals=[[0.42,0.33,0.25],[0.62,0.27,0.11]]; labels.forEach((label,i)=>{ const x=i===0?160:440; ctx.fillStyle='#d7deea'; ctx.font='600 11px "JetBrains Mono"'; ctx.fillText(i===0?'Soft assignment q':'Sharpened target p',x-42,44); vals[i].forEach((v,j)=>{ const y=88+j*56; ctx.strokeStyle='rgba(255,255,255,0.12)'; ctx.strokeRect(x,y,160,18); ctx.fillStyle=['#6c5ce7','#00cec9','#fd79a8'][j]; ctx.fillRect(x,y,160*v,18); ctx.fillStyle='#d7deea'; ctx.fillText(`c${j+1}`,x-34,y+14); }); }); }
+function drawPipeline(ctx,w,h,t){ const blocks=[['Autoencoder',0.12],['Latent z',0.33],['K-Means init',0.52],['q -> p',0.71],['KL update',0.88]]; blocks.forEach(([label,xn],i)=>{ const x=w*xn; ctx.fillStyle='rgba(255,255,255,0.03)'; ctx.strokeStyle=i<2?'#6c5ce7':i<4?'#00cec9':'#fdcb6e'; ctx.beginPath(); ctx.roundRect(x-52,h*0.44,104,48,12); ctx.fill(); ctx.stroke(); ctx.fillStyle='#e8e8f0'; ctx.font='600 11px "JetBrains Mono"'; ctx.fillText(label,x-34,h*0.44+28); if(i<blocks.length-1){ ctx.strokeStyle='rgba(255,255,255,0.24)'; ctx.beginPath(); ctx.moveTo(x+54,h*0.44+24); ctx.lineTo(w*blocks[i+1][1]-54,h*0.44+24); ctx.stroke(); } }); }
+function renderVizCanvas(canvas,timeMs){ const {ctx,width,height}=fitCanvas(canvas); const t=timeMs/1000; shell(ctx,width,height,canvas.dataset.label || ''); switch(canvas.dataset.viz){ case 'latent-separation': drawLatent(ctx,width,height,t); break; case 'sharpening': drawSharpening(ctx,width,height,t); break; case 'dec-pipeline': drawPipeline(ctx,width,height,t); break; default: drawPipeline(ctx,width,height,t); break; } }
+const vizCanvases = Array.from(document.querySelectorAll('.viz-canvas'));
+function animateVisualizers(timeMs){ vizCanvases.forEach(canvas=>renderVizCanvas(canvas,timeMs)); window.requestAnimationFrame(animateVisualizers); }
+const quizAnswers=['C','B','B','C','C','B','C','C','C','C'];
+function ensureQuizFeedback(card){ let feedback=card.querySelector('.quiz-feedback'); if(feedback) return feedback; feedback=document.createElement('div'); feedback.className='quiz-feedback'; feedback.innerHTML='<div class="quiz-feedback-label">Feedback</div><div class="quiz-feedback-text"></div>'; card.querySelector('.quiz-card-body').appendChild(feedback); return feedback; }
+function updateQuizScore(){ const cards=Array.from(document.querySelectorAll('.quiz-card')); const selected=cards.map((card,index)=>{ const active=card.querySelector('.quiz-option.active .option-letter'); return active && active.textContent.trim()===quizAnswers[index]; }); const correct=selected.filter(Boolean).length; const total=quizAnswers.length; const answered=cards.filter(card=>card.querySelector('.quiz-option.active')).length; const scoreValue=document.getElementById('quizScoreValue'); const scorePercent=document.getElementById('quizScorePercent'); if(scoreValue) scoreValue.textContent=`${correct} / ${total} correct`; if(scorePercent) scorePercent.textContent=answered?`${answered} answered`:'0 answered'; }
+document.querySelectorAll('.quiz-card').forEach((card,index)=>{ const feedback=ensureQuizFeedback(card); const correctLetter=quizAnswers[index]; card.querySelectorAll('.quiz-option').forEach(option=>{ option.addEventListener('click',()=>{ const options=Array.from(card.querySelectorAll('.quiz-option')); const chosenLetter=option.querySelector('.option-letter')?.textContent.trim()||''; options.forEach(node=>node.classList.remove('active','correct','incorrect')); option.classList.add('active'); if(chosenLetter===correctLetter) option.classList.add('correct'); else option.classList.add('incorrect'); feedback.className=`quiz-feedback visible ${chosenLetter===correctLetter?'correct':'incorrect'}`; feedback.querySelector('.quiz-feedback-text').textContent=chosenLetter===correctLetter?'Correct. Nice work.':'Not quite. Review the concept and try again.'; updateQuizScore(); }); }); });
+const quizResetBtn=document.getElementById('quizResetBtn'); if(quizResetBtn){ quizResetBtn.addEventListener('click',()=>{ document.querySelectorAll('.quiz-card').forEach(card=>{ card.querySelectorAll('.quiz-option').forEach(option=>option.classList.remove('active','correct','incorrect')); const feedback=card.querySelector('.quiz-feedback'); if(feedback){ feedback.className='quiz-feedback'; const text=feedback.querySelector('.quiz-feedback-text'); if(text) text.textContent=''; } }); updateQuizScore(); }); }
+document.querySelectorAll('.copy-code-btn').forEach(button=>{ button.addEventListener('click',async()=>{ const target=document.getElementById(button.dataset.copyTarget); if(!target) return; try{ await navigator.clipboard.writeText(target.innerText); button.textContent='Copied'; button.classList.add('copied'); window.setTimeout(()=>{ button.textContent='Copy Code'; button.classList.remove('copied'); },1400); } catch(error){ button.textContent='Copy failed'; window.setTimeout(()=>{ button.textContent='Copy Code'; },1400); } }); });
+window.addEventListener('scroll',()=>{ updateProgress(); revealSections(); });
+window.addEventListener('resize',()=>{ vizCanvases.forEach(canvas=>renderVizCanvas(canvas,performance.now())); });
+makeParticles(); updateProgress(); revealSections(); renderKatexMath(); window.addEventListener('load',renderKatexMath); window.setTimeout(renderKatexMath,120); window.dispatchEvent(new Event('resize')); updateQuizScore(); window.requestAnimationFrame(animateVisualizers);
+  </script>
+</body>
+</html>

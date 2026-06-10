@@ -1,0 +1,713 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Merge K Sorted Arrays (Min-Heap)</title>
+    <style>
+        :root {
+            --bg-page: #070b14;
+            --bg-surface: rgba(255, 255, 255, 0.045);
+            --bg-input: rgba(255, 255, 255, 0.04);
+            --border-main: rgba(255, 255, 255, 0.10);
+            --btn-bg: rgba(255, 255, 255, 0.05);
+            --btn-hover: rgba(255, 255, 255, 0.10);
+            --text-main: #e8eefb;
+            --text-dim: #8b98b3;
+            --accent-orange: #f5a524;   /* value in motion / pushed         */
+            --accent-blue:   #06b6d4;    /* heads / edges / chrome           */
+            --accent-green:  #22c55e;    /* settled / merged output          */
+            --accent-red:    #f43f5e;    /* exhausted                        */
+            --accent-purple: #a855f7;    /* current node / root / extracted  */
+            --mono: ui-monospace, 'SF Mono', 'Cascadia Code', 'Courier New', monospace;
+            --sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+            --shell: 940px;
+        }
+
+        * { box-sizing: border-box; }
+        html, body { overflow-x: hidden; }
+        body {
+            background:
+                radial-gradient(1100px 600px at 15% -10%, rgba(168, 85, 247, 0.12), transparent 60%),
+                radial-gradient(900px 600px at 100% 10%, rgba(6, 182, 212, 0.10), transparent 55%),
+                linear-gradient(160deg, #070b14 0%, #0b1120 55%, #0a0f1c 100%);
+            background-attachment: fixed;
+            color: var(--text-main); font-family: var(--sans); margin: 0;
+            display: flex; flex-direction: column; align-items: center; min-height: 100vh;
+            padding-bottom: 48px; -webkit-font-smoothing: antialiased;
+        }
+        body::before, body::after { content: ''; position: fixed; border-radius: 50%; filter: blur(70px); pointer-events: none; z-index: 0; opacity: 0.45; }
+        body::before { width: 380px; height: 380px; top: 8%; left: -120px; background: radial-gradient(circle, rgba(168,85,247,0.30), transparent 70%); }
+        body::after  { width: 420px; height: 420px; bottom: 4%; right: -140px; background: radial-gradient(circle, rgba(6,182,212,0.22), transparent 70%); }
+        body > * { position: relative; z-index: 1; }
+
+        .input-bar {
+            width: 100%; background: rgba(10, 15, 28, 0.55);
+            backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+            padding: 14px 16px; display: flex; justify-content: center; align-items: center; gap: 10px;
+            border-bottom: 1px solid var(--border-main); flex-wrap: wrap; position: sticky; top: 0; z-index: 50;
+        }
+        label.ui-label, .ui-label { font-family: var(--mono); font-size: 13px; color: var(--text-dim); letter-spacing: 0.2px; }
+        input[type="text"] {
+            background: var(--bg-input); border: 1px solid var(--border-main); color: var(--text-main);
+            height: 34px; border-radius: 9px; padding: 0 12px; font-size: 13px; font-family: var(--mono); width: 360px; max-width: 60vw;
+            transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+        }
+        input:focus { outline: none; border-color: var(--accent-purple); box-shadow: 0 0 0 3px rgba(168,85,247,0.18); background: rgba(168,85,247,0.06); }
+
+        button {
+            height: 34px; border-radius: 9px; padding: 0 14px; background: var(--btn-bg);
+            border: 1px solid var(--border-main); color: var(--text-main); font-size: 13px; font-weight: 600; cursor: pointer;
+            transition: transform 0.15s ease, background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+        }
+        button:hover { background: var(--btn-hover); border-color: rgba(168, 85, 247, 0.5); box-shadow: 0 0 18px rgba(168, 85, 247, 0.18); transform: translateY(-1px); }
+        button:active { transform: translateY(0); }
+        #play-btn { background: linear-gradient(135deg, rgba(168,85,247,0.22), rgba(168,85,247,0.10)); border-color: rgba(168, 85, 247, 0.45); color: #e9d5ff; min-width: 80px; }
+        .op-btn.load { border-color: rgba(6,182,212,0.4); color: #a5f3fc; font-family: var(--mono); }
+
+        .shell { width: var(--shell); max-width: 95%; margin: 24px auto 0; display: flex; flex-direction: column; gap: 16px; }
+
+        .title-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+        .title-row h1 { font-size: 18px; font-weight: 800; margin: 0; letter-spacing: 0.2px; }
+        .title-row .sub { color: var(--text-dim); font-weight: 500; font-size: 13px; }
+        .step-badge { font-family: var(--mono); font-size: 12px; font-weight: 700; color: #e9d5ff; background: rgba(168,85,247,0.12); border: 1px solid rgba(168,85,247,0.3); padding: 4px 10px; border-radius: 999px; white-space: nowrap; }
+        .progress-track { height: 4px; width: 100%; background: rgba(255,255,255,0.07); border-radius: 999px; overflow: hidden; margin-top: -6px; }
+        .progress-fill { height: 100%; width: 0%; border-radius: 999px; background: linear-gradient(90deg, var(--accent-purple), var(--accent-blue)); box-shadow: 0 0 12px rgba(168,85,247,0.5); transition: width 0.45s cubic-bezier(0.34,1.1,0.64,1); }
+
+        .op-feed { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+        .op-chip { font-family: var(--mono); font-size: 11px; font-weight: 700; padding: 4px 9px; border-radius: 8px; border: 1px solid var(--border-main); color: var(--text-dim); background: rgba(255,255,255,0.03); transition: all 0.3s; white-space: nowrap; }
+        .op-chip.done { opacity: 0.45; }
+        .op-chip.current { color: #fff; border-color: rgba(168,85,247,0.6); background: rgba(168,85,247,0.16); box-shadow: 0 0 12px rgba(168,85,247,0.3); }
+
+        .narration { background: var(--bg-surface); border: 1px solid rgba(168,85,247,0.22); border-radius: 12px; padding: 12px 18px; font-family: var(--mono); font-size: 14px; line-height: 1.5; color: #ede9fe; min-height: 48px; display: flex; align-items: center; gap: 10px; transition: border-color 0.3s, background 0.3s; }
+        .narration::before { content: '\25B8'; color: var(--accent-purple); font-size: 13px; }
+        .narration.done { border-color: rgba(34,197,94,0.4); background: rgba(34,197,94,0.06); }
+        .narration.done::before { content: '\2713'; color: var(--accent-green); }
+        .narration code { background: rgba(168,85,247,0.14); color: #d8b4fe; padding: 1px 6px; border-radius: 5px; font-size: 12.5px; }
+        .narration b { color: #fff; }
+
+        .stage-card { background: var(--bg-surface); border: 1px solid var(--border-main); border-radius: 18px; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); box-shadow: 0 12px 38px rgba(0,0,0,0.4); overflow: hidden; }
+        .stage-screen { position: relative; margin: 14px; border-radius: 14px; background: radial-gradient(700px 300px at 50% -10%, rgba(168,85,247,0.08), transparent 70%), #090d18; border: 1px solid rgba(255,255,255,0.06); }
+
+        /* ── input arrays (k rows with head pointers) ── */
+        .inputs-zone { padding: 14px 16px 8px; }
+        .zone-label { font-family: var(--mono); font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--text-dim); text-align: center; margin-bottom: 10px; }
+        .arr-row { display: flex; align-items: center; gap: 8px; justify-content: center; margin-bottom: 8px; flex-wrap: nowrap; }
+        .arr-tag { font-family: var(--mono); font-size: 11px; font-weight: 800; color: var(--accent-blue); min-width: 34px; text-align: right; flex-shrink: 0; }
+        .arr-tiles { display: flex; gap: 5px; flex-wrap: wrap; }
+        .icell { width: 38px; height: 38px; border-radius: 9px; display: flex; align-items: center; justify-content: center; position: relative;
+            font-family: var(--mono); font-weight: 800; font-size: 15px; border: 2px solid var(--border-main); background: rgba(255,255,255,0.04); color: var(--text-main);
+            transition: background 0.35s, border-color 0.35s, color 0.35s, box-shadow 0.35s, opacity 0.35s; }
+        .icell.head { border-color: var(--accent-blue); background: rgba(6,182,212,0.14); color: #a5f3fc; box-shadow: 0 0 12px rgba(6,182,212,0.4); }
+        .icell.taken { opacity: 0.32; border-color: rgba(255,255,255,0.06); }
+        .icell.pull { border-color: var(--accent-orange); background: rgba(245,165,36,0.18); color: #ffd591; box-shadow: 0 0 16px rgba(245,165,36,0.55); }
+        .icell .hp { position: absolute; top: -16px; left: 0; right: 0; text-align: center; font-size: 10px; font-weight: 800; color: var(--accent-blue); }
+
+        /* ── heap tree ── */
+        .tree-stage { position: relative; width: 100%; height: 230px; overflow: auto; scrollbar-width: thin; border-top: 1px solid rgba(255,255,255,0.05); }
+        .tree-stage::-webkit-scrollbar { height: 7px; width: 7px; }
+        .tree-stage::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 8px; }
+        .tree-canvas { position: relative; margin: 0 auto; }
+        #edges { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; z-index: 1; }
+        .edge-ln { stroke: var(--accent-blue); stroke-width: 2.2; fill: none; opacity: 0.45; transition: stroke 0.3s, opacity 0.3s; }
+        .edge-ln.active { stroke: var(--accent-orange); opacity: 1; filter: drop-shadow(0 0 6px rgba(245,165,36,0.6)); }
+
+        .hnode { position: absolute; width: 48px; height: 48px; margin: -24px 0 0 -24px; display: flex; flex-direction: column; align-items: center; justify-content: center;
+            border-radius: 50%; font-family: var(--mono); font-weight: 800; font-size: 16px; line-height: 1;
+            border: 2px solid var(--border-main); background: rgba(255,255,255,0.06); color: var(--text-main);
+            z-index: 2; will-change: transform; transition: background 0.35s, border-color 0.35s, color 0.35s, box-shadow 0.35s; }
+        .hnode .src { font-size: 8.5px; font-weight: 700; color: var(--text-dim); margin-top: 1px; }
+        .hnode.root { border-color: var(--accent-purple); }
+        .hnode.cur { border-color: var(--accent-purple); background: rgba(168,85,247,0.16); color: #e9d5ff; box-shadow: 0 0 20px rgba(168,85,247,0.55); }
+        .hnode.cur .src { color: #d8b4fe; }
+        .hnode.cmp { border-color: var(--accent-blue); background: rgba(6,182,212,0.16); color: #a5f3fc; box-shadow: 0 0 20px rgba(6,182,212,0.5); }
+        .hnode.swap { border-color: var(--accent-orange); background: rgba(245,165,36,0.18); color: #ffd591; box-shadow: 0 0 22px rgba(245,165,36,0.6); }
+        .hnode.swap .src { color: #ffd591; }
+        .hnode.new { border-color: var(--accent-orange); background: rgba(245,165,36,0.16); color: #ffd591; box-shadow: 0 0 22px rgba(245,165,36,0.55); }
+        .hnode .idx { position: absolute; top: -8px; right: -8px; min-width: 15px; height: 15px; padding: 0 3px; border-radius: 8px; background: rgba(10,15,28,0.85); color: var(--text-dim); font-size: 9px; font-weight: 800; display: flex; align-items: center; justify-content: center; border: 1px solid var(--border-main); }
+
+        .array-zone { padding: 4px 16px 16px; }
+        .array-label { font-family: var(--mono); font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--text-dim); text-align: center; margin-bottom: 8px; }
+        .array-rail { display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; min-height: 44px; align-items: center; }
+        .acell { width: 44px; height: 44px; border-radius: 10px; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative;
+            font-family: var(--mono); font-weight: 800; font-size: 15px; line-height: 1; border: 2px solid var(--border-main); background: rgba(255,255,255,0.04); color: var(--text-main);
+            transition: background 0.35s, border-color 0.35s, color 0.35s, box-shadow 0.35s; }
+        .acell .as { font-size: 8.5px; font-weight: 700; color: var(--text-dim); margin-top: 2px; }
+        .acell.cur { border-color: var(--accent-purple); background: rgba(168,85,247,0.16); color: #e9d5ff; box-shadow: 0 0 14px rgba(168,85,247,0.45); }
+        .acell.cmp { border-color: var(--accent-blue); background: rgba(6,182,212,0.14); color: #a5f3fc; }
+        .acell.swap { border-color: var(--accent-orange); background: rgba(245,165,36,0.16); color: #ffd591; }
+        .acell .ai { position: absolute; bottom: -17px; left: 0; right: 0; text-align: center; font-size: 10px; color: var(--text-dim); font-weight: 700; }
+
+        .action-stage { position: relative; min-height: 86px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; }
+        .extracted-track { display: flex; gap: 6px; align-items: center; min-height: 34px; flex-wrap: wrap; justify-content: center; }
+        .ex-label { font-family: var(--mono); font-size: 11px; color: var(--text-dim); }
+        .ex-tile { min-width: 34px; height: 34px; padding: 0 6px; border-radius: 9px; display: flex; align-items: center; justify-content: center; font-family: var(--mono); font-size: 16px; font-weight: 800; border: 2px solid var(--accent-green); background: rgba(34,197,94,0.14); color: #bbf7d0; }
+        .action-word { font-family: var(--mono); font-weight: 800; font-size: 18px; letter-spacing: 0.4px; min-height: 22px; text-align: center; transition: color 0.3s; }
+        #confetti { position: absolute; inset: 0; overflow: visible; pointer-events: none; }
+        .confetti-piece { position: absolute; top: 0; left: 50%; width: 8px; height: 13px; border-radius: 2px; opacity: 0; animation: confettiFall ease-out forwards; }
+
+        .controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: center; }
+        .controls .kbd-hint { font-size: 11px; color: var(--text-dim); font-family: var(--mono); margin-left: 4px; }
+        .kbd { background: rgba(255,255,255,0.07); border: 1px solid var(--border-main); border-radius: 5px; padding: 1px 6px; font-size: 10px; }
+        input[type="range"] { accent-color: var(--accent-purple); width: 110px; cursor: pointer; }
+
+        .details-toggle { align-self: center; height: 32px; padding: 0 16px; border-radius: 999px; cursor: pointer; background: rgba(255,255,255,0.04); border: 1px solid var(--border-main); color: var(--text-dim); font-family: var(--mono); font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; gap: 8px; transition: color 0.2s, border-color 0.2s, background 0.2s; }
+        .details-toggle:hover { color: var(--text-main); border-color: rgba(168,85,247,0.4); background: rgba(168,85,247,0.06); }
+        .details-toggle .chev { transition: transform 0.3s ease; }
+        .details-wrap.open .details-toggle .chev { transform: rotate(180deg); }
+        .details-body { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.4s ease; }
+        .details-wrap.open .details-body { grid-template-rows: 1fr; }
+        .details-inner { overflow: hidden; min-height: 0; }
+        .details-grid { display: flex; flex-direction: column; gap: 14px; padding-top: 14px; }
+
+        .panel-card { background: var(--bg-surface); border: 1px solid var(--border-main); border-radius: 16px; backdrop-filter: blur(10px); box-shadow: 0 8px 30px rgba(0,0,0,0.35); }
+        .panel-head { display: flex; align-items: center; gap: 8px; padding: 11px 16px; border-bottom: 1px solid var(--border-main); font-size: 11px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; color: var(--text-dim); }
+        .panel-head .pip { width: 7px; height: 7px; border-radius: 50%; background: var(--accent-purple); box-shadow: 0 0 8px var(--accent-purple); }
+        .code-body { padding: 12px 6px 14px; font-family: var(--mono); font-size: 12.5px; line-height: 1.7; }
+        .code-line { display: flex; gap: 12px; padding: 1px 16px; border-left: 2px solid transparent; transition: background 0.3s, border-color 0.3s; white-space: pre; }
+        .code-line .lno { color: #4b5772; width: 16px; text-align: right; user-select: none; }
+        .code-line .src { color: #c4cee0; }
+        .code-line .kw { color: #c792ea; }
+        .code-line .fn { color: #82aaff; }
+        .code-line.active { background: rgba(168,85,247,0.12); border-left-color: var(--accent-purple); }
+        .code-line.active .src, .code-line.active .lno { color: #e8eefb; }
+
+        .log-panel { border-radius: 14px; padding: 12px 16px; height: 110px; overflow-y: auto; font-family: var(--mono); font-size: 12.5px; line-height: 1.5; background: var(--bg-surface); border: 1px solid var(--border-main); }
+        .log-panel::-webkit-scrollbar { width: 8px; }
+        .log-panel::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 8px; }
+
+        @keyframes confettiFall { 0%{ opacity:1; transform: translate(-50%, 0) rotate(0deg); } 100%{ opacity:0; transform: translate(calc(-50% + var(--x)), 220px) rotate(var(--rot)); } }
+        @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; } }
+    </style>
+</head>
+<body>
+
+    <div class="input-bar">
+        <label class="ui-label">k arrays</label>
+        <input type="text" id="arrays-input" value="[[1,4,7],[2,5,8],[3,6,9]]" spellcheck="false">
+        <button class="op-btn load" onclick="loadCustom()">Load</button>
+        <span class="ui-label" style="opacity:.5">|</span>
+        <button onclick="loadExample(0)">Example 1</button>
+        <button onclick="loadExample(1)">Example 2</button>
+        <button onclick="resetSim()">&#8634; Reset</button>
+    </div>
+
+    <div class="shell">
+        <div class="title-row">
+            <h1>Merge K Sorted Arrays <span class="sub">&middot; min-heap of (value, arrayIndex, elemIndex) &middot; pop min &#8594; emit &#8594; push next head &middot; O(N&nbsp;log&nbsp;k)</span></h1>
+            <span class="step-badge" id="step-badge">Step 1 / 1</span>
+        </div>
+        <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+
+        <div class="op-feed" id="op-feed"></div>
+
+        <div class="narration" id="main-panel">&mdash;</div>
+
+        <div class="stage-card">
+            <div class="stage-screen">
+                <div class="inputs-zone">
+                    <div class="zone-label">input arrays &middot; head pointer per array</div>
+                    <div id="arrays-host"></div>
+                </div>
+                <div class="tree-stage" id="tree-stage">
+                    <div class="tree-canvas" id="tree-canvas">
+                        <svg id="edges"></svg>
+                    </div>
+                </div>
+                <div class="array-zone">
+                    <div class="array-label">min-heap backing array &middot; root = next value to emit &middot; node i children 2i+1, 2i+2</div>
+                    <div class="array-rail" id="array-rail"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="action-stage">
+            <div id="confetti"></div>
+            <div class="extracted-track"><span class="ex-label" id="ex-label" style="display:none">merged output (sorted):</span><span id="extracted" style="display:flex;gap:6px;flex-wrap:wrap;justify-content:center"></span></div>
+            <div class="action-word" id="action-word"></div>
+        </div>
+
+        <div class="controls">
+            <button onclick="resetSim()">&#8634; Reset</button>
+            <button onclick="prevStep()">&#8592; Back</button>
+            <button onclick="togglePlay()" id="play-btn">Play</button>
+            <button onclick="nextStep()">Next &#8594;</button>
+            <span class="ui-label" style="margin-left:6px; font-size:11px">Speed</span>
+            <input type="range" id="speed" min="0" max="2" value="1">
+            <span class="kbd-hint"><span class="kbd">&#8592;</span> <span class="kbd">&#8594;</span> step &middot; <span class="kbd">space</span> play</span>
+        </div>
+
+        <div class="details-wrap" id="details-wrap">
+            <button class="details-toggle" onclick="toggleDetails()" aria-expanded="false">
+                <span id="details-label">Show code &amp; log</span> <span class="chev">&#9662;</span>
+            </button>
+            <div class="details-body">
+                <div class="details-inner">
+                    <div class="details-grid">
+                        <div class="panel-card">
+                            <div class="panel-head"><span class="pip"></span> Algorithm</div>
+                            <div class="code-body" id="code-panel"></div>
+                        </div>
+                        <div class="log-panel" id="log"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        'use strict';
+
+        // ───────── Motion engine ─────────
+        const REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        const FRAME = 1000 / 60;
+        function sampleSpring(stiffness, damping, mass) {
+            const dt = 1 / 60; let x = 1, v = 0; const out = [];
+            for (let i = 0; i < 240; i++) { const a = (-stiffness * x - damping * v) / mass; v += a * dt; x += v * dt; out.push(1 - x); if (Math.abs(x) < 0.0015 && Math.abs(v) < 0.0015) break; }
+            out.push(1); return out;
+        }
+        const SPRING_POS = sampleSpring(320, 30, 1);
+        const SPRING_POP = sampleSpring(520, 17, 1);
+        const durOf = (a) => a.length * FRAME;
+        const Motion = {
+            move(el, x, y) {
+                const px = el._x, py = el._y;
+                const commit = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px)`;
+                if (REDUCED || px == null || (Math.abs(x - px) < 0.5 && Math.abs(y - py) < 0.5)) { el._x = x; el._y = y; el.style.transform = commit; return; }
+                const dx = x - px, dy = y - py;
+                const kf = SPRING_POS.map(p => ({ transform: `translate(${(px + dx * p).toFixed(1)}px, ${(py + dy * p).toFixed(1)}px)` }));
+                el.animate(kf, { duration: durOf(SPRING_POS), easing: 'linear' });
+                el._x = x; el._y = y; el.style.transform = commit;
+            },
+            pop(el) {
+                if (REDUCED) { el.style.opacity = '1'; return; }
+                const kf = SPRING_POP.map(p => ({ opacity: Math.min(1, p * 2).toFixed(3), transform: `translate(${el._x.toFixed(1)}px, ${el._y.toFixed(1)}px) scale(${(0.3 + 0.7 * p).toFixed(3)})` }));
+                const a = el.animate(kf, { duration: durOf(SPRING_POP), easing: 'linear' });
+                a.onfinish = () => { el.style.transform = `translate(${el._x.toFixed(1)}px, ${el._y.toFixed(1)}px)`; };
+            },
+        };
+
+        // ───────── State ─────────
+        let arrays = [];       // the k input arrays
+        let steps = [];
+        let stepIdx = 0;
+        let timer = null;
+        let confettiArmed = true;
+        const delays = [1500, 820, 400];
+        const nodeEls = {};
+        const edgeEls = {};
+        const acellEls = {};
+        const icellEls = {};
+
+        const CODE = [
+            [['src','  h = MinHeap()           # (value, ai, ei)']],
+            [['kw','  for '],['src','ai in range(k):       # seed heads']],
+            [['kw','    if '],['src','arrays[ai]: h.push((arrays[ai][0], ai, 0))']],
+            [['kw','  while '],['src','h:']],
+            [['src','    val, ai, ei = h.popMin()  # root']],
+            [['src','    out.append(val)']],
+            [['kw','    if '],['src','ei+1 < len(arrays[ai]):']],
+            [['src','      h.push((arrays[ai][ei+1], ai, ei+1))']],
+            [['kw','  return '],['src','out']],
+        ];
+        function buildCodePanel() {
+            const panel = document.getElementById('code-panel'); panel.innerHTML = '';
+            CODE.forEach((tokens, i) => {
+                const line = document.createElement('div'); line.className = 'code-line'; line.dataset.line = i;
+                const lno = document.createElement('span'); lno.className = 'lno'; lno.textContent = i + 1; line.appendChild(lno);
+                const src = document.createElement('span');
+                tokens.forEach(([cls, txt]) => { const s = document.createElement('span'); s.className = cls; s.textContent = txt; src.appendChild(s); });
+                line.appendChild(src); panel.appendChild(line);
+            });
+        }
+        function highlightCode(arr) { document.querySelectorAll('.code-line').forEach(el => el.classList.toggle('active', arr && arr.includes(+el.dataset.line))); }
+        function toggleDetails() {
+            const wrap = document.getElementById('details-wrap'); const open = wrap.classList.toggle('open');
+            wrap.querySelector('.details-toggle').setAttribute('aria-expanded', open ? 'true' : 'false');
+            document.getElementById('details-label').textContent = open ? 'Hide code & log' : 'Show code & log';
+        }
+
+        // ───────── min-heap index helper ─────────
+        const par = (i) => (i - 1) >> 1;
+
+        // ───────── step generation ─────────
+        function generateSteps() {
+            steps = [];
+            const k = arrays.length;
+            const h = [];              // heap of {val, ai, ei}
+            const out = [];            // merged output values
+            const consumed = arrays.map(() => 0);  // count emitted (= elemIndex+1 emitted) per array
+            const total = arrays.reduce((s, a) => s + a.length, 0);
+
+            // snapshot helper. The render derives input-cell state from the heap snapshot
+            // (which element is resident) plus `consumed` (how many have been emitted per array).
+            const snap = (extra) => Object.assign({
+                heap: h.map(x => ({ ...x })),
+                out: [...out],
+                consumed: [...consumed],
+                cur: -1, cmp: -1, swap: null, newIdx: -1, opIdx: null,
+                pull: null,        // {ai, ei} input cell being pulled into the heap this step
+                minHead: -1,       // array index whose value is the heap root (narration emphasis)
+            }, extra);
+
+            steps.push(snap({ code: [0], action: 'BUILD HEAP', actionColor: 'var(--accent-purple)',
+                panel: `Merge <b>${k}</b> sorted arrays. A <b>min-heap</b> holds one candidate per array as <code>(value, arrayIndex, elemIndex)</code>; its root is always the global next-smallest, so each emit is O(log&nbsp;k).`,
+                log: `init  k=${k}, total=${total}` }));
+
+            // seed: push first element of each non-empty array
+            for (let ai = 0; ai < k; ai++) {
+                if (arrays[ai].length === 0) {
+                    steps.push(snap({ opIdx: { kind: 'seed', ai }, code: [1, 2], action: `A${ai} EMPTY`, actionColor: 'var(--accent-red)',
+                        panel: `Array <b>A${ai}</b> is empty &#8594; nothing to seed.`, log: `seed  A${ai} empty -> skip` }));
+                    continue;
+                }
+                const val = arrays[ai][0];
+                h.push({ val, ai, ei: 0 });
+                const placed = h.length - 1;
+                steps.push(snap({ opIdx: { kind: 'seed', ai }, code: [1, 2], action: `SEED ${val}`, actionColor: 'var(--accent-orange)',
+                    newIdx: placed, cur: placed, pull: { ai, ei: 0 },
+                    panel: `Seed: push head of <b>A${ai}</b> &#8594; <code>(${val}, A${ai}, 0)</code> at heap index <b>${placed}</b>, then sift up.`,
+                    log: `seed  push (${val}, A${ai}, 0)` }));
+                // sift up with a swap-trace
+                let i = placed;
+                while (i > 0) {
+                    const p = par(i);
+                    const swapped = h[i].val < h[p].val;
+                    steps.push(snap({ opIdx: { kind: 'seed', ai }, code: [2], action: `${h[i].val} < ${h[p].val} ?`, actionColor: 'var(--accent-blue)', cur: i, cmp: p,
+                        panel: `Sift up: is <code>heap[${i}]=${h[i].val}</code> &lt; parent <code>heap[${p}]=${h[p].val}</code>? ${swapped ? '<span style="color:var(--accent-orange)">yes &#8594; swap.</span>' : '<span style="color:var(--accent-green)">no &#8594; settled.</span>'}`,
+                        log: `  cmp i=${i}(${h[i].val}) vs parent ${p}(${h[p].val})` }));
+                    if (!swapped) break;
+                    [h[i], h[p]] = [h[p], h[i]];
+                    steps.push(snap({ opIdx: { kind: 'seed', ai }, code: [2], action: 'SWAP', actionColor: 'var(--accent-orange)', swap: [i, p], cur: p,
+                        panel: `Swap up: <code>heap[${i}]</code> &#8596; <code>heap[${p}]</code>. Continue from index <b>${p}</b>.`,
+                        log: `  swap ${i} <-> ${p}` }));
+                    i = p;
+                }
+            }
+
+            if (h.length > 0) {
+                steps.push(snap({ code: [3], action: 'HEAP READY', actionColor: 'var(--accent-green)', minHead: h[0].ai,
+                    panel: `All heads seeded. The root <code>(${h[0].val}, A${h[0].ai})</code> is the smallest unmerged value &#8594; start emitting.`,
+                    log: `seed  done, root=${h[0].val} (A${h[0].ai})` }));
+            }
+
+            // main loop: pop min -> emit -> push next from same array -> sift down
+            let guard = 0;
+            while (h.length > 0 && guard++ < 5000) {
+                const root = { ...h[0] };
+                const opTag = { kind: 'emit', ai: root.ai };
+
+                steps.push(snap({ opIdx: opTag, code: [4, 5], action: 'POP MIN ' + root.val, actionColor: 'var(--accent-purple)', cur: 0, minHead: root.ai,
+                    panel: `Pop the root: minimum is <b>${root.val}</b> from <b>A${root.ai}</b>. Append it to the merged output.`,
+                    log: `emit  ${root.val}  (A${root.ai}, e${root.ei})` }));
+
+                out.push(root.val);
+                consumed[root.ai] = root.ei + 1;   // this element of A{root.ai} is now emitted
+
+                // remove root: move last to front
+                const last = h.pop();
+                if (h.length > 0) {
+                    h[0] = last;
+                    steps.push(snap({ opIdx: opTag, code: [4], action: 'REHEAPIFY', actionColor: 'var(--accent-orange)', cur: 0,
+                        panel: `Move last leaf <code>${last.val}</code> to the root, then <b>sift down</b> to restore the heap.`,
+                        log: `  move last ${last.val} -> root` }));
+                    // sift down trace
+                    let i = 0;
+                    while (true) {
+                        const n = h.length;
+                        const l = 2 * i + 1, rr = 2 * i + 2; let s = i;
+                        if (l < n && h[l].val < h[s].val) s = l;
+                        if (rr < n && h[rr].val < h[s].val) s = rr;
+                        const kids = []; if (l < n) kids.push(l + '(' + h[l].val + ')'); if (rr < n) kids.push(rr + '(' + h[rr].val + ')');
+                        steps.push(snap({ opIdx: opTag, code: [4], action: s === i ? 'settled' : `min child ${h[s].val}`, actionColor: s === i ? 'var(--accent-green)' : 'var(--accent-blue)', cur: i, cmp: s === i ? -1 : s,
+                            panel: kids.length ? `Sift down at <b>${i}</b> (${h[i].val}). Smallest of node &amp; children {${kids.join(', ')}} is <b>${s}</b> (${h[s].val}). ${s === i ? '<span style="color:var(--accent-green)">&#8804; children &#8594; stop.</span>' : 'Swap down.'}` : `Node <b>${i}</b> is a leaf &#8594; stop.`,
+                            log: `  sift i=${i}(${h[i].val}) smallest=${s}` }));
+                        if (s === i) break;
+                        [h[i], h[s]] = [h[s], h[i]];
+                        steps.push(snap({ opIdx: opTag, code: [4], action: 'SWAP', actionColor: 'var(--accent-orange)', swap: [i, s], cur: s,
+                            panel: `Swap down: <code>heap[${i}]</code> &#8596; <code>heap[${s}]</code>. Continue from index <b>${s}</b>.`,
+                            log: `  swap ${i} <-> ${s}` }));
+                        i = s;
+                    }
+                }
+
+                // push next element from root.ai
+                const ni = root.ei + 1;
+                if (ni < arrays[root.ai].length) {
+                    const nv = arrays[root.ai][ni];
+                    h.push({ val: nv, ai: root.ai, ei: ni });
+                    const placed = h.length - 1;
+                    steps.push(snap({ opIdx: opTag, code: [6, 7], action: `PUSH ${nv}`, actionColor: 'var(--accent-orange)', newIdx: placed, cur: placed, pull: { ai: root.ai, ei: ni },
+                        panel: `<b>A${root.ai}</b> has more: push its next head <code>(${nv}, A${root.ai}, ${ni})</code> at heap index <b>${placed}</b>, then sift up.`,
+                        log: `  push (${nv}, A${root.ai}, ${ni})` }));
+                    let i = placed;
+                    while (i > 0) {
+                        const p = par(i);
+                        const swapped = h[i].val < h[p].val;
+                        steps.push(snap({ opIdx: opTag, code: [7], action: `${h[i].val} < ${h[p].val} ?`, actionColor: 'var(--accent-blue)', cur: i, cmp: p,
+                            panel: `Sift up: is <code>heap[${i}]=${h[i].val}</code> &lt; parent <code>heap[${p}]=${h[p].val}</code>? ${swapped ? '<span style="color:var(--accent-orange)">yes &#8594; swap.</span>' : '<span style="color:var(--accent-green)">no &#8594; settled.</span>'}`,
+                            log: `  cmp i=${i}(${h[i].val}) vs parent ${p}(${h[p].val})` }));
+                        if (!swapped) break;
+                        [h[i], h[p]] = [h[p], h[i]];
+                        steps.push(snap({ opIdx: opTag, code: [7], action: 'SWAP', actionColor: 'var(--accent-orange)', swap: [i, p], cur: p,
+                            panel: `Swap up: <code>heap[${i}]</code> &#8596; <code>heap[${p}]</code>. Continue from index <b>${p}</b>.`,
+                            log: `  swap ${i} <-> ${p}` }));
+                        i = p;
+                    }
+                } else {
+                    steps.push(snap({ opIdx: opTag, code: [6], action: `A${root.ai} DONE`, actionColor: 'var(--accent-red)',
+                        panel: `<b>A${root.ai}</b> is exhausted &#8594; nothing to push back. ${h.length ? 'Continue with the remaining heap.' : 'Heap is now empty.'}`,
+                        log: `  A${root.ai} exhausted` }));
+                }
+            }
+
+            steps.push(snap({ complete: true, confetti: true, code: [8], action: '✓ MERGED', actionColor: 'var(--accent-green)', minHead: -1,
+                panel: `All ${k} arrays merged into one sorted sequence of <b>${out.length}</b> values: <code>[${out.join(', ') || ' '}]</code>.`,
+                log: `done  merged = [${out.join(', ')}]` }));
+        }
+
+        // ───────── layout (complete binary tree by heap index) ─────────
+        const ROW = 60, PADY = 30;
+        function layout(n) {
+            if (n === 0) return { pos: [], width: 360, height: 100, maxLevel: 0 };
+            const maxLevel = Math.floor(Math.log2(n));
+            const wide = Math.pow(2, maxLevel);
+            const slot = 70;
+            const width = Math.max(wide * slot, 320);
+            const pos = [];
+            for (let i = 0; i < n; i++) {
+                const L = Math.floor(Math.log2(i + 1));
+                const levelStart = Math.pow(2, L) - 1;
+                const posInLevel = i - levelStart;
+                const countInLevel = Math.pow(2, L);
+                const x = (posInLevel + 0.5) / countInLevel * width;
+                const y = L * ROW + PADY;
+                pos.push({ x, y });
+            }
+            const height = maxLevel * ROW + PADY * 2;
+            return { pos, width, height, maxLevel };
+        }
+
+        // ───────── render ─────────
+        function renderStep(idx) {
+            stepIdx = idx; const step = steps[idx]; if (!step) return;
+
+            // Single source of truth for input-cell coloring, derived from the heap snapshot:
+            // residentIdx[ai] = the elemIndex of array ai that is currently sitting in the heap.
+            const residentIdx = {};
+            step.heap.forEach(it => { residentIdx[it.ai] = it.ei; });
+
+            renderInputs2(step, residentIdx);
+
+            const n = step.heap.length;
+            const { pos, width, height } = layout(n);
+            const canvas = document.getElementById('tree-canvas');
+            const svg = document.getElementById('edges');
+            canvas.style.width = width + 'px'; canvas.style.height = Math.max(height, 100) + 'px';
+            svg.setAttribute('width', width); svg.setAttribute('height', Math.max(height, 100));
+
+            const swapSet = new Set(step.swap || []);
+            // nodes
+            const used = new Set();
+            for (let i = 0; i < n; i++) {
+                used.add('n:' + i);
+                let el = nodeEls['n:' + i]; const fresh = !el;
+                if (!el) { el = document.createElement('div'); el.className = 'hnode'; el.innerHTML = `<span class="hv"></span><span class="src"></span><span class="idx"></span>`; canvas.appendChild(el); nodeEls['n:' + i] = el; }
+                el.querySelector('.hv').textContent = step.heap[i].val;
+                el.querySelector('.src').textContent = 'A' + step.heap[i].ai;
+                el.querySelector('.idx').textContent = i;
+                let cls = 'hnode' + (i === 0 ? ' root' : '');
+                if (swapSet.has(i)) cls += ' swap';
+                else if (i === step.cur) cls += ' cur';
+                else if (i === step.cmp) cls += ' cmp';
+                if (i === step.newIdx) cls += ' new';
+                el.className = cls;
+                if (fresh) { el._x = pos[i].x; el._y = pos[i].y; el.style.transform = `translate(${pos[i].x}px, ${pos[i].y}px)`; el.style.opacity = '0'; Motion.pop(el); }
+                else Motion.move(el, pos[i].x, pos[i].y);
+            }
+            Object.keys(nodeEls).forEach(k => { if (!used.has(k)) { nodeEls[k].remove(); delete nodeEls[k]; } });
+
+            // edges (parent->child)
+            const usedE = new Set();
+            for (let i = 1; i < n; i++) {
+                const p = (i - 1) >> 1; const key = 'e:' + i; usedE.add(key);
+                let ln = edgeEls[key];
+                if (!ln) { ln = document.createElementNS('http://www.w3.org/2000/svg', 'line'); svg.appendChild(ln); edgeEls[key] = ln; }
+                ln.setAttribute('x1', pos[p].x); ln.setAttribute('y1', pos[p].y); ln.setAttribute('x2', pos[i].x); ln.setAttribute('y2', pos[i].y);
+                const onPath = (swapSet.has(i) && swapSet.has(p)) || ((i === step.cur || i === step.cmp) && (p === step.cur || p === step.cmp));
+                ln.setAttribute('class', 'edge-ln' + (onPath ? ' active' : ''));
+            }
+            Object.keys(edgeEls).forEach(k => { if (!usedE.has(k)) { edgeEls[k].remove(); delete edgeEls[k]; } });
+
+            // heap array view
+            const rail = document.getElementById('array-rail'); const usedA = new Set();
+            if (n > 0) { const note = rail.querySelector('.empty-note'); if (note) note.remove(); }
+            for (let i = 0; i < n; i++) {
+                usedA.add('a:' + i);
+                let el = acellEls['a:' + i];
+                if (!el) { el = document.createElement('div'); el.className = 'acell'; el.innerHTML = `<span class="av"></span><span class="as"></span><span class="ai"></span>`; rail.appendChild(el); acellEls['a:' + i] = el; }
+                el.querySelector('.av').textContent = step.heap[i].val;
+                el.querySelector('.as').textContent = 'A' + step.heap[i].ai;
+                el.querySelector('.ai').textContent = i;
+                let cls = 'acell';
+                if (swapSet.has(i)) cls += ' swap'; else if (i === step.cur) cls += ' cur'; else if (i === step.cmp) cls += ' cmp';
+                el.className = cls;
+            }
+            Object.keys(acellEls).forEach(k => { if (!usedA.has(k)) { acellEls[k].remove(); delete acellEls[k]; } });
+            if (n === 0) { if (!rail.querySelector('.empty-note')) rail.innerHTML = '<span class="empty-note" style="color:var(--text-dim);font-family:var(--mono);font-size:13px">heap is empty</span>'; }
+
+            // merged output track
+            const exWrap = document.getElementById('extracted'); const exLabel = document.getElementById('ex-label');
+            exWrap.innerHTML = '';
+            if (step.out.length) { exLabel.style.display = 'inline'; step.out.forEach(v => { const t = document.createElement('div'); t.className = 'ex-tile'; t.textContent = v; exWrap.appendChild(t); }); }
+            else exLabel.style.display = 'none';
+
+            // narration / chrome
+            const mp = document.getElementById('main-panel');
+            mp.innerHTML = step.panel || '&mdash;';
+            mp.classList.toggle('done', !!step.complete);
+            const aw = document.getElementById('action-word'); aw.textContent = step.action || ''; aw.style.color = step.actionColor || 'var(--text-dim)';
+            highlightCode(step.code);
+
+            if (step.confetti) { if (confettiArmed) { fireConfetti(); confettiArmed = false; } } else confettiArmed = true;
+
+            renderOpFeed(step.opIdx);
+            document.getElementById('step-badge').textContent = `Step ${idx + 1} / ${steps.length}`;
+            document.getElementById('progress-fill').style.width = `${(idx / Math.max(1, steps.length - 1)) * 100}%`;
+
+            const logEl = document.getElementById('log');
+            logEl.innerHTML = steps.slice(0, idx + 1).map(s => `<div style="margin:3px 0;white-space:pre-wrap;">${s.log}</div>`).join('');
+            logEl.scrollTop = logEl.scrollHeight;
+        }
+
+        // input-array renderer using the resident-index map from the heap snapshot
+        function renderInputs2(step, residentIdx) {
+            const host = document.getElementById('arrays-host');
+            arrays.forEach((arr, ai) => {
+                let row = host.querySelector(`[data-row="${ai}"]`);
+                if (!row) {
+                    row = document.createElement('div'); row.className = 'arr-row'; row.dataset.row = ai;
+                    const tag = document.createElement('div'); tag.className = 'arr-tag'; tag.textContent = 'A' + ai;
+                    const tiles = document.createElement('div'); tiles.className = 'arr-tiles';
+                    row.appendChild(tag); row.appendChild(tiles); host.appendChild(row);
+                }
+                const tiles = row.querySelector('.arr-tiles');
+                const resEi = (ai in residentIdx) ? residentIdx[ai] : null;   // element of this array currently in heap
+                const consumed = (step.consumed && step.consumed[ai]) || 0;    // # already emitted from this array
+                arr.forEach((val, ei) => {
+                    const ck = 'c:' + ai + ':' + ei;
+                    let cell = icellEls[ck];
+                    if (!cell) {
+                        cell = document.createElement('div'); cell.className = 'icell';
+                        cell.innerHTML = `<span class="iv"></span><span class="hp"></span>`;
+                        tiles.appendChild(cell); icellEls[ck] = cell;
+                    }
+                    cell.querySelector('.iv').textContent = val;
+                    const isPull = step.pull && step.pull.ai === ai && step.pull.ei === ei;
+                    const isHead = resEi != null && ei === resEi;     // currently resident in the heap
+                    let cls = 'icell';
+                    if (isPull) cls += ' pull';
+                    else if (isHead) cls += ' head';
+                    else if (ei < consumed) cls += ' taken';          // already emitted to output
+                    cell.className = cls;
+                    cell.querySelector('.hp').textContent = isHead ? '▼' : '';
+                });
+            });
+        }
+
+        function renderOpFeed(currentOpIdx) {
+            const feed = document.getElementById('op-feed'); feed.innerHTML = '';
+            // op feed = one chip per array, showing how many emitted from each
+            const cur = currentOpIdx;
+            arrays.forEach((arr, ai) => {
+                const chip = document.createElement('div');
+                let state = '';
+                if (cur && cur.ai === ai) state = ' current';
+                chip.className = 'op-chip' + state;
+                chip.textContent = 'A' + ai + ' [' + arr.length + ']';
+                feed.appendChild(chip);
+            });
+        }
+
+        function fireConfetti() {
+            const host = document.getElementById('confetti'); if (!host || REDUCED) return;
+            const colors = ['#22c55e', '#06b6d4', '#a855f7', '#f5a524', '#f43f5e'];
+            for (let i = 0; i < 38; i++) {
+                const p = document.createElement('div'); p.className = 'confetti-piece';
+                p.style.setProperty('--x', ((Math.random() * 2 - 1) * 220) + 'px');
+                p.style.setProperty('--rot', ((Math.random() * 720 - 360)) + 'deg');
+                p.style.background = colors[i % colors.length];
+                p.style.animationDuration = (0.9 + Math.random() * 0.8) + 's';
+                p.style.animationDelay = (Math.random() * 0.15) + 's';
+                host.appendChild(p); setTimeout(() => p.remove(), 1900);
+            }
+        }
+
+        // ───────── controls ─────────
+        function nextStep() { if (stepIdx < steps.length - 1) renderStep(stepIdx + 1); else pause(); }
+        function prevStep() { if (stepIdx > 0) renderStep(stepIdx - 1); }
+        function resetSim() { pause(); renderStep(0); }
+        function togglePlay() {
+            const btn = document.getElementById('play-btn');
+            if (timer) { pause(); return; }
+            btn.textContent = 'Pause';
+            if (stepIdx >= steps.length - 1) renderStep(0);
+            timer = setInterval(() => { if (stepIdx < steps.length - 1) nextStep(); else pause(); }, delays[document.getElementById('speed').value]);
+        }
+        function pause() { clearInterval(timer); timer = null; document.getElementById('play-btn').textContent = 'Play'; }
+
+        function clearDom() {
+            Object.keys(nodeEls).forEach(k => { nodeEls[k].remove(); delete nodeEls[k]; });
+            Object.keys(edgeEls).forEach(k => { edgeEls[k].remove(); delete edgeEls[k]; });
+            Object.keys(acellEls).forEach(k => { acellEls[k].remove(); delete acellEls[k]; });
+            Object.keys(icellEls).forEach(k => { icellEls[k].remove(); delete icellEls[k]; });
+            document.getElementById('array-rail').innerHTML = '';
+            document.getElementById('arrays-host').innerHTML = '';
+            confettiArmed = true;
+        }
+
+        function loadArrays(newArrays) {
+            pause();
+            // sanitize: array of arrays of finite numbers
+            arrays = (newArrays || []).filter(a => Array.isArray(a)).map(a => a.filter(v => typeof v === 'number' && isFinite(v)));
+            clearDom();
+            generateSteps();
+            renderStep(0);
+        }
+
+        function loadCustom() {
+            const input = document.getElementById('arrays-input');
+            try {
+                const parsed = JSON.parse(input.value);
+                if (!Array.isArray(parsed) || !parsed.every(a => Array.isArray(a))) throw 0;
+                loadArrays(parsed);
+            } catch (e) {
+                input.focus();
+                input.style.borderColor = 'var(--accent-red)';
+                setTimeout(() => { input.style.borderColor = ''; }, 900);
+            }
+        }
+
+        const EXAMPLES = [
+            [[1, 4, 7], [2, 5, 8], [3, 6, 9]],
+            [[10, 20, 30], [5, 15, 25]],
+        ];
+        function loadExample(n) {
+            document.getElementById('arrays-input').value = JSON.stringify(EXAMPLES[n]);
+            loadArrays(EXAMPLES[n].map(a => [...a]));
+        }
+
+        document.addEventListener('keydown', (e) => {
+            const tag = (e.target.tagName || '').toLowerCase(); if (tag === 'input' || tag === 'textarea') return;
+            if (e.key === 'ArrowRight') { e.preventDefault(); pause(); nextStep(); }
+            else if (e.key === 'ArrowLeft') { e.preventDefault(); pause(); prevStep(); }
+            else if (e.key === ' ') { e.preventDefault(); togglePlay(); }
+        });
+        document.getElementById('arrays-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') loadCustom(); });
+        window.addEventListener('resize', () => renderStep(stepIdx));
+
+        buildCodePanel();
+        window.onload = () => loadExample(0);
+    </script>
+</body>
+</html>

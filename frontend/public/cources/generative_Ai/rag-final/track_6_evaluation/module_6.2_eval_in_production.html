@@ -1,0 +1,1794 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>RAG Academy • Module 6.2 — Eval in Production</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  if (typeof console !== 'undefined') {
+    const origWarn = console.warn;
+    console.warn = function(...args) {
+      if (args[0] && typeof args[0] === 'string' && args[0].includes('cdn.tailwindcss.com')) return;
+      origWarn.apply(console, args);
+    };
+  }
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700;800;900&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+<style>
+  :root {
+    --bg-deep: #02030a;
+    --bg-mid: #060818;
+    --bg-card: rgba(12, 16, 38, 0.6);
+    --neon-cyan: #00f0ff;
+    --neon-blue: #4d8eff;
+    --neon-purple: #b86bff;
+    --neon-pink: #ff4dcf;
+    --neon-amber: #ffb84d;
+    --neon-green: #4dffb8;
+    --text-primary: #e8efff;
+    --text-secondary: #8a96b8;
+    --border-glow: rgba(0, 240, 255, 0.25);
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    font-family: 'Inter', sans-serif;
+    background: var(--bg-deep);
+    color: var(--text-primary);
+    overflow-x: hidden;
+    min-height: 100vh;
+  }
+
+  .font-display { font-family: 'Orbitron', sans-serif; letter-spacing: 0.02em; }
+  .font-mono { font-family: 'JetBrains Mono', monospace; }
+
+  /* ===== STARFIELD ===== */
+  #starfield { position: fixed; inset: 0; z-index: 0; pointer-events: none; }
+  .nebula {
+    position: fixed; border-radius: 50%; filter: blur(120px);
+    opacity: 0.35; pointer-events: none; z-index: 0;
+  }
+  .nebula-1 { top: -10%; left: -5%; width: 50vw; height: 50vw; background: radial-gradient(circle, #4d8eff, transparent 70%); animation: drift1 22s ease-in-out infinite; }
+  .nebula-2 { top: 30%; right: -10%; width: 45vw; height: 45vw; background: radial-gradient(circle, #b86bff, transparent 70%); animation: drift2 28s ease-in-out infinite; }
+  .nebula-3 { bottom: -10%; left: 20%; width: 40vw; height: 40vw; background: radial-gradient(circle, #00f0ff, transparent 70%); animation: drift3 25s ease-in-out infinite; opacity: 0.22; }
+  @keyframes drift1 { 0%,100% { transform: translate(0,0); } 50% { transform: translate(40px, 60px); } }
+  @keyframes drift2 { 0%,100% { transform: translate(0,0); } 50% { transform: translate(-50px, 40px); } }
+  @keyframes drift3 { 0%,100% { transform: translate(0,0); } 50% { transform: translate(30px, -50px); } }
+
+  /* ===== NAV ===== */
+  .top-nav {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 50;
+    backdrop-filter: blur(20px); background: rgba(2, 3, 10, 0.7);
+    border-bottom: 1px solid rgba(0, 240, 255, 0.15);
+  }
+  .nav-logo {
+    background: linear-gradient(135deg, var(--neon-cyan), var(--neon-purple));
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+
+  /* ===== HOLO CARDS ===== */
+  .holo-card {
+    background: linear-gradient(135deg, rgba(12, 16, 38, 0.7), rgba(20, 12, 50, 0.5));
+    border: 1px solid rgba(0, 240, 255, 0.18);
+    border-radius: 18px;
+    backdrop-filter: blur(14px);
+    position: relative;
+    overflow: hidden;
+    transition: all 0.4s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  .holo-card::before {
+    content: ''; position: absolute; inset: 0;
+    background: linear-gradient(135deg, transparent 40%, rgba(0, 240, 255, 0.08) 50%, transparent 60%);
+    transform: translateX(-100%); transition: transform 0.8s ease; pointer-events: none;
+  }
+  .holo-card:hover::before { transform: translateX(100%); }
+  .holo-card:hover {
+    border-color: rgba(0, 240, 255, 0.5);
+    box-shadow: 0 0 40px rgba(0, 240, 255, 0.15), inset 0 0 30px rgba(77, 142, 255, 0.05);
+    transform: translateY(-4px);
+  }
+
+  /* ===== GRADIENT TEXT ===== */
+  .gradient-cyan { background: linear-gradient(135deg, #00f0ff, #4d8eff); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .gradient-purple { background: linear-gradient(135deg, #b86bff, #ff4dcf); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .gradient-amber { background: linear-gradient(135deg, #ffb84d, #ff4dcf); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .gradient-multi { background: linear-gradient(135deg, #00f0ff 0%, #4d8eff 35%, #b86bff 70%, #ff4dcf 100%); -webkit-background-clip: text; background-clip: text; color: transparent; }
+
+  /* ===== BUTTONS ===== */
+  .btn-primary {
+    background: linear-gradient(135deg, #00f0ff, #4d8eff);
+    color: #02030a; font-weight: 700; padding: 14px 28px;
+    border-radius: 12px; border: none; position: relative; overflow: hidden;
+    transition: all 0.3s ease; cursor: pointer;
+    box-shadow: 0 0 30px rgba(0, 240, 255, 0.35);
+  }
+  .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 0 50px rgba(0, 240, 255, 0.6); }
+  .btn-ghost {
+    background: rgba(12, 16, 38, 0.5); border: 1px solid rgba(0, 240, 255, 0.3);
+    color: var(--text-primary); font-weight: 600; padding: 14px 28px;
+    border-radius: 12px; transition: all 0.3s ease; cursor: pointer;
+  }
+  .btn-ghost:hover { border-color: var(--neon-cyan); background: rgba(0, 240, 255, 0.08); }
+
+  /* ===== HERO ===== */
+  .hero-title { font-size: clamp(2.5rem, 7vw, 6rem); line-height: 0.95; font-weight: 900; }
+  .scan-line {
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--neon-cyan), transparent);
+    animation: scan 4s linear infinite;
+  }
+  @keyframes scan { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }
+
+  /* ===== ORBIT ===== */
+  .orbit-container {
+    position: relative; width: 100%; max-width: 520px;
+    aspect-ratio: 1; margin: 0 auto;
+  }
+  .orbit-core {
+    position: absolute; top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 110px; height: 110px; border-radius: 50%;
+    background: radial-gradient(circle, #00f0ff 0%, #4d8eff 40%, #b86bff 100%);
+    box-shadow: 0 0 60px rgba(0, 240, 255, 0.7), 0 0 120px rgba(77, 142, 255, 0.4);
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Orbitron', sans-serif; font-weight: 900; color: #02030a;
+    font-size: 1.05rem; z-index: 5;
+    animation: pulse-core 3s ease-in-out infinite;
+  }
+  @keyframes pulse-core {
+    0%,100% { box-shadow: 0 0 60px rgba(0, 240, 255, 0.7), 0 0 120px rgba(77, 142, 255, 0.4); }
+    50% { box-shadow: 0 0 80px rgba(0, 240, 255, 1), 0 0 160px rgba(184, 107, 255, 0.6); }
+  }
+  .orbit-ring {
+    position: absolute; top: 50%; left: 50%; border-radius: 50%;
+    border: 1px dashed rgba(0, 240, 255, 0.25);
+    transform: translate(-50%, -50%);
+  }
+  .ring-1 { width: 50%; height: 50%; animation: spin 20s linear infinite; }
+  .ring-2 { width: 75%; height: 75%; animation: spin 35s linear infinite reverse; }
+  .ring-3 { width: 100%; height: 100%; animation: spin 50s linear infinite; }
+  @keyframes spin { from { transform: translate(-50%, -50%) rotate(0deg); } to { transform: translate(-50%, -50%) rotate(360deg); } }
+  .orbit-planet {
+    position: absolute; width: 44px; height: 44px;
+    border-radius: 50%; display: flex;
+    align-items: center; justify-content: center;
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(255,255,255,0.2);
+  }
+  .orbit-planet i { width: 20px; height: 20px; }
+
+  /* ===== STAT ===== */
+  .stat-num {
+    font-family: 'Orbitron', sans-serif; font-weight: 800; font-size: 2.4rem;
+    background: linear-gradient(135deg, #00f0ff, #b86bff);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+
+  /* ===== PILL ===== */
+  .pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 6px 14px; border-radius: 999px;
+    font-size: 0.75rem; font-weight: 600;
+    letter-spacing: 0.08em; text-transform: uppercase;
+    border: 1px solid rgba(0, 240, 255, 0.3);
+    background: rgba(0, 240, 255, 0.06);
+    color: var(--neon-cyan);
+  }
+
+  /* ===== ROADMAP NODES ===== */
+  .roadmap-node { transition: all 0.3s ease; cursor: pointer; }
+  .roadmap-node:hover { transform: scale(1.05); }
+  .roadmap-node.active .node-circle {
+    background: linear-gradient(135deg, var(--neon-cyan), var(--neon-purple));
+    box-shadow: 0 0 30px rgba(0, 240, 255, 0.6);
+  }
+  .node-circle {
+    width: 60px; height: 60px; border-radius: 50%;
+    background: rgba(12, 16, 38, 0.8);
+    border: 2px solid rgba(0, 240, 255, 0.3);
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Orbitron', sans-serif; font-weight: 700;
+    color: var(--neon-cyan); transition: all 0.3s ease;
+  }
+
+  /* ===== CODE BLOCK ===== */
+  .code-block {
+    background: rgba(2, 3, 10, 0.8);
+    border: 1px solid rgba(0, 240, 255, 0.2);
+    border-radius: 14px; padding: 24px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.82rem; line-height: 1.7;
+    overflow-x: auto; position: relative;
+  }
+  .code-block::before {
+    content: ''; position: absolute; top: 0; left: 0; right: 0;
+    height: 1px; background: linear-gradient(90deg, transparent, var(--neon-cyan), transparent);
+  }
+  .tok-keyword { color: #ff4dcf; }
+  .tok-string { color: #4dffb8; }
+  .tok-fn { color: #00f0ff; }
+  .tok-comment { color: #5a6788; font-style: italic; }
+  .tok-num { color: #ffb84d; }
+  .tok-var { color: #e8efff; }
+  .tok-yaml-key { color: #4d8eff; }
+
+  /* ===== FLOAT ===== */
+  .float-y { animation: floaty 6s ease-in-out infinite; }
+  @keyframes floaty { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-12px); } }
+
+  /* ===== REVEAL ===== */
+  .reveal { transition: opacity 1s cubic-bezier(0.2, 0.8, 0.2, 1), transform 1s cubic-bezier(0.2, 0.8, 0.2, 1); }
+  .js-reveal .reveal { opacity: 0; transform: translateY(40px); }
+  .js-reveal .reveal.in { opacity: 1; transform: translateY(0); }
+
+  /* ===== USE CASE ICON ===== */
+  .use-case-icon {
+    width: 56px; height: 56px; border-radius: 14px;
+    display: flex; align-items: center; justify-content: center;
+    margin-bottom: 16px;
+  }
+
+  /* ===== PROGRESS ===== */
+  .progress-bar { height: 6px; background: rgba(0, 240, 255, 0.1); border-radius: 999px; overflow: hidden; position: relative; }
+  .progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--neon-cyan), var(--neon-purple), var(--neon-pink));
+    border-radius: 999px;
+    transition: width 1.5s cubic-bezier(0.2, 0.8, 0.2, 1);
+    position: relative;
+  }
+  .progress-fill::after {
+    content: ''; position: absolute; inset: 0;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
+    animation: shimmer 2s linear infinite;
+  }
+  @keyframes shimmer { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }
+
+  /* ===== CHECKPOINT ===== */
+  .checkpoint-glow {
+    background: radial-gradient(circle at center, rgba(0, 240, 255, 0.12), transparent 70%);
+    border: 1px solid rgba(0, 240, 255, 0.3);
+  }
+
+  /* ===== SIDE DOTS ===== */
+  .side-dots {
+    position: fixed; right: 24px; top: 50%; transform: translateY(-50%);
+    z-index: 40; display: flex; flex-direction: column; gap: 14px;
+  }
+  @media (max-width: 1024px) { .side-dots { display: none; } }
+  .dot {
+    width: 10px; height: 10px; border-radius: 50%;
+    background: rgba(0, 240, 255, 0.2);
+    border: 1px solid rgba(0, 240, 255, 0.4);
+    transition: all 0.3s ease; cursor: pointer;
+  }
+  .dot.active { background: var(--neon-cyan); box-shadow: 0 0 15px var(--neon-cyan); transform: scale(1.3); }
+
+  /* ===== SCROLLBAR ===== */
+  ::-webkit-scrollbar { width: 10px; }
+  ::-webkit-scrollbar-track { background: var(--bg-deep); }
+  ::-webkit-scrollbar-thumb { background: linear-gradient(180deg, var(--neon-cyan), var(--neon-purple)); border-radius: 10px; }
+
+  /* ===== HOLO BORDER ===== */
+  .holo-border { position: relative; }
+  .holo-border::after {
+    content: ''; position: absolute; inset: -1px;
+    border-radius: inherit; padding: 1px;
+    background: linear-gradient(135deg, var(--neon-cyan), transparent 40%, transparent 60%, var(--neon-purple));
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    pointer-events: none; opacity: 0.6;
+  }
+
+  /* ===== GRID FLOOR ===== */
+  .grid-floor {
+    position: absolute; bottom: 0; left: 0; right: 0; height: 30vh;
+    background-image:
+      linear-gradient(rgba(0, 240, 255, 0.15) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0, 240, 255, 0.15) 1px, transparent 1px);
+    background-size: 50px 50px;
+    opacity: 0.4;
+    mask-image: linear-gradient(180deg, transparent, black 50%);
+    -webkit-mask-image: linear-gradient(180deg, transparent, black 50%);
+  }
+
+  /* ===== CALLOUTS ===== */
+  .callout {
+    background: linear-gradient(135deg, rgba(255, 184, 77, 0.08), rgba(255, 77, 207, 0.04));
+    border-left: 3px solid var(--neon-amber);
+    border-radius: 8px; padding: 16px 20px;
+  }
+  .callout-cyan {
+    background: linear-gradient(135deg, rgba(0, 240, 255, 0.08), rgba(77, 142, 255, 0.04));
+    border-left: 3px solid var(--neon-cyan);
+    border-radius: 8px; padding: 16px 20px;
+  }
+  .callout-pink {
+    background: linear-gradient(135deg, rgba(255, 77, 207, 0.08), rgba(184, 107, 255, 0.04));
+    border-left: 3px solid var(--neon-pink);
+    border-radius: 8px; padding: 16px 20px;
+  }
+  .callout-green {
+    background: linear-gradient(135deg, rgba(77, 255, 184, 0.08), rgba(0, 240, 255, 0.04));
+    border-left: 3px solid var(--neon-green);
+    border-radius: 8px; padding: 16px 20px;
+  }
+
+  /* ===== QUIZ ===== */
+  .quiz-option {
+    background: rgba(12, 16, 38, 0.6);
+    border: 1px solid rgba(0, 240, 255, 0.2);
+    border-radius: 12px;
+    padding: 14px 18px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    text-align: left;
+    width: 100%;
+    color: var(--text-primary);
+    font-family: 'Inter', sans-serif;
+  }
+  .quiz-option:hover { border-color: rgba(0, 240, 255, 0.5); background: rgba(0, 240, 255, 0.04); }
+  .quiz-option.correct { border-color: var(--neon-green); background: rgba(77, 255, 184, 0.08); color: #d4ffe8; }
+  .quiz-option.wrong { border-color: var(--neon-pink); background: rgba(255, 77, 207, 0.08); color: #ffd0ec; }
+  .quiz-option.disabled { cursor: not-allowed; pointer-events: none; }
+
+  /* ===== DATA TABLE ===== */
+  .data-table {
+    width: 100%; border-collapse: separate; border-spacing: 0;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.82rem;
+  }
+  .data-table th {
+    background: rgba(0, 240, 255, 0.08);
+    color: var(--neon-cyan);
+    text-align: left; padding: 12px 14px;
+    font-weight: 600; letter-spacing: 0.05em;
+    border-bottom: 1px solid rgba(0, 240, 255, 0.25);
+  }
+  .data-table td {
+    padding: 12px 14px;
+    color: var(--text-primary);
+    border-bottom: 1px solid rgba(0, 240, 255, 0.08);
+  }
+  .data-table tr:hover td { background: rgba(0, 240, 255, 0.03); }
+
+  /* ===== PIPELINE STAGES ===== */
+  .stage-card {
+    background: rgba(12, 16, 38, 0.6);
+    border: 1px solid rgba(0, 240, 255, 0.18);
+    border-radius: 14px;
+    padding: 18px;
+    transition: all 0.3s ease;
+    cursor: pointer;
+    position: relative;
+  }
+  .stage-card:hover {
+    border-color: rgba(0, 240, 255, 0.5);
+    transform: translateY(-3px);
+    box-shadow: 0 8px 30px rgba(0, 240, 255, 0.12);
+  }
+  .stage-card.active {
+    border-color: var(--neon-cyan);
+    box-shadow: 0 0 30px rgba(0, 240, 255, 0.3);
+    background: rgba(0, 240, 255, 0.05);
+  }
+  .stage-num {
+    position: absolute; top: -10px; left: 14px;
+    background: var(--bg-deep);
+    padding: 2px 10px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.7rem; color: var(--neon-cyan);
+    border: 1px solid rgba(0,240,255,0.3);
+    border-radius: 999px;
+  }
+
+  /* ===== CI STATUS ROWS ===== */
+  .ci-row {
+    display: flex; align-items: center; gap: 14px;
+    padding: 14px 16px;
+    border-radius: 10px;
+    background: rgba(12, 16, 38, 0.5);
+    border: 1px solid rgba(0, 240, 255, 0.15);
+    transition: all 0.3s ease;
+  }
+  .ci-row.pass { border-color: rgba(77, 255, 184, 0.4); background: rgba(77, 255, 184, 0.04); }
+  .ci-row.fail { border-color: rgba(255, 77, 207, 0.5); background: rgba(255, 77, 207, 0.05); }
+  .ci-badge {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.7rem; font-weight: 700;
+    padding: 4px 10px; border-radius: 6px;
+    letter-spacing: 0.05em;
+  }
+  .ci-pass-badge { background: rgba(77,255,184,0.15); color: #4dffb8; }
+  .ci-fail-badge { background: rgba(255,77,207,0.15); color: #ff4dcf; }
+
+  /* ===== DRIFT CHART WRAPPER ===== */
+  .drift-chart-wrapper { position: relative; width: 100%; height: 280px; }
+  #driftChart { max-height: 280px !important; display: block !important; }
+
+  /* ===== MOBILE ===== */
+  @media (max-width: 768px) {
+    .orbit-container { max-width: 340px; }
+    .code-block { font-size: 0.72rem; padding: 16px; }
+    .data-table { font-size: 0.72rem; }
+  }
+
+
+  /* ===== LEARN & PRACTICE CARDS ===== */
+  .resource-stack {
+    max-width: 860px;
+    margin: 0 auto;
+    display: grid;
+    gap: 14px;
+  }
+  .resource-card {
+    background: linear-gradient(135deg, rgba(6, 8, 24, 0.92), rgba(10, 12, 34, 0.86));
+    border: 1px solid rgba(0, 240, 255, 0.32);
+    border-radius: 16px;
+    padding: 20px;
+    box-shadow: 0 0 28px rgba(0, 240, 255, 0.08);
+  }
+  .resource-card.repo {
+    border-color: rgba(255, 77, 207, 0.35);
+    box-shadow: 0 0 28px rgba(255, 77, 207, 0.08);
+  }
+  .resource-icon {
+    width: 34px;
+    height: 34px;
+    border-radius: 10px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid rgba(0, 240, 255, 0.4);
+    background: rgba(0, 240, 255, 0.08);
+    color: var(--neon-cyan);
+    flex-shrink: 0;
+  }
+  .resource-card.repo .resource-icon {
+    border-color: rgba(255, 77, 207, 0.45);
+    background: rgba(255, 77, 207, 0.1);
+    color: var(--neon-pink);
+  }
+  .resource-cta {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 12px;
+    padding: 10px 18px;
+    border-radius: 10px;
+    border: 1px solid rgba(0, 240, 255, 0.55);
+    color: var(--neon-cyan);
+    font-family: 'Orbitron', sans-serif;
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    background: rgba(0, 240, 255, 0.06);
+    transition: all 0.25s ease;
+  }
+  .resource-cta:hover {
+    background: rgba(0, 240, 255, 0.12);
+    box-shadow: 0 0 20px rgba(0, 240, 255, 0.22);
+  }
+  .resource-card.repo .resource-cta {
+    border-color: rgba(255, 77, 207, 0.55);
+    color: var(--neon-pink);
+    background: rgba(255, 77, 207, 0.08);
+  }
+  .resource-card.repo .resource-cta:hover {
+    background: rgba(255, 77, 207, 0.15);
+    box-shadow: 0 0 20px rgba(255, 77, 207, 0.24);
+  }
+
+</style>
+</head>
+
+<body>
+
+<div class="nebula nebula-1"></div>
+<div class="nebula nebula-2"></div>
+<div class="nebula nebula-3"></div>
+
+<canvas id="starfield"></canvas>
+
+<!-- TOP NAV -->
+<nav class="top-nav">
+  <div class="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
+    <div class="flex items-center gap-3">
+      <div class="w-10 h-10 rounded-xl flex items-center justify-center" style="background: linear-gradient(135deg, #00f0ff, #b86bff); box-shadow: 0 0 20px rgba(0,240,255,0.5);">
+        <i data-lucide="orbit" class="w-5 h-5 text-black"></i>
+      </div>
+      <div>
+        <div class="font-display font-bold text-lg nav-logo">RAG ACADEMY</div>
+        <div class="text-[10px] text-gray-400 tracking-widest -mt-1">TRACK 06 · MODULE 6.2</div>
+      </div>
+    </div>
+
+    <div class="hidden md:flex items-center gap-8 text-sm">
+      <a href="#hero" class="text-cyan-300 font-medium">Overview</a>
+      <a href="#axes" class="text-gray-300 hover:text-cyan-300 transition">Online/Offline</a>
+      <a href="#stages" class="text-gray-300 hover:text-cyan-300 transition">Per-Stage</a>
+      <a href="#ci" class="text-gray-300 hover:text-cyan-300 transition">CI Gates</a>
+      <a href="#monitoring" class="text-gray-300 hover:text-cyan-300 transition">Monitoring</a>
+      <a href="#drift" class="text-gray-300 hover:text-cyan-300 transition">Drift</a>
+      <a href="#checkpoint" class="text-gray-300 hover:text-cyan-300 transition">Checkpoint</a>
+    </div>
+
+    <div class="flex items-center gap-3">
+      <div class="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full" style="background: rgba(0,240,255,0.08); border: 1px solid rgba(0,240,255,0.25);">
+        <div class="w-2 h-2 rounded-full" style="background: #4dffb8; box-shadow: 0 0 8px #4dffb8;"></div>
+        <span class="text-xs font-mono text-cyan-200">CADET ONLINE</span>
+      </div>
+      <button class="btn-ghost text-sm py-2 px-4">Save Progress</button>
+    </div>
+  </div>
+  <div class="scan-line"></div>
+</nav>
+
+<!-- SIDE DOTS -->
+<div class="side-dots">
+  <div class="dot active" data-target="hero"></div>
+  <div class="dot" data-target="axes"></div>
+  <div class="dot" data-target="stages"></div>
+  <div class="dot" data-target="ci"></div>
+  <div class="dot" data-target="monitoring"></div>
+  <div class="dot" data-target="drift"></div>
+  <div class="dot" data-target="checkpoint"></div>
+</div>
+
+<!-- ========== HERO ========== -->
+<section id="hero" class="relative min-h-screen flex items-center pt-32 pb-24 px-6">
+  <div class="grid-floor"></div>
+
+  <div class="max-w-7xl mx-auto w-full grid lg:grid-cols-2 gap-16 items-center relative z-10">
+    <div class="reveal">
+      <div class="flex items-center gap-3 mb-6">
+        <span class="pill"><i data-lucide="activity" class="w-3 h-3"></i> Track 6 · Module 6.2</span>
+        <span class="text-xs text-gray-400 font-mono">EST. 50 MIN</span>
+      </div>
+
+      <h1 class="hero-title font-display mb-6">
+        <span class="block text-white">Eval in</span>
+        <span class="block gradient-multi">Production</span>
+      </h1>
+
+      <p class="text-lg md:text-xl text-gray-300 leading-relaxed mb-8 max-w-xl">
+        Notebook scores don't ship products. This module turns eval into a <span class="text-cyan-300 font-semibold">living system</span> —
+        per-stage scoring, <span class="text-purple-300 font-semibold">CI gates</span>, monitoring dashboards,
+        and <span class="text-pink-300 font-semibold">drift detection</span> that catches silent regressions before users do.
+      </p>
+
+      <div class="flex flex-wrap gap-4 mb-12">
+        <button class="btn-primary flex items-center gap-2" onclick="document.getElementById('axes').scrollIntoView({behavior:'smooth'})">
+          <i data-lucide="play" class="w-4 h-4"></i> Begin Module
+        </button>
+        <button class="btn-ghost flex items-center gap-2" onclick="document.getElementById('ci').scrollIntoView({behavior:'smooth'})">
+          <i data-lucide="git-merge" class="w-4 h-4"></i> Jump to CI Gates
+        </button>
+      </div>
+
+      <div class="grid grid-cols-3 gap-4">
+        <div class="holo-card p-4">
+          <div class="stat-num" data-count="2">0</div>
+          <div class="text-xs text-gray-400 uppercase tracking-wider mt-1">Eval Axes</div>
+        </div>
+        <div class="holo-card p-4">
+          <div class="stat-num" data-count="5">0</div>
+          <div class="text-xs text-gray-400 uppercase tracking-wider mt-1">Pipeline Stages</div>
+        </div>
+        <div class="holo-card p-4">
+          <div class="stat-num"><span data-count="4">0</span></div>
+          <div class="text-xs text-gray-400 uppercase tracking-wider mt-1">Drift Types</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ORBIT -->
+    <div class="reveal flex flex-col items-center">
+      <div class="orbit-container float-y">
+        <div class="orbit-ring ring-3"></div>
+        <div class="orbit-ring ring-2"></div>
+        <div class="orbit-ring ring-1"></div>
+        <div class="orbit-core">PROD</div>
+
+        <div class="orbit-planet" style="top: 5%; left: 50%; transform: translate(-50%,-50%); background: rgba(77, 142, 255, 0.25); color: #4d8eff;">
+          <i data-lucide="git-pull-request"></i>
+        </div>
+        <div class="orbit-planet" style="top: 50%; right: 0%; transform: translate(50%,-50%); background: rgba(184, 107, 255, 0.25); color: #b86bff;">
+          <i data-lucide="line-chart"></i>
+        </div>
+        <div class="orbit-planet" style="bottom: 5%; left: 50%; transform: translate(-50%,50%); background: rgba(255, 77, 207, 0.25); color: #ff4dcf;">
+          <i data-lucide="bell-ring"></i>
+        </div>
+        <div class="orbit-planet" style="top: 50%; left: 0%; transform: translate(-50%,-50%); background: rgba(0, 240, 255, 0.25); color: #00f0ff;">
+          <i data-lucide="layers"></i>
+        </div>
+        <div class="orbit-planet" style="top: 15%; right: 15%; background: rgba(255, 184, 77, 0.25); color: #ffb84d;">
+          <i data-lucide="shield-check"></i>
+        </div>
+        <div class="orbit-planet" style="bottom: 15%; left: 15%; background: rgba(77, 255, 184, 0.25); color: #4dffb8;">
+          <i data-lucide="trending-down"></i>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========== ONLINE VS OFFLINE ========== -->
+<section id="axes" class="relative py-24 px-6 z-10">
+  <div class="max-w-7xl mx-auto">
+    <div class="text-center mb-16 reveal">
+      <span class="pill mb-4"><i data-lucide="git-compare" class="w-3 h-3"></i> Two Axes</span>
+      <h2 class="font-display text-4xl md:text-5xl font-bold mt-4">
+        Online vs <span class="gradient-cyan">Offline</span> Evaluation
+      </h2>
+      <p class="text-gray-400 mt-4 max-w-3xl mx-auto">
+        Two complementary modes. Offline answers "should we ship this change?" Online answers "is it still working in the wild?" You need both.
+      </p>
+    </div>
+
+    <div class="grid md:grid-cols-2 gap-6 mb-12">
+      <!-- OFFLINE -->
+      <div class="holo-card p-8 reveal">
+        <div class="flex items-center gap-3 mb-4">
+          <div class="w-12 h-12 rounded-xl flex items-center justify-center" style="background: rgba(0, 240, 255, 0.15);">
+            <i data-lucide="archive" class="w-6 h-6" style="color: #00f0ff;"></i>
+          </div>
+          <div>
+            <div class="text-xs text-cyan-300 uppercase tracking-wider">Axis 01</div>
+            <h4 class="font-display font-bold text-xl">Offline Eval</h4>
+          </div>
+        </div>
+        <p class="text-sm text-gray-400 mb-4">
+          Static eval set. Runs in CI, on commits, in notebooks. <span class="text-cyan-300">Deterministic, repeatable, fast.</span>
+          Answers: "Did this PR break anything?"
+        </p>
+        <ul class="space-y-2 text-sm">
+          <li class="flex items-start gap-2 text-gray-300"><i data-lucide="check-circle-2" class="w-4 h-4 text-cyan-400 mt-0.5 flex-shrink-0"></i> Runs on a fixed test set (200 questions)</li>
+          <li class="flex items-start gap-2 text-gray-300"><i data-lucide="check-circle-2" class="w-4 h-4 text-cyan-400 mt-0.5 flex-shrink-0"></i> Reproducible — same input, same score</li>
+          <li class="flex items-start gap-2 text-gray-300"><i data-lucide="check-circle-2" class="w-4 h-4 text-cyan-400 mt-0.5 flex-shrink-0"></i> Gates merges &amp; deployments</li>
+          <li class="flex items-start gap-2 text-gray-300"><i data-lucide="check-circle-2" class="w-4 h-4 text-cyan-400 mt-0.5 flex-shrink-0"></i> Catches regressions before users see them</li>
+        </ul>
+        <div class="mt-4 pt-4 border-t border-cyan-500/10">
+          <div class="text-[10px] text-gray-500 uppercase tracking-widest font-mono">Tools</div>
+          <div class="text-sm text-cyan-200 mt-1">RAGAS, DeepEval, pytest, GitHub Actions</div>
+        </div>
+      </div>
+
+      <!-- ONLINE -->
+      <div class="holo-card p-8 holo-border reveal" style="border-color: rgba(184,107,255,0.4);">
+        <div class="flex items-center gap-3 mb-4">
+          <div class="w-12 h-12 rounded-xl flex items-center justify-center" style="background: rgba(184, 107, 255, 0.15);">
+            <i data-lucide="radio" class="w-6 h-6" style="color: #b86bff;"></i>
+          </div>
+          <div>
+            <div class="text-xs uppercase tracking-wider" style="color:#b86bff;">Axis 02</div>
+            <h4 class="font-display font-bold text-xl">Online Eval</h4>
+          </div>
+        </div>
+        <p class="text-sm text-gray-400 mb-4">
+          Live production traffic. Runs continuously on real user queries. <span class="text-purple-300">Noisy, costly, irreplaceable.</span>
+          Answers: "Is it still good for real users right now?"
+        </p>
+        <ul class="space-y-2 text-sm">
+          <li class="flex items-start gap-2 text-gray-300"><i data-lucide="check-circle-2" class="w-4 h-4 text-purple-400 mt-0.5 flex-shrink-0"></i> Scores a sample of real production calls</li>
+          <li class="flex items-start gap-2 text-gray-300"><i data-lucide="check-circle-2" class="w-4 h-4 text-purple-400 mt-0.5 flex-shrink-0"></i> Detects drift &amp; novel failure modes</li>
+          <li class="flex items-start gap-2 text-gray-300"><i data-lucide="check-circle-2" class="w-4 h-4 text-purple-400 mt-0.5 flex-shrink-0"></i> Feeds back into next offline eval set</li>
+          <li class="flex items-start gap-2 text-gray-300"><i data-lucide="check-circle-2" class="w-4 h-4 text-purple-400 mt-0.5 flex-shrink-0"></i> Powers user feedback loops (👍 / 👎)</li>
+        </ul>
+        <div class="mt-4 pt-4 border-t border-cyan-500/10">
+          <div class="text-[10px] text-gray-500 uppercase tracking-widest font-mono">Tools</div>
+          <div class="text-sm text-purple-200 mt-1">LangSmith, Langfuse, Arize Phoenix, OpenTelemetry</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- WHEN TO USE EACH -->
+    <div class="reveal">
+      <div class="flex items-center gap-3 mb-6">
+        <i data-lucide="route" class="w-5 h-5 text-cyan-400"></i>
+        <h3 class="font-display font-bold text-xl">When To Reach For Which</h3>
+      </div>
+      <div class="holo-card overflow-hidden">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Question</th>
+              <th>Mode</th>
+              <th>Why</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Did this PR regress quality?</td>
+              <td style="color:#00f0ff;">Offline (CI)</td>
+              <td>Need deterministic, fast pass/fail</td>
+            </tr>
+            <tr>
+              <td>Is faithfulness dropping this week?</td>
+              <td style="color:#b86bff;">Online</td>
+              <td>Needs real traffic over time</td>
+            </tr>
+            <tr>
+              <td>Which of 3 prompts wins?</td>
+              <td style="color:#00f0ff;">Offline (A/B)</td>
+              <td>Fixed eval set, head-to-head</td>
+            </tr>
+            <tr>
+              <td>Are users hitting new question types?</td>
+              <td style="color:#b86bff;">Online</td>
+              <td>Production-only signal</td>
+            </tr>
+            <tr>
+              <td>Should this canary go to 100%?</td>
+              <td style="color:#b86bff;">Online</td>
+              <td>Real-time comparison vs control</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="callout-cyan mt-12 max-w-4xl mx-auto text-sm text-gray-300 reveal">
+      <strong class="text-cyan-300">⚡ The mental model:</strong>
+      Offline catches the regressions you can predict. Online catches the ones you can't.
+      A team running only offline ships fast but breaks silently. A team running only online flies blind into every deploy.
+      <span class="text-cyan-200">You need both. They feed each other.</span>
+    </div>
+  </div>
+</section>
+
+<!-- ========== PER-STAGE EVAL ========== -->
+<section id="stages" class="relative py-24 px-6 z-10">
+  <div class="max-w-7xl mx-auto">
+    <div class="text-center mb-16 reveal">
+      <span class="pill mb-4"><i data-lucide="layers" class="w-3 h-3"></i> Diagnostic Eval</span>
+      <h2 class="font-display text-4xl md:text-5xl font-bold mt-4">
+        Score <span class="gradient-purple">Every Stage</span>, Not Just The Final Answer
+      </h2>
+      <p class="text-gray-400 mt-4 max-w-3xl mx-auto">
+        A single end-to-end score tells you something is broken. Per-stage scores tell you <em>where</em>. Instrument every step.
+      </p>
+    </div>
+
+    <!-- 5 STAGES -->
+    <div class="reveal">
+      <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 mb-8" id="stageGrid">
+        <!-- injected -->
+      </div>
+      <div class="holo-card p-8" id="stageDetail">
+        <!-- filled -->
+      </div>
+    </div>
+
+    <!-- WHY IT MATTERS -->
+    <div class="mt-16 grid md:grid-cols-2 gap-6 reveal">
+      <div class="holo-card p-8" style="border-color: rgba(255,77,207,0.3);">
+        <div class="flex items-center gap-3 mb-4">
+          <div class="w-12 h-12 rounded-xl flex items-center justify-center" style="background: rgba(255,77,207,0.15);">
+            <i data-lucide="x-circle" class="w-6 h-6" style="color:#ff4dcf;"></i>
+          </div>
+          <h4 class="font-display font-bold text-xl">End-to-End Only</h4>
+        </div>
+        <p class="text-sm text-gray-400 mb-3">Score: <span class="text-pink-300 font-display font-bold">0.62</span> — what does that mean?</p>
+        <ul class="space-y-2 text-sm text-gray-300">
+          <li class="flex items-start gap-2"><i data-lucide="x" class="w-4 h-4 text-pink-400 mt-0.5 flex-shrink-0"></i> Don't know if retrieval or generation failed</li>
+          <li class="flex items-start gap-2"><i data-lucide="x" class="w-4 h-4 text-pink-400 mt-0.5 flex-shrink-0"></i> Improvements compound or cancel — can't tell</li>
+          <li class="flex items-start gap-2"><i data-lucide="x" class="w-4 h-4 text-pink-400 mt-0.5 flex-shrink-0"></i> Debugging requires re-running everything</li>
+        </ul>
+      </div>
+
+      <div class="holo-card p-8 holo-border" style="border-color: rgba(0,240,255,0.4);">
+        <div class="flex items-center gap-3 mb-4">
+          <div class="w-12 h-12 rounded-xl flex items-center justify-center" style="background: rgba(0,240,255,0.15);">
+            <i data-lucide="check-circle-2" class="w-6 h-6" style="color:#00f0ff;"></i>
+          </div>
+          <h4 class="font-display font-bold text-xl">Per-Stage Scoring</h4>
+        </div>
+        <p class="text-sm text-gray-400 mb-3">Retrieval: <span class="text-cyan-300 font-display font-bold">0.94</span> · Rerank: <span class="text-cyan-300 font-display font-bold">0.88</span> · Gen: <span class="text-pink-300 font-display font-bold">0.45</span></p>
+        <ul class="space-y-2 text-sm text-gray-300">
+          <li class="flex items-start gap-2"><i data-lucide="check" class="w-4 h-4 text-cyan-400 mt-0.5 flex-shrink-0"></i> Generation is the bottleneck — fix the prompt</li>
+          <li class="flex items-start gap-2"><i data-lucide="check" class="w-4 h-4 text-cyan-400 mt-0.5 flex-shrink-0"></i> Retrieval is fine — don't waste cycles on it</li>
+          <li class="flex items-start gap-2"><i data-lucide="check" class="w-4 h-4 text-cyan-400 mt-0.5 flex-shrink-0"></i> Score per stage is a debugging shortcut</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========== CI / REGRESSION ========== -->
+<section id="ci" class="relative py-24 px-6 z-10">
+  <div class="max-w-7xl mx-auto">
+    <div class="text-center mb-16 reveal">
+      <span class="pill mb-4"><i data-lucide="git-pull-request" class="w-3 h-3"></i> The Quality Gate</span>
+      <h2 class="font-display text-4xl md:text-5xl font-bold mt-4">
+        <span class="gradient-cyan">CI Gates</span> &amp; Regression Detection
+      </h2>
+      <p class="text-gray-400 mt-4 max-w-3xl mx-auto">
+        Every prompt change, every chunking tweak, every model swap goes through the gate. If quality drops below the threshold, the PR cannot merge.
+      </p>
+    </div>
+
+    <!-- SIMULATED CI RUN -->
+    <div class="holo-card p-8 mb-12 reveal">
+      <div class="flex items-center justify-between mb-6">
+        <div>
+          <div class="font-mono text-xs text-cyan-300 tracking-widest">PULL REQUEST #847</div>
+          <div class="font-display font-bold text-lg mt-1">feat: switch reranker to bge-reranker-v2-m3</div>
+        </div>
+        <span class="ci-badge ci-fail-badge">FAIL</span>
+      </div>
+
+      <div class="space-y-3">
+        <div class="ci-row pass">
+          <i data-lucide="check-circle-2" class="w-5 h-5 flex-shrink-0" style="color:#4dffb8;"></i>
+          <div class="flex-1">
+            <div class="font-mono text-sm">Hit Rate@5</div>
+            <div class="text-xs text-gray-500 mt-0.5">baseline: 0.890 → current: 0.912 (+0.022)</div>
+          </div>
+          <span class="ci-badge ci-pass-badge">PASS</span>
+        </div>
+        <div class="ci-row pass">
+          <i data-lucide="check-circle-2" class="w-5 h-5 flex-shrink-0" style="color:#4dffb8;"></i>
+          <div class="flex-1">
+            <div class="font-mono text-sm">MRR</div>
+            <div class="text-xs text-gray-500 mt-0.5">baseline: 0.704 → current: 0.751 (+0.047)</div>
+          </div>
+          <span class="ci-badge ci-pass-badge">PASS</span>
+        </div>
+        <div class="ci-row pass">
+          <i data-lucide="check-circle-2" class="w-5 h-5 flex-shrink-0" style="color:#4dffb8;"></i>
+          <div class="flex-1">
+            <div class="font-mono text-sm">Faithfulness</div>
+            <div class="text-xs text-gray-500 mt-0.5">baseline: 0.873 → current: 0.881 (+0.008)</div>
+          </div>
+          <span class="ci-badge ci-pass-badge">PASS</span>
+        </div>
+        <div class="ci-row fail">
+          <i data-lucide="x-circle" class="w-5 h-5 flex-shrink-0" style="color:#ff4dcf;"></i>
+          <div class="flex-1">
+            <div class="font-mono text-sm">P95 Latency (ms)</div>
+            <div class="text-xs text-gray-500 mt-0.5">baseline: 1240 → current: 2180 (+940 — exceeds 1500 budget)</div>
+          </div>
+          <span class="ci-badge ci-fail-badge">FAIL</span>
+        </div>
+        <div class="ci-row pass">
+          <i data-lucide="check-circle-2" class="w-5 h-5 flex-shrink-0" style="color:#4dffb8;"></i>
+          <div class="flex-1">
+            <div class="font-mono text-sm">Answer Relevance</div>
+            <div class="text-xs text-gray-500 mt-0.5">baseline: 0.910 → current: 0.918 (+0.008)</div>
+          </div>
+          <span class="ci-badge ci-pass-badge">PASS</span>
+        </div>
+      </div>
+
+      <div class="callout-pink mt-6 text-sm text-gray-300">
+        <strong class="text-pink-300">🚨 PR blocked:</strong>
+        Quality went up, but P95 latency blew the SLO budget. Quality alone isn't enough — your gates must enforce
+        <span class="text-cyan-200 font-mono">latency, cost,</span> and <span class="text-cyan-200 font-mono">quality</span> together.
+      </div>
+    </div>
+
+    <!-- GH ACTIONS YAML -->
+    <div class="reveal">
+      <div class="flex items-center gap-3 mb-6">
+        <i data-lucide="code-2" class="w-5 h-5 text-cyan-400"></i>
+        <h3 class="font-display font-bold text-xl">A Working GitHub Actions Workflow</h3>
+        <span class="pill ml-auto"><i data-lucide="sparkles" class="w-3 h-3"></i> Copy-pasteable</span>
+      </div>
+
+      <div class="code-block">
+<pre><span class="tok-comment"># .github/workflows/rag-eval.yml</span>
+<span class="tok-yaml-key">name</span>: <span class="tok-string">RAG Eval Gate</span>
+
+<span class="tok-yaml-key">on</span>:
+  <span class="tok-yaml-key">pull_request</span>:
+    <span class="tok-yaml-key">paths</span>:
+      - <span class="tok-string">"src/rag/**"</span>
+      - <span class="tok-string">"prompts/**"</span>
+      - <span class="tok-string">"configs/**"</span>
+
+<span class="tok-yaml-key">jobs</span>:
+  <span class="tok-yaml-key">eval</span>:
+    <span class="tok-yaml-key">runs-on</span>: <span class="tok-string">ubuntu-latest</span>
+    <span class="tok-yaml-key">steps</span>:
+      - <span class="tok-yaml-key">uses</span>: <span class="tok-string">actions/checkout@v4</span>
+
+      - <span class="tok-yaml-key">name</span>: <span class="tok-string">Set up Python</span>
+        <span class="tok-yaml-key">uses</span>: <span class="tok-string">actions/setup-python@v5</span>
+        <span class="tok-yaml-key">with</span>:
+          <span class="tok-yaml-key">python-version</span>: <span class="tok-string">"3.11"</span>
+
+      - <span class="tok-yaml-key">name</span>: <span class="tok-string">Install deps</span>
+        <span class="tok-yaml-key">run</span>: <span class="tok-string">pip install -r requirements.txt ragas pytest</span>
+
+      - <span class="tok-yaml-key">name</span>: <span class="tok-string">Run RAG eval</span>
+        <span class="tok-yaml-key">env</span>:
+          <span class="tok-yaml-key">OPENAI_API_KEY</span>: <span class="tok-string">${{ secrets.OPENAI_API_KEY }}</span>
+        <span class="tok-yaml-key">run</span>: <span class="tok-string">pytest tests/eval/ --eval-set=eval/v3.jsonl --json=results.json</span>
+
+      - <span class="tok-yaml-key">name</span>: <span class="tok-string">Check thresholds vs baseline</span>
+        <span class="tok-yaml-key">run</span>: <span class="tok-string">python scripts/check_thresholds.py results.json baseline.json</span>
+        <span class="tok-comment"># exits non-zero if any metric drops &gt; tolerance</span>
+
+      - <span class="tok-yaml-key">name</span>: <span class="tok-string">Comment results on PR</span>
+        <span class="tok-yaml-key">if</span>: <span class="tok-string">always()</span>
+        <span class="tok-yaml-key">uses</span>: <span class="tok-string">actions/github-script@v7</span>
+        <span class="tok-yaml-key">with</span>:
+          <span class="tok-yaml-key">script</span>: <span class="tok-string">| fs.readFileSync('results.json') → comment table</span></pre>
+      </div>
+
+      <div class="callout mt-6 text-sm text-gray-300">
+        <strong class="text-amber-300">📦 What this gives you:</strong>
+        <ul class="mt-2 space-y-1 text-gray-300">
+          <li>• Triggered only on changes that could affect quality (path filter)</li>
+          <li>• Eval set version-pinned (<span class="font-mono">eval/v3.jsonl</span>)</li>
+          <li>• Pass/fail driven by <span class="font-mono">check_thresholds.py</span> against baseline</li>
+          <li>• Results posted as a PR comment — reviewers see numbers, not links</li>
+          <li>• Bonus: cache embeddings between runs to keep CI under a few minutes</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- 4 TOLERANCE PATTERNS -->
+    <div class="mt-16 reveal">
+      <div class="flex items-center gap-3 mb-6">
+        <i data-lucide="sliders" class="w-5 h-5 text-purple-400"></i>
+        <h3 class="font-display font-bold text-xl">How To Set Thresholds — Four Patterns</h3>
+      </div>
+      <div class="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div class="holo-card p-5">
+          <div class="font-mono text-[10px] text-cyan-300 tracking-widest">PATTERN 01</div>
+          <h4 class="font-display font-bold text-base mt-1">Absolute Floor</h4>
+          <p class="text-xs text-gray-400 mt-2">Faithfulness must be ≥ 0.85. Simple. Brittle.</p>
+          <div class="font-mono text-[11px] p-2 rounded-md mt-3" style="background: rgba(2,3,10,0.6); color: #9be9ff;">
+            score &gt;= 0.85
+          </div>
+        </div>
+        <div class="holo-card p-5">
+          <div class="font-mono text-[10px] text-blue-300 tracking-widest">PATTERN 02</div>
+          <h4 class="font-display font-bold text-base mt-1">Relative Drop</h4>
+          <p class="text-xs text-gray-400 mt-2">Allow a small regression — typical for noisy metrics.</p>
+          <div class="font-mono text-[11px] p-2 rounded-md mt-3" style="background: rgba(2,3,10,0.6); color: #9be9ff;">
+            score &gt;= baseline - 0.02
+          </div>
+        </div>
+        <div class="holo-card p-5">
+          <div class="font-mono text-[10px] text-purple-300 tracking-widest">PATTERN 03</div>
+          <h4 class="font-display font-bold text-base mt-1">Percent Tolerance</h4>
+          <p class="text-xs text-gray-400 mt-2">Better for metrics with wide ranges.</p>
+          <div class="font-mono text-[11px] p-2 rounded-md mt-3" style="background: rgba(2,3,10,0.6); color: #9be9ff;">
+            score &gt;= baseline * 0.97
+          </div>
+        </div>
+        <div class="holo-card p-5">
+          <div class="font-mono text-[10px] text-pink-300 tracking-widest">PATTERN 04</div>
+          <h4 class="font-display font-bold text-base mt-1">Stat-Sig Drop</h4>
+          <p class="text-xs text-gray-400 mt-2">Bootstrap CI — block only if drop is statistically real.</p>
+          <div class="font-mono text-[11px] p-2 rounded-md mt-3" style="background: rgba(2,3,10,0.6); color: #9be9ff;">
+            CI_lower &gt;= baseline
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========== PRODUCTION MONITORING ========== -->
+<section id="monitoring" class="relative py-24 px-6 z-10">
+  <div class="max-w-7xl mx-auto">
+    <div class="text-center mb-16 reveal">
+      <span class="pill mb-4"><i data-lucide="line-chart" class="w-3 h-3"></i> Live Signal</span>
+      <h2 class="font-display text-4xl md:text-5xl font-bold mt-4">
+        <span class="gradient-purple">Production Monitoring</span> Dashboards
+      </h2>
+      <p class="text-gray-400 mt-4 max-w-3xl mx-auto">
+        What lives on your wall-mounted RAG dashboard. Six signals you watch every day — and the alerts wired to them.
+      </p>
+    </div>
+
+    <!-- 6 MONITORING SIGNALS -->
+    <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-5 mb-12">
+      <div class="holo-card p-6 reveal">
+        <div class="use-case-icon" style="background: linear-gradient(135deg, rgba(0,240,255,0.15), rgba(77,142,255,0.05)); color: #00f0ff;">
+          <i data-lucide="anchor" class="w-7 h-7"></i>
+        </div>
+        <div class="font-mono text-[10px] text-gray-500 tracking-widest mb-1">SIGNAL · 01</div>
+        <h3 class="font-display font-bold text-base mb-2" style="color:#00f0ff;">Quality (sampled)</h3>
+        <p class="text-xs text-gray-400 leading-relaxed mb-3">Run RAGAS on a 5% sample of production calls. Daily rolling average. Most important number.</p>
+        <div class="font-mono text-[11px] p-2 rounded-md" style="background: rgba(2,3,10,0.6); color: #aaffd6;">
+          Alert: faithfulness &lt; 0.85 for 24h
+        </div>
+      </div>
+
+      <div class="holo-card p-6 reveal">
+        <div class="use-case-icon" style="background: linear-gradient(135deg, rgba(77,142,255,0.15), rgba(184,107,255,0.05)); color: #4d8eff;">
+          <i data-lucide="timer" class="w-7 h-7"></i>
+        </div>
+        <div class="font-mono text-[10px] text-gray-500 tracking-widest mb-1">SIGNAL · 02</div>
+        <h3 class="font-display font-bold text-base mb-2" style="color:#4d8eff;">Latency (P50/P95/P99)</h3>
+        <p class="text-xs text-gray-400 leading-relaxed mb-3">End-to-end + per-stage. P99 reveals tail problems users actually feel.</p>
+        <div class="font-mono text-[11px] p-2 rounded-md" style="background: rgba(2,3,10,0.6); color: #aaffd6;">
+          Alert: P95 &gt; 2000ms for 5min
+        </div>
+      </div>
+
+      <div class="holo-card p-6 reveal">
+        <div class="use-case-icon" style="background: linear-gradient(135deg, rgba(184,107,255,0.15), rgba(255,77,207,0.05)); color: #b86bff;">
+          <i data-lucide="dollar-sign" class="w-7 h-7"></i>
+        </div>
+        <div class="font-mono text-[10px] text-gray-500 tracking-widest mb-1">SIGNAL · 03</div>
+        <h3 class="font-display font-bold text-base mb-2" style="color:#b86bff;">Cost / Query</h3>
+        <p class="text-xs text-gray-400 leading-relaxed mb-3">Tokens-in + tokens-out + embedding calls. Spikes mean retries or runaway agents.</p>
+        <div class="font-mono text-[11px] p-2 rounded-md" style="background: rgba(2,3,10,0.6); color: #aaffd6;">
+          Alert: cost/query &gt; 2× baseline
+        </div>
+      </div>
+
+      <div class="holo-card p-6 reveal">
+        <div class="use-case-icon" style="background: linear-gradient(135deg, rgba(255,77,207,0.15), rgba(255,184,77,0.05)); color: #ff4dcf;">
+          <i data-lucide="alert-triangle" class="w-7 h-7"></i>
+        </div>
+        <div class="font-mono text-[10px] text-gray-500 tracking-widest mb-1">SIGNAL · 04</div>
+        <h3 class="font-display font-bold text-base mb-2" style="color:#ff4dcf;">Error Rate</h3>
+        <p class="text-xs text-gray-400 leading-relaxed mb-3">Tool errors, timeouts, refusals. Spike = something upstream broke.</p>
+        <div class="font-mono text-[11px] p-2 rounded-md" style="background: rgba(2,3,10,0.6); color: #aaffd6;">
+          Alert: error_rate &gt; 1% for 10min
+        </div>
+      </div>
+
+      <div class="holo-card p-6 reveal">
+        <div class="use-case-icon" style="background: linear-gradient(135deg, rgba(255,184,77,0.15), rgba(255,77,207,0.05)); color: #ffb84d;">
+          <i data-lucide="thumbs-up" class="w-7 h-7"></i>
+        </div>
+        <div class="font-mono text-[10px] text-gray-500 tracking-widest mb-1">SIGNAL · 05</div>
+        <h3 class="font-display font-bold text-base mb-2" style="color:#ffb84d;">User Feedback</h3>
+        <p class="text-xs text-gray-400 leading-relaxed mb-3">👍 / 👎 ratio per day. Single best ground-truth signal.</p>
+        <div class="font-mono text-[11px] p-2 rounded-md" style="background: rgba(2,3,10,0.6); color: #aaffd6;">
+          Alert: 👎 ratio &gt; 15%
+        </div>
+      </div>
+
+      <div class="holo-card p-6 reveal">
+        <div class="use-case-icon" style="background: linear-gradient(135deg, rgba(77,255,184,0.15), rgba(0,240,255,0.05)); color: #4dffb8;">
+          <i data-lucide="trending-down" class="w-7 h-7"></i>
+        </div>
+        <div class="font-mono text-[10px] text-gray-500 tracking-widest mb-1">SIGNAL · 06</div>
+        <h3 class="font-display font-bold text-base mb-2" style="color:#4dffb8;">Refusal Rate</h3>
+        <p class="text-xs text-gray-400 leading-relaxed mb-3">% of calls where the LLM refused to answer. Spike = retrieval blew up.</p>
+        <div class="font-mono text-[11px] p-2 rounded-md" style="background: rgba(2,3,10,0.6); color: #aaffd6;">
+          Alert: refusal_rate doubled vs week-1
+        </div>
+      </div>
+    </div>
+
+    <!-- WHAT TO LOG -->
+    <div class="reveal">
+      <div class="flex items-center gap-3 mb-6">
+        <i data-lucide="file-text" class="w-5 h-5 text-purple-400"></i>
+        <h3 class="font-display font-bold text-xl">The Minimum You Must Log</h3>
+        <span class="pill ml-auto"><i data-lucide="database" class="w-3 h-3"></i> Per request</span>
+      </div>
+      <div class="code-block">
+<pre>{
+  <span class="tok-string">"request_id"</span>:    <span class="tok-string">"req_8c4a..."</span>,
+  <span class="tok-string">"timestamp"</span>:     <span class="tok-string">"2026-05-19T10:34:12Z"</span>,
+  <span class="tok-string">"user_id"</span>:       <span class="tok-string">"u_4421"</span>,
+  <span class="tok-string">"question"</span>:      <span class="tok-string">"What's our refund window?"</span>,
+
+  <span class="tok-string">"retrieval"</span>: {
+    <span class="tok-string">"top_k"</span>:        <span class="tok-num">5</span>,
+    <span class="tok-string">"chunk_ids"</span>:    [<span class="tok-string">"doc_42#3"</span>, <span class="tok-string">"doc_88#1"</span>, ...],
+    <span class="tok-string">"scores"</span>:       [<span class="tok-num">0.91</span>, <span class="tok-num">0.87</span>, ...],
+    <span class="tok-string">"latency_ms"</span>:   <span class="tok-num">82</span>
+  },
+  <span class="tok-string">"generation"</span>: {
+    <span class="tok-string">"model"</span>:        <span class="tok-string">"gpt-4o-mini"</span>,
+    <span class="tok-string">"prompt_hash"</span>:  <span class="tok-string">"sha:a4f2..."</span>,
+    <span class="tok-string">"answer"</span>:       <span class="tok-string">"Refunds within 30 days..."</span>,
+    <span class="tok-string">"tokens_in"</span>:    <span class="tok-num">1284</span>,
+    <span class="tok-string">"tokens_out"</span>:   <span class="tok-num">87</span>,
+    <span class="tok-string">"latency_ms"</span>:   <span class="tok-num">612</span>
+  },
+  <span class="tok-string">"eval_scores"</span>:   { <span class="tok-string">"faithfulness"</span>: <span class="tok-num">0.92</span>, ... },  <span class="tok-comment"># async, sampled</span>
+  <span class="tok-string">"user_feedback"</span>: <span class="tok-keyword">null</span>                              <span class="tok-comment"># filled later</span>
+}</pre>
+      </div>
+      <div class="callout-cyan mt-6 text-sm text-gray-300">
+        <strong class="text-cyan-300">🎯 The rule:</strong>
+        If you can't reconstruct exactly what happened — which chunks, which prompt version, which model — you can't debug.
+        <span class="text-cyan-200">Log the inputs, the intermediates, the outputs, and the timings.</span>
+        Disk is cheap; mystery production bugs are not.
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========== DRIFT ========== -->
+<section id="drift" class="relative py-24 px-6 z-10">
+  <div class="max-w-7xl mx-auto">
+    <div class="text-center mb-16 reveal">
+      <span class="pill mb-4"><i data-lucide="trending-down" class="w-3 h-3"></i> The Silent Killer</span>
+      <h2 class="font-display text-4xl md:text-5xl font-bold mt-4">
+        <span class="gradient-amber">Drift Detection</span>
+      </h2>
+      <p class="text-gray-400 mt-4 max-w-3xl mx-auto">
+        Your RAG didn't change. Users did. Or your docs did. Or the embedding API silently updated. Drift is the most common production failure — and the hardest to spot without instruments.
+      </p>
+    </div>
+
+    <!-- DRIFT CHART -->
+    <div class="holo-card p-8 mb-12 reveal">
+      <div class="flex flex-wrap items-center justify-between gap-4 mb-6">
+        <div>
+          <h3 class="font-display font-bold text-xl">Faithfulness — Last 90 Days</h3>
+          <p class="text-sm text-gray-400 mt-1">Rolling 7-day average, sampled production traffic</p>
+        </div>
+        <span class="pill" style="border-color: rgba(255,77,207,0.4); color:#ff4dcf; background:rgba(255,77,207,0.06);">
+          <i data-lucide="alert-triangle" class="w-3 h-3"></i> Drift detected
+        </span>
+      </div>
+      <div class="drift-chart-wrapper">
+        <canvas id="driftChart" width="800" height="280"></canvas>
+      </div>
+      <div class="callout-pink mt-6 text-sm text-gray-300">
+        <strong class="text-pink-300">🚨 What you're seeing:</strong>
+        Faithfulness sat at 0.91 for 60 days. Then a quiet decline starting day 65. No deploy, no config change.
+        Cause: <span class="text-pink-200">new "billing-2026" question cluster</span> hit production after a product launch — the RAG's index never indexed those docs.
+        <span class="text-cyan-200">Drift caught it. Nothing else would have.</span>
+      </div>
+    </div>
+
+    <!-- 4 DRIFT TYPES -->
+    <div class="grid md:grid-cols-2 gap-5 mb-12">
+      <div class="holo-card p-6 reveal">
+        <div class="flex items-center gap-3 mb-3">
+          <div class="w-10 h-10 rounded-lg flex items-center justify-center" style="background: rgba(0,240,255,0.15);">
+            <i data-lucide="message-circle-question" class="w-5 h-5" style="color:#00f0ff;"></i>
+          </div>
+          <h3 class="font-display font-bold text-lg" style="color:#00f0ff;">Query Drift</h3>
+        </div>
+        <p class="text-sm text-gray-400 mb-3">User questions shift to a new topic, intent, or phrasing your retrieval wasn't tuned for.</p>
+        <div class="font-mono text-xs p-3 rounded-lg" style="background: rgba(2,3,10,0.6); color: #aaffd6;">
+          ✓ Detect: cluster embeddings of recent Qs vs baseline. New cluster = drift.
+        </div>
+      </div>
+
+      <div class="holo-card p-6 reveal">
+        <div class="flex items-center gap-3 mb-3">
+          <div class="w-10 h-10 rounded-lg flex items-center justify-center" style="background: rgba(184,107,255,0.15);">
+            <i data-lucide="file-text" class="w-5 h-5" style="color:#b86bff;"></i>
+          </div>
+          <h3 class="font-display font-bold text-lg" style="color:#b86bff;">Corpus Drift</h3>
+        </div>
+        <p class="text-sm text-gray-400 mb-3">Docs added/updated/removed. Your answers reference deleted info or miss new info entirely.</p>
+        <div class="font-mono text-xs p-3 rounded-lg" style="background: rgba(2,3,10,0.6); color: #aaffd6;">
+          ✓ Detect: monitor doc count, last-indexed timestamps, missing-citation rate
+        </div>
+      </div>
+
+      <div class="holo-card p-6 reveal">
+        <div class="flex items-center gap-3 mb-3">
+          <div class="w-10 h-10 rounded-lg flex items-center justify-center" style="background: rgba(255,184,77,0.15);">
+            <i data-lucide="cpu" class="w-5 h-5" style="color:#ffb84d;"></i>
+          </div>
+          <h3 class="font-display font-bold text-lg" style="color:#ffb84d;">Model Drift</h3>
+        </div>
+        <p class="text-sm text-gray-400 mb-3">Provider silently updates the model (or embedding). Behavior shifts under you.</p>
+        <div class="font-mono text-xs p-3 rounded-lg" style="background: rgba(2,3,10,0.6); color: #aaffd6;">
+          ✓ Detect: pin model versions, run weekly canary eval, watch for sudden score deltas
+        </div>
+      </div>
+
+      <div class="holo-card p-6 reveal">
+        <div class="flex items-center gap-3 mb-3">
+          <div class="w-10 h-10 rounded-lg flex items-center justify-center" style="background: rgba(255,77,207,0.15);">
+            <i data-lucide="users" class="w-5 h-5" style="color:#ff4dcf;"></i>
+          </div>
+          <h3 class="font-display font-bold text-lg" style="color:#ff4dcf;">User-Mix Drift</h3>
+        </div>
+        <p class="text-sm text-gray-400 mb-3">A new customer segment joins (enterprise vs SMB). Their question distribution differs from your eval set.</p>
+        <div class="font-mono text-xs p-3 rounded-lg" style="background: rgba(2,3,10,0.6); color: #aaffd6;">
+          ✓ Detect: track per-segment quality. Periodically refresh eval set from real traffic.
+        </div>
+      </div>
+    </div>
+
+    <!-- COVERAGE LOOP -->
+    <div class="reveal">
+      <div class="flex items-center gap-3 mb-6">
+        <i data-lucide="refresh-ccw" class="w-5 h-5 text-cyan-400"></i>
+        <h3 class="font-display font-bold text-xl">The Living Eval-Set Loop</h3>
+      </div>
+      <div class="grid md:grid-cols-4 gap-4">
+        <div class="holo-card p-5 text-center">
+          <div class="use-case-icon mx-auto" style="background: linear-gradient(135deg, rgba(0,240,255,0.15), rgba(77,142,255,0.05)); color: #00f0ff;">
+            <i data-lucide="radio" class="w-7 h-7"></i>
+          </div>
+          <div class="font-mono text-[10px] text-gray-500 tracking-widest">STEP 01</div>
+          <h4 class="font-display font-bold text-sm mt-1" style="color: #00f0ff;">Sample Live Traffic</h4>
+          <p class="text-xs text-gray-400 mt-2">Weekly random sample of production queries.</p>
+        </div>
+        <div class="holo-card p-5 text-center">
+          <div class="use-case-icon mx-auto" style="background: linear-gradient(135deg, rgba(77,142,255,0.15), rgba(184,107,255,0.05)); color: #4d8eff;">
+            <i data-lucide="alert-triangle" class="w-7 h-7"></i>
+          </div>
+          <div class="font-mono text-[10px] text-gray-500 tracking-widest">STEP 02</div>
+          <h4 class="font-display font-bold text-sm mt-1" style="color: #4d8eff;">Find Low-Score</h4>
+          <p class="text-xs text-gray-400 mt-2">Filter to calls with faithfulness &lt; 0.7 or thumbs-down.</p>
+        </div>
+        <div class="holo-card p-5 text-center">
+          <div class="use-case-icon mx-auto" style="background: linear-gradient(135deg, rgba(184,107,255,0.15), rgba(255,77,207,0.05)); color: #b86bff;">
+            <i data-lucide="user-check" class="w-7 h-7"></i>
+          </div>
+          <div class="font-mono text-[10px] text-gray-500 tracking-widest">STEP 03</div>
+          <h4 class="font-display font-bold text-sm mt-1" style="color: #b86bff;">Human Label</h4>
+          <p class="text-xs text-gray-400 mt-2">PM/SME labels gold answers for the worst 50.</p>
+        </div>
+        <div class="holo-card p-5 text-center">
+          <div class="use-case-icon mx-auto" style="background: linear-gradient(135deg, rgba(255,77,207,0.15), rgba(255,184,77,0.05)); color: #ff4dcf;">
+            <i data-lucide="git-merge" class="w-7 h-7"></i>
+          </div>
+          <div class="font-mono text-[10px] text-gray-500 tracking-widest">STEP 04</div>
+          <h4 class="font-display font-bold text-sm mt-1" style="color: #ff4dcf;">Merge → Eval Set</h4>
+          <p class="text-xs text-gray-400 mt-2">Add to CI eval set. Version-bump. Future PRs catch the regression.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="callout-green mt-12 max-w-4xl mx-auto text-sm text-gray-300 reveal">
+      <strong class="text-green-300">🌱 The flywheel:</strong>
+      Online finds new failures → label them → offline catches them next time. After 6 months, your eval set
+      <em>looks like your actual users</em>. That's when production eval stops being a chore and becomes your edge.
+    </div>
+  </div>
+</section>
+
+<!-- ========== QUIZ ========== -->
+<section id="quiz" class="relative py-24 px-6 z-10">
+  <div class="max-w-4xl mx-auto">
+    <div class="text-center mb-12 reveal">
+      <span class="pill mb-4"><i data-lucide="brain" class="w-3 h-3"></i> Lock It In</span>
+      <h2 class="font-display text-4xl md:text-5xl font-bold mt-4">
+        Quick <span class="gradient-amber">Check</span>
+      </h2>
+    </div>
+
+    <div class="holo-card p-8 reveal" id="quizCard">
+      <div class="flex items-center justify-between mb-4">
+        <div class="font-mono text-xs text-cyan-300 tracking-widest">QUESTION <span id="qNum">1</span> / 4</div>
+        <div class="font-mono text-xs text-gray-400">SCORE <span id="qScore" class="text-cyan-300">0</span></div>
+      </div>
+      <h3 class="font-display font-bold text-xl mb-6" id="qText">Loading...</h3>
+      <div class="space-y-3" id="qOptions"></div>
+      <div id="qFeedback" class="mt-6 hidden text-sm"></div>
+      <div class="mt-6 flex justify-end">
+        <button class="btn-primary text-sm py-2 px-5 hidden" id="qNext" onclick="nextQuestion()">
+          Next <i data-lucide="arrow-right" class="w-4 h-4 inline ml-1"></i>
+        </button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========== CHECKPOINT ========== -->
+
+<!-- RESOURCE SECTION -->
+<section class="relative py-16 px-6 z-10">
+  <div class="max-w-7xl mx-auto">
+    <div class="text-center mb-12 reveal">
+      <span class="pill mb-4"><i data-lucide="book" class="w-3 h-3"></i> Continue Learning</span>
+      <h3 class="font-display text-4xl md:text-5xl font-bold mt-4">Learn &amp; <span class="gradient-purple">Practice</span></h3>
+      <p class="text-gray-400 mt-2">Explore curated resources and practice with real code</p>
+    </div>
+
+    <div class="resource-stack mb-12">
+      <article class="resource-card">
+        <div class="flex items-start gap-3">
+          <div class="resource-icon">
+            <i data-lucide="lightbulb" class="w-4 h-4"></i>
+          </div>
+          <div class="min-w-0 flex-1">
+            <h4 class="font-display text-2xl font-bold leading-none">Progressive Article</h4>
+            <p class="text-xs text-gray-400 mt-1">Stuck? Start here - beginner-friendly explanation</p>
+            <p class="text-lg font-semibold mt-4 text-cyan-300">Agent Evaluation guide</p>
+            <a href="https://machinelearningmastery.com/agent-evaluation-how-to-test-and-measure-agentic-ai-performance/" target="_blank" rel="noopener noreferrer" class="resource-cta" title="Agent Evaluation guide">
+              <i data-lucide="external-link" class="w-4 h-4"></i> Read Article
+            </a>
+          </div>
+        </div>
+      </article>
+      <article class="resource-card">
+        <div class="flex items-start gap-3">
+          <div class="resource-icon">
+            <i data-lucide="file-text" class="w-4 h-4"></i>
+          </div>
+          <div class="min-w-0 flex-1">
+            <h4 class="font-display text-2xl font-bold leading-none">Canonical Article</h4>
+            <p class="text-xs text-gray-400 mt-1">Authoritative source - official docs or research</p>
+            <p class="text-lg font-semibold mt-4 text-cyan-300">Langfuse - Evaluation of RAG with RAGAS</p>
+            <a href="https://langfuse.com/guides/cookbook/evaluation_of_rag_with_ragas" target="_blank" rel="noopener noreferrer" class="resource-cta" title="Langfuse - Evaluation of RAG with RAGAS">
+              <i data-lucide="external-link" class="w-4 h-4"></i> Read Canonical
+            </a>
+          </div>
+        </div>
+      </article>
+      <article class="resource-card repo">
+        <div class="flex items-start gap-3">
+          <div class="resource-icon">
+            <i data-lucide="github" class="w-4 h-4"></i>
+          </div>
+          <div class="min-w-0 flex-1">
+            <h4 class="font-display text-2xl font-bold leading-none">GitHub Repository</h4>
+            <p class="text-xs text-gray-400 mt-1">Hands-on - reference implementation & examples</p>
+            <p class="text-lg font-semibold mt-4 text-pink-400">Langfuse</p>
+            <a href="https://github.com/langfuse/langfuse" target="_blank" rel="noopener noreferrer" class="resource-cta" title="Langfuse">
+              <i data-lucide="external-link" class="w-4 h-4"></i> Explore Repo
+            </a>
+          </div>
+        </div>
+      </article>
+      <article class="resource-card repo">
+        <div class="flex items-start gap-3">
+          <div class="resource-icon">
+            <i data-lucide="github" class="w-4 h-4"></i>
+          </div>
+          <div class="min-w-0 flex-1">
+            <h4 class="font-display text-2xl font-bold leading-none">GitHub Repository</h4>
+            <p class="text-xs text-gray-400 mt-1">Hands-on - reference implementation & examples</p>
+            <p class="text-lg font-semibold mt-4 text-pink-400">Arize Phoenix</p>
+            <a href="https://github.com/Arize-ai/phoenix" target="_blank" rel="noopener noreferrer" class="resource-cta" title="Arize Phoenix">
+              <i data-lucide="external-link" class="w-4 h-4"></i> Explore Repo
+            </a>
+          </div>
+        </div>
+      </article>
+    </div>
+  </div>
+</section>
+
+<section id="checkpoint" class="relative py-24 px-6 z-10">
+  <div class="max-w-5xl mx-auto">
+    <div class="checkpoint-glow holo-card p-10 md:p-16 reveal text-center">
+      <div class="inline-flex items-center justify-center w-20 h-20 rounded-full mb-6" style="background: linear-gradient(135deg, #00f0ff, #b86bff); box-shadow: 0 0 60px rgba(0,240,255,0.5);">
+        <i data-lucide="flag" class="w-9 h-9 text-black"></i>
+      </div>
+
+      <span class="pill mb-4"><i data-lucide="check-circle" class="w-3 h-3"></i> Module 6.2 · Checkpoint</span>
+      <h2 class="font-display text-3xl md:text-5xl font-bold mt-4 mb-4">
+        <span class="gradient-multi">Track 6 Complete</span>
+      </h2>
+      <p class="text-gray-300 max-w-2xl mx-auto mb-8">
+        You can now ship eval as a system — CI gates, monitoring dashboards, drift detection, and a living eval set that improves with every week of production.
+      </p>
+
+      <div class="grid md:grid-cols-3 gap-4 text-left mb-10">
+        <div class="holo-card p-5">
+          <div class="font-mono text-xs text-cyan-300 mb-2">CHECK 01</div>
+          <p class="text-sm text-gray-300">Can you explain when to use <span class="text-cyan-300 font-semibold">offline vs online</span> eval and what each catches?</p>
+        </div>
+        <div class="holo-card p-5">
+          <div class="font-mono text-xs text-purple-300 mb-2">CHECK 02</div>
+          <p class="text-sm text-gray-300">Can you write a <span class="text-purple-300 font-semibold">CI gate</span> that blocks merges on quality + latency regressions?</p>
+        </div>
+        <div class="holo-card p-5">
+          <div class="font-mono text-xs text-pink-300 mb-2">CHECK 03</div>
+          <p class="text-sm text-gray-300">Can you name the <span class="text-pink-300 font-semibold">4 drift types</span> and a detection signal for each?</p>
+        </div>
+      </div>
+
+      <div class="flex flex-wrap gap-4 justify-center mb-8">
+        <button class="btn-primary flex items-center gap-2" onclick="completeModule()">
+          <i data-lucide="check" class="w-4 h-4"></i> Mark Module Complete
+        </button>
+        <button class="btn-ghost flex items-center gap-2">
+          <i data-lucide="arrow-right" class="w-4 h-4"></i> Mini-Capstone 4 · Gate Exam 4
+        </button>
+      </div>
+
+      <div class="max-w-md mx-auto">
+        <div class="flex justify-between text-xs text-gray-400 mb-2 font-mono">
+          <span>TRACK 6 PROGRESS</span>
+          <span id="progressText">3 / 3 modules ✓</span>
+        </div>
+        <div class="progress-bar"><div class="progress-fill" id="courseProgress" style="width: 66%;"></div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer class="relative py-12 px-6 z-10 border-t border-cyan-500/10">
+  <div class="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4 text-sm text-gray-500">
+    <div class="flex items-center gap-3">
+      <i data-lucide="orbit" class="w-4 h-4 text-cyan-400"></i>
+      <span class="font-display tracking-wider">RAG ACADEMY · GENAI GALAXY</span>
+    </div>
+    <div class="font-mono text-xs">v1.0.0 · Module 6.2 · Stardate 2026.05</div>
+  </div>
+</footer>
+
+<script>
+  function safeCreateIcons() {
+    try { if (typeof lucide !== 'undefined' && lucide.createIcons) lucide.createIcons(); } catch(e) {}
+  }
+  safeCreateIcons();
+
+  // ===== STARFIELD =====
+  const canvas = document.getElementById('starfield');
+  const ctx = canvas.getContext('2d');
+  let stars = [];
+
+  function resizeCanvas() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    initStars();
+  }
+  function initStars() {
+    stars = [];
+    const count = Math.floor((canvas.width * canvas.height) / 8000);
+    for (let i = 0; i < count; i++) {
+      stars.push({
+        x: Math.random() * canvas.width,
+        y: Math.random() * canvas.height,
+        z: Math.random() * 1.5 + 0.3,
+        size: Math.random() * 1.5,
+        twinkle: Math.random() * Math.PI * 2
+      });
+    }
+  }
+  function drawStars() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const now = Date.now() * 0.001;
+    stars.forEach(s => {
+      const alpha = 0.4 + 0.6 * Math.abs(Math.sin(s.twinkle + now * s.z));
+      ctx.beginPath();
+      ctx.fillStyle = `rgba(${180 + s.z*30}, ${220 + s.z*20}, 255, ${alpha})`;
+      ctx.arc(s.x, s.y, s.size * s.z, 0, Math.PI * 2);
+      ctx.fill();
+      s.y += s.z * 0.08;
+      if (s.y > canvas.height) { s.y = 0; s.x = Math.random() * canvas.width; }
+    });
+    requestAnimationFrame(drawStars);
+  }
+  window.addEventListener('resize', resizeCanvas);
+  resizeCanvas(); drawStars();
+
+  // ===== REVEAL =====
+  document.documentElement.classList.add('js-reveal');
+  const revealEls = document.querySelectorAll('.reveal');
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('in');
+        observer.unobserve(entry.target);
+      }
+    });
+  }, { threshold: 0.05, rootMargin: '0px 0px -50px 0px' });
+  revealEls.forEach(el => observer.observe(el));
+
+  function revealVisibleNow() {
+    revealEls.forEach(el => {
+      const rect = el.getBoundingClientRect();
+      if (rect.top < window.innerHeight && rect.bottom > 0) el.classList.add('in');
+    });
+  }
+  revealVisibleNow();
+  setTimeout(revealVisibleNow, 100);
+  setTimeout(revealVisibleNow, 500);
+  setTimeout(() => revealEls.forEach(el => el.classList.add('in')), 2000);
+
+  // ===== COUNTERS =====
+  function animateCounters() {
+    document.querySelectorAll('[data-count]').forEach(el => {
+      const target = parseInt(el.dataset.count);
+      let current = 0;
+      const step = Math.max(1, Math.ceil(target / 40));
+      const timer = setInterval(() => {
+        current += step;
+        if (current >= target) { current = target; clearInterval(timer); }
+        el.textContent = current;
+      }, 40);
+    });
+  }
+  setTimeout(animateCounters, 600);
+
+  // ===== PER-STAGE PICKER =====
+  const stages = [
+    { num:'01', name:'Ingest', icon:'inbox', color:'#00f0ff',
+      desc:'Documents arrive — PDFs, HTML, Confluence, Notion. Track parse failures, doc count, time-since-update. A silently-failing ingestor is the #1 cause of drift.',
+      metric:'parse_success_rate, docs_indexed, ingest_lag_minutes' },
+    { num:'02', name:'Chunk', icon:'scissors', color:'#4d8eff',
+      desc:'Splitting strategy matters more than people think. Track chunk-size distribution, empty/near-empty chunks, boundary breaks across important sections.',
+      metric:'mean_chunk_tokens, p95_chunk_tokens, empty_chunk_pct' },
+    { num:'03', name:'Retrieve', icon:'search', color:'#b86bff',
+      desc:'The biggest lever. Hit Rate, MRR, Recall@k against your eval set. Track per-query-type — broken retrieval is rarely uniform.',
+      metric:'hit_rate@5, mrr, recall@10, retrieval_latency_p95' },
+    { num:'04', name:'Rerank', icon:'list-ordered', color:'#ff4dcf',
+      desc:'A reranker either dramatically improves precision or wastes 200ms. Compare top-k quality before vs after. If the lift is < 0.05 NDCG, drop it.',
+      metric:'ndcg_delta, rerank_latency_p95, score_distribution' },
+    { num:'05', name:'Generate', icon:'sparkles', color:'#ffb84d',
+      desc:'Faithfulness, answer relevance, refusal rate, token usage. The most expensive stage — and where users experience quality directly.',
+      metric:'faithfulness, answer_relevance, tokens_per_call, refusal_rate' },
+  ];
+
+  const sg = document.getElementById('stageGrid');
+  const sd = document.getElementById('stageDetail');
+
+  stages.forEach((s, i) => {
+    const node = document.createElement('div');
+    node.className = 'stage-card';
+    node.dataset.idx = i;
+    node.innerHTML = `
+      <div class="stage-num">STAGE ${s.num}</div>
+      <div class="flex items-start gap-3 mt-2">
+        <div class="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0" style="background: ${s.color}18;">
+          <i data-lucide="${s.icon}" style="color:${s.color}; width:20px; height:20px;"></i>
+        </div>
+        <div>
+          <div class="font-display font-bold text-base" style="color:${s.color};">${s.name}</div>
+          <div class="text-xs text-gray-400 mt-0.5">Click for details</div>
+        </div>
+      </div>`;
+    node.addEventListener('click', () => setStage(i));
+    sg.appendChild(node);
+  });
+
+  function setStage(i) {
+    const s = stages[i];
+    document.querySelectorAll('.stage-card').forEach(n => n.classList.remove('active'));
+    document.querySelector(`.stage-card[data-idx="${i}"]`).classList.add('active');
+    sd.innerHTML = `
+      <div class="grid md:grid-cols-3 gap-8 items-center">
+        <div class="md:col-span-1 text-center">
+          <div class="inline-flex items-center justify-center w-24 h-24 rounded-2xl mb-4" style="background: ${s.color}15; border: 1px solid ${s.color}40;">
+            <i data-lucide="${s.icon}" style="color: ${s.color}; width: 44px; height: 44px;"></i>
+          </div>
+          <div class="font-mono text-xs text-gray-500 tracking-widest">STAGE ${s.num}</div>
+          <h3 class="font-display font-bold text-2xl mt-1" style="color: ${s.color};">${s.name}</h3>
+        </div>
+        <div class="md:col-span-2">
+          <p class="text-gray-300 leading-relaxed text-base mb-4">${s.desc}</p>
+          <div class="font-mono text-sm p-3 rounded-lg" style="background: rgba(2,3,10,0.6); border-left: 3px solid ${s.color}; color: ${s.color};">
+            ▸ ${s.metric}
+          </div>
+        </div>
+      </div>`;
+    safeCreateIcons();
+  }
+  setStage(0);
+
+  // ===== DRIFT CHART =====
+  const ctx2 = document.getElementById('driftChart').getContext('2d');
+  const grad1 = ctx2.createLinearGradient(0, 0, 0, 280);
+  grad1.addColorStop(0, 'rgba(0, 240, 255, 0.4)');
+  grad1.addColorStop(1, 'rgba(0, 240, 255, 0)');
+
+  // Generate 90 days of synthetic faithfulness data with drift starting day 65
+  const driftData = [];
+  const labels = [];
+  for (let i = 0; i < 90; i++) {
+    labels.push(`D-${90-i}`);
+    let base = 0.91;
+    if (i > 65) {
+      // Decline after day 65
+      base = 0.91 - ((i - 65) * 0.008);
+    }
+    const noise = (Math.random() - 0.5) * 0.025;
+    driftData.push(Math.max(0.7, base + noise));
+  }
+
+  new Chart(ctx2, {
+    type: 'line',
+    data: {
+      labels: labels.filter((_, i) => i % 5 === 0),
+      datasets: [{
+        label: 'Faithfulness (7-day rolling avg)',
+        data: driftData.filter((_, i) => i % 5 === 0),
+        borderColor: '#00f0ff',
+        backgroundColor: grad1,
+        tension: 0.4,
+        fill: true,
+        borderWidth: 2.5,
+        pointBackgroundColor: '#00f0ff',
+        pointRadius: 3,
+        pointHoverRadius: 7
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { labels: { color: '#8a96b8', font: { family: 'Inter', size: 12 }, usePointStyle: true, padding: 20 } },
+        tooltip: {
+          backgroundColor: 'rgba(2, 3, 10, 0.95)',
+          borderColor: 'rgba(0, 240, 255, 0.3)',
+          borderWidth: 1,
+          titleFont: { family: 'Orbitron' },
+          bodyFont: { family: 'JetBrains Mono' }
+        }
+      },
+      scales: {
+        x: { grid: { color: 'rgba(0, 240, 255, 0.05)' }, ticks: { color: '#8a96b8', font: { family: 'JetBrains Mono', size: 10 }, maxTicksLimit: 10 } },
+        y: { min: 0.7, max: 1.0, grid: { color: 'rgba(0, 240, 255, 0.05)' }, ticks: { color: '#8a96b8', font: { family: 'JetBrains Mono', size: 10 } } }
+      }
+    }
+  });
+
+  // ===== QUIZ =====
+  const quizQs = [
+    {
+      q: 'A PR improves faithfulness from 0.87 to 0.89 but pushes P95 latency from 1200ms to 2400ms. Your CI gate FAILS the PR. Why is this correct?',
+      opts: [
+        'Quality didn\'t improve enough',
+        'CI gates must enforce quality, latency AND cost — improving one at the expense of another isn\'t a win',
+        'The eval set was wrong',
+        'Faithfulness should never increase'
+      ],
+      ans: 1,
+      exp: 'Production gates are multi-dimensional. A quality bump that doubles latency hurts users — that\'s a regression, not a win.'
+    },
+    {
+      q: 'Your offline eval has been 0.91 for months. Suddenly online faithfulness drops to 0.78 — but offline is unchanged. What\'s happening?',
+      opts: [
+        'The model got worse on the eval set somehow',
+        'Drift — production traffic has shifted to topics or doc areas your eval set doesn\'t cover',
+        'A library version mismatch in production',
+        'The judge LLM is biased'
+      ],
+      ans: 1,
+      exp: 'Classic drift signature: offline (static set) is fine, online (live traffic) is dropping. Either users moved (query drift) or docs changed (corpus drift). Investigate the gap.'
+    },
+    {
+      q: 'You have one end-to-end faithfulness score that\'s dropped. Why is per-stage scoring critical here?',
+      opts: [
+        'It looks better on dashboards',
+        'It tells you WHERE the drop is — retrieval, rerank, or generation — instead of forcing you to debug everything',
+        'It\'s required by RAGAS',
+        'It reduces eval cost'
+      ],
+      ans: 1,
+      exp: 'A single end-to-end score is a smoke alarm — it tells you something is wrong, but not where. Per-stage scoring localizes the failure so you fix the right component.'
+    },
+    {
+      q: 'Which of these is the BEST way to keep your offline eval set fresh and aligned with real usage?',
+      opts: [
+        'Add 10 questions every week, ad-hoc',
+        'Regenerate the entire eval set synthetically each quarter',
+        'Sample low-score production calls weekly, human-label the worst, merge into the eval set',
+        'Never change the eval set — consistency is more important than freshness'
+      ],
+      ans: 2,
+      exp: 'The living eval-set loop: online finds new failures, humans label them, offline catches them next time. After 6 months, your eval set mirrors actual users — your real edge.'
+    }
+  ];
+
+  let qIdx = 0, qScore = 0;
+
+  function renderQ() {
+    const q = quizQs[qIdx];
+    document.getElementById('qNum').textContent = qIdx + 1;
+    document.getElementById('qScore').textContent = qScore;
+    document.getElementById('qText').textContent = q.q;
+    document.getElementById('qFeedback').classList.add('hidden');
+    document.getElementById('qNext').classList.add('hidden');
+
+    const opts = document.getElementById('qOptions');
+    opts.innerHTML = '';
+    q.opts.forEach((o, i) => {
+      const btn = document.createElement('button');
+      btn.className = 'quiz-option';
+      btn.textContent = o;
+      btn.onclick = () => answerQ(i);
+      opts.appendChild(btn);
+    });
+  }
+
+  function answerQ(picked) {
+    const q = quizQs[qIdx];
+    const opts = document.querySelectorAll('#qOptions .quiz-option');
+    opts.forEach((o, i) => {
+      o.classList.add('disabled');
+      if (i === q.ans) o.classList.add('correct');
+      if (i === picked && picked !== q.ans) o.classList.add('wrong');
+    });
+
+    const fb = document.getElementById('qFeedback');
+    fb.classList.remove('hidden');
+    if (picked === q.ans) {
+      qScore++;
+      fb.innerHTML = `<div class="callout-cyan"><strong class="text-cyan-300">✓ Correct.</strong> <span class="text-gray-300">${q.exp}</span></div>`;
+    } else {
+      fb.innerHTML = `<div class="callout-pink"><strong class="text-pink-300">✗ Not quite.</strong> <span class="text-gray-300">${q.exp}</span></div>`;
+    }
+    document.getElementById('qScore').textContent = qScore;
+    document.getElementById('qNext').classList.remove('hidden');
+    if (qIdx >= quizQs.length - 1) {
+      document.getElementById('qNext').innerHTML = 'Finish <i data-lucide="check" class="w-4 h-4 inline ml-1"></i>';
+      safeCreateIcons();
+    }
+  }
+
+  function nextQuestion() {
+    if (qIdx >= quizQs.length - 1) {
+      document.getElementById('quizCard').innerHTML = `
+        <div class="text-center py-6">
+          <div class="inline-flex items-center justify-center w-16 h-16 rounded-full mb-4" style="background: linear-gradient(135deg, #4dffb8, #00f0ff); box-shadow: 0 0 40px rgba(77,255,184,0.4);">
+            <i data-lucide="award" class="w-8 h-8 text-black"></i>
+          </div>
+          <h3 class="font-display font-bold text-2xl gradient-cyan mb-2">Quiz Complete</h3>
+          <p class="text-gray-400">You scored <span class="text-cyan-300 font-bold">${qScore} / ${quizQs.length}</span></p>
+          <p class="text-sm text-gray-500 mt-2">${qScore === quizQs.length ? 'Perfect run. Track 6 fully unlocked — onto Mini-Capstone 4.' : 'Review the CI patterns and drift loop, then retry.'}</p>
+        </div>`;
+      safeCreateIcons();
+      return;
+    }
+    qIdx++;
+    renderQ();
+  }
+  renderQ();
+
+  // ===== SIDE NAV =====
+  const sections = ['hero','axes','stages','ci','monitoring','drift','checkpoint'];
+  const dots = document.querySelectorAll('.dot');
+  dots.forEach(dot => {
+    dot.addEventListener('click', () => {
+      document.getElementById(dot.dataset.target).scrollIntoView({ behavior: 'smooth' });
+    });
+  });
+  window.addEventListener('scroll', () => {
+    const scrollPos = window.scrollY + window.innerHeight / 2;
+    sections.forEach((id, i) => {
+      const el = document.getElementById(id);
+      if (el && el.offsetTop <= scrollPos && el.offsetTop + el.offsetHeight > scrollPos) {
+        dots.forEach(d => d.classList.remove('active'));
+        dots[i]?.classList.add('active');
+      }
+    });
+  });
+
+  // ===== COMPLETION =====
+  function completeModule() {
+    document.getElementById('courseProgress').style.width = '100%';
+    document.getElementById('progressText').textContent = '3 / 3 modules ✓';
+
+    try {
+      const saved = JSON.parse(localStorage.getItem('rag_academy_progress') || '{}');
+      saved.completed = saved.completed || [];
+      if (!saved.completed.includes('6.2')) saved.completed.push('6.2');
+      saved.lastModule = '6.2';
+      localStorage.setItem('rag_academy_progress', JSON.stringify(saved));
+    } catch(e) {}
+
+    const burst = document.createElement('div');
+    burst.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);font-family:Orbitron,sans-serif;font-size:2rem;font-weight:900;color:#00f0ff;text-shadow:0 0 30px #00f0ff;z-index:9999;pointer-events:none;opacity:0;transition:all 0.8s ease;';
+    burst.textContent = '✦ TRACK 6 COMPLETE ✦';
+    document.body.appendChild(burst);
+    requestAnimationFrame(() => {
+      burst.style.opacity = '1';
+      burst.style.transform = 'translate(-50%, -50%) scale(1.2)';
+    });
+    setTimeout(() => { burst.style.opacity = '0'; setTimeout(() => burst.remove(), 800); }, 1800);
+  }
+  window.completeModule = completeModule;
+
+  try {
+    const saved = JSON.parse(localStorage.getItem('rag_academy_progress') || '{}');
+    if (saved.completed && saved.completed.includes('6.2')) {
+      document.getElementById('courseProgress').style.width = '100%';
+      document.getElementById('progressText').textContent = '3 / 3 modules ✓';
+    }
+  } catch(e) {}
+</script>
+
+</body>
+</html>

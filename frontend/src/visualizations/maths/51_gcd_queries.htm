@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GCD Range Queries - Visualization</title>
+    <style>
+        :root {
+            --bg-page: #070b14;
+            --bg-surface: rgba(255, 255, 255, 0.045);
+            --bg-input: rgba(255, 255, 255, 0.04);
+            --border-main: rgba(255, 255, 255, 0.10);
+            --btn-bg: rgba(255, 255, 255, 0.05);
+            --btn-hover: rgba(255, 255, 255, 0.10);
+            --text-main: #e8eefb;
+            --text-dim: #8b98b3;
+            --accent-orange: #f5a524;   /* combine / answer               */
+            --accent-blue:   #06b6d4;    /* sparse-table cells / chrome    */
+            --accent-green:  #22c55e;    /* finished query result          */
+            --accent-red:    #f43f5e;    /* (reserved)                     */
+            --accent-purple: #a855f7;    /* cell being filled / left side  */
+            --mono: ui-monospace, 'SF Mono', 'Cascadia Code', 'Courier New', monospace;
+            --sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+            --shell: 900px;
+        }
+
+        * { box-sizing: border-box; }
+        html, body { overflow-x: hidden; }
+        body {
+            background:
+                radial-gradient(1100px 600px at 15% -10%, rgba(168, 85, 247, 0.10), transparent 60%),
+                radial-gradient(900px 600px at 100% 10%, rgba(6, 182, 212, 0.10), transparent 55%),
+                linear-gradient(160deg, #070b14 0%, #0b1120 55%, #0a0f1c 100%);
+            background-attachment: fixed;
+            color: var(--text-main); font-family: var(--sans); margin: 0;
+            display: flex; flex-direction: column; align-items: center; min-height: 100vh;
+            padding-bottom: 48px; -webkit-font-smoothing: antialiased;
+        }
+        body::before, body::after { content: ''; position: fixed; border-radius: 50%; filter: blur(70px); pointer-events: none; z-index: 0; opacity: 0.45; }
+        body::before { width: 380px; height: 380px; top: 8%; left: -120px; background: radial-gradient(circle, rgba(168,85,247,0.30), transparent 70%); }
+        body::after  { width: 420px; height: 420px; bottom: 4%; right: -140px; background: radial-gradient(circle, rgba(6,182,212,0.22), transparent 70%); }
+        body > * { position: relative; z-index: 1; }
+
+        .input-bar {
+            width: 100%; background: rgba(10, 15, 28, 0.55);
+            backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+            padding: 14px 16px; display: flex; justify-content: center; align-items: center; gap: 10px;
+            border-bottom: 1px solid var(--border-main); flex-wrap: wrap; position: sticky; top: 0; z-index: 50;
+        }
+        label.ui-label, .ui-label { font-family: var(--mono); font-size: 13px; color: var(--text-dim); letter-spacing: 0.2px; }
+        input[type="text"] {
+            background: var(--bg-input); border: 1px solid var(--border-main); color: var(--text-main);
+            height: 34px; border-radius: 9px; padding: 0 12px; font-size: 13px; font-family: var(--mono); width: 168px;
+            transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+        }
+        input[type="text"]:focus { outline: none; border-color: var(--accent-purple); box-shadow: 0 0 0 3px rgba(168, 85, 247, 0.18); background: rgba(168, 85, 247, 0.06); }
+
+        button {
+            height: 34px; border-radius: 9px; padding: 0 14px; background: var(--btn-bg);
+            border: 1px solid var(--border-main); color: var(--text-main); font-size: 13px; font-weight: 600; cursor: pointer;
+            transition: transform 0.15s ease, background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+        }
+        button:hover { background: var(--btn-hover); border-color: rgba(6, 182, 212, 0.5); box-shadow: 0 0 18px rgba(6, 182, 212, 0.18); transform: translateY(-1px); }
+        button:active { transform: translateY(0); }
+        #play-btn { background: linear-gradient(135deg, rgba(6,182,212,0.22), rgba(6,182,212,0.10)); border-color: rgba(6, 182, 212, 0.45); color: #a5f3fc; min-width: 80px; }
+
+        .shell { width: var(--shell); max-width: 95%; margin: 24px auto 0; display: flex; flex-direction: column; gap: 16px; }
+
+        .title-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+        .title-row h1 { font-size: 18px; font-weight: 800; margin: 0; letter-spacing: 0.2px; }
+        .title-row .sub { color: var(--text-dim); font-weight: 500; font-size: 13px; }
+        .step-badge { font-family: var(--mono); font-size: 12px; font-weight: 700; color: #a5f3fc; background: rgba(6,182,212,0.12); border: 1px solid rgba(6,182,212,0.3); padding: 4px 10px; border-radius: 999px; white-space: nowrap; }
+        .progress-track { height: 4px; width: 100%; background: rgba(255,255,255,0.07); border-radius: 999px; overflow: hidden; margin-top: -6px; }
+        .progress-fill { height: 100%; width: 0%; border-radius: 999px; background: linear-gradient(90deg, var(--accent-blue), var(--accent-purple)); box-shadow: 0 0 12px rgba(6,182,212,0.5); transition: width 0.45s cubic-bezier(0.34,1.1,0.64,1); }
+
+        .narration { background: var(--bg-surface); border: 1px solid rgba(6,182,212,0.22); border-radius: 12px; padding: 12px 18px; font-family: var(--mono); font-size: 14px; line-height: 1.5; color: #cfe9f5; min-height: 48px; display: flex; align-items: center; gap: 10px; transition: border-color 0.3s, background 0.3s; }
+        .narration::before { content: '\25B8'; color: var(--accent-blue); font-size: 13px; }
+        .narration.done { border-color: rgba(34,197,94,0.4); background: rgba(34,197,94,0.06); }
+        .narration.done::before { content: '\2713'; color: var(--accent-green); }
+        .narration code { background: rgba(6,182,212,0.14); color: #7dd3fc; padding: 1px 6px; border-radius: 5px; font-size: 12.5px; }
+        .narration b { color: #fff; }
+
+        .stage-card { background: var(--bg-surface); border: 1px solid var(--border-main); border-radius: 18px; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); box-shadow: 0 12px 38px rgba(0,0,0,0.4); overflow: hidden; }
+        .stage-screen { position: relative; margin: 14px; border-radius: 14px; background: radial-gradient(700px 300px at 50% -10%, rgba(6,182,212,0.08), transparent 70%), #090d18; border: 1px solid rgba(255,255,255,0.06); }
+        .grid-stage { position: relative; width: 100%; overflow: auto; scrollbar-width: thin; padding: 22px; display: flex; flex-direction: column; align-items: center; gap: 16px; }
+        .grid-stage::-webkit-scrollbar { height: 8px; width: 8px; }
+        .grid-stage::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 8px; }
+
+        /* table of sparse-table rows */
+        .st-block { display: flex; flex-direction: column; gap: 6px; }
+        .st-row { display: grid; gap: 6px; align-items: center; }
+        .row-label { font-family: var(--mono); font-size: 11px; font-weight: 700; color: var(--text-dim); display: flex; align-items: center; justify-content: flex-end; padding-right: 8px; white-space: nowrap; }
+        .row-label .k { color: #a5f3fc; }
+
+        .cell {
+            display: flex; align-items: center; justify-content: center;
+            border-radius: 9px; font-family: var(--mono); font-weight: 800; font-size: 15px;
+            border: 2px solid var(--border-main); background: rgba(255,255,255,0.04); color: var(--text-main);
+            width: 46px; height: 40px; will-change: transform;
+            transition: background 0.35s, border-color 0.35s, color 0.35s, box-shadow 0.35s, transform 0.3s;
+        }
+        .cell.head { border: none; background: transparent; color: var(--text-dim); font-size: 12px; font-weight: 700; box-shadow: none; height: 22px; }
+        .cell.idx { color: #cbd5e8; }
+        .cell.blank { background: transparent; border: 2px dashed rgba(255,255,255,0.06); color: var(--text-dim); opacity: 0.4; }
+        .cell.zero { color: var(--text-dim); background: rgba(255,255,255,0.02); }
+        .cell.filled { color: #e8eefb; }
+        .cell.dep { border-color: var(--accent-blue); background: rgba(6,182,212,0.12); color: #a5f3fc; box-shadow: 0 0 12px rgba(6,182,212,0.3); }
+        .cell.depL { border-color: var(--accent-purple); background: rgba(168,85,247,0.14); color: #e9d5ff; box-shadow: 0 0 12px rgba(168,85,247,0.3); }
+        .cell.current { border-color: var(--accent-purple); background: rgba(168,85,247,0.16); color: #e9d5ff; box-shadow: 0 0 20px rgba(168,85,247,0.55), inset 0 0 12px rgba(168,85,247,0.12); transform: scale(1.06); z-index: 2; }
+        .cell.range { border-color: var(--accent-orange); background: rgba(245,165,36,0.12); color: #ffd591; }
+        .cell.combine { border-color: var(--accent-orange); background: rgba(245,165,36,0.22); color: #ffd591; box-shadow: 0 0 18px rgba(245,165,36,0.5); transform: scale(1.06); z-index: 2; }
+        .cell.result { border-color: var(--accent-green); background: linear-gradient(180deg, rgba(47,224,143,0.85), rgba(33,194,117,0.85)); color: #06251a; box-shadow: 0 0 16px rgba(34,197,94,0.45); }
+        .cell.idx.lit { color: var(--accent-orange); }
+
+        /* query / answer board */
+        .action-stage { position: relative; min-height: 92px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; }
+        .answer-track { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: center; min-height: 40px; }
+        .ans-tile { min-width: 46px; height: 40px; padding: 0 8px; border-radius: 9px; display: flex; flex-direction: column; align-items: center; justify-content: center; font-family: var(--mono); font-size: 16px; font-weight: 800; border: 2px solid var(--border-main); background: rgba(255,255,255,0.04); color: var(--text-dim); transition: all 0.3s; }
+        .ans-tile .lbl { font-size: 9px; font-weight: 600; color: var(--text-dim); letter-spacing: 0.3px; }
+        .ans-tile.live { border-color: var(--accent-orange); background: rgba(245,165,36,0.16); color: #ffd591; box-shadow: 0 0 12px rgba(245,165,36,0.35); }
+        .ans-tile.done { border-color: var(--accent-green); background: rgba(34,197,94,0.14); color: #86efac; }
+        .ans-tile.done .lbl { color: #86efac; }
+        .action-word { font-family: var(--mono); font-weight: 800; font-size: 18px; letter-spacing: 0.4px; min-height: 22px; text-align: center; transition: color 0.3s; }
+        #confetti { position: absolute; inset: 0; overflow: visible; pointer-events: none; }
+        .confetti-piece { position: absolute; top: 0; left: 50%; width: 8px; height: 13px; border-radius: 2px; opacity: 0; animation: confettiFall ease-out forwards; }
+
+        .controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: center; }
+        .controls .kbd-hint { font-size: 11px; color: var(--text-dim); font-family: var(--mono); margin-left: 4px; }
+        .kbd { background: rgba(255,255,255,0.07); border: 1px solid var(--border-main); border-radius: 5px; padding: 1px 6px; font-size: 10px; }
+        input[type="range"] { accent-color: var(--accent-blue); width: 110px; cursor: pointer; }
+
+        .details-toggle { align-self: center; height: 32px; padding: 0 16px; border-radius: 999px; cursor: pointer; background: rgba(255,255,255,0.04); border: 1px solid var(--border-main); color: var(--text-dim); font-family: var(--mono); font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; gap: 8px; transition: color 0.2s, border-color 0.2s, background 0.2s; }
+        .details-toggle:hover { color: var(--text-main); border-color: rgba(6,182,212,0.4); background: rgba(6,182,212,0.06); }
+        .details-toggle .chev { transition: transform 0.3s ease; }
+        .details-wrap.open .details-toggle .chev { transform: rotate(180deg); }
+        .details-body { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.4s ease; }
+        .details-wrap.open .details-body { grid-template-rows: 1fr; }
+        .details-inner { overflow: hidden; min-height: 0; }
+        .details-grid { display: flex; flex-direction: column; gap: 14px; padding-top: 14px; }
+
+        .panel-card { background: var(--bg-surface); border: 1px solid var(--border-main); border-radius: 16px; backdrop-filter: blur(10px); box-shadow: 0 8px 30px rgba(0,0,0,0.35); }
+        .panel-head { display: flex; align-items: center; gap: 8px; padding: 11px 16px; border-bottom: 1px solid var(--border-main); font-size: 11px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; color: var(--text-dim); }
+        .panel-head .pip { width: 7px; height: 7px; border-radius: 50%; background: var(--accent-blue); box-shadow: 0 0 8px var(--accent-blue); }
+        .code-body { padding: 12px 6px 14px; font-family: var(--mono); font-size: 12.5px; line-height: 1.7; }
+        .code-line { display: flex; gap: 12px; padding: 1px 16px; border-left: 2px solid transparent; transition: background 0.3s, border-color 0.3s; white-space: pre; }
+        .code-line .lno { color: #4b5772; width: 16px; text-align: right; user-select: none; }
+        .code-line .src { color: #c4cee0; }
+        .code-line .kw { color: #c792ea; }
+        .code-line .fn { color: #82aaff; }
+        .code-line.active { background: rgba(6,182,212,0.12); border-left-color: var(--accent-blue); }
+        .code-line.active .src, .code-line.active .lno { color: #e8eefb; }
+
+        .state-strip { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 0 2px; }
+        .pill { display: inline-flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 12px; color: var(--text-dim); background: rgba(255,255,255,0.04); border: 1px solid var(--border-main); border-radius: 999px; padding: 4px 11px; }
+        .pill b { color: var(--text-main); font-weight: 800; }
+        .pill.c b { color: var(--accent-purple); } .pill.b b { color: var(--accent-orange); } .pill.g b { color: var(--accent-green); }
+
+        .log-panel { border-radius: 14px; padding: 12px 16px; height: 110px; overflow-y: auto; font-family: var(--mono); font-size: 12.5px; line-height: 1.5; background: var(--bg-surface); border: 1px solid var(--border-main); }
+        .log-panel::-webkit-scrollbar { width: 8px; }
+        .log-panel::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 8px; }
+
+        @keyframes confettiFall { 0%{ opacity:1; transform: translate(-50%, 0) rotate(0deg); } 100%{ opacity:0; transform: translate(calc(-50% + var(--x)), 220px) rotate(var(--rot)); } }
+        @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; } }
+    </style>
+</head>
+<body>
+
+    <div class="input-bar">
+        <label class="ui-label">arr =</label>
+        <input type="text" id="arr-input" placeholder="[12,18,6,9,15,5]" maxlength="60">
+        <label class="ui-label">queries =</label>
+        <input type="text" id="queries-input" placeholder="[[0,1],[2,5]]" maxlength="60">
+        <button onclick="loadCustom()">Load</button>
+        <span class="ui-label" style="opacity:.5">|</span>
+        <button onclick="loadExample(0)">Ex 1</button>
+        <button onclick="loadExample(1)">Ex 2</button>
+    </div>
+
+    <div class="shell">
+        <div class="title-row">
+            <h1>GCD Range Queries <span class="sub">&middot; Sparse Table &middot; sp[k][i] = gcd(sp[k&minus;1][i], sp[k&minus;1][i+2<sup>k&minus;1</sup>]) &middot; query in O(1)</span></h1>
+            <span class="step-badge" id="step-badge">Step 1 / 1</span>
+        </div>
+        <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+
+        <div class="narration" id="main-panel">&mdash;</div>
+
+        <div class="stage-card">
+            <div class="stage-screen">
+                <div class="grid-stage" id="grid-stage">
+                    <div class="st-block" id="st-block"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="action-stage">
+            <div id="confetti"></div>
+            <div class="answer-track" id="answer-track"></div>
+            <div class="action-word" id="action-word"></div>
+        </div>
+
+        <div class="controls">
+            <button onclick="resetSim()">&#8634; Reset</button>
+            <button onclick="prevStep()">&#8592; Back</button>
+            <button onclick="togglePlay()" id="play-btn">Play</button>
+            <button onclick="nextStep()">Next &#8594;</button>
+            <span class="ui-label" style="margin-left:6px; font-size:11px">Speed</span>
+            <input type="range" id="speed" min="0" max="2" value="1">
+            <span class="kbd-hint"><span class="kbd">&#8592;</span> <span class="kbd">&#8594;</span> step &middot; <span class="kbd">space</span> play</span>
+        </div>
+
+        <div class="details-wrap" id="details-wrap">
+            <button class="details-toggle" onclick="toggleDetails()" aria-expanded="false">
+                <span id="details-label">Show code, state &amp; log</span> <span class="chev">&#9662;</span>
+            </button>
+            <div class="details-body">
+                <div class="details-inner">
+                    <div class="details-grid">
+                        <div class="state-strip">
+                            <span class="pill c">building sp[k][i] <b id="st-cell">&mdash;</b></span>
+                            <span class="pill b">query [l,r] <b id="st-q">&mdash;</b></span>
+                            <span class="pill g">combine <b id="st-comb">&mdash;</b></span>
+                            <span class="pill">answers <b id="st-ans">[]</b></span>
+                        </div>
+                        <div class="panel-card">
+                            <div class="panel-head"><span class="pip"></span> Algorithm</div>
+                            <div class="code-body" id="code-panel"></div>
+                        </div>
+                        <div class="log-panel" id="log"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        'use strict';
+
+        // ───────── Motion engine (spring pop, zero deps) ─────────
+        const REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        const FRAME = 1000 / 60;
+        function sampleSpring(stiffness, damping, mass) {
+            const dt = 1 / 60; let x = 1, v = 0; const out = [];
+            for (let i = 0; i < 240; i++) { const a = (-stiffness * x - damping * v) / mass; v += a * dt; x += v * dt; out.push(1 - x); if (Math.abs(x) < 0.0015 && Math.abs(v) < 0.0015) break; }
+            out.push(1); return out;
+        }
+        const SPRING_POP = sampleSpring(520, 17, 1);
+        const durOf = (a) => a.length * FRAME;
+        const Motion = {
+            pop(el) {
+                if (REDUCED) return;
+                const kf = SPRING_POP.map(p => ({ transform: `scale(${(0.4 + 0.66 * p).toFixed(3)})` }));
+                el.animate(kf, { duration: durOf(SPRING_POP), easing: 'linear' });
+            },
+        };
+
+        // ───────── State ─────────
+        const EXAMPLES = [
+            { arr: [12, 18, 6, 9, 15, 5], queries: [[0, 1], [2, 5], [0, 5], [3, 4]] },
+            { arr: [8, 12, 16, 9, 6, 24], queries: [[0, 2], [1, 4], [2, 5], [0, 5]] },
+        ];
+        let arr = EXAMPLES[0].arr.slice();
+        let queries = EXAMPLES[0].queries.map(q => q.slice());
+        let LOG = 1;                 // number of sparse-table rows
+        let steps = [];
+        let stepIdx = 0;
+        let timer = null;
+        let confettiArmed = true;
+        const delays = [1450, 720, 330];
+        const cellEls = {};   // 'r,c' -> element
+
+        const CODE = [
+            [['kw','def '],['fn','build'],['src','(arr):']],
+            [['src','  for i: sp[0][i] = arr[i]']],
+            [['kw','  for '],['src','k in 1..LOG:']],
+            [['kw','    for '],['src','i where i+2^k <= n:']],
+            [['src','      sp[k][i] = gcd(sp[k-1][i], sp[k-1][i+2^(k-1)])']],
+            [['kw','def '],['fn','query'],['src','(l, r):']],
+            [['src','  k = floor(log2(r - l + 1))']],
+            [['kw','  return '],['src','gcd(sp[k][l], sp[k][r - 2^k + 1])']],
+        ];
+        function buildCodePanel() {
+            const panel = document.getElementById('code-panel'); panel.innerHTML = '';
+            CODE.forEach((tokens, i) => {
+                const line = document.createElement('div'); line.className = 'code-line'; line.dataset.line = i;
+                const lno = document.createElement('span'); lno.className = 'lno'; lno.textContent = i + 1; line.appendChild(lno);
+                const src = document.createElement('span');
+                tokens.forEach(([cls, txt]) => { const s = document.createElement('span'); s.className = cls; s.textContent = txt; src.appendChild(s); });
+                line.appendChild(src); panel.appendChild(line);
+            });
+        }
+        function highlightCode(arrL) { document.querySelectorAll('.code-line').forEach(el => el.classList.toggle('active', arrL && arrL.includes(+el.dataset.line))); }
+        function toggleDetails() {
+            const wrap = document.getElementById('details-wrap'); const open = wrap.classList.toggle('open');
+            wrap.querySelector('.details-toggle').setAttribute('aria-expanded', open ? 'true' : 'false');
+            document.getElementById('details-label').textContent = open ? 'Hide code, state & log' : 'Show code, state & log';
+        }
+
+        // ───────── math ─────────
+        function gcd(x, y) { x = Math.abs(x); y = Math.abs(y); while (y !== 0) { const t = y; y = x % y; x = t; } return x; }
+        const floorLog2 = (v) => Math.floor(Math.log2(v));
+
+        // ───────── step generation (genuine sparse-table simulation) ─────────
+        function deepCopy(g) { return g.map(row => row.slice()); }
+        function generateSteps() {
+            steps = [];
+            const n = arr.length;
+            LOG = floorLog2(n) + 1;
+            // sp[k][i] valid only where i + 2^k <= n; store null elsewhere
+            const sp = Array.from({ length: LOG }, () => Array(n).fill(null));
+            const answers = [];
+
+            const snap = (extra) => Object.assign({
+                sp: deepCopy(sp), n, LOG, answers: answers.slice(),
+                current: null, deps: [], rangeRow: null, range: null,
+                combine: null, resultCell: null, qIdx: -1
+            }, extra);
+
+            // row 0 = the array itself
+            for (let i = 0; i < n; i++) sp[0][i] = arr[i];
+            steps.push(snap({
+                sp: deepCopy(sp),
+                code: [0, 1], action: 'BUILD TABLE', actionColor: 'var(--accent-blue)',
+                panel: `Answer range-GCD queries on <code>arr=[${arr.join(',')}]</code> in O(1) using a <b>sparse table</b>. Row <code>k=0</code> is the array itself; <code>sp[k][i] = gcd</code> of the block of <code>2<sup>k</sup></code> elements starting at <code>i</code>.`,
+                log: `init  arr=[${arr.join(',')}]  n=${n}  rows(LOG)=${LOG}`
+            }));
+
+            // build rows k = 1..LOG-1
+            for (let k = 1; k < LOG; k++) {
+                const span = 1 << k, half = 1 << (k - 1);
+                for (let i = 0; i + span <= n; i++) {
+                    const a = sp[k - 1][i], b = sp[k - 1][i + half];
+                    const g = gcd(a, b);
+                    // pre-fill step: show the two dependencies we are about to combine
+                    steps.push(snap({
+                        current: [k, i], deps: [[k - 1, i], [k - 1, i + half]],
+                        code: [2, 3, 4], action: `gcd(${a}, ${b}) = ${g}`, actionColor: 'var(--accent-purple)',
+                        panel: `Build <code>sp[${k}][${i}]</code> (block <code>arr[${i}..${i + span - 1}]</code>): combine the two half-blocks <code>sp[${k - 1}][${i}]=${a}</code> and <code>sp[${k - 1}][${i + half}]=${b}</code> &#8594; <code>gcd(${a}, ${b}) = ${g}</code>.`,
+                        log: `sp[${k}][${i}] = gcd(sp[${k-1}][${i}]=${a}, sp[${k-1}][${i+half}]=${b}) = ${g}`
+                    }));
+                    sp[k][i] = g;
+                }
+            }
+
+            // table-complete marker
+            steps.push(snap({
+                sp: deepCopy(sp),
+                code: [4], action: 'TABLE READY', actionColor: 'var(--accent-blue)',
+                panel: `Sparse table is built. Each <code>sp[k][i]</code> holds the GCD of <code>2<sup>k</sup></code> consecutive elements. Now every query <code>[l,r]</code> is answered by combining just <b>two</b> overlapping power-of-two blocks &mdash; a left side and a right side.`,
+                log: `table ready  (${LOG} rows)`
+            }));
+
+            // answer each query
+            for (let qIdx = 0; qIdx < queries.length; qIdx++) {
+                const [l, r] = queries[qIdx];
+                const len = r - l + 1;
+                const k = floorLog2(len);
+                const span = 1 << k;
+                const li = l, ri = r - span + 1;       // two block start-indices on row k
+                const left = sp[k][li], right = sp[k][ri];
+                const ans = gcd(left, right);
+
+                // 1) announce query + the row k it uses
+                steps.push(snap({
+                    qIdx, range: [l, r], rangeRow: k,
+                    code: [5, 6], action: `len=${len} &#8594; k=${k}`, actionColor: 'var(--accent-orange)',
+                    panel: `Query ${qIdx}: range <code>[${l},${r}]</code> over <code>[${arr.slice(l, r + 1).join(',')}]</code>. Length <code>${len}</code> &#8594; largest power of two that fits is <code>2<sup>${k}</sup>=${span}</code>, so we read row <code>k=${k}</code>.`,
+                    log: `\nquery ${qIdx}: [${l},${r}]  len=${len}  k=${k}`
+                }));
+
+                // 2) highlight the two blocks and combine
+                steps.push(snap({
+                    qIdx, range: [l, r], rangeRow: k,
+                    deps: [[k, li]], combine: { k, li, ri, left, right, ans },
+                    code: [7], action: `gcd(${left}, ${right}) = ${ans}`, actionColor: 'var(--accent-orange)',
+                    panel: `Combine the two overlapping blocks on row <code>k=${k}</code>: left = <code>sp[${k}][${li}]=${left}</code> (covers <code>[${li},${li + span - 1}]</code>), right = <code>sp[${k}][${ri}]=${right}</code> (covers <code>[${ri},${ri + span - 1}]</code>). Answer = <code>gcd(${left}, ${right}) = <b>${ans}</b></code>.`,
+                    log: `  combine sp[${k}][${li}]=${left}  &  sp[${k}][${ri}]=${right}  ->  ${ans}`
+                }));
+
+                answers.push(ans);
+
+                // 3) record result
+                steps.push(snap({
+                    qIdx, range: [l, r], rangeRow: k,
+                    resultCell: { k, li, ri }, answers: answers.slice(),
+                    code: [7], action: `query ${qIdx} = ${ans}`, actionColor: 'var(--accent-green)',
+                    panel: `Query ${qIdx} <code>[${l},${r}]</code> done: <code>gcd</code> of the subarray is <b>${ans}</b>.`,
+                    log: `  result[${qIdx}] = ${ans}`
+                }));
+            }
+
+            // final
+            steps.push(snap({
+                complete: true, confetti: true, answers: answers.slice(),
+                code: [7], action: `&#10003; [${answers.join(', ')}]`, actionColor: 'var(--accent-green)',
+                panel: `All ${queries.length} queries answered in O(1) each: <code>[${answers.join(', ')}]</code>. The sparse table turned each range-GCD into one <code>gcd</code> of two precomputed sides.`,
+                log: `done  answers = [${answers.join(', ')}]`
+            }));
+        }
+
+        // ───────── render (persistent DOM) ─────────
+        function setKey(o, key) { const s = new Set(); (o || []).forEach(d => s.add(d[0] + ',' + d[1])); return s; }
+        function renderStep(idx) {
+            stepIdx = idx; const step = steps[idx]; if (!step) return;
+            const n = step.n, rows = step.LOG;
+            const block = document.getElementById('st-block');
+            block.style.maxWidth = '100%';
+
+            const depSet = setKey(step.deps);                 // dependency cells (blue) — for build, the half-blocks
+            const curKey = step.current ? step.current[0] + ',' + step.current[1] : null;
+            // left dependency in a build step (purple-ish): mark first dep specially when combining build
+            const combine = step.combine;
+            const range = step.range;       // [l,r] of array indices for row 0 highlight
+            const rangeRow = step.rangeRow; // which row the query reads
+            const result = step.resultCell;
+
+            const used = new Set();
+            // we need an index-header row + rows k=0..LOG-1 ; each visual row is a .st-row grid
+            // To keep persistent DOM, store rows in block, cells keyed 'r,c' where r=-1 is header, r=k otherwise
+            // ensure header row exists
+            function ensureRow(rowId) {
+                let rowEl = block.querySelector(`[data-row="${rowId}"]`);
+                if (!rowEl) {
+                    rowEl = document.createElement('div'); rowEl.className = 'st-row'; rowEl.dataset.row = rowId;
+                    block.appendChild(rowEl);
+                }
+                rowEl.style.gridTemplateColumns = `70px repeat(${n}, 46px)`;
+                return rowEl;
+            }
+
+            const rowOrder = [-1];               // -1 = index header
+            for (let k = 0; k < rows; k++) rowOrder.push(k);
+
+            rowOrder.forEach(rowId => {
+                const rowEl = ensureRow(rowId);
+                // label cell (column -1)
+                for (let c = -1; c < n; c++) {
+                    const key = rowId + ',' + c; used.add(key);
+                    let el = cellEls[key];
+                    if (!el) { el = document.createElement('div'); cellEls[key] = el; }
+                    let cls, txt = '';
+
+                    if (rowId === -1) {
+                        // header row: array indices
+                        if (c === -1) { cls = 'row-label'; txt = 'index'; }
+                        else {
+                            cls = 'cell head idx'; txt = String(c);
+                            if (range && c >= range[0] && c <= range[1]) cls += ' lit';
+                        }
+                    } else if (c === -1) {
+                        // row label: k=..
+                        cls = 'row-label';
+                        el.innerHTML = `k=<span class="k">${rowId}</span> <span style="opacity:.6">(2<sup>${rowId}</sup>)</span>`;
+                        rowEl.appendChild(el); continue;
+                    } else {
+                        const k = rowId;
+                        const val = step.sp[k] ? step.sp[k][c] : null;
+                        cls = 'cell';
+                        if (val === null || val === undefined) { cls += ' blank'; txt = ''; }
+                        else { cls += ' filled'; txt = String(val); }
+
+                        const dpKey = k + ',' + c;
+                        // query range highlight on row 0
+                        if (k === 0 && range && c >= range[0] && c <= range[1]) cls += ' range';
+                        // build dependencies
+                        if (depSet.has(dpKey)) {
+                            // first dep is "left"
+                            const first = step.deps && step.deps[0] && step.deps[0][0] === k && step.deps[0][1] === c && !combine;
+                            cls += first ? ' depL' : ' dep';
+                        }
+                        // query combine cells
+                        if (combine && k === combine.k && (c === combine.li || c === combine.ri)) cls += ' combine';
+                        // result highlight
+                        if (result && k === result.k && (c === result.li || c === result.ri)) cls += ' result';
+                        // current cell being written (build)
+                        if (curKey === dpKey) cls += ' current';
+                    }
+
+                    const wasEmpty = el.textContent === '' && !el.classList.contains('filled');
+                    el.className = cls;
+                    if (!(rowId !== -1 && c === -1)) el.textContent = txt;
+                    if (rowId >= 0 && c >= 0 && wasEmpty && txt !== '' && curKey === (rowId + ',' + c)) Motion.pop(el);
+                    rowEl.appendChild(el);
+                }
+            });
+            // reap unused cells / rows
+            Object.keys(cellEls).forEach(key => { if (!used.has(key)) { cellEls[key].remove(); delete cellEls[key]; } });
+            block.querySelectorAll('.st-row').forEach(rEl => { if (!rowOrder.map(String).includes(rEl.dataset.row)) rEl.remove(); });
+
+            // answer board: one tile per query
+            const at = document.getElementById('answer-track'); at.innerHTML = '';
+            queries.forEach((q, qi) => {
+                const tile = document.createElement('div'); tile.className = 'ans-tile';
+                let val = '?';
+                if (qi < step.answers.length) { val = step.answers[qi]; tile.className += ' done'; }
+                if (step.qIdx === qi && !step.complete) tile.className = 'ans-tile live';
+                if (step.qIdx === qi && qi < step.answers.length && !step.complete) tile.className = 'ans-tile done';
+                tile.innerHTML = `<span class="lbl">[${q[0]},${q[1]}]</span><span>${val}</span>`;
+                at.appendChild(tile);
+            });
+
+            const mp = document.getElementById('main-panel');
+            mp.innerHTML = step.panel || '&mdash;';
+            mp.classList.toggle('done', !!step.complete);
+            const aw = document.getElementById('action-word'); aw.innerHTML = step.action || ''; aw.style.color = step.actionColor || 'var(--text-dim)';
+            highlightCode(step.code);
+
+            if (step.confetti) { if (confettiArmed) { fireConfetti(); confettiArmed = false; } } else confettiArmed = true;
+
+            document.getElementById('st-cell').textContent = step.current ? `sp[${step.current[0]}][${step.current[1]}]` : '—';
+            document.getElementById('st-q').textContent = step.range ? `[${step.range[0]},${step.range[1]}]` : '—';
+            document.getElementById('st-comb').textContent = combine ? `gcd(${combine.left},${combine.right})=${combine.ans}` : '—';
+            document.getElementById('st-ans').textContent = `[${step.answers.join(', ')}]`;
+
+            document.getElementById('step-badge').textContent = `Step ${idx + 1} / ${steps.length}`;
+            document.getElementById('progress-fill').style.width = `${(idx / Math.max(1, steps.length - 1)) * 100}%`;
+
+            const logEl = document.getElementById('log');
+            logEl.innerHTML = steps.slice(0, idx + 1).map(s => `<div style="margin:3px 0;white-space:pre-wrap;">${s.log}</div>`).join('');
+            logEl.scrollTop = logEl.scrollHeight;
+        }
+
+        function fireConfetti() {
+            const host = document.getElementById('confetti'); if (!host || REDUCED) return;
+            const colors = ['#22c55e', '#06b6d4', '#a855f7', '#f5a524', '#f43f5e'];
+            for (let i = 0; i < 38; i++) {
+                const p = document.createElement('div'); p.className = 'confetti-piece';
+                p.style.setProperty('--x', ((Math.random() * 2 - 1) * 220) + 'px');
+                p.style.setProperty('--rot', ((Math.random() * 720 - 360)) + 'deg');
+                p.style.background = colors[i % colors.length];
+                p.style.animationDuration = (0.9 + Math.random() * 0.8) + 's';
+                p.style.animationDelay = (Math.random() * 0.15) + 's';
+                host.appendChild(p); setTimeout(() => p.remove(), 1900);
+            }
+        }
+
+        // ───────── controls ─────────
+        function nextStep() { if (stepIdx < steps.length - 1) renderStep(stepIdx + 1); else pause(); }
+        function prevStep() { if (stepIdx > 0) renderStep(stepIdx - 1); }
+        function resetSim() { pause(); renderStep(0); }
+        function togglePlay() {
+            const btn = document.getElementById('play-btn');
+            if (timer) { pause(); return; }
+            btn.textContent = 'Pause';
+            if (stepIdx >= steps.length - 1) renderStep(0);
+            timer = setInterval(() => { if (stepIdx < steps.length - 1) nextStep(); else pause(); }, delays[document.getElementById('speed').value]);
+        }
+        function pause() { clearInterval(timer); timer = null; document.getElementById('play-btn').textContent = 'Play'; }
+
+        function clearDom() { Object.keys(cellEls).forEach(k => { cellEls[k].remove(); delete cellEls[k]; }); document.getElementById('st-block').innerHTML = ''; confettiArmed = true; }
+        function loadData(a, q) { pause(); arr = a; queries = q; clearDom(); generateSteps(); renderStep(0); }
+
+        function parseArr(str) {
+            const v = JSON.parse(str);
+            if (!Array.isArray(v) || v.length === 0 || !v.every(x => Number.isFinite(x))) throw 0;
+            return v.map(Number);
+        }
+        function parseQueries(str, n) {
+            const v = JSON.parse(str);
+            if (!Array.isArray(v) || v.length === 0) throw 0;
+            return v.map(q => {
+                if (!Array.isArray(q) || q.length !== 2) throw 0;
+                let l = q[0] | 0, r = q[1] | 0;
+                if (l < 0) l = 0; if (r > n - 1) r = n - 1; if (l > r) [l, r] = [r, l];
+                return [l, r];
+            });
+        }
+        function loadCustom() {
+            try {
+                const a = parseArr((document.getElementById('arr-input').value || '').trim());
+                const q = parseQueries((document.getElementById('queries-input').value || '').trim(), a.length);
+                loadData(a, q);
+            } catch (e) {
+                alert('Use JSON arrays, e.g.  arr = [12,18,6,9,15,5]  and  queries = [[0,1],[2,5]]');
+            }
+        }
+        function loadExample(n) {
+            const ex = EXAMPLES[n];
+            document.getElementById('arr-input').value = JSON.stringify(ex.arr);
+            document.getElementById('queries-input').value = JSON.stringify(ex.queries);
+            loadData(ex.arr.slice(), ex.queries.map(q => q.slice()));
+        }
+
+        document.addEventListener('keydown', (e) => {
+            const tag = (e.target.tagName || '').toLowerCase(); if (tag === 'input' || tag === 'textarea') return;
+            if (e.key === 'ArrowRight') { e.preventDefault(); pause(); nextStep(); }
+            else if (e.key === 'ArrowLeft') { e.preventDefault(); pause(); prevStep(); }
+            else if (e.key === ' ') { e.preventDefault(); togglePlay(); }
+        });
+        ['arr-input', 'queries-input'].forEach(id => document.getElementById(id).addEventListener('keydown', (e) => { if (e.key === 'Enter') loadCustom(); }));
+        window.addEventListener('resize', () => renderStep(stepIdx));
+
+        buildCodePanel();
+        window.onload = () => loadExample(0);
+    </script>
+</body>
+</html>

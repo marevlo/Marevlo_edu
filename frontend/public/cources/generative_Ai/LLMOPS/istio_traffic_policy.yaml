@@ -1,0 +1,236 @@
+# ═══════════════════════════════════════════════════════════════════════════
+# istio_traffic_policy.yaml
+#
+# Istio traffic management for production LLM serving:
+#
+#   - Locality-aware routing (prefer in-zone, failover to other zones)
+#   - Fault injection for chaos testing (enabled via runtime flag)
+#   - Retry budget + jittered exponential backoff
+#   - Sticky routing for A/B experiments
+#   - Header-based tenant classification
+#
+# Companion to envoy_production_filters.yaml (Envoy is the underlying
+# proxy; Istio is the control plane that manages it via YAML CRDs).
+#
+# Usage:
+#   kubectl apply -f istio_traffic_policy.yaml
+# ═══════════════════════════════════════════════════════════════════════════
+
+# ─── Virtual Service · routing logic ────────────────────────────────────────
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: nexus-llm-vs
+  namespace: llm-serving
+spec:
+  hosts:
+  - nexus-llm.llm-serving.svc.cluster.local
+  - inference.nexus.example.com
+
+  http:
+  # ─── Route 1 · Canary receives 10% by default; overridable per tenant ─
+  - name: canary-route
+    match:
+    - headers:
+        x-canary-tenant: { exact: "true" }   # force-route test tenants to canary
+    route:
+    - destination:
+        host: nexus-llm.llm-serving.svc.cluster.local
+        subset: canary
+      weight: 100
+
+  # ─── Route 2 · Sticky A/B experiment routing ─────────────────────────
+  # Users opted into an A/B experiment receive a consistent variant based
+  # on a hash of their tenant ID. Sticky routing via consistentHash ensures
+  # the same user sees the same variant across requests (important for
+  # conversational context consistency).
+  - name: ab-experiment
+    match:
+    - headers:
+        x-experiment-group: { exact: "ab-variant-b" }
+    route:
+    - destination:
+        host: nexus-llm.llm-serving.svc.cluster.local
+        subset: variant-b
+      weight: 100
+
+  # ─── Route 3 · Default · 90% stable / 10% canary ─────────────────────
+  - name: default-route
+    route:
+    - destination:
+        host: nexus-llm.llm-serving.svc.cluster.local
+        subset: stable
+      weight: 90
+    - destination:
+        host: nexus-llm.llm-serving.svc.cluster.local
+        subset: canary
+      weight: 10
+
+    # ─── Retry policy · budgeted + jittered ──────────────────────────
+    # retry_storm_simulator.py verdict: ship retry_budget=10%, jittered,
+    # max_retries=3. Without these, a 10s upstream blip amplifies to
+    # 100+ seconds of elevated error rate.
+    retries:
+      attempts: 2
+      perTryTimeout: 250ms
+      retryOn: "connect-failure,reset,5xx"
+      retryRemoteLocalities: true     # failover across zones on retry
+
+    # ─── Timeout budget ──────────────────────────────────────────────
+    # Per-route timeout = 2 × expected TTFT p99. Matches interactive SLO.
+    timeout: 500ms
+
+    # ─── Fault injection (chaos testing) ─────────────────────────────
+    # Disabled in normal operation (percentage: 0). Enabled via runtime
+    # flag by chaos_test_harness.py for controlled failure windows.
+    fault:
+      delay:
+        percentage: { value: 0.0 }
+        fixedDelay: 0s
+      abort:
+        percentage: { value: 0.0 }
+        httpStatus: 503
+
+---
+
+# ─── Destination Rule · load balancing + traffic policies ──────────────────
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: nexus-llm-dr
+  namespace: llm-serving
+spec:
+  host: nexus-llm.llm-serving.svc.cluster.local
+
+  # ─── Global traffic policy (applies to all subsets unless overridden) ─
+  trafficPolicy:
+    # Connection pool — caps simultaneous TCP connections to prevent
+    # connection-exhaustion cascades.
+    connectionPool:
+      tcp:
+        maxConnections: 100
+        connectTimeout: 1s
+      http:
+        http1MaxPendingRequests: 50
+        http2MaxRequests: 500
+        maxRequestsPerConnection: 10  # recycle connections to avoid stale state
+        maxRetries: 3                  # cap per connection, independent of retry budget
+        h2UpgradePolicy: UPGRADE       # prefer HTTP/2 for streaming
+
+    # Outlier detection — eject misbehaving pods from the LB pool.
+    # Mirrors envoy_production_filters.yaml outlier_detection.
+    outlierDetection:
+      consecutive5xxErrors: 5
+      interval: 10s
+      baseEjectionTime: 30s
+      maxEjectionPercent: 50
+      minHealthPercent: 30
+
+    # ─── Locality-aware load balancing ───────────────────────────────
+    # Prefers same-zone, falls back to same-region, falls back to cross-region.
+    # Avoids cross-region hops for latency-sensitive interactive traffic.
+    # regional_failover_simulator.py: with locality routing + 30s health check,
+    # outage drop rate is 0.2% vs 5%+ without locality awareness.
+    loadBalancer:
+      simple: LEAST_REQUEST
+      localityLbSetting:
+        enabled: true
+        distribute:
+        - from: us-east-1/us-east-1a/*
+          to:
+            "us-east-1/us-east-1a/*": 80   # 80% stays in same AZ
+            "us-east-1/us-east-1b/*": 15   # 15% spills to sibling AZ
+            "us-east-1/us-east-1c/*": 5
+        failover:
+        - from: us-east-1
+          to: us-west-2                     # fall back to another region if us-east-1 fails
+
+  # ─── Subsets · one per revision for canary and A/B ────────────────────
+  subsets:
+  - name: stable
+    labels:
+      version: stable
+  - name: canary
+    labels:
+      version: canary
+    trafficPolicy:
+      # Canary gets stricter circuit breaker — easier to eject if it misbehaves
+      outlierDetection:
+        consecutive5xxErrors: 3
+        interval: 5s
+        baseEjectionTime: 60s
+  - name: variant-b
+    labels:
+      experiment: ab-variant-b
+    trafficPolicy:
+      # Sticky routing for experiment consistency
+      loadBalancer:
+        consistentHash:
+          httpHeaderName: "x-tenant-id"   # hash by tenant for sticky variant assignment
+
+---
+
+# ─── EnvoyFilter · low-level Envoy customization ────────────────────────────
+# Use sparingly; prefer VirtualService/DestinationRule when possible.
+# This EnvoyFilter adds the local rate limiter from envoy_production_filters.yaml
+# (load shedding at the gateway).
+apiVersion: networking.istio.io/v1alpha3
+kind: EnvoyFilter
+metadata:
+  name: nexus-local-ratelimit
+  namespace: llm-serving
+spec:
+  workloadSelector:
+    labels:
+      istio: ingressgateway
+  configPatches:
+  - applyTo: HTTP_FILTER
+    match:
+      context: GATEWAY
+      listener:
+        filterChain:
+          filter:
+            name: "envoy.filters.network.http_connection_manager"
+    patch:
+      operation: INSERT_BEFORE
+      value:
+        name: envoy.filters.http.local_ratelimit
+        typed_config:
+          "@type": type.googleapis.com/udpa.type.v1.TypedStruct
+          type_url: type.googleapis.com/envoy.extensions.filters.http.local_ratelimit.v3.LocalRateLimit
+          value:
+            stat_prefix: gateway_shed
+            token_bucket:
+              max_tokens: 920          # load_shedding_calculator.py: ρ* ≈ 0.83 × capacity
+              tokens_per_fill: 920
+              fill_interval: 1s
+            filter_enabled:
+              runtime_key: local_rate_limit_enabled
+              default_value:
+                numerator: 100
+                denominator: HUNDRED
+
+# ═══════════════════════════════════════════════════════════════════════════
+# What this stack defends against:
+#
+#   Cross-region failure amplifying latency
+#     → localityLbSetting prefers same-AZ, cascades to same-region, then cross-region
+#     → Fails over in ~30s when paired with health checks
+#
+#   Canary rollout regression
+#     → outlierDetection on canary subset is stricter (ejects faster)
+#     → 10% default traffic split limits blast radius
+#
+#   A/B experiment inconsistency
+#     → consistentHash by tenant ID keeps same user on same variant
+#
+#   Retry storm during upstream blip
+#     → retries.attempts: 2 + retry_remote_localities + perTryTimeout: 250ms
+#     → retry_budget on the envoy side (see envoy_production_filters.yaml) caps amplification
+#
+#   Gateway overload
+#     → EnvoyFilter adds local_ratelimit at 920 req/s (below ρ*)
+#     → Shedding protects decode pool from crossing the SLO-compliant utilization
+#
+# Every mitigation here maps to a failure_mode entry in M7 section 11.
+# ═══════════════════════════════════════════════════════════════════════════

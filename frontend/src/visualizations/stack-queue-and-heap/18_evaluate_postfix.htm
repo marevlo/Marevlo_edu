@@ -1,0 +1,576 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Evaluate Postfix Expression</title>
+    <style>
+        :root {
+            --bg-page: #070b14;
+            --bg-surface: rgba(255, 255, 255, 0.045);
+            --bg-input: rgba(255, 255, 255, 0.04);
+            --border-main: rgba(255, 255, 255, 0.10);
+            --btn-bg: rgba(255, 255, 255, 0.05);
+            --btn-hover: rgba(255, 255, 255, 0.10);
+            --text-main: #e8eefb;
+            --text-dim: #8b98b3;
+            --accent-orange: #f5a524;   /* operand / value in motion / pushed */
+            --accent-blue:   #06b6d4;    /* TOP pointer / chrome              */
+            --accent-green:  #22c55e;    /* settled / result                  */
+            --accent-red:    #f43f5e;    /* popped / error                    */
+            --accent-purple: #a855f7;    /* operator / current token          */
+            --mono: ui-monospace, 'SF Mono', 'Cascadia Code', 'Courier New', monospace;
+            --sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+            --shell: 880px;
+        }
+
+        * { box-sizing: border-box; }
+        html, body { overflow-x: hidden; }
+        body {
+            background:
+                radial-gradient(1100px 600px at 15% -10%, rgba(6, 182, 212, 0.10), transparent 60%),
+                radial-gradient(900px 600px at 100% 10%, rgba(168, 85, 247, 0.10), transparent 55%),
+                linear-gradient(160deg, #070b14 0%, #0b1120 55%, #0a0f1c 100%);
+            background-attachment: fixed;
+            color: var(--text-main); font-family: var(--sans); margin: 0;
+            display: flex; flex-direction: column; align-items: center; min-height: 100vh;
+            padding-bottom: 48px; -webkit-font-smoothing: antialiased;
+        }
+        body::before, body::after { content: ''; position: fixed; border-radius: 50%; filter: blur(70px); pointer-events: none; z-index: 0; opacity: 0.45; }
+        body::before { width: 380px; height: 380px; top: 8%; left: -120px; background: radial-gradient(circle, rgba(6,182,212,0.30), transparent 70%); }
+        body::after  { width: 420px; height: 420px; bottom: 4%; right: -140px; background: radial-gradient(circle, rgba(168,85,247,0.22), transparent 70%); }
+        body > * { position: relative; z-index: 1; }
+
+        .input-bar {
+            width: 100%; background: rgba(10, 15, 28, 0.55);
+            backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+            padding: 14px 16px; display: flex; justify-content: center; align-items: center; gap: 10px;
+            border-bottom: 1px solid var(--border-main); flex-wrap: wrap; position: sticky; top: 0; z-index: 50;
+        }
+        label.ui-label, .ui-label { font-family: var(--mono); font-size: 13px; color: var(--text-dim); letter-spacing: 0.2px; }
+        input[type="text"], input[type="number"] {
+            background: var(--bg-input); border: 1px solid var(--border-main); color: var(--text-main);
+            height: 34px; border-radius: 9px; padding: 0 12px; font-size: 13px; font-family: var(--mono); width: 240px;
+            transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+        }
+        input:focus { outline: none; border-color: var(--accent-blue); box-shadow: 0 0 0 3px rgba(6,182,212,0.18); background: rgba(6,182,212,0.06); }
+
+        button {
+            height: 34px; border-radius: 9px; padding: 0 14px; background: var(--btn-bg);
+            border: 1px solid var(--border-main); color: var(--text-main); font-size: 13px; font-weight: 600; cursor: pointer;
+            transition: transform 0.15s ease, background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+        }
+        button:hover { background: var(--btn-hover); border-color: rgba(6, 182, 212, 0.5); box-shadow: 0 0 18px rgba(6, 182, 212, 0.18); transform: translateY(-1px); }
+        button:active { transform: translateY(0); }
+        #play-btn { background: linear-gradient(135deg, rgba(6,182,212,0.22), rgba(6,182,212,0.10)); border-color: rgba(6, 182, 212, 0.45); color: #a5f3fc; min-width: 80px; }
+        .load-btn { font-family: var(--mono); border-color: rgba(6,182,212,0.4); color: #a5f3fc; }
+
+        .shell { width: var(--shell); max-width: 95%; margin: 24px auto 0; display: flex; flex-direction: column; gap: 16px; }
+
+        .title-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+        .title-row h1 { font-size: 18px; font-weight: 800; margin: 0; letter-spacing: 0.2px; }
+        .title-row .sub { color: var(--text-dim); font-weight: 500; font-size: 13px; }
+        .step-badge { font-family: var(--mono); font-size: 12px; font-weight: 700; color: #a5f3fc; background: rgba(6,182,212,0.12); border: 1px solid rgba(6,182,212,0.3); padding: 4px 10px; border-radius: 999px; white-space: nowrap; }
+        .progress-track { height: 4px; width: 100%; background: rgba(255,255,255,0.07); border-radius: 999px; overflow: hidden; margin-top: -6px; }
+        .progress-fill { height: 100%; width: 0%; border-radius: 999px; background: linear-gradient(90deg, var(--accent-blue), var(--accent-purple)); box-shadow: 0 0 12px rgba(6,182,212,0.5); transition: width 0.45s cubic-bezier(0.34,1.1,0.64,1); }
+
+        /* token row scanned left -> right */
+        .token-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+        .tok { font-family: var(--mono); font-size: 14px; font-weight: 800; min-width: 34px; height: 34px; padding: 0 8px; display: inline-flex; align-items: center; justify-content: center; border-radius: 9px; border: 1px solid var(--border-main); color: var(--text-dim); background: rgba(255,255,255,0.03); transition: all 0.3s; white-space: nowrap; }
+        .tok.done { opacity: 0.4; }
+        .tok.operand { color: #ffe2b0; border-color: rgba(245,165,36,0.35); }
+        .tok.operator { color: #e9d5ff; border-color: rgba(168,85,247,0.35); }
+        .tok.current { transform: translateY(-2px) scale(1.08); color: #fff; border-color: rgba(6,182,212,0.6); background: rgba(6,182,212,0.16); box-shadow: 0 0 14px rgba(6,182,212,0.4); }
+
+        .narration { background: var(--bg-surface); border: 1px solid rgba(6,182,212,0.22); border-radius: 12px; padding: 12px 18px; font-family: var(--mono); font-size: 14px; line-height: 1.5; color: #cfe9f5; min-height: 48px; display: flex; align-items: center; gap: 10px; transition: border-color 0.3s, background 0.3s; }
+        .narration::before { content: '\25B8'; color: var(--accent-blue); font-size: 13px; }
+        .narration.done { border-color: rgba(34,197,94,0.4); background: rgba(34,197,94,0.06); }
+        .narration.done::before { content: '\2713'; color: var(--accent-green); }
+        .narration.miss { border-color: rgba(244,63,94,0.4); background: rgba(244,63,94,0.06); }
+        .narration.miss::before { content: '\2717'; color: var(--accent-red); }
+        .narration code { background: rgba(6,182,212,0.14); color: #7dd3fc; padding: 1px 6px; border-radius: 5px; font-size: 12.5px; }
+        .narration b { color: #fff; }
+
+        .stage-card { background: var(--bg-surface); border: 1px solid var(--border-main); border-radius: 18px; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); box-shadow: 0 12px 38px rgba(0,0,0,0.4); overflow: hidden; }
+        .stage-screen { position: relative; margin: 14px; border-radius: 14px; background: radial-gradient(700px 300px at 50% -10%, rgba(6,182,212,0.08), transparent 70%), #090d18; border: 1px solid rgba(255,255,255,0.06); padding: 22px 18px 26px; }
+
+        .stage-cap { font-family: var(--mono); font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--text-dim); text-align: center; margin-bottom: 14px; }
+
+        /* the vertical stack (index 0 at the bottom; top grows up) */
+        .stack-wrap { display: flex; align-items: flex-end; justify-content: center; gap: 18px; min-height: 300px; }
+        .stack-col { display: flex; flex-direction: column-reverse; gap: 8px; position: relative; min-height: 54px; }
+        .slot { width: 132px; height: 46px; border-radius: 11px; display: flex; align-items: center; justify-content: center; gap: 10px;
+            font-family: var(--mono); font-weight: 800; font-size: 19px; position: relative; will-change: transform;
+            border: 2px solid var(--border-main); background: rgba(255,255,255,0.04); color: var(--text-main);
+            transition: background 0.35s, border-color 0.35s, color 0.35s, box-shadow 0.35s, transform 0.3s; }
+        .slot.filled { border-color: rgba(34,197,94,0.45); background: rgba(34,197,94,0.10); color: #d6ffe8; }
+        .slot.toptile { border-color: var(--accent-blue); background: rgba(6,182,212,0.14); color: #a5f3fc; box-shadow: 0 0 20px rgba(6,182,212,0.45); }
+        .slot.pushing { border-color: var(--accent-orange); background: rgba(245,165,36,0.16); color: #ffd591; box-shadow: 0 0 22px rgba(245,165,36,0.55); }
+        .slot.result { border-color: var(--accent-green); background: rgba(34,197,94,0.16); color: #d6ffe8; box-shadow: 0 0 24px rgba(34,197,94,0.5); }
+        .slot.popping { border-color: var(--accent-red); background: rgba(244,63,94,0.16); color: #fecdd3; box-shadow: 0 0 22px rgba(244,63,94,0.5); }
+        .slot .si { position: absolute; left: -28px; font-size: 11px; color: var(--text-dim); font-weight: 700; width: 20px; text-align: right; }
+        .empty-hint { font-family: var(--mono); font-size: 12px; color: var(--text-dim); width: 132px; height: 46px; display: flex; align-items: center; justify-content: center; border: 2px dashed var(--border-main); border-radius: 11px; background: rgba(255,255,255,0.015); }
+        .base-line { width: 160px; height: 4px; border-radius: 3px; background: linear-gradient(90deg, transparent, rgba(255,255,255,0.18), transparent); margin-top: 2px; }
+        .base-cap { font-family: var(--mono); font-size: 10px; color: var(--text-dim); text-align: center; margin-top: 4px; letter-spacing: 0.5px; }
+
+        /* TOP pointer pill that glides vertically to the current top slot */
+        .top-ptr { position: absolute; right: -76px; display: flex; align-items: center; gap: 6px; opacity: 0; will-change: transform;
+            font-family: var(--mono); font-size: 12px; font-weight: 800; }
+        .top-ptr .arrow { color: var(--accent-blue); font-size: 16px; }
+        .top-ptr .tag { background: var(--accent-blue); color: #04222a; padding: 3px 10px; border-radius: 8px; box-shadow: 0 0 14px rgba(6,182,212,0.6); }
+
+        .action-stage { position: relative; min-height: 90px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; }
+        .compute-row { display: flex; align-items: center; gap: 10px; min-height: 54px; opacity: 0; transition: opacity 0.25s; }
+        .compute-row.show { opacity: 1; }
+        .float-tile { width: 52px; height: 48px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-family: var(--mono); font-size: 21px; font-weight: 800; border: 2px solid var(--accent-orange); background: rgba(245,165,36,0.16); color: #ffd591; box-shadow: 0 0 22px rgba(245,165,36,0.5); }
+        .float-tile.op { width: 38px; border-color: var(--accent-purple); background: rgba(168,85,247,0.16); color: #e9d5ff; box-shadow: 0 0 22px rgba(168,85,247,0.5); }
+        .float-tile.res { border-color: var(--accent-green); background: rgba(34,197,94,0.16); color: #d6ffe8; box-shadow: 0 0 24px rgba(34,197,94,0.5); }
+        .float-eq { font-family: var(--mono); font-size: 22px; font-weight: 800; color: var(--text-dim); }
+        .action-word { font-family: var(--mono); font-weight: 800; font-size: 18px; letter-spacing: 0.4px; min-height: 22px; text-align: center; transition: color 0.3s; }
+        #confetti { position: absolute; inset: 0; overflow: visible; pointer-events: none; }
+        .confetti-piece { position: absolute; top: 0; left: 50%; width: 8px; height: 13px; border-radius: 2px; opacity: 0; animation: confettiFall ease-out forwards; }
+
+        .controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: center; }
+        .controls .kbd-hint { font-size: 11px; color: var(--text-dim); font-family: var(--mono); margin-left: 4px; }
+        .kbd { background: rgba(255,255,255,0.07); border: 1px solid var(--border-main); border-radius: 5px; padding: 1px 6px; font-size: 10px; }
+        input[type="range"] { accent-color: var(--accent-blue); width: 110px; cursor: pointer; }
+
+        .details-toggle { align-self: center; height: 32px; padding: 0 16px; border-radius: 999px; cursor: pointer; background: rgba(255,255,255,0.04); border: 1px solid var(--border-main); color: var(--text-dim); font-family: var(--mono); font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; gap: 8px; transition: color 0.2s, border-color 0.2s, background 0.2s; }
+        .details-toggle:hover { color: var(--text-main); border-color: rgba(6,182,212,0.4); background: rgba(6,182,212,0.06); }
+        .details-toggle .chev { transition: transform 0.3s ease; }
+        .details-wrap.open .details-toggle .chev { transform: rotate(180deg); }
+        .details-body { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.4s ease; }
+        .details-wrap.open .details-body { grid-template-rows: 1fr; }
+        .details-inner { overflow: hidden; min-height: 0; }
+        .details-grid { display: flex; flex-direction: column; gap: 14px; padding-top: 14px; }
+
+        .panel-card { background: var(--bg-surface); border: 1px solid var(--border-main); border-radius: 16px; backdrop-filter: blur(10px); box-shadow: 0 8px 30px rgba(0,0,0,0.35); }
+        .panel-head { display: flex; align-items: center; gap: 8px; padding: 11px 16px; border-bottom: 1px solid var(--border-main); font-size: 11px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; color: var(--text-dim); }
+        .panel-head .pip { width: 7px; height: 7px; border-radius: 50%; background: var(--accent-blue); box-shadow: 0 0 8px var(--accent-blue); }
+        .code-body { padding: 12px 6px 14px; font-family: var(--mono); font-size: 12.5px; line-height: 1.7; }
+        .code-line { display: flex; gap: 12px; padding: 1px 16px; border-left: 2px solid transparent; transition: background 0.3s, border-color 0.3s; white-space: pre; }
+        .code-line .lno { color: #4b5772; width: 16px; text-align: right; user-select: none; }
+        .code-line .src { color: #c4cee0; }
+        .code-line .kw { color: #c792ea; }
+        .code-line .fn { color: #82aaff; }
+        .code-line.active { background: rgba(6,182,212,0.12); border-left-color: var(--accent-blue); }
+        .code-line.active .src, .code-line.active .lno { color: #e8eefb; }
+
+        .state-strip { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 0 2px; }
+        .pill { display: inline-flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 12px; color: var(--text-dim); background: rgba(255,255,255,0.04); border: 1px solid var(--border-main); border-radius: 999px; padding: 4px 11px; }
+        .pill b { color: var(--text-main); font-weight: 800; }
+        .pill.t b { color: var(--accent-purple); } .pill.s b { color: var(--accent-blue); } .pill.r b { color: var(--accent-green); }
+
+        .log-panel { border-radius: 14px; padding: 12px 16px; height: 110px; overflow-y: auto; font-family: var(--mono); font-size: 12.5px; line-height: 1.5; background: var(--bg-surface); border: 1px solid var(--border-main); }
+        .log-panel::-webkit-scrollbar { width: 8px; }
+        .log-panel::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 8px; }
+
+        @keyframes confettiFall { 0%{ opacity:1; transform: translate(-50%, 0) rotate(0deg); } 100%{ opacity:0; transform: translate(calc(-50% + var(--x)), 220px) rotate(var(--rot)); } }
+        @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; } }
+    </style>
+</head>
+<body>
+
+    <div class="input-bar">
+        <label class="ui-label">Postfix</label>
+        <input type="text" id="expr-input" placeholder="3 4 + 2 * 7 /" value="3 4 + 2 * 7 /">
+        <button class="load-btn" onclick="loadCustom()">Load</button>
+        <span class="ui-label" style="opacity:.5">|</span>
+        <button onclick="loadExample(0)">Example 1</button>
+        <button onclick="loadExample(1)">Example 2</button>
+        <button onclick="resetSim()">&#8634; Reset</button>
+    </div>
+
+    <div class="shell">
+        <div class="title-row">
+            <h1>Evaluate Postfix <span class="sub">&middot; Reverse Polish Notation &middot; scan left&#8594;right &middot; operands push, operators fold</span></h1>
+            <span class="step-badge" id="step-badge">Step 1 / 1</span>
+        </div>
+        <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+
+        <div class="token-row" id="token-row"></div>
+
+        <div class="narration" id="main-panel">&mdash;</div>
+
+        <div class="stage-card">
+            <div class="stage-screen">
+                <div class="stage-cap">Operand Stack</div>
+                <div class="stack-wrap">
+                    <div>
+                        <div class="stack-col" id="stack-col"></div>
+                        <div class="base-line"></div>
+                        <div class="base-cap">bottom</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="action-stage">
+            <div id="confetti"></div>
+            <div class="compute-row" id="compute-row"></div>
+            <div class="action-word" id="action-word"></div>
+        </div>
+
+        <div class="controls">
+            <button onclick="resetSim()">&#8634; Reset</button>
+            <button onclick="prevStep()">&#8592; Back</button>
+            <button onclick="togglePlay()" id="play-btn">Play</button>
+            <button onclick="nextStep()">Next &#8594;</button>
+            <span class="ui-label" style="margin-left:6px; font-size:11px">Speed</span>
+            <input type="range" id="speed" min="0" max="2" value="1">
+            <span class="kbd-hint"><span class="kbd">&#8592;</span> <span class="kbd">&#8594;</span> step &middot; <span class="kbd">space</span> play</span>
+        </div>
+
+        <div class="details-wrap" id="details-wrap">
+            <button class="details-toggle" onclick="toggleDetails()" aria-expanded="false">
+                <span id="details-label">Show code, state &amp; log</span> <span class="chev">&#9662;</span>
+            </button>
+            <div class="details-body">
+                <div class="details-inner">
+                    <div class="details-grid">
+                        <div class="state-strip">
+                            <span class="pill t">token <b id="st-token">&mdash;</b></span>
+                            <span class="pill s">stack size <b id="st-size">0</b></span>
+                            <span class="pill r">result <b id="st-result">&mdash;</b></span>
+                        </div>
+                        <div class="panel-card">
+                            <div class="panel-head"><span class="pip"></span> Algorithm</div>
+                            <div class="code-body" id="code-panel"></div>
+                        </div>
+                        <div class="log-panel" id="log"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        'use strict';
+
+        // ───────── Motion engine (spring, zero deps) ─────────
+        const REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        const FRAME = 1000 / 60;
+        function sampleSpring(stiffness, damping, mass) {
+            const dt = 1 / 60; let x = 1, v = 0; const out = [];
+            for (let i = 0; i < 240; i++) { const a = (-stiffness * x - damping * v) / mass; v += a * dt; x += v * dt; out.push(1 - x); if (Math.abs(x) < 0.0015 && Math.abs(v) < 0.0015) break; }
+            out.push(1); return out;
+        }
+        const SPRING_POS = sampleSpring(320, 30, 1);
+        const SPRING_POP = sampleSpring(520, 17, 1);
+        const durOf = (a) => a.length * FRAME;
+        const Motion = {
+            glide(el, y) {
+                const prev = el._y; el.style.opacity = '1';
+                const commit = `translateY(${y.toFixed(2)}px)`;
+                if (REDUCED || prev == null || Math.abs(y - prev) < 0.5) { el._y = y; el.style.transform = commit; return; }
+                const dy = y - prev;
+                const kf = SPRING_POS.map(p => ({ transform: `translateY(${(prev + dy * p).toFixed(2)}px)` }));
+                el.animate(kf, { duration: durOf(SPRING_POS), easing: 'linear' });
+                el._y = y; el.style.transform = commit;
+            },
+            pop(el, fromY) {
+                if (REDUCED) { el.style.opacity = '1'; return; }
+                const kf = SPRING_POP.map(p => ({ opacity: Math.min(1, p * 2).toFixed(3), transform: `translateY(${((fromY || -16) * (1 - p)).toFixed(2)}px) scale(${(0.4 + 0.6 * p).toFixed(3)})` }));
+                el.animate(kf, { duration: durOf(SPRING_POP), easing: 'linear', fill: 'backwards' });
+            },
+        };
+
+        // ───────── State ─────────
+        let tokens = [];       // array of token strings
+        let steps = [];
+        let stepIdx = 0;
+        let timer = null;
+        let confettiArmed = true;
+        const delays = [1500, 800, 380];
+        const slotEls = {};    // index -> element
+
+        const OPS = ['+', '-', '*', '/'];
+        const isOperator = (t) => OPS.includes(t);
+        const isOperand = (t) => t !== '' && !isOperator(t) && !isNaN(parseFloat(t)) && isFinite(t);
+
+        const CODE = [
+            [['kw','def '],['fn','evalPostfix'],['src','(tokens):']],
+            [['src','  stack = []']],
+            [['kw','  for '],['src','tok '],['kw','in '],['src','tokens:']],
+            [['kw','    if '],['src','isOperand(tok):']],
+            [['src','      stack.push(int(tok))']],
+            [['kw','    else'],['src',':            # operator']],
+            [['src','      b = stack.pop()']],
+            [['src','      a = stack.pop()']],
+            [['src','      stack.push(apply(a, tok, b))']],
+            [['kw','  return '],['src','stack[0]']],
+        ];
+        function buildCodePanel() {
+            const panel = document.getElementById('code-panel'); panel.innerHTML = '';
+            CODE.forEach((toks, i) => {
+                const line = document.createElement('div'); line.className = 'code-line'; line.dataset.line = i;
+                const lno = document.createElement('span'); lno.className = 'lno'; lno.textContent = i + 1; line.appendChild(lno);
+                const src = document.createElement('span');
+                toks.forEach(([cls, txt]) => { const s = document.createElement('span'); s.className = cls; s.textContent = txt; src.appendChild(s); });
+                line.appendChild(src); panel.appendChild(line);
+            });
+        }
+        function highlightCode(arr) { document.querySelectorAll('.code-line').forEach(el => el.classList.toggle('active', arr && arr.includes(+el.dataset.line))); }
+        function toggleDetails() {
+            const wrap = document.getElementById('details-wrap'); const open = wrap.classList.toggle('open');
+            wrap.querySelector('.details-toggle').setAttribute('aria-expanded', open ? 'true' : 'false');
+            document.getElementById('details-label').textContent = open ? 'Hide code, state & log' : 'Show code, state & log';
+        }
+
+        function applyOp(a, op, b) {
+            if (op === '+') return a + b;
+            if (op === '-') return a - b;
+            if (op === '*') return a * b;
+            if (op === '/') return b !== 0 ? Math.trunc(a / b) : NaN; // integer (truncating) division
+            return NaN;
+        }
+
+        // ───────── step generation ─────────
+        function generateSteps() {
+            steps = [];
+            const stack = [];
+            // snapshot helper: capture an immutable view of state for this step
+            const snap = (extra) => Object.assign({
+                stack: [...stack], top: stack.length - 1, tokIdx: null,
+                pushIdx: -1, popIdxs: [], result: null, compute: null
+            }, extra);
+
+            steps.push(snap({ code: [0, 1], action: 'START', actionColor: 'var(--accent-blue)',
+                panel: `Evaluate the postfix expression <code>${tokens.join(' ')}</code>. Start with an empty <b>operand stack</b> and scan tokens left &#8594; right.`,
+                log: `init  expr = ${tokens.join(' ')}` }));
+
+            let errored = false;
+            for (let i = 0; i < tokens.length && !errored; i++) {
+                const tok = tokens[i];
+
+                if (isOperand(tok)) {
+                    const v = parseInt(tok, 10);
+                    stack.push(v);
+                    steps.push(snap({ tokIdx: i, code: [3, 4], action: 'PUSH ' + v, actionColor: 'var(--accent-orange)',
+                        pushIdx: stack.length - 1, compute: { kind: 'push', value: v },
+                        panel: `Token <code>${tok}</code> is an <b>operand</b> &#8594; push it onto the stack. Top is now <b>${v}</b>.`,
+                        log: `operand ${tok}  push -> [${stack.join(', ')}]` }));
+                } else if (isOperator(tok)) {
+                    if (stack.length < 2) {
+                        errored = true;
+                        steps.push(snap({ tokIdx: i, code: [5, 6, 7], action: 'ERROR', actionColor: 'var(--accent-red)', miss: true,
+                            panel: `Operator <code>${tok}</code> needs <b>two</b> operands but the stack has only <b>${stack.length}</b>. The expression is <span style="color:var(--accent-red)">malformed</span>.`,
+                            log: `operator ${tok}  ERROR: need 2 operands, have ${stack.length}` }));
+                        break;
+                    }
+                    const bIdx = stack.length - 1, aIdx = stack.length - 2;
+                    const b = stack[bIdx], a = stack[aIdx];
+                    // Step A: operator seen, pop the top two operands (b then a)
+                    steps.push(snap({ tokIdx: i, code: [5, 6, 7], action: 'POP a, b', actionColor: 'var(--accent-red)',
+                        popIdxs: [aIdx, bIdx], compute: { kind: 'pop', a, b, op: tok },
+                        panel: `Token <code>${tok}</code> is an <b>operator</b> &#8594; pop the top two: <b>b = ${b}</b> (first), then <b>a = ${a}</b>.`,
+                        log: `operator ${tok}  pop b=${b}, pop a=${a}` }));
+                    // mutate: remove the two operands
+                    stack.pop(); stack.pop();
+                    const r = applyOp(a, tok, b);
+                    stack.push(r);
+                    // Step B: compute a op b, push result
+                    steps.push(snap({ tokIdx: i, code: [8], action: `${a} ${tok} ${b} = ${r}`, actionColor: 'var(--accent-green)',
+                        pushIdx: stack.length - 1, compute: { kind: 'result', a, b, op: tok, value: r },
+                        panel: `Compute <code>a ${tok} b = ${a} ${tok} ${b} = <b>${r}</b></code>, then push the result back. Top is now <b>${r}</b>.`,
+                        log: `compute ${a} ${tok} ${b} = ${r}  push -> [${stack.join(', ')}]` }));
+                } else {
+                    errored = true;
+                    steps.push(snap({ tokIdx: i, code: [2, 3, 5], action: 'BAD TOKEN', actionColor: 'var(--accent-red)', miss: true,
+                        panel: `Token <code>${tok}</code> is neither a number nor a valid operator (<code>+ &minus; &times; /</code>). <span style="color:var(--accent-red)">Cannot evaluate.</span>`,
+                        log: `token ${tok}  ERROR: unrecognized` }));
+                    break;
+                }
+            }
+
+            if (!errored) {
+                if (stack.length === 1) {
+                    const r = stack[0];
+                    steps.push(snap({ complete: true, confetti: true, code: [9], action: '✓ RESULT ' + r, actionColor: 'var(--accent-green)',
+                        result: r,
+                        panel: `All tokens consumed. One value remains on the stack &#8594; the answer is <code>${r}</code>.`,
+                        log: `done  result = ${r}` }));
+                } else {
+                    steps.push(snap({ complete: true, code: [9], action: 'ERROR', actionColor: 'var(--accent-red)', miss: true,
+                        panel: `All tokens consumed but the stack holds <b>${stack.length}</b> values, not 1. The expression has <span style="color:var(--accent-red)">too many operands</span>.`,
+                        log: `done  ERROR: stack = [${stack.join(', ')}]` }));
+                }
+            }
+        }
+
+        // ───────── render ─────────
+        const SLOT_H = 46, SLOT_GAP = 8;
+        function renderStep(idx) {
+            stepIdx = idx; const step = steps[idx]; if (!step) return;
+            const col = document.getElementById('stack-col');
+
+            // ── operand stack (persistent-DOM reconciliation, keyed by index) ──
+            const used = new Set();
+            const n = step.stack.length;
+            for (let i = 0; i < n; i++) {
+                used.add(String(i));
+                let el = slotEls[i];
+                if (!el) {
+                    el = document.createElement('div'); el.className = 'slot';
+                    el.innerHTML = `<span class="si"></span><span class="sv"></span>`;
+                    slotEls[i] = el; col.appendChild(el);
+                }
+                el.querySelector('.si').textContent = i;
+                el.querySelector('.sv').textContent = step.stack[i];
+                const isTop = i === step.top;
+                let cls = 'slot';
+                if (i === step.pushIdx) cls += ' pushing';
+                else if (isTop) cls += ' toptile';
+                else cls += ' filled';
+                el.className = cls;
+                if (i === step.pushIdx) Motion.pop(el, -18);
+            }
+            Object.keys(slotEls).forEach(k => { if (!used.has(k)) { slotEls[k].remove(); delete slotEls[k]; } });
+
+            // empty-stack hint
+            let hint = document.getElementById('empty-hint');
+            if (n === 0) {
+                if (!hint) { hint = document.createElement('div'); hint.id = 'empty-hint'; hint.className = 'empty-hint'; hint.textContent = 'empty'; col.appendChild(hint); }
+            } else if (hint) { hint.remove(); }
+
+            // TOP pointer pill
+            renderTopPtr(step);
+
+            // compute row (value-in-motion idiom): pop a,b -> compute -> result
+            renderComputeRow(step);
+
+            // narration / action / chrome
+            const mp = document.getElementById('main-panel');
+            mp.innerHTML = step.panel || '&mdash;';
+            mp.classList.toggle('done', !!step.complete && !step.miss);
+            mp.classList.toggle('miss', !!step.miss);
+            const aw = document.getElementById('action-word'); aw.textContent = step.action || ''; aw.style.color = step.actionColor || 'var(--text-dim)';
+            highlightCode(step.code);
+
+            if (step.confetti) { if (confettiArmed) { fireConfetti(); confettiArmed = false; } } else confettiArmed = true;
+
+            renderTokenRow(step.tokIdx);
+            const curTok = step.tokIdx != null && step.tokIdx >= 0 && step.tokIdx < tokens.length ? tokens[step.tokIdx] : '—';
+            document.getElementById('st-token').textContent = curTok;
+            document.getElementById('st-size').textContent = step.stack.length;
+            document.getElementById('st-result').textContent = step.result != null ? step.result : '—';
+            document.getElementById('step-badge').textContent = `Step ${idx + 1} / ${steps.length}`;
+            document.getElementById('progress-fill').style.width = `${(idx / Math.max(1, steps.length - 1)) * 100}%`;
+
+            const logEl = document.getElementById('log');
+            logEl.innerHTML = steps.slice(0, idx + 1).map(s => `<div style="margin:3px 0;white-space:pre-wrap;">${s.log}</div>`).join('');
+            logEl.scrollTop = logEl.scrollHeight;
+        }
+
+        function renderTopPtr(step) {
+            const col = document.getElementById('stack-col');
+            let ptr = document.getElementById('top-ptr');
+            if (!ptr) { ptr = document.createElement('div'); ptr.id = 'top-ptr'; ptr.className = 'top-ptr'; ptr.innerHTML = `<span class="tag">top</span><span class="arrow">&#8592;</span>`; col.appendChild(ptr); }
+            if (step.top < 0) { ptr.style.opacity = '0'; ptr._y = null; return; }
+            // measured from the column's bottom; column is column-reverse so top slot sits highest
+            const fromBottom = step.top * (SLOT_H + SLOT_GAP) + SLOT_H / 2;
+            const colH = step.stack.length * SLOT_H + (step.stack.length - 1) * SLOT_GAP;
+            const y = colH - fromBottom - 11; // relative to top of the stack column
+            ptr.style.top = '0px';
+            Motion.glide(ptr, y);
+        }
+
+        function renderComputeRow(step) {
+            const row = document.getElementById('compute-row');
+            const c = step.compute;
+            if (!c) { row.classList.remove('show'); row.innerHTML = ''; return; }
+            let html = '';
+            if (c.kind === 'push') {
+                html = `<div class="float-tile">${c.value}</div><span class="float-eq" style="color:var(--accent-orange)">&#8594; push</span>`;
+            } else if (c.kind === 'pop') {
+                html = `<span class="float-eq" style="color:var(--accent-red)">pop</span>`
+                     + `<div class="float-tile" style="border-color:var(--accent-red);background:rgba(244,63,94,0.16);color:#fecdd3;box-shadow:0 0 22px rgba(244,63,94,0.45)">${c.a}</div>`
+                     + `<div class="float-tile op">${c.op}</div>`
+                     + `<div class="float-tile" style="border-color:var(--accent-red);background:rgba(244,63,94,0.16);color:#fecdd3;box-shadow:0 0 22px rgba(244,63,94,0.45)">${c.b}</div>`;
+            } else if (c.kind === 'result') {
+                html = `<div class="float-tile">${c.a}</div><div class="float-tile op">${c.op}</div><div class="float-tile">${c.b}</div>`
+                     + `<span class="float-eq">=</span><div class="float-tile res">${c.value}</div>`;
+            }
+            row.innerHTML = html;
+            row.classList.add('show');
+        }
+
+        function renderTokenRow(currentIdx) {
+            const row = document.getElementById('token-row'); row.innerHTML = '';
+            tokens.forEach((tok, i) => {
+                const el = document.createElement('div');
+                let cls = 'tok ' + (isOperator(tok) ? 'operator' : 'operand');
+                if (currentIdx === i) cls += ' current';
+                else if (currentIdx != null && currentIdx >= 0 && i < currentIdx) cls += ' done';
+                el.className = cls;
+                el.textContent = tok === '*' ? '×' : tok === '-' ? '−' : tok;
+                row.appendChild(el);
+            });
+        }
+
+        function fireConfetti() {
+            const host = document.getElementById('confetti'); if (!host || REDUCED) return;
+            const colors = ['#22c55e', '#06b6d4', '#a855f7', '#f5a524', '#f43f5e'];
+            for (let i = 0; i < 38; i++) {
+                const p = document.createElement('div'); p.className = 'confetti-piece';
+                p.style.setProperty('--x', ((Math.random() * 2 - 1) * 220) + 'px');
+                p.style.setProperty('--rot', ((Math.random() * 720 - 360)) + 'deg');
+                p.style.background = colors[i % colors.length];
+                p.style.animationDuration = (0.9 + Math.random() * 0.8) + 's';
+                p.style.animationDelay = (Math.random() * 0.15) + 's';
+                host.appendChild(p); setTimeout(() => p.remove(), 1900);
+            }
+        }
+
+        // ───────── controls ─────────
+        function nextStep() { if (stepIdx < steps.length - 1) renderStep(stepIdx + 1); else pause(); }
+        function prevStep() { if (stepIdx > 0) renderStep(stepIdx - 1); }
+        function resetSim() { pause(); renderStep(0); }
+        function togglePlay() {
+            const btn = document.getElementById('play-btn');
+            if (timer) { pause(); return; }
+            btn.textContent = 'Pause';
+            if (stepIdx >= steps.length - 1) renderStep(0);
+            timer = setInterval(() => { if (stepIdx < steps.length - 1) nextStep(); else pause(); }, delays[document.getElementById('speed').value]);
+        }
+        function pause() { clearInterval(timer); timer = null; document.getElementById('play-btn').textContent = 'Play'; }
+
+        function clearDom() {
+            Object.keys(slotEls).forEach(k => { slotEls[k].remove(); delete slotEls[k]; });
+            const p = document.getElementById('top-ptr'); if (p) p.remove();
+            const h = document.getElementById('empty-hint'); if (h) h.remove();
+            confettiArmed = true;
+        }
+        function loadTokens(newTokens) {
+            pause();
+            tokens = newTokens.map(t => t.trim()).filter(t => t.length);
+            clearDom(); generateSteps(); renderStep(0);
+        }
+        function loadCustom() {
+            const val = document.getElementById('expr-input').value.trim();
+            if (!val) return;
+            loadTokens(val.split(/\s+/));
+        }
+        function loadExample(n) {
+            const exs = [
+                ['3', '4', '+', '2', '*', '7', '/'],
+                ['5', '1', '2', '+', '4', '*', '+', '3', '-'],
+            ];
+            document.getElementById('expr-input').value = exs[n].join(' ');
+            loadTokens(exs[n]);
+        }
+
+        document.addEventListener('keydown', (e) => {
+            const tag = (e.target.tagName || '').toLowerCase(); if (tag === 'input' || tag === 'textarea') return;
+            if (e.key === 'ArrowRight') { e.preventDefault(); pause(); nextStep(); }
+            else if (e.key === 'ArrowLeft') { e.preventDefault(); pause(); prevStep(); }
+            else if (e.key === ' ') { e.preventDefault(); togglePlay(); }
+        });
+        document.getElementById('expr-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') loadCustom(); });
+        window.addEventListener('resize', () => renderStep(stepIdx));
+
+        buildCodePanel();
+        window.onload = () => loadExample(0);
+    </script>
+</body>
+</html>

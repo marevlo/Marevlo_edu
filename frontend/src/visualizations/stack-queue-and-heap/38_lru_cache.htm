@@ -1,0 +1,665 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LRU Cache</title>
+    <style>
+        :root {
+            --bg-page: #070b14;
+            --bg-surface: rgba(255, 255, 255, 0.045);
+            --bg-input: rgba(255, 255, 255, 0.04);
+            --border-main: rgba(255, 255, 255, 0.10);
+            --btn-bg: rgba(255, 255, 255, 0.05);
+            --btn-hover: rgba(255, 255, 255, 0.10);
+            --text-main: #e8eefb;
+            --text-dim: #8b98b3;
+            --accent-orange: #f5a524;   /* value in motion / return       */
+            --accent-blue:   #06b6d4;    /* hashmap / chrome               */
+            --accent-green:  #22c55e;    /* hit / committed / head (MRU)   */
+            --accent-red:    #f43f5e;    /* miss / evicted / tail (LRU)    */
+            --accent-purple: #a855f7;    /* moved node / focus             */
+            --mono: ui-monospace, 'SF Mono', 'Cascadia Code', 'Courier New', monospace;
+            --sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+            --shell: 880px;
+        }
+
+        * { box-sizing: border-box; }
+        html, body { overflow-x: hidden; }
+        body {
+            background:
+                radial-gradient(1100px 600px at 15% -10%, rgba(6, 182, 212, 0.10), transparent 60%),
+                radial-gradient(900px 600px at 100% 10%, rgba(168, 85, 247, 0.10), transparent 55%),
+                linear-gradient(160deg, #070b14 0%, #0b1120 55%, #0a0f1c 100%);
+            background-attachment: fixed;
+            color: var(--text-main); font-family: var(--sans); margin: 0;
+            display: flex; flex-direction: column; align-items: center; min-height: 100vh;
+            padding-bottom: 48px; -webkit-font-smoothing: antialiased;
+        }
+        body::before, body::after { content: ''; position: fixed; border-radius: 50%; filter: blur(70px); pointer-events: none; z-index: 0; opacity: 0.45; }
+        body::before { width: 380px; height: 380px; top: 8%; left: -120px; background: radial-gradient(circle, rgba(6,182,212,0.30), transparent 70%); }
+        body::after  { width: 420px; height: 420px; bottom: 4%; right: -140px; background: radial-gradient(circle, rgba(168,85,247,0.22), transparent 70%); }
+        body > * { position: relative; z-index: 1; }
+
+        .input-bar {
+            width: 100%; background: rgba(10, 15, 28, 0.55);
+            backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+            padding: 14px 16px; display: flex; justify-content: center; align-items: center; gap: 10px;
+            border-bottom: 1px solid var(--border-main); flex-wrap: wrap; position: sticky; top: 0; z-index: 50;
+        }
+        label.ui-label, .ui-label { font-family: var(--mono); font-size: 13px; color: var(--text-dim); letter-spacing: 0.2px; }
+        input[type="number"] {
+            background: var(--bg-input); border: 1px solid var(--border-main); color: var(--text-main);
+            height: 34px; border-radius: 9px; padding: 0 12px; font-size: 13px; font-family: var(--mono); width: 70px;
+            transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+        }
+        input:focus { outline: none; border-color: var(--accent-blue); box-shadow: 0 0 0 3px rgba(6,182,212,0.18); background: rgba(6,182,212,0.06); }
+
+        button {
+            height: 34px; border-radius: 9px; padding: 0 14px; background: var(--btn-bg);
+            border: 1px solid var(--border-main); color: var(--text-main); font-size: 13px; font-weight: 600; cursor: pointer;
+            transition: transform 0.15s ease, background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+        }
+        button:hover { background: var(--btn-hover); border-color: rgba(6, 182, 212, 0.5); box-shadow: 0 0 18px rgba(6, 182, 212, 0.18); transform: translateY(-1px); }
+        button:active { transform: translateY(0); }
+        #play-btn { background: linear-gradient(135deg, rgba(6,182,212,0.22), rgba(6,182,212,0.10)); border-color: rgba(6, 182, 212, 0.45); color: #a5f3fc; min-width: 80px; }
+        .op-btn.put { border-color: rgba(245,165,36,0.4); color: #ffe2b0; font-family: var(--mono); }
+        .op-btn.get { border-color: rgba(6,182,212,0.4); color: #a5f3fc; font-family: var(--mono); }
+
+        .shell { width: var(--shell); max-width: 95%; margin: 24px auto 0; display: flex; flex-direction: column; gap: 16px; }
+
+        .title-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+        .title-row h1 { font-size: 18px; font-weight: 800; margin: 0; letter-spacing: 0.2px; }
+        .title-row .sub { color: var(--text-dim); font-weight: 500; font-size: 13px; }
+        .step-badge { font-family: var(--mono); font-size: 12px; font-weight: 700; color: #a5f3fc; background: rgba(6,182,212,0.12); border: 1px solid rgba(6,182,212,0.3); padding: 4px 10px; border-radius: 999px; white-space: nowrap; }
+        .progress-track { height: 4px; width: 100%; background: rgba(255,255,255,0.07); border-radius: 999px; overflow: hidden; margin-top: -6px; }
+        .progress-fill { height: 100%; width: 0%; border-radius: 999px; background: linear-gradient(90deg, var(--accent-purple), var(--accent-blue)); box-shadow: 0 0 12px rgba(6,182,212,0.5); transition: width 0.45s cubic-bezier(0.34,1.1,0.64,1); }
+
+        .op-feed { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+        .op-chip { font-family: var(--mono); font-size: 11px; font-weight: 700; padding: 4px 9px; border-radius: 8px; border: 1px solid var(--border-main); color: var(--text-dim); background: rgba(255,255,255,0.03); transition: all 0.3s; white-space: nowrap; }
+        .op-chip.done { opacity: 0.45; }
+        .op-chip.current { color: #fff; border-color: rgba(6,182,212,0.6); background: rgba(6,182,212,0.16); box-shadow: 0 0 12px rgba(6,182,212,0.3); }
+
+        .narration { background: var(--bg-surface); border: 1px solid rgba(6,182,212,0.22); border-radius: 12px; padding: 12px 18px; font-family: var(--mono); font-size: 14px; line-height: 1.5; color: #cfe9f5; min-height: 48px; display: flex; align-items: center; gap: 10px; transition: border-color 0.3s, background 0.3s; }
+        .narration::before { content: '\25B8'; color: var(--accent-blue); font-size: 13px; }
+        .narration.done { border-color: rgba(34,197,94,0.4); background: rgba(34,197,94,0.06); }
+        .narration.done::before { content: '\2713'; color: var(--accent-green); }
+        .narration.miss { border-color: rgba(244,63,94,0.4); background: rgba(244,63,94,0.06); }
+        .narration.miss::before { content: '\2717'; color: var(--accent-red); }
+        .narration code { background: rgba(6,182,212,0.14); color: #7dd3fc; padding: 1px 6px; border-radius: 5px; font-size: 12.5px; }
+        .narration b { color: #fff; }
+
+        .stage-card { background: var(--bg-surface); border: 1px solid var(--border-main); border-radius: 18px; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); box-shadow: 0 12px 38px rgba(0,0,0,0.4); overflow: hidden; }
+        .stage-screen { position: relative; margin: 14px; border-radius: 14px; background: radial-gradient(700px 300px at 50% -10%, rgba(6,182,212,0.08), transparent 70%), #090d18; padding: 30px 24px 40px; border: 1px solid rgba(255,255,255,0.06); display: flex; flex-direction: column; align-items: center; gap: 30px; overflow-x: auto; }
+
+        /* ── DLL rail ── */
+        .dll-block { display: flex; flex-direction: column; align-items: center; gap: 14px; width: 100%; }
+        .rail-caption { display: flex; align-items: center; justify-content: space-between; width: 100%; max-width: 660px; font-family: var(--mono); font-size: 11px; font-weight: 700; letter-spacing: 0.4px; color: var(--text-dim); }
+        .rail-caption .mru { color: var(--accent-green); }
+        .rail-caption .lru { color: var(--accent-red); }
+        .dll-rail { position: relative; display: flex; align-items: center; gap: 0; min-height: 92px; padding: 0 4px; }
+        .dll-empty { font-family: var(--mono); font-size: 13px; color: var(--text-dim); border: 2px dashed var(--border-main); border-radius: 13px; padding: 22px 34px; opacity: 0.7; }
+
+        .node { width: 78px; height: 70px; border-radius: 13px; position: relative; flex: none;
+            display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+            font-family: var(--mono); will-change: transform;
+            border: 2px solid rgba(168,85,247,0.45); background: rgba(168,85,247,0.10); color: var(--text-main);
+            box-shadow: 0 0 0 rgba(0,0,0,0);
+            transition: background 0.35s, border-color 0.35s, color 0.35s, box-shadow 0.35s; }
+        .node .k { font-size: 11px; font-weight: 700; color: var(--text-dim); letter-spacing: 0.3px; }
+        .node .v { font-size: 22px; font-weight: 800; line-height: 1; }
+        .node .badge { position: absolute; top: -20px; left: 0; right: 0; text-align: center; font-size: 9.5px; font-weight: 800; letter-spacing: 0.5px; opacity: 0; transition: opacity 0.3s; }
+        .node.is-head { border-color: rgba(34,197,94,0.6); background: rgba(34,197,94,0.12); }
+        .node.is-head .k { color: #b9f6ce; }
+        .node.is-head .badge { opacity: 1; color: var(--accent-green); }
+        .node.is-tail { border-color: rgba(244,63,94,0.55); background: rgba(244,63,94,0.10); }
+        .node.is-tail .k { color: #fecdd3; }
+        .node.is-tail .badge { opacity: 1; color: var(--accent-red); }
+        .node.is-headtail .badge::after { content: ' (MRU=LRU)'; }
+        .node.touched { border-color: var(--accent-orange) !important; background: rgba(245,165,36,0.16) !important; color: #ffd591; box-shadow: 0 0 24px rgba(245,165,36,0.55) !important; }
+        .node.touched .k { color: #ffe2b0; }
+        .node.inserted { box-shadow: 0 0 24px rgba(168,85,247,0.6) !important; }
+        .node.evicting { border-color: var(--accent-red) !important; background: rgba(244,63,94,0.18) !important; color: #fecdd3; box-shadow: 0 0 26px rgba(244,63,94,0.6) !important; }
+
+        .arrow { width: 26px; height: 70px; flex: none; display: flex; align-items: center; justify-content: center; color: var(--text-dim); }
+        .arrow svg { width: 22px; height: 14px; }
+        .arrow .lnk { stroke: rgba(255,255,255,0.28); stroke-width: 1.6; }
+
+        /* ── hashmap chips ── */
+        .map-block { display: flex; flex-direction: column; align-items: center; gap: 10px; width: 100%; }
+        .map-caption { font-family: var(--mono); font-size: 11px; font-weight: 700; letter-spacing: 0.4px; color: var(--accent-blue); }
+        .map-row { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; min-height: 36px; align-items: center; }
+        .map-chip { font-family: var(--mono); font-size: 12.5px; font-weight: 700; padding: 6px 12px; border-radius: 10px;
+            border: 1.5px solid rgba(6,182,212,0.4); background: rgba(6,182,212,0.10); color: #a5f3fc; white-space: nowrap;
+            display: inline-flex; align-items: center; gap: 7px; will-change: transform;
+            transition: border-color 0.35s, background 0.35s, box-shadow 0.35s, color 0.35s; }
+        .map-chip .mk { color: #7dd3fc; }
+        .map-chip .ar { color: var(--text-dim); font-size: 11px; }
+        .map-chip .mn { color: #fff; }
+        .map-chip.touched { border-color: var(--accent-orange); background: rgba(245,165,36,0.16); color: #ffd591; box-shadow: 0 0 16px rgba(245,165,36,0.45); }
+        .map-chip.touched .mk { color: #ffe2b0; }
+        .map-chip.added { border-color: var(--accent-green); background: rgba(34,197,94,0.14); color: #d6ffe8; box-shadow: 0 0 16px rgba(34,197,94,0.4); }
+        .map-chip.removed { border-color: var(--accent-red); background: rgba(244,63,94,0.14); color: #fecdd3; box-shadow: 0 0 16px rgba(244,63,94,0.4); }
+        .map-empty { font-family: var(--mono); font-size: 12px; color: var(--text-dim); opacity: 0.7; }
+
+        /* ── return readout ── */
+        .action-stage { position: relative; min-height: 52px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; }
+        .action-word { font-family: var(--mono); font-weight: 800; font-size: 18px; letter-spacing: 0.4px; min-height: 22px; text-align: center; transition: color 0.3s; }
+        #confetti { position: absolute; inset: 0; overflow: visible; pointer-events: none; }
+        .confetti-piece { position: absolute; top: 0; left: 50%; width: 8px; height: 13px; border-radius: 2px; opacity: 0; animation: confettiFall ease-out forwards; }
+
+        .controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: center; }
+        .controls .kbd-hint { font-size: 11px; color: var(--text-dim); font-family: var(--mono); margin-left: 4px; }
+        .kbd { background: rgba(255,255,255,0.07); border: 1px solid var(--border-main); border-radius: 5px; padding: 1px 6px; font-size: 10px; }
+        input[type="range"] { accent-color: var(--accent-blue); width: 110px; cursor: pointer; }
+
+        .details-toggle { align-self: center; height: 32px; padding: 0 16px; border-radius: 999px; cursor: pointer; background: rgba(255,255,255,0.04); border: 1px solid var(--border-main); color: var(--text-dim); font-family: var(--mono); font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; gap: 8px; transition: color 0.2s, border-color 0.2s, background 0.2s; }
+        .details-toggle:hover { color: var(--text-main); border-color: rgba(6,182,212,0.4); background: rgba(6,182,212,0.06); }
+        .details-toggle .chev { transition: transform 0.3s ease; }
+        .details-wrap.open .details-toggle .chev { transform: rotate(180deg); }
+        .details-body { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.4s ease; }
+        .details-wrap.open .details-body { grid-template-rows: 1fr; }
+        .details-inner { overflow: hidden; min-height: 0; }
+        .details-grid { display: flex; flex-direction: column; gap: 14px; padding-top: 14px; }
+
+        .panel-card { background: var(--bg-surface); border: 1px solid var(--border-main); border-radius: 16px; backdrop-filter: blur(10px); box-shadow: 0 8px 30px rgba(0,0,0,0.35); }
+        .panel-head { display: flex; align-items: center; gap: 8px; padding: 11px 16px; border-bottom: 1px solid var(--border-main); font-size: 11px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; color: var(--text-dim); }
+        .panel-head .pip { width: 7px; height: 7px; border-radius: 50%; background: var(--accent-blue); box-shadow: 0 0 8px var(--accent-blue); }
+        .code-body { padding: 12px 6px 14px; font-family: var(--mono); font-size: 12.5px; line-height: 1.7; }
+        .code-line { display: flex; gap: 12px; padding: 1px 16px; border-left: 2px solid transparent; transition: background 0.3s, border-color 0.3s; white-space: pre; }
+        .code-line .lno { color: #4b5772; width: 16px; text-align: right; user-select: none; }
+        .code-line .src { color: #c4cee0; }
+        .code-line .kw { color: #c792ea; }
+        .code-line .fn { color: #82aaff; }
+        .code-line.active { background: rgba(6,182,212,0.12); border-left-color: var(--accent-blue); }
+        .code-line.active .src, .code-line.active .lno { color: #e8eefb; }
+
+        .state-strip { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 0 2px; }
+        .pill { display: inline-flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 12px; color: var(--text-dim); background: rgba(255,255,255,0.04); border: 1px solid var(--border-main); border-radius: 999px; padding: 4px 11px; }
+        .pill b { color: var(--text-main); font-weight: 800; }
+        .pill.h b { color: var(--accent-green); } .pill.t b { color: var(--accent-red); } .pill.s b { color: var(--accent-purple); }
+
+        .log-panel { border-radius: 14px; padding: 12px 16px; height: 110px; overflow-y: auto; font-family: var(--mono); font-size: 12.5px; line-height: 1.5; background: var(--bg-surface); border: 1px solid var(--border-main); }
+        .log-panel::-webkit-scrollbar { width: 8px; }
+        .log-panel::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 8px; }
+
+        @keyframes confettiFall { 0%{ opacity:1; transform: translate(-50%, 0) rotate(0deg); } 100%{ opacity:0; transform: translate(calc(-50% + var(--x)), 220px) rotate(var(--rot)); } }
+        @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; } }
+    </style>
+</head>
+<body>
+
+    <div class="input-bar">
+        <label class="ui-label">key</label>
+        <input type="number" id="key-input" placeholder="key" min="0" max="99">
+        <label class="ui-label">val</label>
+        <input type="number" id="val-input" placeholder="val" min="0" max="99">
+        <button class="op-btn put" onclick="doOp('put')">put</button>
+        <button class="op-btn get" onclick="doOp('get')">get</button>
+        <span class="ui-label" style="opacity:.5">|</span>
+        <label class="ui-label">cap</label>
+        <input type="number" id="capacity-input" value="2" min="1" max="6" style="width:56px">
+        <button onclick="loadExample(0)">Example 1</button>
+        <button onclick="loadExample(1)">Example 2</button>
+        <button onclick="resetSim()">&#8634; Reset</button>
+    </div>
+
+    <div class="shell">
+        <div class="title-row">
+            <h1>LRU Cache <span class="sub">&middot; hashmap + doubly linked list &middot; get / put are O(1) &middot; evict least-recently-used</span></h1>
+            <span class="step-badge" id="step-badge">Step 1 / 1</span>
+        </div>
+        <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+
+        <div class="op-feed" id="op-feed"></div>
+
+        <div class="narration" id="main-panel">&mdash;</div>
+
+        <div class="stage-card">
+            <div class="stage-screen">
+                <div class="dll-block">
+                    <div class="rail-caption">
+                        <span class="mru">&#9668; head &middot; most-recently-used</span>
+                        <span class="lru">least-recently-used &middot; tail &#9658;</span>
+                    </div>
+                    <div class="dll-rail" id="dll-rail"></div>
+                </div>
+                <div class="map-block">
+                    <div class="map-caption">HashMap &nbsp;key &#8594; node</div>
+                    <div class="map-row" id="map-row"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="action-stage">
+            <div id="confetti"></div>
+            <div class="action-word" id="action-word"></div>
+        </div>
+
+        <div class="controls">
+            <button onclick="resetSim()">&#8634; Reset</button>
+            <button onclick="prevStep()">&#8592; Back</button>
+            <button onclick="togglePlay()" id="play-btn">Play</button>
+            <button onclick="nextStep()">Next &#8594;</button>
+            <span class="ui-label" style="margin-left:6px; font-size:11px">Speed</span>
+            <input type="range" id="speed" min="0" max="2" value="1">
+            <span class="kbd-hint"><span class="kbd">&#8592;</span> <span class="kbd">&#8594;</span> step &middot; <span class="kbd">space</span> play</span>
+        </div>
+
+        <div class="details-wrap" id="details-wrap">
+            <button class="details-toggle" onclick="toggleDetails()" aria-expanded="false">
+                <span id="details-label">Show code, state &amp; log</span> <span class="chev">&#9662;</span>
+            </button>
+            <div class="details-body">
+                <div class="details-inner">
+                    <div class="details-grid">
+                        <div class="state-strip">
+                            <span class="pill h">head/MRU <b id="st-head">&middot;</b></span>
+                            <span class="pill t">tail/LRU <b id="st-tail">&middot;</b></span>
+                            <span class="pill s">size <b id="st-size">0</b></span>
+                            <span class="pill">capacity <b id="st-cap">2</b></span>
+                        </div>
+                        <div class="panel-card">
+                            <div class="panel-head"><span class="pip"></span> Algorithm</div>
+                            <div class="code-body" id="code-panel"></div>
+                        </div>
+                        <div class="log-panel" id="log"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        'use strict';
+
+        // ───────── Motion engine ─────────
+        const REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        const FRAME = 1000 / 60;
+        function sampleSpring(stiffness, damping, mass) {
+            const dt = 1 / 60; let x = 1, v = 0; const out = [];
+            for (let i = 0; i < 240; i++) { const a = (-stiffness * x - damping * v) / mass; v += a * dt; x += v * dt; out.push(1 - x); if (Math.abs(x) < 0.0015 && Math.abs(v) < 0.0015) break; }
+            out.push(1); return out;
+        }
+        const SPRING_POS = sampleSpring(320, 30, 1);
+        const SPRING_POP = sampleSpring(520, 17, 1);
+        const durOf = (a) => a.length * FRAME;
+        const Motion = {
+            // FLIP glide: animate an element from its previous left offset to its new one
+            flip(el, prevLeft, newLeft) {
+                if (REDUCED || prevLeft == null || Math.abs(newLeft - prevLeft) < 0.5) return;
+                const dx = prevLeft - newLeft;
+                const kf = SPRING_POS.map(p => ({ transform: `translateX(${(dx * (1 - p)).toFixed(2)}px)` }));
+                el.animate(kf, { duration: durOf(SPRING_POS), easing: 'linear' });
+            },
+            pop(el) {
+                if (REDUCED) { el.style.opacity = '1'; return; }
+                const kf = SPRING_POP.map(p => ({ opacity: Math.min(1, p * 2).toFixed(3), transform: `translateY(${(-14 * (1 - p)).toFixed(2)}px) scale(${(0.4 + 0.6 * p).toFixed(3)})` }));
+                el.animate(kf, { duration: durOf(SPRING_POP), easing: 'linear', fill: 'backwards' });
+            },
+        };
+
+        // ───────── State ─────────
+        let ops = [];
+        let capacity = 2;
+        let steps = [];
+        let stepIdx = 0;
+        let timer = null;
+        let confettiArmed = true;
+        const delays = [1500, 850, 420];
+        const nodeEls = {};   // key -> node DOM element (persistent, keyed by cache key)
+        const chipEls = {};   // key -> hashmap chip DOM element
+
+        const CODE_ROWS = [
+            [['kw','class '],['fn','LRUCache'],['src',':  # hashmap + doubly linked list']],
+            [['src','  def '],['fn','get'],['src','(self, key):']],
+            [['kw','    if '],['src','key not in map: '],['kw','return '],['src','-1']],
+            [['src','    node = map[key]; '],['fn','moveToHead'],['src','(node)']],
+            [['kw','    return '],['src','node.value']],
+            [['src','  def '],['fn','put'],['src','(self, key, value):']],
+            [['kw','    if '],['src','key in map: node.value = value; '],['fn','moveToHead'],['src','(node)']],
+            [['kw','    else'],['src',': node = Node(k,v); map[k]=node; '],['fn','addHead'],['src','(node)']],
+            [['kw','      if '],['src','len(map) > cap: '],['fn','evict'],['src','(tail)  # drop LRU']],
+        ];
+
+        function buildCodePanel() {
+            const panel = document.getElementById('code-panel'); panel.innerHTML = '';
+            CODE_ROWS.forEach((tokens, i) => {
+                const line = document.createElement('div'); line.className = 'code-line'; line.dataset.line = i;
+                const lno = document.createElement('span'); lno.className = 'lno'; lno.textContent = i + 1; line.appendChild(lno);
+                const src = document.createElement('span');
+                tokens.forEach(([cls, txt]) => { const s = document.createElement('span'); s.className = cls; s.textContent = txt; src.appendChild(s); });
+                line.appendChild(src); panel.appendChild(line);
+            });
+        }
+        function highlightCode(arr) { document.querySelectorAll('.code-line').forEach(el => el.classList.toggle('active', arr && arr.includes(+el.dataset.line))); }
+        function toggleDetails() {
+            const wrap = document.getElementById('details-wrap'); const open = wrap.classList.toggle('open');
+            wrap.querySelector('.details-toggle').setAttribute('aria-expanded', open ? 'true' : 'false');
+            document.getElementById('details-label').textContent = open ? 'Hide code, state & log' : 'Show code, state & log';
+        }
+
+        // ───────── step generation (LRU cache: hashmap + DLL, MRU at head) ─────────
+        // The DLL is modeled as an ordered array `order` of {key,value}; order[0] = head/MRU,
+        // order[last] = tail/LRU. The hashmap `map` is a Set of keys present (value lives in order).
+        function generateSteps() {
+            steps = [];
+            let order = [];   // head .. tail
+            const present = () => order.map(n => n.key);
+            const findIdx = (k) => order.findIndex(n => n.key === k);
+
+            // each snapshot freezes the visible state + which keys are highlighted how
+            const snap = (extra) => Object.assign({
+                order: order.map(n => ({ key: n.key, value: n.value })),
+                cap: capacity,
+                size: order.length,
+                opIdx: null,
+                touched: null,    // key shown orange (just accessed / updated / moved)
+                inserted: null,   // key shown with purple insert glow
+                evicting: null,   // key shown red, about to leave
+                addedChip: null,  // hashmap chip flashed green
+                removedChip: null,// hashmap chip flashed red
+                tile: null,
+            }, extra);
+
+            steps.push(snap({ code: [0], action: 'NEW CACHE', actionColor: 'var(--accent-blue)',
+                panel: `An <b>LRU cache</b> pairs a <code>hashmap</code> (O(1) lookup) with a <code>doubly linked list</code> ordered by recency: <b>head = most-recently-used</b>, <b>tail = least-recently-used</b>. When full, the tail is evicted.`,
+                log: `init  capacity = ${capacity}` }));
+
+            ops.forEach((op, oi) => {
+                if (op.op === 'get') {
+                    const k = op.key;
+                    const idx = findIdx(k);
+                    if (idx === -1) {
+                        // miss
+                        steps.push(snap({ opIdx: oi, code: [1, 2], action: `get(${k}) &#8594; -1`, actionColor: 'var(--accent-red)', miss: true,
+                            panel: `<code>get(${k})</code> &#8594; key <b>${k}</b> is <span style="color:var(--accent-red)">not in the map</span> &#8594; cache <b>miss</b>, return <b>-1</b>.`,
+                            log: `get(${k}) -> -1  (miss)` }));
+                    } else {
+                        const node = order[idx];
+                        const wasHead = idx === 0;
+                        // touch
+                        steps.push(snap({ opIdx: oi, code: [1, 3], action: `get(${k}) &#8594; ${node.value}`, actionColor: 'var(--accent-orange)', touched: k,
+                            panel: `<code>get(${k})</code> &#8594; <b>hit</b>! map[${k}] gives value <b>${node.value}</b>. Now mark it most-recently-used: <code>moveToHead</code>.`,
+                            log: `get(${k}) -> ${node.value}  (hit)` }));
+                        // move to head
+                        const moved = order.splice(idx, 1)[0];
+                        order.unshift(moved);
+                        steps.push(snap({ opIdx: oi, code: [3, 4], action: `return ${node.value}`, actionColor: 'var(--accent-green)', touched: k,
+                            panel: wasHead
+                                ? `<code>${k}</code> was already at the head &#8594; nothing to move. Return <b>${node.value}</b>.`
+                                : `Unlink <code>${k}</code> and splice it to the <b>head</b> &#8594; it is now most-recently-used. Return <b>${node.value}</b>.`,
+                            log: `moveToHead(${k}); return ${node.value}` }));
+                    }
+                } else { // put
+                    const k = op.key, v = op.val;
+                    const idx = findIdx(k);
+                    if (idx !== -1) {
+                        // update existing -> move to head
+                        order[idx].value = v;
+                        const node = order[idx];
+                        steps.push(snap({ opIdx: oi, code: [5, 6], action: `put(${k}, ${v})`, actionColor: 'var(--accent-orange)', touched: k,
+                            panel: `<code>put(${k}, ${v})</code> &#8594; key <b>${k}</b> already exists. Update its value to <b>${v}</b> and move it to the head.`,
+                            log: `put(${k},${v})  update existing` }));
+                        const moved = order.splice(idx, 1)[0];
+                        order.unshift(moved);
+                        steps.push(snap({ opIdx: oi, code: [6], action: `${k} &#8594; MRU`, actionColor: 'var(--accent-green)', touched: k,
+                            panel: `Value of <code>${k}</code> is now <b>${v}</b> and it is the most-recently-used node at the head.`,
+                            log: `moveToHead(${k})` }));
+                    } else {
+                        // insert new at head
+                        order.unshift({ key: k, value: v });
+                        steps.push(snap({ opIdx: oi, code: [5, 7], action: `put(${k}, ${v})`, actionColor: 'var(--accent-purple)', inserted: k, addedChip: k,
+                            panel: `<code>put(${k}, ${v})</code> &#8594; new key. Create a node, add <code>map[${k}]</code>, and link it at the <b>head</b> as most-recently-used.`,
+                            log: `put(${k},${v})  insert at head` }));
+
+                        if (order.length > capacity) {
+                            const lru = order[order.length - 1];
+                            // show eviction target (red) before removing
+                            steps.push(snap({ opIdx: oi, code: [8], action: `evict LRU ${lru.key}`, actionColor: 'var(--accent-red)', evicting: lru.key, miss: true,
+                                panel: `Size <b>${order.length}</b> &gt; capacity <b>${capacity}</b> &#8594; <span style="color:var(--accent-red)">evict</span> the tail (LRU) node, key <b>${lru.key}</b>.`,
+                                log: `over capacity -> evict tail ${lru.key}` }));
+                            order.pop();
+                            steps.push(snap({ opIdx: oi, code: [8], action: `${lru.key} removed`, actionColor: 'var(--accent-red)', removedChip: lru.key,
+                                panel: `Unlink the tail and delete <code>map[${lru.key}]</code>. Cache is back to size <b>${order.length}</b>.`,
+                                log: `delete map[${lru.key}]` }));
+                        }
+                    }
+                }
+            });
+
+            const finalList = order.map(n => `${n.key}:${n.value}`).join(', ');
+            steps.push(snap({ complete: true, confetti: true, action: '✓ DONE', actionColor: 'var(--accent-green)',
+                panel: `All operations done. Cache (MRU &#8594; LRU): <code>[${finalList || ' '}]</code>. Every get/put kept the touched key at the head and evicted the tail when full &#8594; all O(1).`,
+                log: `done  cache = [${finalList}]` }));
+        }
+
+        // ───────── render (persistent-DOM FLIP reconciliation, keyed by cache key) ─────────
+        function renderStep(idx) {
+            stepIdx = idx; const step = steps[idx]; if (!step) return;
+            renderDLL(step);
+            renderMap(step);
+
+            const mp = document.getElementById('main-panel');
+            mp.innerHTML = step.panel || '&mdash;';
+            mp.classList.toggle('done', !!step.complete);
+            mp.classList.toggle('miss', !!step.miss && !step.complete);
+            const aw = document.getElementById('action-word'); aw.innerHTML = step.action || ''; aw.style.color = step.actionColor || 'var(--text-dim)';
+            highlightCode(step.code);
+
+            if (step.confetti) { if (confettiArmed) { fireConfetti(); confettiArmed = false; } } else confettiArmed = true;
+
+            renderOpFeed(step.opIdx);
+            const headKey = step.order.length ? step.order[0].key : null;
+            const tailKey = step.order.length ? step.order[step.order.length - 1].key : null;
+            document.getElementById('st-head').textContent = headKey == null ? '·' : headKey;
+            document.getElementById('st-tail').textContent = tailKey == null ? '·' : tailKey;
+            document.getElementById('st-size').textContent = step.size;
+            document.getElementById('st-cap').textContent = step.cap;
+            document.getElementById('step-badge').textContent = `Step ${idx + 1} / ${steps.length}`;
+            document.getElementById('progress-fill').style.width = `${(idx / Math.max(1, steps.length - 1)) * 100}%`;
+
+            const logEl = document.getElementById('log');
+            logEl.innerHTML = steps.slice(0, idx + 1).map(s => `<div style="margin:3px 0;white-space:pre-wrap;color:${s.actionColor || 'var(--text-dim)'}">${s.log}</div>`).join('');
+            logEl.scrollTop = logEl.scrollHeight;
+        }
+
+        function renderDLL(step) {
+            const rail = document.getElementById('dll-rail');
+            const order = step.order;
+
+            // capture previous left offsets for FLIP
+            const prevLeft = {};
+            Object.keys(nodeEls).forEach(k => { prevLeft[k] = nodeEls[k].offsetLeft; });
+
+            // empty-state placeholder
+            let emptyEl = rail.querySelector('.dll-empty');
+            if (!order.length) {
+                Object.keys(nodeEls).forEach(k => { nodeEls[k].remove(); delete nodeEls[k]; });
+                rail.querySelectorAll('.arrow').forEach(a => a.remove());
+                if (!emptyEl) { emptyEl = document.createElement('div'); emptyEl.className = 'dll-empty'; emptyEl.textContent = 'empty cache'; rail.appendChild(emptyEl); }
+                return;
+            }
+            if (emptyEl) emptyEl.remove();
+
+            // ensure node elements exist & content is current
+            const present = new Set();
+            order.forEach((n, i) => {
+                const k = String(n.key); present.add(k);
+                let el = nodeEls[k];
+                const fresh = !el;
+                if (fresh) {
+                    el = document.createElement('div');
+                    el.innerHTML = `<span class="badge"></span><span class="k"></span><span class="v"></span>`;
+                    nodeEls[k] = el;
+                }
+                el.querySelector('.k').textContent = 'key ' + n.key;
+                el.querySelector('.v').textContent = n.value;
+                let cls = 'node';
+                if (i === 0) cls += ' is-head';
+                if (i === order.length - 1) cls += ' is-tail';
+                if (order.length === 1) cls += ' is-headtail';
+                if (String(step.touched) === k) cls += ' touched';
+                if (String(step.inserted) === k) cls += ' inserted';
+                if (String(step.evicting) === k) cls += ' evicting';
+                el.className = cls;
+                const badge = el.querySelector('.badge');
+                badge.textContent = i === 0 ? 'HEAD' : (i === order.length - 1 ? 'TAIL' : '');
+            });
+
+            // rebuild rail in correct order: node, arrow, node, arrow, ...
+            rail.querySelectorAll('.arrow').forEach(a => a.remove());
+            order.forEach((n, i) => {
+                const el = nodeEls[String(n.key)];
+                rail.appendChild(el);
+                if (i < order.length - 1) {
+                    const arrow = document.createElement('div'); arrow.className = 'arrow';
+                    arrow.innerHTML = `<svg viewBox="0 0 22 14"><line class="lnk" x1="1" y1="4" x2="21" y2="4"/><line class="lnk" x1="1" y1="10" x2="21" y2="10"/></svg>`;
+                    rail.appendChild(arrow);
+                }
+            });
+
+            // reap nodes no longer present
+            Object.keys(nodeEls).forEach(k => { if (!present.has(k)) { nodeEls[k].remove(); delete nodeEls[k]; } });
+
+            // FLIP: animate any node whose left offset changed
+            requestAnimationFrame(() => {
+                order.forEach(n => {
+                    const k = String(n.key); const el = nodeEls[k]; if (!el) return;
+                    if (prevLeft[k] != null) Motion.flip(el, prevLeft[k], el.offsetLeft);
+                    else if (String(step.inserted) === k) Motion.pop(el);
+                });
+            });
+        }
+
+        function renderMap(step) {
+            const row = document.getElementById('map-row');
+            const order = step.order;
+            // chips ordered by key value for a stable hashmap look
+            const keys = order.map(n => n.key).slice().sort((a, b) => a - b);
+
+            let emptyEl = row.querySelector('.map-empty');
+            if (!keys.length) {
+                Object.keys(chipEls).forEach(k => { chipEls[k].remove(); delete chipEls[k]; });
+                if (!emptyEl) { emptyEl = document.createElement('div'); emptyEl.className = 'map-empty'; emptyEl.textContent = '(empty)'; row.appendChild(emptyEl); }
+                return;
+            }
+            if (emptyEl) emptyEl.remove();
+
+            const present = new Set();
+            keys.forEach(kk => {
+                const node = order.find(n => n.key === kk);
+                const k = String(kk); present.add(k);
+                let chip = chipEls[k];
+                const fresh = !chip;
+                if (fresh) {
+                    chip = document.createElement('div');
+                    chip.innerHTML = `<span class="mk"></span><span class="ar">&#8594;</span><span class="mn"></span>`;
+                    chipEls[k] = chip;
+                }
+                chip.querySelector('.mk').textContent = kk;
+                chip.querySelector('.mn').textContent = 'node(' + node.value + ')';
+                let cls = 'map-chip';
+                if (String(step.touched) === k) cls += ' touched';
+                if (String(step.addedChip) === k) cls += ' added';
+                chip.className = cls;
+                row.appendChild(chip);
+                if (fresh && String(step.addedChip) === k) Motion.pop(chip);
+            });
+            Object.keys(chipEls).forEach(k => { if (!present.has(k)) { chipEls[k].remove(); delete chipEls[k]; } });
+        }
+
+        function renderOpFeed(currentOpIdx) {
+            const feed = document.getElementById('op-feed'); feed.innerHTML = '';
+            ops.forEach((op, i) => {
+                const chip = document.createElement('div');
+                const label = op.op + '(' + op.key + (op.op === 'put' ? ',' + op.val : '') + ')';
+                chip.className = 'op-chip' + (currentOpIdx === i ? ' current' : (currentOpIdx != null && i < currentOpIdx ? ' done' : ''));
+                chip.textContent = label; feed.appendChild(chip);
+            });
+        }
+
+        function fireConfetti() {
+            const host = document.getElementById('confetti'); if (!host || REDUCED) return;
+            const colors = ['#22c55e', '#06b6d4', '#a855f7', '#f5a524', '#f43f5e'];
+            for (let i = 0; i < 38; i++) {
+                const p = document.createElement('div'); p.className = 'confetti-piece';
+                p.style.setProperty('--x', ((Math.random() * 2 - 1) * 220) + 'px');
+                p.style.setProperty('--rot', ((Math.random() * 720 - 360)) + 'deg');
+                p.style.background = colors[i % colors.length];
+                p.style.animationDuration = (0.9 + Math.random() * 0.8) + 's';
+                p.style.animationDelay = (Math.random() * 0.15) + 's';
+                host.appendChild(p); setTimeout(() => p.remove(), 1900);
+            }
+        }
+
+        // ───────── controls ─────────
+        function nextStep() { if (stepIdx < steps.length - 1) renderStep(stepIdx + 1); else pause(); }
+        function prevStep() { if (stepIdx > 0) renderStep(stepIdx - 1); }
+        function resetSim() { pause(); renderStep(0); }
+        function togglePlay() {
+            const btn = document.getElementById('play-btn');
+            if (timer) { pause(); return; }
+            btn.textContent = 'Pause';
+            if (stepIdx >= steps.length - 1) renderStep(0);
+            timer = setInterval(() => { if (stepIdx < steps.length - 1) nextStep(); else pause(); }, delays[document.getElementById('speed').value]);
+        }
+        function pause() { clearInterval(timer); timer = null; document.getElementById('play-btn').textContent = 'Play'; }
+
+        function clearDom() {
+            Object.keys(nodeEls).forEach(k => { nodeEls[k].remove(); delete nodeEls[k]; });
+            Object.keys(chipEls).forEach(k => { chipEls[k].remove(); delete chipEls[k]; });
+            document.getElementById('dll-rail').innerHTML = '';
+            document.getElementById('map-row').innerHTML = '';
+            confettiArmed = true;
+        }
+        function loadOps(newOps, cap) { pause(); ops = newOps; if (cap != null) capacity = cap; clearDom(); generateSteps(); renderStep(0); }
+        function doOp(type) {
+            const keyInput = document.getElementById('key-input');
+            const valInput = document.getElementById('val-input');
+            const key = parseInt(keyInput.value, 10);
+            if (isNaN(key)) { keyInput.focus(); return; }
+            let op;
+            if (type === 'put') {
+                const val = parseInt(valInput.value, 10);
+                if (isNaN(val)) { valInput.focus(); return; }
+                op = { op: 'put', key, val };
+            } else {
+                op = { op: 'get', key };
+            }
+            const capVal = parseInt(document.getElementById('capacity-input').value, 10);
+            loadOps([...ops, op], isNaN(capVal) ? capacity : capVal);
+            renderStep(steps.length - 1);
+            keyInput.value = ''; valInput.value = '';
+        }
+        function loadExample(n) {
+            const exs = [
+                { cap: 2, ops: [
+                    {op:'put',key:1,val:1},{op:'put',key:2,val:2},{op:'get',key:1},
+                    {op:'put',key:3,val:3},{op:'get',key:2},{op:'put',key:4,val:4},
+                    {op:'get',key:1},{op:'get',key:3},{op:'get',key:4}
+                ] },
+                { cap: 1, ops: [
+                    {op:'put',key:2,val:1},{op:'get',key:2},{op:'put',key:3,val:2},
+                    {op:'get',key:2},{op:'get',key:3}
+                ] },
+            ];
+            const ex = exs[n]; document.getElementById('capacity-input').value = ex.cap;
+            loadOps(ex.ops, ex.cap);
+        }
+
+        document.addEventListener('keydown', (e) => {
+            const tag = (e.target.tagName || '').toLowerCase(); if (tag === 'input' || tag === 'textarea') return;
+            if (e.key === 'ArrowRight') { e.preventDefault(); pause(); nextStep(); }
+            else if (e.key === 'ArrowLeft') { e.preventDefault(); pause(); prevStep(); }
+            else if (e.key === ' ') { e.preventDefault(); togglePlay(); }
+        });
+        document.getElementById('key-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') document.getElementById('val-input').focus(); });
+        document.getElementById('val-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') doOp('put'); });
+        window.addEventListener('resize', () => renderStep(stepIdx));
+
+        buildCodePanel();
+        window.onload = () => loadExample(0);
+    </script>
+</body>
+</html>

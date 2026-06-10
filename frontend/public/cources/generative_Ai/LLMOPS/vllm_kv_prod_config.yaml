@@ -1,0 +1,131 @@
+# ═══════════════════════════════════════════════════════════════════════════
+# vllm_kv_prod_config.yaml
+#
+# Production vLLM config for Nexus v4: PagedAttention + RadixAttention prefix
+# caching + chunked prefill + FP8 KV. This is the full KV-engineering stack
+# from Module 4, deployed together. Every line annotated with the reasoning
+# for its value.
+#
+# Usage:
+#   vllm serve --model meta-llama/Meta-Llama-3-70B-Instruct \
+#              --config-file vllm_kv_prod_config.yaml
+# ═══════════════════════════════════════════════════════════════════════════
+
+model: meta-llama/Meta-Llama-3-70B-Instruct
+tokenizer: meta-llama/Meta-Llama-3-70B-Instruct
+revision: main  # production: pin to a SHA
+
+# ─── Quantization ───────────────────────────────────────────────────────────
+quantization: awq
+kv_cache_dtype: fp8_e4m3
+# FP8 KV requires calibrated scales. Use YOUR production traffic distribution
+# for calibration — NOT the default Wikipedia-calibrated scales shipped with
+# the model. Nexus saw a 0.7 F1 regression once using default scales on
+# fraud-detection traffic; re-calibration recovered it.
+calibrated_kv_scales_path: /models/nexus/kv_scales_fraud_detection.safetensors
+
+# ─── Context and block configuration ────────────────────────────────────────
+max_model_len: 16384
+# block_size: 32 is the Nexus v4 pick. For general chat/LLM workloads
+# paged_kv_simulator.py recommends block_size=32 (98.7% utilization, 1.3%
+# fragmentation). block=16 gives 0.7pp more utilization but 2x page-table
+# lookups; block=64 gives 1.3pp more fragmentation.
+#
+# Re-evaluate if the workload shifts to long-context (block=64) or short-chat
+# (block=16).
+block_size: 32
+
+# ─── Prefix caching (RadixAttention) ────────────────────────────────────────
+enable_prefix_caching: true
+# NOTE: radix_prefix_analyzer.py on the production prompt log must show
+# hit rate >80% at L=512 chars before enabling this. If the analyzer shows
+# timestamp/UUID leaks, fix the prompt template BEFORE enabling prefix
+# caching (otherwise you'll set an expectation the system can't meet).
+
+# Per-tenant trie keying. When serving regulated tenants (PCI, HIPAA), set
+# this to true to prevent any cross-tenant prefix sharing. Small hit-rate
+# cost (~5-8pp), but provides auditable isolation for compliance.
+# For Nexus: enabled for top-10 regulated merchants, disabled for the rest.
+prefix_caching_tenant_keyed: false  # override per-tenant at the gateway
+
+# GC threshold — evict cached prefixes when block-pool free capacity drops
+# below 10%. Lower = more aggressive eviction (protects decode from
+# preemption), higher = more caching (better TTFT under low pressure).
+prefix_caching_gc_threshold: 0.10
+
+# ─── Chunked prefill ────────────────────────────────────────────────────────
+enable_chunked_prefill: true
+# chunked_prefill_calculator.py output for Nexus's workload:
+#   TTFT budget 400ms, prefill p99 4096, TPOT 12ms, 20k tok/s throughput
+#   → chunk_size=512 (TTFT 222ms, max decode stall 26ms).
+# Re-run the calculator when any of those change.
+max_num_batched_tokens_prefill_chunk: 512
+
+# ─── Batching ───────────────────────────────────────────────────────────────
+max_num_seqs: 256
+# max_num_batched_tokens sets the total token budget per scheduler step.
+# At max_num_seqs=256 and seq len mean ~1200 tokens, 32768 is generous
+# for decode pressure. Larger values help prefill throughput; smaller values
+# reduce decode stalling.
+max_num_batched_tokens: 32768
+
+# ─── Parallelism ────────────────────────────────────────────────────────────
+# Nexus v4 runs on 4x H200 per region (H200 = 141GB). AWQ Llama-3-70B weights
+# are ~37GB total; TP=4 gives ~9.3GB weights per GPU, leaving ~130GB per GPU
+# for KV pool × 4 = 520GB aggregate KV budget. At ~160KB/token (Llama-3-70B
+# FP8 KV) that's ~3.25M concurrent tokens, supporting 400+ concurrent
+# 8K-context requests.
+tensor_parallel_size: 4
+pipeline_parallel_size: 1
+
+# ─── Disaggregation (disabled for Nexus v4 — within-node NVLink serves) ─────
+# If you enable disaggregation, run kv_transport_benchmark.py first. The
+# rule: transfer overhead must be <5ms per request. For Nexus-size KV
+# (170MB at 16K context), that requires NVLink or Infiniband NDR.
+#
+# disagg_prefill:
+#   enabled: false
+#   decode_pool_endpoint: "http://decode-pool:8080"
+#   kv_transport: nvlink  # or "infiniband" for cross-rack
+
+# ─── Scheduling ─────────────────────────────────────────────────────────────
+scheduling_policy: fcfs
+# For Nexus v4 we stayed on FCFS. Module 5 introduces deadline-aware
+# scheduling (EDF) which supersedes this. If a custom scheduler is wired in,
+# set to "custom" and see M5 artifact pack for the implementation.
+
+# Request preemption — engine can swap a running request out to free KV
+# if a higher-priority request arrives. Empirically, preemption rate >5%
+# = configure more aggressive prefix_caching_gc_threshold or raise
+# max_num_seqs cap.
+enable_preemption: true
+preemption_mode: swap  # "swap" preserves KV on CPU; "recompute" drops and re-prefills
+
+# ─── Observability ──────────────────────────────────────────────────────────
+enable_prometheus_metrics: true
+metrics_port: 8001
+
+# KV-specific alerts to wire up from this endpoint:
+#   vllm:gpu_cache_usage_perc    → alert if >92% sustained (OOM imminent)
+#   vllm:prefix_cache_hit_rate   → alert if <80% of 7-day baseline
+#   vllm:num_preemptions_total   → alert if >5% of requests preempted
+#   vllm:time_to_first_token     → alert on TTFT p99 regression
+# Full alert rules in artifacts/m04_kv_cache/prometheus_alerts.yaml
+
+# ─── Engine tuning ──────────────────────────────────────────────────────────
+request_timeout_seconds: 60
+use_cuda_graphs: true
+cuda_graph_capture_sizes: [1, 4, 8, 16, 32, 64, 128, 256]
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Pre-deploy verification (see operator_checklist.md for full list):
+#
+#   1. Run paged_kv_simulator.py on your request-length distribution;
+#      confirm block_size=32 is still the recommendation.
+#   2. Run radix_prefix_analyzer.py on 1000 production prompts; verify
+#      hit rate >80% at L=512 and no timestamp/UUID violations.
+#   3. Run chunked_prefill_calculator.py with your TTFT budget; verify
+#      chunk_size=512 still satisfies both TTFT and decode-stall targets.
+#   4. Benchmark end-to-end vs your previous config; expect TTFT -40%,
+#      throughput +3x, GPU memory utilization -20%.
+# ═══════════════════════════════════════════════════════════════════════════

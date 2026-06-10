@@ -1,0 +1,577 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flood Fill - Visualization</title>
+    <style>
+        :root {
+            --bg-page: #070b14;
+            --bg-surface: rgba(255, 255, 255, 0.045);
+            --bg-input: rgba(255, 255, 255, 0.04);
+            --border-main: rgba(255, 255, 255, 0.10);
+            --btn-bg: rgba(255, 255, 255, 0.05);
+            --btn-hover: rgba(255, 255, 255, 0.10);
+            --text-main: #e8eefb;
+            --text-dim: #8b98b3;
+            --accent-orange: #f5a524;   /* current recursion frame        */
+            --accent-blue:   #06b6d4;   /* original-color region          */
+            --accent-green:  #22c55e;   /* filled (new color)             */
+            --accent-red:    #f43f5e;   /* base-case / backtrack          */
+            --accent-purple: #a855f7;   /* start cell / cursor            */
+            --mono: ui-monospace, 'SF Mono', 'Cascadia Code', 'Courier New', monospace;
+            --sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+            --shell: 900px;
+        }
+
+        * { box-sizing: border-box; }
+        html, body { overflow-x: hidden; }
+        body {
+            background:
+                radial-gradient(1100px 600px at 15% -10%, rgba(168, 85, 247, 0.10), transparent 60%),
+                radial-gradient(900px 600px at 100% 10%, rgba(6, 182, 212, 0.10), transparent 55%),
+                linear-gradient(160deg, #070b14 0%, #0b1120 55%, #0a0f1c 100%);
+            background-attachment: fixed;
+            color: var(--text-main); font-family: var(--sans); margin: 0;
+            display: flex; flex-direction: column; align-items: center; min-height: 100vh;
+            padding-bottom: 48px; -webkit-font-smoothing: antialiased;
+        }
+        body::before, body::after { content: ''; position: fixed; border-radius: 50%; filter: blur(70px); pointer-events: none; z-index: 0; opacity: 0.45; }
+        body::before { width: 380px; height: 380px; top: 8%; left: -120px; background: radial-gradient(circle, rgba(168,85,247,0.30), transparent 70%); }
+        body::after  { width: 420px; height: 420px; bottom: 4%; right: -140px; background: radial-gradient(circle, rgba(6,182,212,0.22), transparent 70%); }
+        body > * { position: relative; z-index: 1; }
+
+        .input-bar {
+            width: 100%; background: rgba(10, 15, 28, 0.55);
+            backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+            padding: 14px 16px; display: flex; justify-content: center; align-items: center; gap: 10px;
+            border-bottom: 1px solid var(--border-main); flex-wrap: wrap; position: sticky; top: 0; z-index: 50;
+        }
+        label.ui-label, .ui-label { font-family: var(--mono); font-size: 13px; color: var(--text-dim); letter-spacing: 0.2px; }
+        input[type="text"], input[type="number"] {
+            background: var(--bg-input); border: 1px solid var(--border-main); color: var(--text-main);
+            height: 34px; border-radius: 9px; padding: 0 12px; font-size: 13px; font-family: var(--mono);
+            transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+        }
+        .start-input { width: 90px; } .val-input { width: 70px; }
+        input:focus { outline: none; border-color: var(--accent-purple); box-shadow: 0 0 0 3px rgba(168, 85, 247, 0.18); background: rgba(168, 85, 247, 0.06); }
+
+        button {
+            height: 34px; border-radius: 9px; padding: 0 14px; background: var(--btn-bg);
+            border: 1px solid var(--border-main); color: var(--text-main); font-size: 13px; font-weight: 600; cursor: pointer;
+            transition: transform 0.15s ease, background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+        }
+        button:hover { background: var(--btn-hover); border-color: rgba(6, 182, 212, 0.5); box-shadow: 0 0 18px rgba(6, 182, 212, 0.18); transform: translateY(-1px); }
+        button:active { transform: translateY(0); }
+        #play-btn { background: linear-gradient(135deg, rgba(6,182,212,0.22), rgba(6,182,212,0.10)); border-color: rgba(6, 182, 212, 0.45); color: #a5f3fc; min-width: 80px; }
+
+        .shell { width: var(--shell); max-width: 95%; margin: 24px auto 0; display: flex; flex-direction: column; gap: 16px; }
+
+        .title-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+        .title-row h1 { font-size: 18px; font-weight: 800; margin: 0; letter-spacing: 0.2px; }
+        .title-row .sub { color: var(--text-dim); font-weight: 500; font-size: 13px; }
+        .step-badge { font-family: var(--mono); font-size: 12px; font-weight: 700; color: #a5f3fc; background: rgba(6,182,212,0.12); border: 1px solid rgba(6,182,212,0.3); padding: 4px 10px; border-radius: 999px; white-space: nowrap; }
+        .progress-track { height: 4px; width: 100%; background: rgba(255,255,255,0.07); border-radius: 999px; overflow: hidden; margin-top: -6px; }
+        .progress-fill { height: 100%; width: 0%; border-radius: 999px; background: linear-gradient(90deg, var(--accent-blue), var(--accent-purple)); box-shadow: 0 0 12px rgba(6,182,212,0.5); transition: width 0.45s cubic-bezier(0.34,1.1,0.64,1); }
+
+        .narration { background: var(--bg-surface); border: 1px solid rgba(6,182,212,0.22); border-radius: 12px; padding: 12px 18px; font-family: var(--mono); font-size: 14px; line-height: 1.5; color: #cfe9f5; min-height: 48px; display: flex; align-items: center; gap: 10px; transition: border-color 0.3s, background 0.3s; }
+        .narration::before { content: '\25B8'; color: var(--accent-blue); font-size: 13px; }
+        .narration.done { border-color: rgba(34,197,94,0.4); background: rgba(34,197,94,0.06); }
+        .narration.done::before { content: '\2713'; color: var(--accent-green); }
+        .narration.fail { border-color: rgba(244,63,94,0.4); background: rgba(244,63,94,0.06); }
+        .narration.fail::before { content: '\2717'; color: var(--accent-red); }
+        .narration code { background: rgba(6,182,212,0.14); color: #7dd3fc; padding: 1px 6px; border-radius: 5px; font-size: 12.5px; }
+        .narration b { color: #fff; }
+
+        .stage-card { background: var(--bg-surface); border: 1px solid var(--border-main); border-radius: 18px; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); box-shadow: 0 12px 38px rgba(0,0,0,0.4); overflow: hidden; }
+        .stage-screen { position: relative; margin: 14px; border-radius: 14px; background: radial-gradient(700px 300px at 50% -10%, rgba(6,182,212,0.08), transparent 70%), #090d18; border: 1px solid rgba(255,255,255,0.06); }
+        .grid-stage { position: relative; width: 100%; overflow: auto; scrollbar-width: thin; padding: 22px; display: flex; justify-content: center; align-items: flex-start; gap: 34px; flex-wrap: wrap; }
+        .grid-stage::-webkit-scrollbar { height: 8px; width: 8px; }
+        .grid-stage::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 8px; }
+
+        .board-wrap { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+        .board-title { font-family: var(--mono); font-size: 11px; font-weight: 800; letter-spacing: 1.2px; text-transform: uppercase; color: var(--text-dim); }
+        .dp-grid { display: grid; gap: 5px; }
+        .cell {
+            position: relative;
+            display: flex; align-items: center; justify-content: center;
+            border-radius: 9px; font-family: var(--mono); font-weight: 800; font-size: 16px;
+            border: 2px solid var(--border-main); background: rgba(255,255,255,0.04); color: var(--text-main);
+            width: 46px; height: 46px; will-change: transform;
+            transition: background 0.35s, border-color 0.35s, color 0.35s, box-shadow 0.35s, transform 0.3s, opacity 0.35s;
+        }
+        .cell.head { border: none; background: transparent; color: var(--text-dim); font-size: 13px; font-weight: 800; box-shadow: none; }
+        .cell.corner { background: transparent; border: none; box-shadow: none; }
+        .cell.head.litR { color: var(--accent-purple); }
+        .cell.head.litC { color: var(--accent-purple); }
+        /* a cell still holding the original target color, untouched */
+        .cell.region { border-color: rgba(6,182,212,0.35); background: rgba(6,182,212,0.10); color: #a5f3fc; }
+        /* a cell that is NOT the original color (a wall / boundary) */
+        .cell.wall { opacity: 0.45; border-color: rgba(255,255,255,0.08); background: rgba(255,255,255,0.03); color: var(--text-dim); }
+        /* a cell already filled with the new color */
+        .cell.filled { border-color: var(--accent-green); background: linear-gradient(180deg, rgba(47,224,143,0.85), rgba(33,194,117,0.85)); color: #06251a; box-shadow: 0 0 14px rgba(34,197,94,0.4); }
+        /* the start cell marker (small ring) */
+        .cell.start-ring::after { content: ''; position: absolute; inset: 4px; border-radius: 6px; border: 1.5px dashed rgba(168,85,247,0.7); pointer-events: none; }
+        /* the active recursion frame (cursor) */
+        .cell.current { border-color: var(--accent-orange); box-shadow: 0 0 22px rgba(245,165,36,0.6), inset 0 0 12px rgba(245,165,36,0.18); transform: scale(1.08); z-index: 3; opacity: 1; }
+        .cell.basecase { border-color: var(--accent-red); box-shadow: 0 0 18px rgba(244,63,94,0.5); transform: scale(1.06); z-index: 3; opacity: 1; }
+        .cell .dir { position: absolute; top: -10px; right: -8px; font-size: 13px; font-weight: 900; color: #fff; text-shadow: 0 0 6px rgba(0,0,0,0.7); pointer-events: none; }
+
+        /* recursion call-stack column */
+        .stack-wrap { display: flex; flex-direction: column; align-items: center; gap: 10px; min-width: 150px; }
+        .stack-col { display: flex; flex-direction: column-reverse; gap: 5px; align-items: stretch; width: 150px; min-height: 46px; }
+        .frame { font-family: var(--mono); font-size: 12.5px; font-weight: 700; padding: 7px 10px; border-radius: 9px; border: 1.5px solid var(--border-main); background: rgba(255,255,255,0.04); color: var(--text-dim); white-space: nowrap; will-change: transform, opacity; }
+        .frame.top { border-color: var(--accent-orange); background: rgba(245,165,36,0.14); color: #ffd591; box-shadow: 0 0 14px rgba(245,165,36,0.3); }
+        .stack-empty { font-family: var(--mono); font-size: 12px; color: var(--text-dim); opacity: 0.6; }
+
+        .controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: center; }
+        .controls .kbd-hint { font-size: 11px; color: var(--text-dim); font-family: var(--mono); margin-left: 4px; }
+        .kbd { background: rgba(255,255,255,0.07); border: 1px solid var(--border-main); border-radius: 5px; padding: 1px 6px; font-size: 10px; }
+        input[type="range"] { accent-color: var(--accent-blue); width: 110px; cursor: pointer; }
+
+        .details-toggle { align-self: center; height: 32px; padding: 0 16px; border-radius: 999px; cursor: pointer; background: rgba(255,255,255,0.04); border: 1px solid var(--border-main); color: var(--text-dim); font-family: var(--mono); font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; gap: 8px; transition: color 0.2s, border-color 0.2s, background 0.2s; }
+        .details-toggle:hover { color: var(--text-main); border-color: rgba(6,182,212,0.4); background: rgba(6,182,212,0.06); }
+        .details-toggle .chev { transition: transform 0.3s ease; }
+        .details-wrap.open .details-toggle .chev { transform: rotate(180deg); }
+        .details-body { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.4s ease; }
+        .details-wrap.open .details-body { grid-template-rows: 1fr; }
+        .details-inner { overflow: hidden; min-height: 0; }
+        .details-grid { display: flex; flex-direction: column; gap: 14px; padding-top: 14px; }
+
+        .panel-card { background: var(--bg-surface); border: 1px solid var(--border-main); border-radius: 16px; backdrop-filter: blur(10px); box-shadow: 0 8px 30px rgba(0,0,0,0.35); }
+        .panel-head { display: flex; align-items: center; gap: 8px; padding: 11px 16px; border-bottom: 1px solid var(--border-main); font-size: 11px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; color: var(--text-dim); }
+        .panel-head .pip { width: 7px; height: 7px; border-radius: 50%; background: var(--accent-blue); box-shadow: 0 0 8px var(--accent-blue); }
+        .code-body { padding: 12px 6px 14px; font-family: var(--mono); font-size: 12.5px; line-height: 1.7; }
+        .code-line { display: flex; gap: 12px; padding: 1px 16px; border-left: 2px solid transparent; transition: background 0.3s, border-color 0.3s; white-space: pre; }
+        .code-line .lno { color: #4b5772; width: 16px; text-align: right; user-select: none; }
+        .code-line .src { color: #c4cee0; }
+        .code-line .kw { color: #c792ea; }
+        .code-line .fn { color: #82aaff; }
+        .code-line.active { background: rgba(6,182,212,0.12); border-left-color: var(--accent-blue); }
+        .code-line.active .src, .code-line.active .lno { color: #e8eefb; }
+
+        .state-strip { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 0 2px; }
+        .pill { display: inline-flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 12px; color: var(--text-dim); background: rgba(255,255,255,0.04); border: 1px solid var(--border-main); border-radius: 999px; padding: 4px 11px; }
+        .pill b { color: var(--text-main); font-weight: 800; }
+        .pill.c b { color: var(--accent-orange); } .pill.o b { color: var(--accent-blue); } .pill.n b { color: var(--accent-green); } .pill.d b { color: var(--accent-purple); }
+
+        .log-panel { border-radius: 14px; padding: 12px 16px; height: 110px; overflow-y: auto; font-family: var(--mono); font-size: 12.5px; line-height: 1.5; background: var(--bg-surface); border: 1px solid var(--border-main); }
+        .log-panel::-webkit-scrollbar { width: 8px; }
+        .log-panel::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 8px; }
+
+        @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; } }
+    </style>
+</head>
+<body>
+
+    <div class="input-bar">
+        <label class="ui-label">start (sr,sc) =</label>
+        <input type="text" id="start-input" class="start-input" placeholder="1,1">
+        <label class="ui-label">newColor =</label>
+        <input type="number" id="new-input" class="val-input" placeholder="2">
+        <button onclick="loadCustom()">Load</button>
+        <span class="ui-label" style="opacity:.5">|</span>
+        <button onclick="loadExample(0)">Ex 1 (1,1 &#8594; 2)</button>
+        <button onclick="loadExample(1)">Ex 2 (0,0 &#8594; 0)</button>
+    </div>
+
+    <div class="shell">
+        <div class="title-row">
+            <h1>Flood Fill <span class="sub">&middot; DFS recursion &middot; 4-connected &middot; recolor the region &middot; O(m&middot;n)</span></h1>
+            <span class="step-badge" id="step-badge">Step 1 / 1</span>
+        </div>
+        <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+
+        <div class="narration" id="main-panel">&mdash;</div>
+
+        <div class="stage-card">
+            <div class="stage-screen">
+                <div class="grid-stage" id="grid-stage">
+                    <div class="board-wrap">
+                        <div class="board-title">Grid</div>
+                        <div class="dp-grid" id="dp-grid"></div>
+                    </div>
+                    <div class="stack-wrap">
+                        <div class="board-title">Call stack</div>
+                        <div class="stack-col" id="stack-col"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="controls">
+            <button onclick="resetSim()">&#8634; Reset</button>
+            <button onclick="prevStep()">&#8592; Back</button>
+            <button onclick="togglePlay()" id="play-btn">Play</button>
+            <button onclick="nextStep()">Next &#8594;</button>
+            <span class="ui-label" style="margin-left:6px; font-size:11px">Speed</span>
+            <input type="range" id="speed" min="0" max="2" value="1">
+            <span class="kbd-hint"><span class="kbd">&#8592;</span> <span class="kbd">&#8594;</span> step &middot; <span class="kbd">space</span> play</span>
+        </div>
+
+        <div class="details-wrap" id="details-wrap">
+            <button class="details-toggle" onclick="toggleDetails()" aria-expanded="false">
+                <span id="details-label">Show code, state &amp; log</span> <span class="chev">&#9662;</span>
+            </button>
+            <div class="details-body">
+                <div class="details-inner">
+                    <div class="details-grid">
+                        <div class="state-strip">
+                            <span class="pill c">cursor (r,c) <b id="st-cell">&mdash;</b></span>
+                            <span class="pill o">original <b id="st-orig">&mdash;</b></span>
+                            <span class="pill n">newColor <b id="st-new">&mdash;</b></span>
+                            <span class="pill d">depth <b id="st-depth">&mdash;</b></span>
+                            <span class="pill">filled <b id="st-filled">&mdash;</b></span>
+                        </div>
+                        <div class="panel-card">
+                            <div class="panel-head"><span class="pip"></span> Algorithm</div>
+                            <div class="code-body" id="code-panel"></div>
+                        </div>
+                        <div class="log-panel" id="log"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        'use strict';
+
+        // --------- Motion engine (spring pop, zero deps) ---------
+        const REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        const FRAME = 1000 / 60;
+        function sampleSpring(stiffness, damping, mass) {
+            const dt = 1 / 60; let x = 1, v = 0; const out = [];
+            for (let i = 0; i < 240; i++) { const a = (-stiffness * x - damping * v) / mass; v += a * dt; x += v * dt; out.push(1 - x); if (Math.abs(x) < 0.0015 && Math.abs(v) < 0.0015) break; }
+            out.push(1); return out;
+        }
+        const SPRING_POP = sampleSpring(520, 17, 1);
+        const durOf = (a) => a.length * FRAME;
+        const Motion = {
+            pop(el) {
+                if (REDUCED) return;
+                const kf = SPRING_POP.map(p => ({ transform: `scale(${(0.7 + 0.4 * p).toFixed(3)})` }));
+                el.animate(kf, { duration: durOf(SPRING_POP), easing: 'linear' });
+            },
+            enter(el) {
+                if (REDUCED) return;
+                el.animate([{ opacity: 0, transform: 'translateY(8px) scale(0.9)' }, { opacity: 1, transform: 'translateY(0) scale(1)' }], { duration: 260, easing: 'cubic-bezier(0.34,1.2,0.64,1)' });
+            },
+        };
+
+        // --------- State ---------
+        let GRID = [[1,1,1],[1,1,0],[1,0,1]];
+        let SR = 1, SC = 1, NEWCOLOR = 2;
+        let steps = [];
+        let stepIdx = 0;
+        let timer = null;
+        const delays = [1300, 650, 300];
+        const cellEls = {};   // 'gr,gc' -> element (grid, with header row/col)
+        const frameEls = {};  // 'r,c'   -> stack frame element
+
+        const CODE = [
+            [['kw','def '],['fn','floodFill'],['src','(image, sr, sc, newColor):']],
+            [['src','  orig = image[sr][sc]']],
+            [['kw','  if '],['src','orig == newColor: '],['kw','return '],['src','image']],
+            [['kw','  def '],['fn','dfs'],['src','(r, c):']],
+            [['kw','    if '],['src','r<0 or r>=m or c<0 or c>=n: '],['kw','return']],
+            [['kw','    if '],['src','image[r][c] != orig: '],['kw','return']],
+            [['src','    image[r][c] = newColor']],
+            [['fn','    dfs'],['src','(r-1,c); '],['fn','dfs'],['src','(r+1,c)']],
+            [['fn','    dfs'],['src','(r,c-1); '],['fn','dfs'],['src','(r,c+1)']],
+            [['fn','  dfs'],['src','(sr, sc)']],
+            [['kw','  return '],['src','image']],
+        ];
+        function buildCodePanel() {
+            const panel = document.getElementById('code-panel'); panel.innerHTML = '';
+            CODE.forEach((tokens, i) => {
+                const line = document.createElement('div'); line.className = 'code-line'; line.dataset.line = i;
+                const lno = document.createElement('span'); lno.className = 'lno'; lno.textContent = i + 1; line.appendChild(lno);
+                const src = document.createElement('span');
+                tokens.forEach(([cls, txt]) => { const s = document.createElement('span'); s.className = cls; s.textContent = txt; src.appendChild(s); });
+                line.appendChild(src); panel.appendChild(line);
+            });
+        }
+        function highlightCode(arr) { document.querySelectorAll('.code-line').forEach(el => el.classList.toggle('active', arr && arr.includes(+el.dataset.line))); }
+        function toggleDetails() {
+            const wrap = document.getElementById('details-wrap'); const open = wrap.classList.toggle('open');
+            wrap.querySelector('.details-toggle').setAttribute('aria-expanded', open ? 'true' : 'false');
+            document.getElementById('details-label').textContent = open ? 'Hide code, state & log' : 'Show code, state & log';
+        }
+
+        // --------- step generation (genuine DFS simulation) ---------
+        // directions order: up, down, left, right (matches the rendered dfs() body)
+        const DIRS = [[-1,0],[1,0],[0,-1],[0,1]];
+        const DIRWORD = { '-1,0':'up', '1,0':'down', '0,-1':'left', '0,1':'right' };
+        const DIRMARK = { '-1,0':'&#8593;', '1,0':'&#8595;', '0,-1':'&#8592;', '0,1':'&#8594;' };
+
+        function generateSteps() {
+            steps = [];
+            const m = GRID.length, n = GRID[0].length;
+            const orig = GRID[SR][SC];
+            const cur = GRID.map(row => row.slice());     // mutable working grid
+            let filledCount = 0;
+
+            // immutable snapshot helper
+            const snap = (extra) => Object.assign({
+                m, n, orig, newColor: NEWCOLOR, sr: SR, sc: SC,
+                board: cur.map(row => row.slice()),
+                stack: extra.stack ? extra.stack.slice() : [],
+                cursor: null, base: null, dir: null, depth: 0,
+                filled: filledCount, complete: false, result: null
+            }, extra);
+
+            const stack = []; // array of [r,c] of live frames
+
+            // INIT
+            steps.push(snap({
+                code: [0, 1, 2], stack: stack,
+                cursor: [SR, SC],
+                panel: `Start flood fill at <code>(${SR}, ${SC})</code>. The cell's <b>original color is ${orig}</b>; we will recolor the whole 4-connected region of color ${orig} to <code>newColor = ${NEWCOLOR}</code>.`,
+                log: `init  ${m}&times;${n} grid &middot; start (${SR},${SC}) &middot; orig=${orig} &middot; new=${NEWCOLOR}`
+            }));
+
+            // guard: same color -> no-op
+            if (orig === NEWCOLOR) {
+                steps.push(snap({
+                    code: [2], stack: [], complete: true, result: 'same',
+                    cursor: [SR, SC],
+                    panel: `The original color already equals <code>newColor = ${NEWCOLOR}</code>. Filling would recurse forever, so we <b>return immediately</b> &#8212; the grid is unchanged.`,
+                    log: `guard  orig == newColor (${orig}) &#8594; return, no change`
+                }));
+                return;
+            }
+
+            // recursive DFS that emits a snapshot at every decision point
+            function dfs(r, c, depth) {
+                // ENTER frame -> push call
+                stack.push([r, c]);
+
+                // bound check
+                if (r < 0 || r >= m || c < 0 || c >= n) {
+                    steps.push(snap({
+                        code: [3, 4], stack: stack, base: [r, c], depth,
+                        panel: `<code>dfs(${r}, ${c})</code> is <b>out of bounds</b> (a wall of the grid). Base case &#8594; return and back up.`,
+                        log: `dfs(${r},${c})  out of bounds &#8594; return`
+                    }));
+                    stack.pop();
+                    return;
+                }
+                // color check
+                if (cur[r][c] !== orig) {
+                    const why = cur[r][c] === NEWCOLOR ? 'already filled' : `color ${cur[r][c]} &ne; ${orig}`;
+                    steps.push(snap({
+                        code: [3, 5], stack: stack, base: [r, c], depth,
+                        panel: `<code>dfs(${r}, ${c})</code> holds <b>${why}</b>, not the original color ${orig}. Base case &#8594; return.`,
+                        log: `dfs(${r},${c})  ${cur[r][c] === NEWCOLOR ? 'already filled' : `${cur[r][c]} != ${orig}`} &#8594; return`
+                    }));
+                    stack.pop();
+                    return;
+                }
+
+                // fill this cell
+                cur[r][c] = NEWCOLOR;
+                filledCount++;
+                steps.push(snap({
+                    code: [3, 6], stack: stack, cursor: [r, c], depth, filled: filledCount,
+                    panel: `<code>dfs(${r}, ${c})</code>: cell is the original color ${orig}, so <b>fill it to ${NEWCOLOR}</b>. Now recurse into the 4 neighbours (up, down, left, right).`,
+                    log: `dfs(${r},${c})  fill &#8594; ${NEWCOLOR}  (filled ${filledCount})`
+                }));
+
+                // recurse into 4 neighbours, emitting a snapshot before each call
+                for (let i = 0; i < DIRS.length; i++) {
+                    const [dr, dc] = DIRS[i];
+                    const nr = r + dr, nc = c + dc;
+                    const key = dr + ',' + dc;
+                    steps.push(snap({
+                        code: i < 2 ? [7] : [8], stack: stack, cursor: [r, c], dir: key, depth, filled: filledCount,
+                        panel: `From <code>(${r}, ${c})</code> recurse <b>${DIRWORD[key]}</b> &#8594; call <code>dfs(${nr}, ${nc})</code>.`,
+                        log: `dfs(${r},${c})  recurse ${DIRWORD[key]} &#8594; dfs(${nr},${nc})`
+                    }));
+                    dfs(nr, nc, depth + 1);
+                }
+
+                stack.pop();
+            }
+
+            // kick off
+            steps.push(snap({
+                code: [9], stack: stack, cursor: [SR, SC],
+                panel: `Original color ${orig} differs from newColor ${NEWCOLOR}, so call <code>dfs(${SR}, ${SC})</code> to begin the recursive flood.`,
+                log: `call  dfs(${SR},${SC})`
+            }));
+            dfs(SR, SC, 0);
+
+            // FINAL
+            steps.push(snap({
+                code: [10], stack: [], complete: true, result: 'done', filled: filledCount,
+                panel: `Flood fill complete &#8212; <b>${filledCount}</b> connected cell${filledCount === 1 ? '' : 's'} of color ${orig} were recolored to <b>${NEWCOLOR}</b>. Disconnected ${orig}-cells stay untouched.`,
+                log: `done  filled ${filledCount} cell${filledCount === 1 ? '' : 's'} &#8594; result ready`
+            }));
+        }
+
+        // --------- render (persistent DOM) ---------
+        function renderStep(idx) {
+            stepIdx = idx; const step = steps[idx]; if (!step) return;
+            const grid = document.getElementById('dp-grid');
+            const rows = step.m + 1, cols = step.n + 1;       // +1 header row & header col
+            grid.style.gridTemplateColumns = `repeat(${cols}, 46px)`;
+
+            const cur = step.cursor, base = step.base;
+            const used = new Set();
+
+            for (let gr = 0; gr < rows; gr++) {
+                for (let gc = 0; gc < cols; gc++) {
+                    const key = gr + ',' + gc; used.add(key);
+                    let el = cellEls[key];
+                    if (!el) { el = document.createElement('div'); el.className = 'cell'; cellEls[key] = el; }
+                    let cls = 'cell', txt = '', dirMark = '', isData = false;
+
+                    if (gr === 0 && gc === 0) { cls += ' corner'; }
+                    else if (gr === 0) {                       // column headers c0..c(n-1)
+                        cls += ' head';
+                        const dc = gc - 1; txt = 'c' + dc;
+                        if (cur && cur[1] === dc) cls += ' litC';
+                        if (base && base[1] === dc && base[1] >= 0 && base[1] < step.n) cls += ' litC';
+                    } else if (gc === 0) {                      // row headers r0..r(m-1)
+                        cls += ' head';
+                        const dr = gr - 1; txt = 'r' + dr;
+                        if (cur && cur[0] === dr) cls += ' litR';
+                        if (base && base[0] === dr && base[0] >= 0 && base[0] < step.m) cls += ' litR';
+                    } else {                                    // data cell
+                        isData = true;
+                        const dr = gr - 1, dc = gc - 1;
+                        const v = step.board[dr][dc];
+                        txt = String(v);
+
+                        const isStart = (dr === step.sr && dc === step.sc);
+                        const isCur = cur && cur[0] === dr && cur[1] === dc;
+                        const isBase = base && base[0] === dr && base[1] === dc;
+                        const isFilled = (v === step.newColor) && (step.board[dr][dc] !== step.orig || step.orig === step.newColor) && !(step.result === 'same');
+
+                        // base layer: filled / original-region / wall
+                        if (step.result !== 'same' && v === step.newColor) cls += ' filled';
+                        else if (v === step.orig) cls += ' region';
+                        else cls += ' wall';
+
+                        if (isStart) cls += ' start-ring';
+
+                        // overlay: active recursion frame or base-case hit
+                        if (isBase) cls += ' basecase';
+                        else if (isCur) cls += ' current';
+
+                        // direction arrow on the current cursor cell
+                        if (isCur && step.dir) dirMark = DIRMARK[step.dir] || '';
+                    }
+
+                    const wasMissing = el.dataset.born !== '1';
+                    el.className = cls;
+                    el.innerHTML = (dirMark ? `<span class="dir">${dirMark}</span>` : '') + txt;
+                    if (isData && wasMissing) { el.dataset.born = '1'; Motion.pop(el); }
+                    grid.appendChild(el);
+                }
+            }
+            Object.keys(cellEls).forEach(k => { if (!used.has(k)) { cellEls[k].remove(); delete cellEls[k]; } });
+
+            // --- call-stack column (persistent, keyed by r,c position in stack) ---
+            const stackCol = document.getElementById('stack-col');
+            const usedFrames = new Set();
+            const st = step.stack || [];
+            if (st.length === 0) {
+                Object.keys(frameEls).forEach(k => { frameEls[k].remove(); delete frameEls[k]; });
+                if (!stackCol.querySelector('.stack-empty')) {
+                    stackCol.innerHTML = '<div class="stack-empty">(empty)</div>';
+                }
+            } else {
+                const emptyEl = stackCol.querySelector('.stack-empty'); if (emptyEl) emptyEl.remove();
+                st.forEach((fr, depth) => {
+                    const fkey = depth + ':' + fr[0] + ',' + fr[1];
+                    usedFrames.add(fkey);
+                    let fe = frameEls[fkey];
+                    const fresh = !fe;
+                    if (fresh) { fe = document.createElement('div'); fe.className = 'frame'; frameEls[fkey] = fe; }
+                    fe.textContent = `dfs(${fr[0]}, ${fr[1]})`;
+                    fe.classList.toggle('top', depth === st.length - 1);
+                    stackCol.appendChild(fe);
+                    if (fresh) Motion.enter(fe);
+                });
+                Object.keys(frameEls).forEach(k => { if (!usedFrames.has(k)) { frameEls[k].remove(); delete frameEls[k]; } });
+            }
+
+            const mp = document.getElementById('main-panel');
+            mp.innerHTML = step.panel || '&mdash;';
+            mp.classList.toggle('done', step.complete && (step.result === 'done' || step.result === 'same'));
+            mp.classList.remove('fail');
+            highlightCode(step.code);
+
+            // state pills
+            document.getElementById('st-cell').textContent = cur ? `(${cur[0]},${cur[1]})` : (base ? `(${base[0]},${base[1]})` : '\u2014');
+            document.getElementById('st-orig').textContent = step.orig;
+            document.getElementById('st-new').textContent = step.newColor;
+            document.getElementById('st-depth').textContent = step.stack ? step.stack.length : 0;
+            document.getElementById('st-filled').textContent = step.filled;
+
+            document.getElementById('step-badge').textContent = `Step ${idx + 1} / ${steps.length}`;
+            document.getElementById('progress-fill').style.width = `${(idx / Math.max(1, steps.length - 1)) * 100}%`;
+
+            const logEl = document.getElementById('log');
+            logEl.innerHTML = steps.slice(0, idx + 1).map(s => `<div style="margin:3px 0;white-space:pre-wrap;">${s.log}</div>`).join('');
+            logEl.scrollTop = logEl.scrollHeight;
+        }
+
+        // --------- controls ---------
+        function nextStep() { if (stepIdx < steps.length - 1) renderStep(stepIdx + 1); else pause(); }
+        function prevStep() { if (stepIdx > 0) renderStep(stepIdx - 1); }
+        function resetSim() { pause(); renderStep(0); }
+        function togglePlay() {
+            const btn = document.getElementById('play-btn');
+            if (timer) { pause(); return; }
+            btn.textContent = 'Pause';
+            if (stepIdx >= steps.length - 1) renderStep(0);
+            timer = setInterval(() => { if (stepIdx < steps.length - 1) nextStep(); else pause(); }, delays[document.getElementById('speed').value]);
+        }
+        function pause() { clearInterval(timer); timer = null; document.getElementById('play-btn').textContent = 'Play'; }
+
+        function clearDom() {
+            Object.keys(cellEls).forEach(k => { cellEls[k].remove(); delete cellEls[k]; });
+            Object.keys(frameEls).forEach(k => { frameEls[k].remove(); delete frameEls[k]; });
+            document.getElementById('stack-col').innerHTML = '';
+        }
+        function loadData(g, sr, sc, nc) { pause(); GRID = g; SR = sr; SC = sc; NEWCOLOR = nc; clearDom(); generateSteps(); renderStep(0); }
+
+        function loadCustom() {
+            const parts = (document.getElementById('start-input').value || '').split(',').map(p => parseInt(p.trim(), 10));
+            const nc = parseInt(document.getElementById('new-input').value, 10);
+            const g = [[1,1,1],[1,1,0],[1,0,1]];
+            if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])
+                && parts[0] >= 0 && parts[0] < g.length && parts[1] >= 0 && parts[1] < g[0].length
+                && !isNaN(nc)) {
+                loadData(g, parts[0], parts[1], nc);
+            }
+        }
+        // preserve the original file's examples & default
+        const EXAMPLES = [
+            { g: [[1,1,1],[1,1,0],[1,0,1]], sr: 1, sc: 1, nc: 2 },
+            { g: [[0,0,0],[0,0,0]],         sr: 0, sc: 0, nc: 0 },
+        ];
+        function loadExample(i) {
+            const ex = EXAMPLES[i];
+            document.getElementById('start-input').value = `${ex.sr},${ex.sc}`;
+            document.getElementById('new-input').value = ex.nc;
+            loadData(ex.g.map(r => r.slice()), ex.sr, ex.sc, ex.nc);
+        }
+
+        document.addEventListener('keydown', (e) => {
+            const tag = (e.target.tagName || '').toLowerCase(); if (tag === 'input' || tag === 'textarea') return;
+            if (e.key === 'ArrowRight') { e.preventDefault(); pause(); nextStep(); }
+            else if (e.key === 'ArrowLeft') { e.preventDefault(); pause(); prevStep(); }
+            else if (e.key === ' ') { e.preventDefault(); togglePlay(); }
+        });
+        ['start-input', 'new-input'].forEach(id => document.getElementById(id).addEventListener('keydown', (e) => { if (e.key === 'Enter') loadCustom(); }));
+        window.addEventListener('resize', () => { if (steps.length) renderStep(stepIdx); });
+
+        buildCodePanel();
+        window.onload = () => loadExample(0);
+    </script>
+</body>
+</html>

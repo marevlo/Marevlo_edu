@@ -1,0 +1,591 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Count All Routes - Visualization</title>
+    <style>
+        :root {
+            --bg-page: #070b14;
+            --bg-surface: rgba(255, 255, 255, 0.045);
+            --bg-input: rgba(255, 255, 255, 0.04);
+            --border-main: rgba(255, 255, 255, 0.10);
+            --btn-bg: rgba(255, 255, 255, 0.05);
+            --btn-hover: rgba(255, 255, 255, 0.10);
+            --text-main: #e8eefb;
+            --text-dim: #8b98b3;
+            --accent-orange: #f5a524;   /* start city                     */
+            --accent-blue:   #06b6d4;    /* current cell / fuel            */
+            --accent-green:  #22c55e;    /* destination / base case        */
+            --accent-red:    #f43f5e;    /* unreachable (0 ways)           */
+            --accent-purple: #a855f7;    /* contributing next-cell         */
+            --mono: ui-monospace, 'SF Mono', 'Cascadia Code', 'Courier New', monospace;
+            --sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+            --shell: 900px;
+        }
+
+        * { box-sizing: border-box; }
+        html, body { overflow-x: hidden; }
+        body {
+            background:
+                radial-gradient(1100px 600px at 15% -10%, rgba(168, 85, 247, 0.10), transparent 60%),
+                radial-gradient(900px 600px at 100% 10%, rgba(6, 182, 212, 0.10), transparent 55%),
+                linear-gradient(160deg, #070b14 0%, #0b1120 55%, #0a0f1c 100%);
+            background-attachment: fixed;
+            color: var(--text-main); font-family: var(--sans); margin: 0;
+            display: flex; flex-direction: column; align-items: center; min-height: 100vh;
+            padding-bottom: 48px; -webkit-font-smoothing: antialiased;
+        }
+        body::before, body::after { content: ''; position: fixed; border-radius: 50%; filter: blur(70px); pointer-events: none; z-index: 0; opacity: 0.45; }
+        body::before { width: 380px; height: 380px; top: 8%; left: -120px; background: radial-gradient(circle, rgba(168,85,247,0.30), transparent 70%); }
+        body::after  { width: 420px; height: 420px; bottom: 4%; right: -140px; background: radial-gradient(circle, rgba(6,182,212,0.22), transparent 70%); }
+        body > * { position: relative; z-index: 1; }
+
+        .input-bar {
+            width: 100%; background: rgba(10, 15, 28, 0.55);
+            backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+            padding: 14px 16px; display: flex; justify-content: center; align-items: center; gap: 10px;
+            border-bottom: 1px solid var(--border-main); flex-wrap: wrap; position: sticky; top: 0; z-index: 50;
+        }
+        label.ui-label, .ui-label { font-family: var(--mono); font-size: 13px; color: var(--text-dim); letter-spacing: 0.2px; }
+        input[type="text"], input[type="number"] {
+            background: var(--bg-input); border: 1px solid var(--border-main); color: var(--text-main);
+            height: 34px; border-radius: 9px; padding: 0 12px; font-size: 13px; font-family: var(--mono);
+            transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+        }
+        .loc-input { width: 240px; } .val-input { width: 64px; }
+        input:focus { outline: none; border-color: var(--accent-purple); box-shadow: 0 0 0 3px rgba(168, 85, 247, 0.18); background: rgba(168, 85, 247, 0.06); }
+
+        button {
+            height: 34px; border-radius: 9px; padding: 0 14px; background: var(--btn-bg);
+            border: 1px solid var(--border-main); color: var(--text-main); font-size: 13px; font-weight: 600; cursor: pointer;
+            transition: transform 0.15s ease, background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+        }
+        button:hover { background: var(--btn-hover); border-color: rgba(6, 182, 212, 0.5); box-shadow: 0 0 18px rgba(6, 182, 212, 0.18); transform: translateY(-1px); }
+        button:active { transform: translateY(0); }
+        #play-btn { background: linear-gradient(135deg, rgba(6,182,212,0.22), rgba(6,182,212,0.10)); border-color: rgba(6, 182, 212, 0.45); color: #a5f3fc; min-width: 80px; }
+
+        .shell { width: var(--shell); max-width: 95%; margin: 24px auto 0; display: flex; flex-direction: column; gap: 16px; }
+
+        .title-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+        .title-row h1 { font-size: 18px; font-weight: 800; margin: 0; letter-spacing: 0.2px; }
+        .title-row .sub { color: var(--text-dim); font-weight: 500; font-size: 13px; }
+        .step-badge { font-family: var(--mono); font-size: 12px; font-weight: 700; color: #a5f3fc; background: rgba(6,182,212,0.12); border: 1px solid rgba(6,182,212,0.3); padding: 4px 10px; border-radius: 999px; white-space: nowrap; }
+        .progress-track { height: 4px; width: 100%; background: rgba(255,255,255,0.07); border-radius: 999px; overflow: hidden; margin-top: -6px; }
+        .progress-fill { height: 100%; width: 0%; border-radius: 999px; background: linear-gradient(90deg, var(--accent-blue), var(--accent-purple)); box-shadow: 0 0 12px rgba(6,182,212,0.5); transition: width 0.45s cubic-bezier(0.34,1.1,0.64,1); }
+
+        .narration { background: var(--bg-surface); border: 1px solid rgba(6,182,212,0.22); border-radius: 12px; padding: 12px 18px; font-family: var(--mono); font-size: 14px; line-height: 1.5; color: #cfe9f5; min-height: 48px; display: flex; align-items: center; gap: 10px; transition: border-color 0.3s, background 0.3s; }
+        .narration::before { content: '\25B8'; color: var(--accent-blue); font-size: 13px; }
+        .narration.done { border-color: rgba(34,197,94,0.4); background: rgba(34,197,94,0.06); }
+        .narration.done::before { content: '\2713'; color: var(--accent-green); }
+        .narration code { background: rgba(6,182,212,0.14); color: #7dd3fc; padding: 1px 6px; border-radius: 5px; font-size: 12.5px; }
+        .narration b { color: #fff; }
+
+        .stage-card { background: var(--bg-surface); border: 1px solid var(--border-main); border-radius: 18px; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); box-shadow: 0 12px 38px rgba(0,0,0,0.4); overflow: hidden; }
+        .stage-screen { position: relative; margin: 14px; border-radius: 14px; background: radial-gradient(700px 300px at 50% -10%, rgba(6,182,212,0.08), transparent 70%), #090d18; border: 1px solid rgba(255,255,255,0.06); }
+        .grid-stage { position: relative; width: 100%; overflow: auto; scrollbar-width: thin; padding: 22px; display: flex; flex-direction: column; align-items: center; gap: 16px; }
+        .grid-stage::-webkit-scrollbar { height: 8px; width: 8px; }
+        .grid-stage::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 8px; }
+
+        .dp-grid { display: grid; gap: 5px; }
+        .cell {
+            position: relative;
+            display: flex; align-items: center; justify-content: center;
+            border-radius: 9px; font-family: var(--mono); font-weight: 800; font-size: 16px;
+            border: 2px solid var(--border-main); background: rgba(255,255,255,0.04); color: var(--text-main);
+            width: 50px; height: 46px; will-change: transform;
+            transition: background 0.35s, border-color 0.35s, color 0.35s, box-shadow 0.35s, transform 0.3s, opacity 0.35s;
+        }
+        .cell.head { border: none; background: transparent; color: var(--text-dim); font-size: 12px; font-weight: 800; box-shadow: none; }
+        .cell.corner { background: transparent; border: none; box-shadow: none; font-size: 11px; color: var(--text-dim); }
+        .cell.head.litC { color: var(--accent-blue); }
+        .cell.head.litR { color: var(--accent-orange); }
+        .cell.head.destrow { color: var(--accent-green); }
+        .cell.pending { color: var(--text-dim); opacity: 0.45; }
+        .cell.filled { color: #e8eefb; }
+        .cell.base { border-color: var(--accent-green); background: rgba(34,197,94,0.16); color: #b9f6d0; box-shadow: 0 0 14px rgba(34,197,94,0.30); }
+        .cell.contrib { border-color: var(--accent-purple); background: rgba(168,85,247,0.16); color: #e9d5ff; box-shadow: 0 0 14px rgba(168,85,247,0.40); }
+        .cell.zero { color: var(--accent-red); }
+        .cell.current { border-color: var(--accent-blue); background: rgba(6,182,212,0.20); color: #a5f3fc; box-shadow: 0 0 22px rgba(6,182,212,0.55), inset 0 0 12px rgba(6,182,212,0.14); transform: scale(1.08); z-index: 2; opacity: 1; }
+        .cell.answer { border-color: var(--accent-orange); background: linear-gradient(180deg, rgba(245,165,36,0.85), rgba(224,150,30,0.9)); color: #2a1a02; box-shadow: 0 0 22px rgba(245,165,36,0.55); transform: scale(1.08); z-index: 2; opacity: 1; }
+        .cell .tag { position: absolute; top: -9px; right: -7px; font-size: 9px; font-weight: 900; padding: 1px 4px; border-radius: 5px; line-height: 1.2; pointer-events: none; }
+        .cell .tag.s { background: var(--accent-orange); color: #2a1a02; }
+        .cell .tag.d { background: var(--accent-green); color: #06251a; }
+
+        .city-strip { display: flex; gap: 8px; align-items: stretch; flex-wrap: wrap; justify-content: center; }
+        .city-chip { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 7px 12px; border-radius: 10px; border: 2px solid var(--border-main); background: rgba(255,255,255,0.04); font-family: var(--mono); min-width: 58px; transition: border-color 0.3s, background 0.3s, box-shadow 0.3s; }
+        .city-chip .idx { font-size: 10px; color: var(--text-dim); letter-spacing: 0.4px; }
+        .city-chip .loc { font-size: 16px; font-weight: 800; }
+        .city-chip.start { border-color: var(--accent-orange); background: rgba(245,165,36,0.12); }
+        .city-chip.dest { border-color: var(--accent-green); background: rgba(34,197,94,0.12); }
+        .city-chip.cur { box-shadow: 0 0 16px rgba(6,182,212,0.45); border-color: var(--accent-blue); background: rgba(6,182,212,0.14); }
+        .city-chip.nxt { box-shadow: 0 0 16px rgba(168,85,247,0.40); border-color: var(--accent-purple); background: rgba(168,85,247,0.12); }
+
+        .action-stage { position: relative; min-height: 70px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; }
+        .answer-track { display: flex; gap: 6px; align-items: center; min-height: 40px; }
+        .ans-tile { padding: 0 14px; height: 40px; border-radius: 9px; display: flex; align-items: center; justify-content: center; font-family: var(--mono); font-size: 15px; font-weight: 800; border: 2px solid var(--accent-green); background: rgba(34,197,94,0.16); color: #b9f6d0; box-shadow: 0 0 12px rgba(34,197,94,0.35); }
+        .action-word { font-family: var(--mono); font-weight: 800; font-size: 18px; letter-spacing: 0.4px; min-height: 22px; text-align: center; transition: color 0.3s; }
+        #confetti { position: absolute; inset: 0; overflow: visible; pointer-events: none; }
+        .confetti-piece { position: absolute; top: 0; left: 50%; width: 8px; height: 13px; border-radius: 2px; opacity: 0; animation: confettiFall ease-out forwards; }
+
+        .controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: center; }
+        .controls .kbd-hint { font-size: 11px; color: var(--text-dim); font-family: var(--mono); margin-left: 4px; }
+        .kbd { background: rgba(255,255,255,0.07); border: 1px solid var(--border-main); border-radius: 5px; padding: 1px 6px; font-size: 10px; }
+        input[type="range"] { accent-color: var(--accent-blue); width: 110px; cursor: pointer; }
+
+        .details-toggle { align-self: center; height: 32px; padding: 0 16px; border-radius: 999px; cursor: pointer; background: rgba(255,255,255,0.04); border: 1px solid var(--border-main); color: var(--text-dim); font-family: var(--mono); font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; gap: 8px; transition: color 0.2s, border-color 0.2s, background 0.2s; }
+        .details-toggle:hover { color: var(--text-main); border-color: rgba(6,182,212,0.4); background: rgba(6,182,212,0.06); }
+        .details-toggle .chev { transition: transform 0.3s ease; }
+        .details-wrap.open .details-toggle .chev { transform: rotate(180deg); }
+        .details-body { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.4s ease; }
+        .details-wrap.open .details-body { grid-template-rows: 1fr; }
+        .details-inner { overflow: hidden; min-height: 0; }
+        .details-grid { display: flex; flex-direction: column; gap: 14px; padding-top: 14px; }
+
+        .panel-card { background: var(--bg-surface); border: 1px solid var(--border-main); border-radius: 16px; backdrop-filter: blur(10px); box-shadow: 0 8px 30px rgba(0,0,0,0.35); }
+        .panel-head { display: flex; align-items: center; gap: 8px; padding: 11px 16px; border-bottom: 1px solid var(--border-main); font-size: 11px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; color: var(--text-dim); }
+        .panel-head .pip { width: 7px; height: 7px; border-radius: 50%; background: var(--accent-blue); box-shadow: 0 0 8px var(--accent-blue); }
+        .code-body { padding: 12px 6px 14px; font-family: var(--mono); font-size: 12.5px; line-height: 1.7; }
+        .code-line { display: flex; gap: 12px; padding: 1px 16px; border-left: 2px solid transparent; transition: background 0.3s, border-color 0.3s; white-space: pre; }
+        .code-line .lno { color: #4b5772; width: 16px; text-align: right; user-select: none; }
+        .code-line .src { color: #c4cee0; }
+        .code-line .kw { color: #c792ea; }
+        .code-line .fn { color: #82aaff; }
+        .code-line.active { background: rgba(6,182,212,0.12); border-left-color: var(--accent-blue); }
+        .code-line.active .src, .code-line.active .lno { color: #e8eefb; }
+
+        .state-strip { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 0 2px; }
+        .pill { display: inline-flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 12px; color: var(--text-dim); background: rgba(255,255,255,0.04); border: 1px solid var(--border-main); border-radius: 999px; padding: 4px 11px; }
+        .pill b { color: var(--text-main); font-weight: 800; }
+        .pill.c b { color: var(--accent-orange); } .pill.v b { color: var(--accent-blue); } .pill.g b { color: var(--accent-green); }
+
+        .log-panel { border-radius: 14px; padding: 12px 16px; height: 110px; overflow-y: auto; font-family: var(--mono); font-size: 12.5px; line-height: 1.5; background: var(--bg-surface); border: 1px solid var(--border-main); }
+        .log-panel::-webkit-scrollbar { width: 8px; }
+        .log-panel::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 8px; }
+
+        @keyframes confettiFall { 0%{ opacity:1; transform: translate(-50%, 0) rotate(0deg); } 100%{ opacity:0; transform: translate(calc(-50% + var(--x)), 220px) rotate(var(--rot)); } }
+        @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; } }
+    </style>
+</head>
+<body>
+
+    <div class="input-bar">
+        <label class="ui-label">locations =</label>
+        <input type="text" id="loc-input" class="loc-input" placeholder="2,3,6,8,4">
+        <label class="ui-label">start =</label>
+        <input type="number" id="start-input" class="val-input" placeholder="1">
+        <label class="ui-label">dest =</label>
+        <input type="number" id="dest-input" class="val-input" placeholder="3">
+        <label class="ui-label">fuel =</label>
+        <input type="number" id="fuel-input" class="val-input" placeholder="5">
+        <button onclick="loadCustom()">Load</button>
+        <span class="ui-label" style="opacity:.5">|</span>
+        <button onclick="loadExample(0)">Ex 1</button>
+        <button onclick="loadExample(1)">Ex 2</button>
+    </div>
+
+    <div class="shell">
+        <div class="title-row">
+            <h1>Count All Routes <span class="sub">&middot; bottom-up DP &middot; dp[city][fuel] &middot; cost = |loc[i] &minus; loc[j]| &middot; mod 1e9+7</span></h1>
+            <span class="step-badge" id="step-badge">Step 1 / 1</span>
+        </div>
+        <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+
+        <div class="narration" id="main-panel">&mdash;</div>
+
+        <div class="stage-card">
+            <div class="stage-screen">
+                <div class="grid-stage" id="grid-stage">
+                    <div class="city-strip" id="city-strip"></div>
+                    <div class="dp-grid" id="dp-grid"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="action-stage">
+            <div id="confetti"></div>
+            <div class="answer-track" id="answer-track"></div>
+            <div class="action-word" id="action-word"></div>
+        </div>
+
+        <div class="controls">
+            <button onclick="resetSim()">&#8634; Reset</button>
+            <button onclick="prevStep()">&#8592; Back</button>
+            <button onclick="togglePlay()" id="play-btn">Play</button>
+            <button onclick="nextStep()">Next &#8594;</button>
+            <span class="ui-label" style="margin-left:6px; font-size:11px">Speed</span>
+            <input type="range" id="speed" min="0" max="2" value="1">
+            <span class="kbd-hint"><span class="kbd">&#8592;</span> <span class="kbd">&#8594;</span> step &middot; <span class="kbd">space</span> play</span>
+        </div>
+
+        <div class="details-wrap" id="details-wrap">
+            <button class="details-toggle" onclick="toggleDetails()" aria-expanded="false">
+                <span id="details-label">Show code, state &amp; log</span> <span class="chev">&#9662;</span>
+            </button>
+            <div class="details-body">
+                <div class="details-inner">
+                    <div class="details-grid">
+                        <div class="state-strip">
+                            <span class="pill c">city <b id="st-city">&mdash;</b></span>
+                            <span class="pill v">fuel <b id="st-fuel">&mdash;</b></span>
+                            <span class="pill">ways <b id="st-ways">&mdash;</b></span>
+                            <span class="pill g">result <b id="st-res">&mdash;</b></span>
+                        </div>
+                        <div class="panel-card">
+                            <div class="panel-head"><span class="pip"></span> Algorithm</div>
+                            <div class="code-body" id="code-panel"></div>
+                        </div>
+                        <div class="log-panel" id="log"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        'use strict';
+
+        // --------- Motion engine (spring pop, zero deps) ---------
+        const REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        const FRAME = 1000 / 60;
+        function sampleSpring(stiffness, damping, mass) {
+            const dt = 1 / 60; let x = 1, v = 0; const out = [];
+            for (let i = 0; i < 240; i++) { const a = (-stiffness * x - damping * v) / mass; v += a * dt; x += v * dt; out.push(1 - x); if (Math.abs(x) < 0.0015 && Math.abs(v) < 0.0015) break; }
+            out.push(1); return out;
+        }
+        const SPRING_POP = sampleSpring(520, 17, 1);
+        const durOf = (a) => a.length * FRAME;
+        const Motion = {
+            pop(el) {
+                if (REDUCED) return;
+                const kf = SPRING_POP.map(p => ({ transform: `scale(${(0.7 + 0.4 * p).toFixed(3)})` }));
+                el.animate(kf, { duration: durOf(SPRING_POP), easing: 'linear' });
+            },
+        };
+
+        // --------- State ---------
+        let LOCATIONS = [2, 3, 6, 8, 4];
+        let START = 1, DEST = 3, FUEL = 5;
+        let steps = [];
+        let stepIdx = 0;
+        let timer = null;
+        let confettiArmed = true;
+        const delays = [1100, 560, 260];
+        const MOD = 1000000007;
+        const cellEls = {};   // 'gr,gc' -> element
+
+        // --------- Code panel (the real bottom-up algorithm) ---------
+        const CODE = [
+            [['kw','def '],['fn','countRoutes'],['src','(loc, start, dest, fuel):']],
+            [['src','  n = len(loc); MOD = 10**9 + 7']],
+            [['src','  dp = [[0]*(fuel+1) for _ in range(n)]']],
+            [['kw','  for '],['src','f in range(fuel + 1):']],
+            [['kw','    for '],['src','city in range(n):']],
+            [['src','      ways = 1 '],['kw','if '],['src','city == dest '],['kw','else '],['src','0']],
+            [['kw','      for '],['src','nxt in range(n):']],
+            [['kw','        if '],['src','nxt == city: '],['kw','continue']],
+            [['src','        cost = abs(loc[city] - loc[nxt])']],
+            [['kw','        if '],['src','cost <= f:']],
+            [['src','          ways = (ways + dp[nxt][f-cost]) % MOD']],
+            [['src','      dp[city][f] = ways']],
+            [['kw','  return '],['src','dp[start][fuel] % MOD']],
+        ];
+        function buildCodePanel() {
+            const panel = document.getElementById('code-panel'); panel.innerHTML = '';
+            CODE.forEach((tokens, i) => {
+                const line = document.createElement('div'); line.className = 'code-line'; line.dataset.line = i;
+                const lno = document.createElement('span'); lno.className = 'lno'; lno.textContent = i + 1; line.appendChild(lno);
+                const src = document.createElement('span');
+                tokens.forEach(([cls, txt]) => { const s = document.createElement('span'); s.className = cls; s.textContent = txt; src.appendChild(s); });
+                line.appendChild(src); panel.appendChild(line);
+            });
+        }
+        function highlightCode(arr) { document.querySelectorAll('.code-line').forEach(el => el.classList.toggle('active', arr && arr.includes(+el.dataset.line))); }
+        function toggleDetails() {
+            const wrap = document.getElementById('details-wrap'); const open = wrap.classList.toggle('open');
+            wrap.querySelector('.details-toggle').setAttribute('aria-expanded', open ? 'true' : 'false');
+            document.getElementById('details-label').textContent = open ? 'Hide code, state & log' : 'Show code, state & log';
+        }
+
+        // --------- step generation (genuine bottom-up simulation) ---------
+        function cloneDp(dp) { return dp.map(row => row.slice()); }
+
+        function generateSteps() {
+            steps = [];
+            const loc = LOCATIONS, n = loc.length, t = FUEL;
+
+            // immutable snapshot helper; dp is deep-cloned at push time
+            const snap = (dp, extra) => Object.assign({
+                n, fuel: t, loc, start: START, dest: DEST,
+                dpState: cloneDp(dp),
+                city: null, f: null, ways: null, contribs: [], nextCity: null,
+                result: null, complete: false
+            }, extra);
+
+            let dp = Array.from({ length: n }, () => Array(t + 1).fill(0));
+
+            // intro / grid setup (nothing filled yet)
+            steps.push(snap(dp, {
+                code: [0, 1, 2],
+                action: 'SETUP',
+                actionColor: 'var(--accent-green)',
+                panel: `Build a <code>dp[city][fuel]</code> grid: rows are the ${n} cities, columns are fuel <code>0&hellip;${t}</code>. Cost to hop city &#8594; city is <code>|loc[i] &minus; loc[j]|</code>. We fill fuel column by column (<code>f = 0 &rarr; ${t}</code>); each cell <code>dp[city][f]</code> counts routes that <b>end at the destination</b> starting from <code>city</code> with <code>f</code> fuel. The destination earns a base <b>+1</b> (staying put is a valid route) and we still add every affordable hop on top.`,
+                log: `init  ${n} cities, fuel=${t}; dp[c][f] = (c==dest) + sum affordable hops`
+            }));
+
+            // fill from low fuel up to high fuel; every city (incl. dest) gets base + neighbours
+            for (let f = 0; f <= t; f++) {
+                for (let city = 0; city < n; city++) {
+                    const isDest = (city === DEST);
+
+                    // base case for this cell: +1 if we are sitting on the destination
+                    let ways = isDest ? 1 : 0;
+
+                    // gather contributing next-cells for narration (in scan order)
+                    const contribs = [];   // {next, cost, fromFuel, val}
+                    for (let next = 0; next < n; next++) {
+                        if (next === city) continue;
+                        const cost = Math.abs(loc[city] - loc[next]);
+                        if (cost <= f) {
+                            const val = dp[next][f - cost];
+                            contribs.push({ next, cost, fromFuel: f - cost, val });
+                            ways = (ways + val) % MOD;
+                        }
+                    }
+                    dp[city][f] = ways;
+
+                    const termList = contribs.length
+                        ? contribs.map(cn => `dp[${cn.next}][${cn.fromFuel}]=${cn.val}`).join(' + ')
+                        : '';
+                    const baseTerm = isDest ? '1' : '0';
+                    const fullExpr = contribs.length ? `${baseTerm} + ${termList}` : baseTerm;
+                    const sumNote = contribs.length
+                        ? `Start from the base (<code>${baseTerm}</code>${isDest ? ', since this is the destination' : ''}) and add the affordable neighbours: <code>${fullExpr}</code> = <b>${ways}</b>.`
+                        : (isDest
+                            ? `No neighbour is reachable with only <b>${f}</b> fuel, but this <b>is</b> the destination &#8594; <code>dp[${city}][${f}] = 1</code>.`
+                            : `No neighbour is reachable with only <b>${f}</b> fuel &#8594; <code>dp[${city}][${f}] = 0</code>.`);
+
+                    steps.push(snap(dp, {
+                        code: contribs.length ? [3, 4, 5, 6, 7, 8, 9, 10, 11] : [3, 4, 5, 6, 7, 8, 9, 11],
+                        action: `dp[${city}][${f}] = ${ways}`,
+                        actionColor: ways > 0 ? 'var(--accent-blue)' : 'var(--accent-red)',
+                        city, f, ways,
+                        contribs: contribs.map(c => ({ next: c.next, fromFuel: c.fromFuel })),
+                        panel: `Fill <code>dp[city=${city}][fuel=${f}]</code> &mdash; routes that finish at the destination starting at city ${city} (loc ${loc[city]}) with ${f} fuel. ${sumNote}`,
+                        log: `  dp[${city}][${f}] = ${ways}  (${fullExpr.replace(/<\/?code>/g,'')})`
+                    }));
+                }
+            }
+
+            const result = dp[START][t];
+            steps.push(snap(dp, {
+                code: [12],
+                complete: true, confetti: true,
+                action: `&#10003; TOTAL ROUTES = ${result}`,
+                actionColor: 'var(--accent-orange)',
+                city: START, f: t, ways: result, result,
+                answer: [START, t],
+                panel: `Grid complete. The answer is the start cell at full fuel: <code>dp[start=${START}][fuel=${t}] = <b>${result}</b></code>. There ${result === 1 ? 'is exactly <b>1</b> valid route' : `are <b>${result}</b> valid routes`} from city ${START} (loc ${loc[START]}) to city ${DEST} (loc ${loc[DEST]}) within ${t} fuel.`,
+                log: `done  result = dp[${START}][${t}] = ${result}`
+            }));
+        }
+
+        // --------- city strip (rebuilt each load) ---------
+        function buildCityStrip() {
+            const strip = document.getElementById('city-strip'); strip.innerHTML = '';
+            for (let i = 0; i < LOCATIONS.length; i++) {
+                const chip = document.createElement('div');
+                chip.className = 'city-chip';
+                chip.dataset.city = i;
+                if (i === START) chip.classList.add('start');
+                if (i === DEST) chip.classList.add('dest');
+                const idx = document.createElement('span'); idx.className = 'idx'; idx.textContent = 'city ' + i;
+                const loc = document.createElement('span'); loc.className = 'loc'; loc.textContent = LOCATIONS[i];
+                chip.appendChild(idx); chip.appendChild(loc); strip.appendChild(chip);
+            }
+        }
+        function updateCityStrip(step) {
+            document.querySelectorAll('.city-chip').forEach(chip => {
+                const i = +chip.dataset.city;
+                chip.classList.toggle('cur', step.city === i && !step.complete);
+                const isNext = step.contribs && step.contribs.some(c => c.next === i);
+                chip.classList.toggle('nxt', !!isNext && !step.complete);
+            });
+        }
+
+        // --------- render (persistent DOM reconciliation) ---------
+        function renderStep(idx) {
+            stepIdx = idx; const step = steps[idx]; if (!step) return;
+            const grid = document.getElementById('dp-grid');
+            const rows = step.n + 1, cols = step.fuel + 2;   // +1 header row, +1 header col (city labels)
+            grid.style.gridTemplateColumns = `repeat(${cols}, 50px)`;
+
+            const used = new Set();
+            const contribSet = new Set((step.contribs || []).map(c => c.next + ',' + c.fromFuel));
+
+            for (let gr = 0; gr < rows; gr++) {
+                for (let gc = 0; gc < cols; gc++) {
+                    const key = gr + ',' + gc; used.add(key);
+                    let el = cellEls[key];
+                    if (!el) { el = document.createElement('div'); el.className = 'cell'; cellEls[key] = el; }
+                    let cls = 'cell', txt = '', tag = '', isData = false;
+
+                    if (gr === 0 && gc === 0) {
+                        cls += ' corner'; txt = 'dp';
+                    } else if (gr === 0) {                       // fuel column headers
+                        cls += ' head';
+                        const f = gc - 1; txt = 'f' + f;
+                        if (step.f === f && !step.complete) cls += ' litC';
+                    } else if (gc === 0) {                        // city row headers
+                        cls += ' head';
+                        const ci = gr - 1; txt = 'c' + ci;
+                        if (ci === step.dest) cls += ' destrow';
+                        else if (step.city === ci && !step.complete) cls += ' litR';
+                    } else {                                      // data cell
+                        isData = true;
+                        const ci = gr - 1, f = gc - 1;
+                        const v = step.dpState[ci][f];
+                        const isDestRow = ci === step.dest;
+                        // fill order is fuel ascending (f = 0..fuel); within a column, city 0..n-1.
+                        // a cell is "computed" once we have reached it in that scan order.
+                        let computed = false;
+                        if (step.complete) {
+                            computed = true;
+                        } else if (step.f !== null && step.city !== null) {
+                            if (f < step.f) computed = true;                       // an earlier fuel column
+                            else if (f === step.f && ci <= step.city) computed = true; // current column, up to current city
+                        }
+
+                        txt = computed ? String(v) : '&middot;';
+
+                        const isCur = !step.complete && step.city === ci && step.f === f;
+                        const isAnswer = step.complete && step.answer && step.answer[0] === ci && step.answer[1] === f;
+                        const isContrib = contribSet.has(ci + ',' + f);
+
+                        if (!computed) cls += ' pending';
+                        else cls += ' filled';
+                        if (isDestRow && computed) cls += ' base';
+                        if (computed && v === 0 && !isDestRow) cls += ' zero';
+                        if (isContrib) cls += ' contrib';
+                        if (isCur) cls += ' current';
+                        if (isAnswer) cls += ' answer';
+
+                        if (ci === step.start && f === step.fuel) tag = '<span class="tag s">S</span>';
+                        if (isDestRow && f === 0) { /* mark dest only once via row header */ }
+                    }
+
+                    const wasMissing = el.dataset.born !== '1';
+                    el.className = cls;
+                    el.innerHTML = (tag || '') + txt;
+                    if (isData && wasMissing) { el.dataset.born = '1'; Motion.pop(el); }
+                    else if (isData && (cls.includes('current') || cls.includes('answer'))) { Motion.pop(el); }
+                    grid.appendChild(el);
+                }
+            }
+            Object.keys(cellEls).forEach(k => { if (!used.has(k)) { cellEls[k].remove(); delete cellEls[k]; } });
+
+            updateCityStrip(step);
+
+            const at = document.getElementById('answer-track'); at.innerHTML = '';
+            if (step.complete) {
+                const tile = document.createElement('div');
+                tile.className = 'ans-tile';
+                tile.innerHTML = `total routes = ${step.result}`;
+                at.appendChild(tile);
+            }
+
+            const mp = document.getElementById('main-panel');
+            mp.innerHTML = step.panel || '&mdash;';
+            mp.classList.toggle('done', !!step.complete);
+            const aw = document.getElementById('action-word'); aw.innerHTML = step.action || ''; aw.style.color = step.actionColor || 'var(--text-dim)';
+            highlightCode(step.code);
+
+            if (step.confetti) { if (confettiArmed) { fireConfetti(); confettiArmed = false; } } else confettiArmed = true;
+
+            document.getElementById('st-city').textContent = step.city != null ? step.city : '—';
+            document.getElementById('st-fuel').textContent = step.f != null ? step.f : '—';
+            document.getElementById('st-ways').textContent = step.ways != null ? step.ways : '—';
+            document.getElementById('st-res').textContent = step.result != null ? step.result : '…';
+
+            document.getElementById('step-badge').textContent = `Step ${idx + 1} / ${steps.length}`;
+            document.getElementById('progress-fill').style.width = `${(idx / Math.max(1, steps.length - 1)) * 100}%`;
+
+            const logEl = document.getElementById('log');
+            logEl.innerHTML = steps.slice(0, idx + 1).map(s => `<div style="margin:3px 0;white-space:pre-wrap;">${s.log}</div>`).join('');
+            logEl.scrollTop = logEl.scrollHeight;
+        }
+
+        function fireConfetti() {
+            const host = document.getElementById('confetti'); if (!host || REDUCED) return;
+            const colors = ['#22c55e', '#06b6d4', '#a855f7', '#f5a524', '#f43f5e'];
+            for (let i = 0; i < 38; i++) {
+                const p = document.createElement('div'); p.className = 'confetti-piece';
+                p.style.setProperty('--x', ((Math.random() * 2 - 1) * 220) + 'px');
+                p.style.setProperty('--rot', ((Math.random() * 720 - 360)) + 'deg');
+                p.style.background = colors[i % colors.length];
+                p.style.animationDuration = (0.9 + Math.random() * 0.8) + 's';
+                p.style.animationDelay = (Math.random() * 0.15) + 's';
+                host.appendChild(p); setTimeout(() => p.remove(), 1900);
+            }
+        }
+
+        // --------- controls ---------
+        function nextStep() { if (stepIdx < steps.length - 1) renderStep(stepIdx + 1); else pause(); }
+        function prevStep() { if (stepIdx > 0) renderStep(stepIdx - 1); }
+        function resetSim() { pause(); renderStep(0); }
+        function togglePlay() {
+            const btn = document.getElementById('play-btn');
+            if (timer) { pause(); return; }
+            btn.textContent = 'Pause';
+            if (stepIdx >= steps.length - 1) renderStep(0);
+            timer = setInterval(() => { if (stepIdx < steps.length - 1) nextStep(); else pause(); }, delays[document.getElementById('speed').value]);
+        }
+        function pause() { clearInterval(timer); timer = null; document.getElementById('play-btn').textContent = 'Play'; }
+
+        function clearDom() { Object.keys(cellEls).forEach(k => { cellEls[k].remove(); delete cellEls[k]; }); confettiArmed = true; }
+        function loadData(loc, start, dest, fuel) {
+            pause();
+            LOCATIONS = loc; START = start; DEST = dest; FUEL = fuel;
+            clearDom(); buildCityStrip(); generateSteps(); renderStep(0);
+        }
+
+        function loadCustom() {
+            const raw = (document.getElementById('loc-input').value || '').trim();
+            const loc = raw.split(',').map(s => parseInt(s.trim(), 10)).filter(x => !isNaN(x));
+            let start = parseInt(document.getElementById('start-input').value, 10);
+            let dest = parseInt(document.getElementById('dest-input').value, 10);
+            let fuel = parseInt(document.getElementById('fuel-input').value, 10);
+            if (!loc.length || isNaN(start) || isNaN(dest) || isNaN(fuel)) return;
+            start = Math.max(0, Math.min(loc.length - 1, start));
+            dest = Math.max(0, Math.min(loc.length - 1, dest));
+            fuel = Math.max(0, Math.min(20, fuel));
+            loadData(loc, start, dest, fuel);
+        }
+        const EXAMPLES = [
+            { loc: [2, 3, 6, 8, 4], start: 1, dest: 3, fuel: 5 },
+            { loc: [4, 3, 1], start: 1, dest: 0, fuel: 2 },
+        ];
+        function loadExample(n) {
+            const ex = EXAMPLES[n];
+            document.getElementById('loc-input').value = ex.loc.join(',');
+            document.getElementById('start-input').value = ex.start;
+            document.getElementById('dest-input').value = ex.dest;
+            document.getElementById('fuel-input').value = ex.fuel;
+            loadData(ex.loc.slice(), ex.start, ex.dest, ex.fuel);
+        }
+
+        document.addEventListener('keydown', (e) => {
+            const tag = (e.target.tagName || '').toLowerCase(); if (tag === 'input' || tag === 'textarea') return;
+            if (e.key === 'ArrowRight') { e.preventDefault(); pause(); nextStep(); }
+            else if (e.key === 'ArrowLeft') { e.preventDefault(); pause(); prevStep(); }
+            else if (e.key === ' ') { e.preventDefault(); togglePlay(); }
+        });
+        ['loc-input', 'start-input', 'dest-input', 'fuel-input'].forEach(id =>
+            document.getElementById(id).addEventListener('keydown', (e) => { if (e.key === 'Enter') loadCustom(); }));
+        window.addEventListener('resize', () => { if (steps.length) renderStep(stepIdx); });
+
+        buildCodePanel();
+        window.onload = () => loadExample(0);
+    </script>
+</body>
+</html>

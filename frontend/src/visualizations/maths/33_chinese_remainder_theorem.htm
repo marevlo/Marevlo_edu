@@ -1,0 +1,621 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chinese Remainder Theorem - Visualization</title>
+    <style>
+        :root {
+            --bg-page: #070b14;
+            --bg-surface: rgba(255, 255, 255, 0.045);
+            --bg-input: rgba(255, 255, 255, 0.04);
+            --border-main: rgba(255, 255, 255, 0.10);
+            --btn-bg: rgba(255, 255, 255, 0.05);
+            --btn-hover: rgba(255, 255, 255, 0.10);
+            --text-main: #e8eefb;
+            --text-dim: #8b98b3;
+            --accent-orange: #f5a524;   /* candidate / answer             */
+            --accent-blue:   #06b6d4;   /* merged modulus / chrome        */
+            --accent-green:  #22c55e;   /* congruence satisfied           */
+            --accent-red:    #f43f5e;   /* congruence fails / conflict    */
+            --accent-purple: #a855f7;   /* congruence being merged        */
+            --mono: ui-monospace, 'SF Mono', 'Cascadia Code', 'Courier New', monospace;
+            --sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+            --shell: 900px;
+        }
+
+        * { box-sizing: border-box; }
+        html, body { overflow-x: hidden; }
+        body {
+            background:
+                radial-gradient(1100px 600px at 15% -10%, rgba(168, 85, 247, 0.10), transparent 60%),
+                radial-gradient(900px 600px at 100% 10%, rgba(6, 182, 212, 0.10), transparent 55%),
+                linear-gradient(160deg, #070b14 0%, #0b1120 55%, #0a0f1c 100%);
+            background-attachment: fixed;
+            color: var(--text-main); font-family: var(--sans); margin: 0;
+            display: flex; flex-direction: column; align-items: center; min-height: 100vh;
+            padding-bottom: 48px; -webkit-font-smoothing: antialiased;
+        }
+        body::before, body::after { content: ''; position: fixed; border-radius: 50%; filter: blur(70px); pointer-events: none; z-index: 0; opacity: 0.45; }
+        body::before { width: 380px; height: 380px; top: 8%; left: -120px; background: radial-gradient(circle, rgba(168,85,247,0.30), transparent 70%); }
+        body::after  { width: 420px; height: 420px; bottom: 4%; right: -140px; background: radial-gradient(circle, rgba(6,182,212,0.22), transparent 70%); }
+        body > * { position: relative; z-index: 1; }
+
+        .input-bar {
+            width: 100%; background: rgba(10, 15, 28, 0.55);
+            backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+            padding: 14px 16px; display: flex; justify-content: center; align-items: center; gap: 10px;
+            border-bottom: 1px solid var(--border-main); flex-wrap: wrap; position: sticky; top: 0; z-index: 50;
+        }
+        label.ui-label, .ui-label { font-family: var(--mono); font-size: 13px; color: var(--text-dim); letter-spacing: 0.2px; }
+        input[type="number"] {
+            background: var(--bg-input); border: 1px solid var(--border-main); color: var(--text-main);
+            height: 34px; border-radius: 9px; padding: 0 10px; font-size: 13px; font-family: var(--mono); width: 64px;
+            transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+        }
+        input[type="number"]:focus { outline: none; border-color: var(--accent-purple); box-shadow: 0 0 0 3px rgba(168, 85, 247, 0.18); background: rgba(168, 85, 247, 0.06); }
+
+        button {
+            height: 34px; border-radius: 9px; padding: 0 14px; background: var(--btn-bg);
+            border: 1px solid var(--border-main); color: var(--text-main); font-size: 13px; font-weight: 600; cursor: pointer;
+            transition: transform 0.15s ease, background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+        }
+        button:hover { background: var(--btn-hover); border-color: rgba(6, 182, 212, 0.5); box-shadow: 0 0 18px rgba(6, 182, 212, 0.18); transform: translateY(-1px); }
+        button:active { transform: translateY(0); }
+        #play-btn { background: linear-gradient(135deg, rgba(6,182,212,0.22), rgba(6,182,212,0.10)); border-color: rgba(6, 182, 212, 0.45); color: #a5f3fc; min-width: 80px; }
+
+        .shell { width: var(--shell); max-width: 95%; margin: 24px auto 0; display: flex; flex-direction: column; gap: 16px; }
+
+        .title-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+        .title-row h1 { font-size: 18px; font-weight: 800; margin: 0; letter-spacing: 0.2px; }
+        .title-row .sub { color: var(--text-dim); font-weight: 500; font-size: 13px; }
+        .step-badge { font-family: var(--mono); font-size: 12px; font-weight: 700; color: #a5f3fc; background: rgba(6,182,212,0.12); border: 1px solid rgba(6,182,212,0.3); padding: 4px 10px; border-radius: 999px; white-space: nowrap; }
+        .progress-track { height: 4px; width: 100%; background: rgba(255,255,255,0.07); border-radius: 999px; overflow: hidden; margin-top: -6px; }
+        .progress-fill { height: 100%; width: 0%; border-radius: 999px; background: linear-gradient(90deg, var(--accent-blue), var(--accent-purple)); box-shadow: 0 0 12px rgba(6,182,212,0.5); transition: width 0.45s cubic-bezier(0.34,1.1,0.64,1); }
+
+        .narration { background: var(--bg-surface); border: 1px solid rgba(6,182,212,0.22); border-radius: 12px; padding: 12px 18px; font-family: var(--mono); font-size: 14px; line-height: 1.5; color: #cfe9f5; min-height: 48px; display: flex; align-items: center; gap: 10px; transition: border-color 0.3s, background 0.3s; }
+        .narration::before { content: '\25B8'; color: var(--accent-blue); font-size: 13px; }
+        .narration.done { border-color: rgba(34,197,94,0.4); background: rgba(34,197,94,0.06); }
+        .narration.done::before { content: '\2713'; color: var(--accent-green); }
+        .narration.fail { border-color: rgba(244,63,94,0.4); background: rgba(244,63,94,0.06); }
+        .narration.fail::before { content: '\2717'; color: var(--accent-red); }
+        .narration code { background: rgba(6,182,212,0.14); color: #7dd3fc; padding: 1px 6px; border-radius: 5px; font-size: 12.5px; }
+        .narration b { color: #fff; }
+
+        .stage-card { background: var(--bg-surface); border: 1px solid var(--border-main); border-radius: 18px; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); box-shadow: 0 12px 38px rgba(0,0,0,0.4); overflow: hidden; }
+        .stage-screen { position: relative; margin: 14px; border-radius: 14px; background: radial-gradient(700px 300px at 50% -10%, rgba(6,182,212,0.08), transparent 70%), #090d18; border: 1px solid rgba(255,255,255,0.06); }
+        .crt-stage { position: relative; width: 100%; overflow-x: auto; scrollbar-width: thin; padding: 22px; display: flex; flex-direction: column; align-items: center; gap: 18px; }
+        .crt-stage::-webkit-scrollbar { height: 8px; width: 8px; }
+        .crt-stage::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 8px; }
+
+        /* Congruence chips row: x ≡ a_i (mod m_i) */
+        .congr-row { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; }
+        .congr-chip {
+            display: flex; flex-direction: column; align-items: center; gap: 6px;
+            border-radius: 12px; padding: 10px 16px; min-width: 120px;
+            border: 2px solid var(--border-main); background: rgba(255,255,255,0.04);
+            font-family: var(--mono); will-change: transform;
+            transition: background 0.35s, border-color 0.35s, color 0.35s, box-shadow 0.35s, transform 0.3s, opacity 0.35s;
+        }
+        .congr-chip .ctitle { font-size: 11px; color: var(--text-dim); letter-spacing: 0.4px; }
+        .congr-chip .cbody { font-size: 17px; font-weight: 800; color: var(--text-main); }
+        .congr-chip.pending { opacity: 0.45; }
+        .congr-chip.merging { border-color: var(--accent-purple); background: rgba(168,85,247,0.16); color: #e9d5ff; box-shadow: 0 0 20px rgba(168,85,247,0.5), inset 0 0 12px rgba(168,85,247,0.12); transform: scale(1.05); }
+        .congr-chip.merging .cbody { color: #e9d5ff; }
+        .congr-chip.merging .ctitle { color: #d8b4fe; }
+        .congr-chip.merged { border-color: var(--accent-green); background: rgba(34,197,94,0.10); }
+        .congr-chip.merged .cbody { color: #86efac; }
+        .congr-chip.conflict { border-color: var(--accent-red); background: rgba(244,63,94,0.14); box-shadow: 0 0 20px rgba(244,63,94,0.45); }
+        .congr-chip.conflict .cbody { color: #fda4af; }
+
+        /* The running merged-state card: x ≡ R (mod M) */
+        .merge-card {
+            display: flex; align-items: center; gap: 14px; flex-wrap: wrap; justify-content: center;
+            border-radius: 14px; padding: 14px 20px;
+            border: 2px solid var(--accent-blue); background: rgba(6,182,212,0.10);
+            box-shadow: 0 0 18px rgba(6,182,212,0.22); font-family: var(--mono);
+        }
+        .merge-card .mlabel { font-size: 11px; color: var(--text-dim); letter-spacing: 0.6px; text-transform: uppercase; }
+        .merge-card .mexpr { font-size: 22px; font-weight: 800; color: #a5f3fc; will-change: transform; }
+        .merge-card.solved { border-color: var(--accent-orange); background: rgba(245,165,36,0.12); box-shadow: 0 0 20px rgba(245,165,36,0.4); }
+        .merge-card.solved .mexpr { color: #ffd591; }
+        .merge-card.dead { border-color: var(--accent-red); background: rgba(244,63,94,0.12); box-shadow: 0 0 20px rgba(244,63,94,0.4); }
+        .merge-card.dead .mexpr { color: #fda4af; }
+
+        /* Candidate scan track: residues r = R, R+M, R+2M ... tested against the new modulus */
+        .scan-wrap { display: flex; flex-direction: column; align-items: center; gap: 8px; min-height: 70px; }
+        .scan-label { font-family: var(--mono); font-size: 11px; color: var(--text-dim); letter-spacing: 0.4px; }
+        .scan-track { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: center; min-height: 46px; }
+        .cand-tile {
+            min-width: 46px; height: 46px; padding: 0 8px; border-radius: 10px;
+            display: flex; align-items: center; justify-content: center;
+            font-family: var(--mono); font-size: 17px; font-weight: 800; will-change: transform;
+            border: 2px solid var(--border-main); background: rgba(255,255,255,0.04); color: var(--text-dim);
+            transition: background 0.3s, border-color 0.3s, color 0.3s, box-shadow 0.3s, transform 0.3s;
+        }
+        .cand-tile.testing { border-color: var(--accent-orange); background: rgba(245,165,36,0.18); color: #ffd591; box-shadow: 0 0 16px rgba(245,165,36,0.45); transform: scale(1.08); z-index: 2; }
+        .cand-tile.rejected { border-color: var(--accent-red); background: rgba(244,63,94,0.12); color: #fda4af; opacity: 0.6; }
+        .cand-tile.accepted { border-color: var(--accent-green); background: linear-gradient(180deg, rgba(47,224,143,0.85), rgba(33,194,117,0.85)); color: #06251a; box-shadow: 0 0 16px rgba(34,197,94,0.45); }
+
+        .action-stage { position: relative; min-height: 92px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; }
+        .answer-track { display: flex; gap: 6px; align-items: center; min-height: 40px; }
+        .ans-tile { min-width: 34px; padding: 0 10px; height: 44px; border-radius: 9px; display: flex; align-items: center; justify-content: center; font-family: var(--mono); font-size: 20px; font-weight: 800; border: 2px solid var(--accent-orange); background: rgba(245,165,36,0.16); color: #ffd591; box-shadow: 0 0 12px rgba(245,165,36,0.35); }
+        .ans-tile.none { border-color: var(--accent-red); background: rgba(244,63,94,0.16); color: #fda4af; box-shadow: 0 0 12px rgba(244,63,94,0.35); }
+        .action-word { font-family: var(--mono); font-weight: 800; font-size: 18px; letter-spacing: 0.4px; min-height: 22px; text-align: center; transition: color 0.3s; }
+        #confetti { position: absolute; inset: 0; overflow: visible; pointer-events: none; }
+        .confetti-piece { position: absolute; top: 0; left: 50%; width: 8px; height: 13px; border-radius: 2px; opacity: 0; animation: confettiFall ease-out forwards; }
+
+        .controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: center; }
+        .controls .kbd-hint { font-size: 11px; color: var(--text-dim); font-family: var(--mono); margin-left: 4px; }
+        .kbd { background: rgba(255,255,255,0.07); border: 1px solid var(--border-main); border-radius: 5px; padding: 1px 6px; font-size: 10px; }
+        input[type="range"] { accent-color: var(--accent-blue); width: 110px; cursor: pointer; }
+
+        .details-toggle { align-self: center; height: 32px; padding: 0 16px; border-radius: 999px; cursor: pointer; background: rgba(255,255,255,0.04); border: 1px solid var(--border-main); color: var(--text-dim); font-family: var(--mono); font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; gap: 8px; transition: color 0.2s, border-color 0.2s, background 0.2s; }
+        .details-toggle:hover { color: var(--text-main); border-color: rgba(6,182,212,0.4); background: rgba(6,182,212,0.06); }
+        .details-toggle .chev { transition: transform 0.3s ease; }
+        .details-wrap.open .details-toggle .chev { transform: rotate(180deg); }
+        .details-body { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.4s ease; }
+        .details-wrap.open .details-body { grid-template-rows: 1fr; }
+        .details-inner { overflow: hidden; min-height: 0; }
+        .details-grid { display: flex; flex-direction: column; gap: 14px; padding-top: 14px; }
+
+        .panel-card { background: var(--bg-surface); border: 1px solid var(--border-main); border-radius: 16px; backdrop-filter: blur(10px); box-shadow: 0 8px 30px rgba(0,0,0,0.35); }
+        .panel-head { display: flex; align-items: center; gap: 8px; padding: 11px 16px; border-bottom: 1px solid var(--border-main); font-size: 11px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; color: var(--text-dim); }
+        .panel-head .pip { width: 7px; height: 7px; border-radius: 50%; background: var(--accent-blue); box-shadow: 0 0 8px var(--accent-blue); }
+        .code-body { padding: 12px 6px 14px; font-family: var(--mono); font-size: 12.5px; line-height: 1.7; }
+        .code-line { display: flex; gap: 12px; padding: 1px 16px; border-left: 2px solid transparent; transition: background 0.3s, border-color 0.3s; white-space: pre; }
+        .code-line .lno { color: #4b5772; width: 16px; text-align: right; user-select: none; }
+        .code-line .src { color: #c4cee0; }
+        .code-line .kw { color: #c792ea; }
+        .code-line .fn { color: #82aaff; }
+        .code-line.active { background: rgba(6,182,212,0.12); border-left-color: var(--accent-blue); }
+        .code-line.active .src, .code-line.active .lno { color: #e8eefb; }
+
+        .state-strip { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 0 2px; }
+        .pill { display: inline-flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 12px; color: var(--text-dim); background: rgba(255,255,255,0.04); border: 1px solid var(--border-main); border-radius: 999px; padding: 4px 11px; }
+        .pill b { color: var(--text-main); font-weight: 800; }
+        .pill.c b { color: var(--accent-purple); } .pill.b b { color: var(--accent-orange); } .pill.g b { color: var(--accent-green); } .pill.m b { color: var(--accent-blue); }
+
+        .log-panel { border-radius: 14px; padding: 12px 16px; height: 110px; overflow-y: auto; font-family: var(--mono); font-size: 12.5px; line-height: 1.5; background: var(--bg-surface); border: 1px solid var(--border-main); }
+        .log-panel::-webkit-scrollbar { width: 8px; }
+        .log-panel::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 8px; }
+
+        @keyframes confettiFall { 0%{ opacity:1; transform: translate(-50%, 0) rotate(0deg); } 100%{ opacity:0; transform: translate(calc(-50% + var(--x)), 220px) rotate(var(--rot)); } }
+        @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; } }
+    </style>
+</head>
+<body>
+
+    <div class="input-bar">
+        <label class="ui-label">x &equiv;</label>
+        <input type="number" id="a1-input" value="2" placeholder="a1">
+        <label class="ui-label">(mod</label>
+        <input type="number" id="m1-input" value="3" placeholder="m1">
+        <label class="ui-label">)</label>
+        <span class="ui-label" style="opacity:.5">,</span>
+        <label class="ui-label">x &equiv;</label>
+        <input type="number" id="a2-input" value="3" placeholder="a2">
+        <label class="ui-label">(mod</label>
+        <input type="number" id="m2-input" value="5" placeholder="m2">
+        <label class="ui-label">)</label>
+        <button onclick="loadCustom()">Load</button>
+        <span class="ui-label" style="opacity:.5">|</span>
+        <button onclick="loadExample(0)">Ex 1 (mod 3, mod 5)</button>
+        <button onclick="loadExample(1)">Ex 2 (mod 2, mod 4)</button>
+    </div>
+
+    <div class="shell">
+        <div class="title-row">
+            <h1>Chinese Remainder Theorem <span class="sub">&middot; merge congruences x &equiv; a&#8341; (mod m&#8341;) &middot; unique x mod M, M = &prod; m&#8341;</span></h1>
+            <span class="step-badge" id="step-badge">Step 1 / 1</span>
+        </div>
+        <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+
+        <div class="narration" id="main-panel">&mdash;</div>
+
+        <div class="stage-card">
+            <div class="stage-screen">
+                <div class="crt-stage" id="crt-stage">
+                    <div class="congr-row" id="congr-row"></div>
+                    <div class="merge-card" id="merge-card">
+                        <span class="mlabel">Merged so far</span>
+                        <span class="mexpr" id="merge-expr">&mdash;</span>
+                    </div>
+                    <div class="scan-wrap">
+                        <span class="scan-label" id="scan-label">&nbsp;</span>
+                        <div class="scan-track" id="scan-track"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="action-stage">
+            <div id="confetti"></div>
+            <div class="answer-track" id="answer-track"></div>
+            <div class="action-word" id="action-word"></div>
+        </div>
+
+        <div class="controls">
+            <button onclick="resetSim()">&#8634; Reset</button>
+            <button onclick="prevStep()">&#8592; Back</button>
+            <button onclick="togglePlay()" id="play-btn">Play</button>
+            <button onclick="nextStep()">Next &#8594;</button>
+            <span class="ui-label" style="margin-left:6px; font-size:11px">Speed</span>
+            <input type="range" id="speed" min="0" max="2" value="1">
+            <span class="kbd-hint"><span class="kbd">&#8592;</span> <span class="kbd">&#8594;</span> step &middot; <span class="kbd">space</span> play</span>
+        </div>
+
+        <div class="details-wrap" id="details-wrap">
+            <button class="details-toggle" onclick="toggleDetails()" aria-expanded="false">
+                <span id="details-label">Show code, state &amp; log</span> <span class="chev">&#9662;</span>
+            </button>
+            <div class="details-body">
+                <div class="details-inner">
+                    <div class="details-grid">
+                        <div class="state-strip">
+                            <span class="pill m">modulus M <b id="st-mod">&mdash;</b></span>
+                            <span class="pill c">candidate x <b id="st-cand">&mdash;</b></span>
+                            <span class="pill g">merged residue <b id="st-res">&mdash;</b></span>
+                            <span class="pill b">answer <b id="st-ans">&mdash;</b></span>
+                        </div>
+                        <div class="panel-card">
+                            <div class="panel-head"><span class="pip"></span> Algorithm</div>
+                            <div class="code-body" id="code-panel"></div>
+                        </div>
+                        <div class="log-panel" id="log"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        'use strict';
+
+        // ───────── Motion engine (spring pop, zero deps) ─────────
+        const REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        const FRAME = 1000 / 60;
+        function sampleSpring(stiffness, damping, mass) {
+            const dt = 1 / 60; let x = 1, v = 0; const out = [];
+            for (let i = 0; i < 240; i++) { const a = (-stiffness * x - damping * v) / mass; v += a * dt; x += v * dt; out.push(1 - x); if (Math.abs(x) < 0.0015 && Math.abs(v) < 0.0015) break; }
+            out.push(1); return out;
+        }
+        const SPRING_POP = sampleSpring(520, 17, 1);
+        const durOf = (a) => a.length * FRAME;
+        const Motion = {
+            pop(el) {
+                if (REDUCED) return;
+                const kf = SPRING_POP.map(p => ({ transform: `scale(${(0.4 + 0.66 * p).toFixed(3)})` }));
+                el.animate(kf, { duration: durOf(SPRING_POP), easing: 'linear' });
+            },
+        };
+
+        // ───────── State ─────────
+        let congruences = [{ a: 2, m: 3 }, { a: 3, m: 5 }];
+        let steps = [];
+        let stepIdx = 0;
+        let timer = null;
+        let confettiArmed = true;
+        const delays = [1450, 720, 330];
+        const chipEls = {};   // chip index -> element
+        const candEls = {};   // candidate value -> element
+
+        const CODE = [
+            [['kw', 'def '], ['fn', 'crt'], ['src', '(congruences):']],
+            [['src', '  R, M = 0, 1']],
+            [['kw', '  for '], ['src', '(a, m) in congruences:']],
+            [['src', '    g = gcd(M, m)']],
+            [['kw', '    if '], ['src', '(a - R) % g != 0: return None']],
+            [['src', '    L = lcm(M, m)']],
+            [['kw', '    while '], ['src', 'R % m != a % m:']],
+            [['src', '      R += M']],
+            [['src', '    M = L']],
+            [['kw', '  return '], ['src', 'R % M, M']],
+        ];
+        function buildCodePanel() {
+            const panel = document.getElementById('code-panel'); panel.innerHTML = '';
+            CODE.forEach((tokens, i) => {
+                const line = document.createElement('div'); line.className = 'code-line'; line.dataset.line = i;
+                const lno = document.createElement('span'); lno.className = 'lno'; lno.textContent = i + 1; line.appendChild(lno);
+                const src = document.createElement('span');
+                tokens.forEach(([cls, txt]) => { const s = document.createElement('span'); s.className = cls; s.textContent = txt; src.appendChild(s); });
+                line.appendChild(src); panel.appendChild(line);
+            });
+        }
+        function highlightCode(arr) { document.querySelectorAll('.code-line').forEach(el => el.classList.toggle('active', arr && arr.includes(+el.dataset.line))); }
+        function toggleDetails() {
+            const wrap = document.getElementById('details-wrap'); const open = wrap.classList.toggle('open');
+            wrap.querySelector('.details-toggle').setAttribute('aria-expanded', open ? 'true' : 'false');
+            document.getElementById('details-label').textContent = open ? 'Hide code, state & log' : 'Show code, state & log';
+        }
+
+        // ───────── number theory helpers ─────────
+        const gcd = (a, b) => { a = Math.abs(a); b = Math.abs(b); while (b) { [a, b] = [b, a % b]; } return a; };
+        const mod = (x, m) => ((x % m) + m) % m;
+
+        // ───────── step generation (genuine simulation of iterative CRT merge) ─────────
+        function generateSteps() {
+            steps = [];
+            const cs = congruences;
+            const totalM = cs.reduce((p, c) => p * c.m, 1);
+            const congrStr = cs.map(c => `x &equiv; ${mod(c.a, c.m)} (mod ${c.m})`).join(', ');
+
+            // immutable per-step snapshot factory; chipState[i] in {pending,merging,merged,conflict}
+            const snap = (extra) => Object.assign({
+                congr: cs.map((c, i) => ({ a: mod(c.a, c.m), m: c.m })),
+                chipState: cs.map(() => 'pending'),
+                mergeExpr: null, mergeClass: '', totalM,
+                candidates: [], scanLabel: '', activeCand: null, candMode: '',
+                cand: '—', res: '—', curMod: '—',
+                code: [], action: '', actionColor: 'var(--text-dim)',
+                panel: '', log: '', answer: null, answerNone: false,
+                complete: false, fail: false, confetti: false
+            }, extra);
+
+            // STEP 0: setup
+            steps.push(snap({
+                code: [0, 1],
+                action: 'SETUP', actionColor: 'var(--accent-blue)',
+                panel: `Combine the congruences <code>${congrStr}</code> into one. The unique solution lives modulo <code>M = ${cs.map(c => c.m).join(' &middot; ')} = ${totalM}</code>. Start from the empty fact <code>x &equiv; 0 (mod 1)</code>.`,
+                mergeExpr: 'x ≡ 0 (mod 1)', curMod: '1', res: '0',
+                log: `init  ${cs.map(c => `x≡${mod(c.a, c.m)} (mod ${c.m})`).join(', ')}\nM = ${totalM}   start R=0, M=1`
+            }));
+
+            // running merged residue R modulo M
+            let R = 0, Mrun = 1;
+            let conflictAt = -1;
+
+            for (let i = 0; i < cs.length; i++) {
+                const a = mod(cs[i].a, cs[i].m), m = cs[i].m;
+                const baseChip = cs.map((c, k) => k < i ? 'merged' : (k === i ? 'merging' : 'pending'));
+                const L = Mrun / gcd(Mrun, m) * m;  // lcm
+
+                // pick congruence i
+                steps.push(snap({
+                    chipState: baseChip.slice(),
+                    mergeExpr: `x ≡ ${R} (mod ${Mrun})`, curMod: String(Mrun), res: String(R),
+                    code: [2, 3],
+                    action: `MERGE x ≡ ${a} (mod ${m})`, actionColor: 'var(--accent-purple)',
+                    panel: `Bring in congruence <code>x &equiv; ${a} (mod ${m})</code>. Current combined fact is <code>x &equiv; ${R} (mod ${Mrun})</code>. Candidates must have the form <code>${R} + ${Mrun}k</code>.`,
+                    log: `merge  x≡${a} (mod ${m})   into  x≡${R} (mod ${Mrun})`
+                }));
+
+                // solvability: need (a - R) divisible by gcd(M, m)
+                const g = gcd(Mrun, m);
+                if (mod(a - R, g) !== 0) {
+                    conflictAt = i;
+                    const chipC = baseChip.slice(); chipC[i] = 'conflict';
+                    steps.push(snap({
+                        chipState: chipC,
+                        mergeExpr: `x ≡ ${R} (mod ${Mrun})`, mergeClass: 'dead', curMod: String(Mrun), res: String(R),
+                        code: [3, 4],
+                        action: 'CONFLICT', actionColor: 'var(--accent-red)',
+                        panel: `<code>gcd(${Mrun}, ${m}) = ${g}</code> but <code>(${a} &minus; ${R}) = ${a - R}</code> is not a multiple of ${g}. No <code>${R} + ${Mrun}k</code> can equal ${a} mod ${m} &#8594; the system is <b>inconsistent</b>.`,
+                        log: `  gcd(${Mrun},${m})=${g}; (${a}-${R}) not divisible by ${g}  ✗ conflict`
+                    }));
+                    break;
+                }
+
+                // scan candidates R, R+M, R+2M, ... (capped) until residue mod m == a
+                const cands = [];
+                let r = R, found = -1, guard = 0;
+                const cap = Math.max(m, L) + 1;
+                while (guard <= cap) {
+                    cands.push(r);
+                    const rem = mod(r, m);
+                    const ok = rem === a;
+
+                    // testing this candidate
+                    steps.push(snap({
+                        chipState: baseChip.slice(),
+                        mergeExpr: `x ≡ ${R} (mod ${Mrun})`, curMod: String(Mrun), res: String(R),
+                        candidates: cands.slice(), activeCand: r, candMode: 'testing',
+                        scanLabel: `r = ${R} + ${Mrun}·${guard} = ${r}   testing  ${r} mod ${m}`,
+                        cand: String(r),
+                        code: [5, 6],
+                        action: `${r} mod ${m} = ${rem}`, actionColor: 'var(--accent-orange)',
+                        panel: `Test candidate <code>x = ${r}</code>: is <code>${r} mod ${m} = ${rem}</code> equal to <code>${a}</code>? ${ok ? '<b>Yes.</b>' : 'No &#8594; advance by ' + Mrun + '.'}`,
+                        log: `  try x=${r}: ${r} mod ${m} = ${rem} ${ok ? '✓' : '✗'}`
+                    }));
+
+                    if (ok) { found = r; break; }
+                    r += Mrun; guard++;
+                }
+
+                // accept: update running merged fact
+                R = found; Mrun = L;
+                const chipMerged = cs.map((c, k) => k <= i ? 'merged' : 'pending');
+                steps.push(snap({
+                    chipState: chipMerged,
+                    mergeExpr: `x ≡ ${R} (mod ${Mrun})`, mergeClass: i === cs.length - 1 ? 'solved' : '', curMod: String(Mrun), res: String(R),
+                    candidates: cands.slice(), activeCand: found, candMode: 'accept',
+                    scanLabel: `x = ${found} satisfies all merged congruences`,
+                    cand: String(found),
+                    code: [7, 8],
+                    action: `R → ${R}, M → ${Mrun}`, actionColor: 'var(--accent-green)',
+                    panel: `<code>x = ${found}</code> fits. Update the combined fact to <code>x &equiv; ${R} (mod ${Mrun})</code> ${i < cs.length - 1 ? '&#8594; now fold in the next congruence.' : '&#8594; all congruences merged.'}`,
+                    log: `  ✓ x=${found};  now x≡${R} (mod ${Mrun})`
+                }));
+            }
+
+            // FINAL
+            if (conflictAt !== -1) {
+                steps.push(snap({
+                    chipState: cs.map((c, k) => k < conflictAt ? 'merged' : (k === conflictAt ? 'conflict' : 'pending')),
+                    mergeExpr: 'no solution', mergeClass: 'dead', curMod: String(Mrun), res: String(R),
+                    code: [4],
+                    action: '✗ no solution', actionColor: 'var(--accent-red)',
+                    answer: null, answerNone: true, complete: true, fail: true,
+                    panel: `Done. The congruences cannot all hold simultaneously &#8594; <b>no solution</b> exists. (CRT guarantees a unique solution only when the moduli are pairwise coprime.)`,
+                    log: `done  no solution (inconsistent system)`
+                }));
+            } else {
+                const answer = R; // smallest non-negative solution, unique mod totalM
+                steps.push(snap({
+                    chipState: cs.map(() => 'merged'),
+                    mergeExpr: `x ≡ ${answer} (mod ${totalM})`, mergeClass: 'solved', curMod: String(totalM), res: String(answer),
+                    code: [9],
+                    action: `✓ x = ${answer}`, actionColor: 'var(--accent-green)',
+                    answer: answer, complete: true, confetti: true,
+                    panel: `Done. The unique solution modulo <code>M = ${totalM}</code> is <code>x = ${answer}</code>. Every solution has the form <code>${answer} + ${totalM}k</code>.`,
+                    log: `done  x = ${answer} (mod ${totalM})`
+                }));
+            }
+        }
+
+        // ───────── render (persistent DOM reconciliation) ─────────
+        function reapMap(map, used) { Object.keys(map).forEach(k => { if (!used.has(k)) { map[k].remove(); delete map[k]; } }); }
+
+        function renderStep(idx) {
+            stepIdx = idx; const step = steps[idx]; if (!step) return;
+
+            // --- congruence chips (one per input congruence) ---
+            const row = document.getElementById('congr-row');
+            const usedChips = new Set();
+            step.congr.forEach((c, i) => {
+                const key = String(i); usedChips.add(key);
+                let el = chipEls[key];
+                if (!el) {
+                    el = document.createElement('div');
+                    el.innerHTML = `<span class="ctitle">congruence ${i + 1}</span><span class="cbody"></span>`;
+                    chipEls[key] = el; row.appendChild(el);
+                }
+                el.querySelector('.cbody').innerHTML = `x &equiv; ${c.a} (mod ${c.m})`;
+                const st = step.chipState[i];
+                const newCls = 'congr-chip ' + st;
+                if (el.className !== newCls && (st === 'merging' || st === 'merged' || st === 'conflict')) Motion.pop(el);
+                el.className = newCls;
+            });
+            reapMap(chipEls, usedChips);
+
+            // --- merged-fact card ---
+            const mc = document.getElementById('merge-card');
+            mc.className = 'merge-card' + (step.mergeClass ? ' ' + step.mergeClass : '');
+            const mexpr = document.getElementById('merge-expr');
+            if (mexpr.textContent !== (step.mergeExpr || '—')) Motion.pop(mexpr);
+            mexpr.textContent = step.mergeExpr || '—';
+
+            // --- candidate scan track ---
+            const track = document.getElementById('scan-track');
+            const usedCands = new Set();
+            (step.candidates || []).forEach((v) => {
+                const key = 'c' + v; usedCands.add(key);
+                let el = candEls[key];
+                const wasNew = !el;
+                if (!el) { el = document.createElement('div'); el.textContent = String(v); candEls[key] = el; track.appendChild(el); }
+                let cls = 'cand-tile';
+                if (step.activeCand === v) cls += step.candMode === 'accept' ? ' accepted' : ' testing';
+                else cls += ' rejected';   // earlier candidates that did not match
+                const prev = el.className;
+                el.className = cls;
+                if (wasNew || (prev !== cls && (cls.indexOf('testing') !== -1 || cls.indexOf('accepted') !== -1))) Motion.pop(el);
+            });
+            reapMap(candEls, usedCands);
+            document.getElementById('scan-label').innerHTML = step.scanLabel ? step.scanLabel : '&nbsp;';
+
+            // --- answer track + action word ---
+            const at = document.getElementById('answer-track'); at.innerHTML = '';
+            if (step.complete) {
+                const t = document.createElement('div');
+                if (step.answerNone) { t.className = 'ans-tile none'; t.textContent = 'no solution'; }
+                else { t.className = 'ans-tile'; t.textContent = String(step.answer); }
+                at.appendChild(t); Motion.pop(t);
+            }
+
+            // --- narration ---
+            const mp = document.getElementById('main-panel');
+            mp.innerHTML = step.panel || '&mdash;';
+            mp.classList.toggle('done', !!(step.complete && !step.fail));
+            mp.classList.toggle('fail', !!step.fail);
+
+            const aw = document.getElementById('action-word'); aw.textContent = step.action || ''; aw.style.color = step.actionColor || 'var(--text-dim)';
+            highlightCode(step.code);
+
+            if (step.confetti) { if (confettiArmed) { fireConfetti(); confettiArmed = false; } } else confettiArmed = true;
+
+            // --- state pills ---
+            document.getElementById('st-mod').textContent = step.curMod;
+            document.getElementById('st-cand').textContent = step.cand;
+            document.getElementById('st-res').textContent = step.res;
+            document.getElementById('st-ans').textContent = step.complete ? (step.answerNone ? 'none' : String(step.answer)) : (step.fail ? 'none' : '…');
+
+            // --- step badge + progress ---
+            document.getElementById('step-badge').textContent = `Step ${idx + 1} / ${steps.length}`;
+            document.getElementById('progress-fill').style.width = `${(idx / Math.max(1, steps.length - 1)) * 100}%`;
+
+            // --- log ---
+            const logEl = document.getElementById('log');
+            logEl.innerHTML = steps.slice(0, idx + 1).map(s => `<div style="margin:3px 0;white-space:pre-wrap;">${s.log}</div>`).join('');
+            logEl.scrollTop = logEl.scrollHeight;
+        }
+
+        function fireConfetti() {
+            const host = document.getElementById('confetti'); if (!host || REDUCED) return;
+            const colors = ['#22c55e', '#06b6d4', '#a855f7', '#f5a524', '#f43f5e'];
+            for (let i = 0; i < 38; i++) {
+                const p = document.createElement('div'); p.className = 'confetti-piece';
+                p.style.setProperty('--x', ((Math.random() * 2 - 1) * 220) + 'px');
+                p.style.setProperty('--rot', ((Math.random() * 720 - 360)) + 'deg');
+                p.style.background = colors[i % colors.length];
+                p.style.animationDuration = (0.9 + Math.random() * 0.8) + 's';
+                p.style.animationDelay = (Math.random() * 0.15) + 's';
+                host.appendChild(p); setTimeout(() => p.remove(), 1900);
+            }
+        }
+
+        // ───────── controls ─────────
+        function nextStep() { if (stepIdx < steps.length - 1) renderStep(stepIdx + 1); else pause(); }
+        function prevStep() { if (stepIdx > 0) renderStep(stepIdx - 1); }
+        function resetSim() { pause(); renderStep(0); }
+        function togglePlay() {
+            const btn = document.getElementById('play-btn');
+            if (timer) { pause(); return; }
+            btn.textContent = 'Pause';
+            if (stepIdx >= steps.length - 1) renderStep(0);
+            timer = setInterval(() => { if (stepIdx < steps.length - 1) nextStep(); else pause(); }, delays[document.getElementById('speed').value]);
+        }
+        function pause() { clearInterval(timer); timer = null; document.getElementById('play-btn').textContent = 'Play'; }
+
+        function clearDom() {
+            Object.keys(chipEls).forEach(k => { chipEls[k].remove(); delete chipEls[k]; });
+            Object.keys(candEls).forEach(k => { candEls[k].remove(); delete candEls[k]; });
+            confettiArmed = true;
+        }
+        function loadCongr(list) { pause(); congruences = list; clearDom(); generateSteps(); renderStep(0); }
+        function loadCustom() {
+            const a1 = parseInt(document.getElementById('a1-input').value, 10);
+            const m1 = parseInt(document.getElementById('m1-input').value, 10);
+            const a2 = parseInt(document.getElementById('a2-input').value, 10);
+            const m2 = parseInt(document.getElementById('m2-input').value, 10);
+            if (!isNaN(a1) && !isNaN(m1) && !isNaN(a2) && !isNaN(m2) && m1 > 0 && m2 > 0) {
+                loadCongr([{ a: a1, m: m1 }, { a: a2, m: m2 }]);
+            } else {
+                alert('Please enter valid positive moduli.');
+            }
+        }
+        function loadExample(n) {
+            const ex = [
+                [{ a: 2, m: 3 }, { a: 3, m: 5 }],
+                [{ a: 1, m: 2 }, { a: 2, m: 4 }]
+            ][n];
+            document.getElementById('a1-input').value = ex[0].a;
+            document.getElementById('m1-input').value = ex[0].m;
+            document.getElementById('a2-input').value = ex[1].a;
+            document.getElementById('m2-input').value = ex[1].m;
+            loadCongr(ex);
+        }
+
+        document.addEventListener('keydown', (e) => {
+            const tag = (e.target.tagName || '').toLowerCase(); if (tag === 'input' || tag === 'textarea') return;
+            if (e.key === 'ArrowRight') { e.preventDefault(); pause(); nextStep(); }
+            else if (e.key === 'ArrowLeft') { e.preventDefault(); pause(); prevStep(); }
+            else if (e.key === ' ') { e.preventDefault(); togglePlay(); }
+        });
+        ['a1-input', 'm1-input', 'a2-input', 'm2-input'].forEach(id => document.getElementById(id).addEventListener('keydown', (e) => { if (e.key === 'Enter') loadCustom(); }));
+        window.addEventListener('resize', () => renderStep(stepIdx));
+
+        buildCodePanel();
+        window.onload = () => loadExample(0);
+    </script>
+</body>
+</html>

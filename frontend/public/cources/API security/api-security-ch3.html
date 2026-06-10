@@ -1,0 +1,1022 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Securing the Natter API — API Security in Action</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;0,9..144,900;1,9..144,500&family=Spline+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#15140f; --ink-soft:#403c33; --paper:#f4efe4; --paper-2:#ece4d3;
+    --card:#fbf8f0; --line:#d9cfb8; --rule:#c7bca0;
+    --accent:#b5471f; --accent-2:#1d6b5a; --gold:#c08a2e; --shield:#2f4858; --plum:#7a4ba3; --warn:#9a3b12;
+    --shadow:0 1px 0 rgba(0,0,0,.04), 0 8px 28px -12px rgba(40,30,10,.35);
+    --mono:'JetBrains Mono',monospace; --serif:'Fraunces',Georgia,serif; --sans:'Spline Sans',system-ui,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    margin:0;
+    background:
+      radial-gradient(1200px 600px at 80% -5%, rgba(181,71,31,.07), transparent 60%),
+      radial-gradient(900px 500px at -10% 20%, rgba(29,107,90,.06), transparent 55%),
+      var(--paper);
+    color:var(--ink); font-family:var(--sans); font-size:18px; line-height:1.72; -webkit-font-smoothing:antialiased;
+  }
+  body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:0;opacity:.5;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E");}
+  .wrap{position:relative;z-index:1;max-width:880px;margin:0 auto;padding:0 26px}
+
+  .ribbon{max-width:880px;margin:0 auto;padding:18px 26px 0;display:flex;justify-content:space-between;align-items:center;
+    font-family:var(--mono);font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:var(--ink-soft)}
+  .ribbon .dot{width:8px;height:8px;border-radius:50%;background:var(--accent);display:inline-block;margin-right:8px;vertical-align:middle}
+
+  header.hero{max-width:880px;margin:0 auto;padding:34px 26px 18px;position:relative}
+  .kicker{font-family:var(--mono);font-size:12.5px;letter-spacing:.3em;text-transform:uppercase;color:var(--accent);margin-bottom:18px;display:flex;align-items:center;gap:12px}
+  .kicker::after{content:"";flex:1;height:1px;background:linear-gradient(90deg,var(--rule),transparent)}
+  h1.title{font-family:var(--serif);font-weight:900;font-size:clamp(40px,8vw,76px);line-height:.98;letter-spacing:-.02em;margin:0 0 8px;color:var(--ink)}
+  h1.title em{font-style:italic;color:var(--accent);font-weight:500}
+  .sub{font-family:var(--serif);font-style:italic;font-size:clamp(19px,3vw,24px);color:var(--ink-soft);max-width:60ch;margin:14px 0 0;font-weight:400}
+  .meta-row{display:flex;flex-wrap:wrap;gap:10px;margin-top:26px}
+  .chip{font-family:var(--mono);font-size:11.5px;letter-spacing:.08em;text-transform:uppercase;background:var(--card);border:1px solid var(--line);border-radius:100px;padding:7px 14px;color:var(--ink-soft);box-shadow:var(--shadow)}
+
+  nav.toc{margin:36px auto 0;background:var(--card);border:1px solid var(--line);border-radius:18px;padding:26px 30px;box-shadow:var(--shadow)}
+  nav.toc h4{font-family:var(--mono);font-size:12px;letter-spacing:.2em;text-transform:uppercase;color:var(--accent);margin:0 0 16px}
+  nav.toc ol{margin:0;padding:0;list-style:none;counter-reset:toc;display:grid;grid-template-columns:1fr 1fr;gap:4px 30px}
+  nav.toc li{counter-increment:toc;border-bottom:1px dotted var(--rule)}
+  nav.toc a{display:flex;align-items:baseline;gap:12px;text-decoration:none;color:var(--ink);padding:9px 0;font-size:16px;transition:color .2s,padding .2s}
+  nav.toc a::before{content:counter(toc,decimal-leading-zero);font-family:var(--mono);font-size:12px;color:var(--accent);flex:none}
+  nav.toc a:hover{color:var(--accent);padding-left:6px}
+  @media(max-width:640px){nav.toc ol{grid-template-columns:1fr}}
+
+  section{margin:64px auto 0}
+  .sec-head{display:flex;align-items:flex-start;gap:18px;margin-bottom:8px}
+  .sec-num{font-family:var(--serif);font-weight:900;font-size:54px;line-height:.8;color:var(--accent);flex:none;margin-top:4px}
+  h2{font-family:var(--serif);font-weight:600;font-size:clamp(28px,5vw,38px);line-height:1.05;letter-spacing:-.015em;margin:0;color:var(--ink)}
+  h2 em{font-style:italic;color:var(--accent);font-weight:500}
+  h3{font-family:var(--serif);font-weight:600;font-size:24px;letter-spacing:-.01em;margin:38px 0 6px;color:var(--ink)}
+  h3 .tag{font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--accent-2);vertical-align:middle;margin-left:10px;border:1px solid var(--accent-2);padding:2px 8px;border-radius:6px}
+  p{margin:16px 0}
+  .lead{font-size:20px;color:var(--ink-soft)}
+  strong{font-weight:700;color:var(--ink)}
+  em.term{font-style:normal;font-weight:600;color:var(--accent);border-bottom:2px solid rgba(181,71,31,.25)}
+  hr.rule{border:none;height:1px;background:linear-gradient(90deg,transparent,var(--rule),transparent);margin:54px 0}
+
+  .callout{border-radius:14px;padding:20px 22px 20px 54px;margin:26px 0;position:relative;background:var(--card);border:1px solid var(--line);box-shadow:var(--shadow);font-size:16.5px}
+  .callout .ic{position:absolute;left:18px;top:20px;width:24px;height:24px}
+  .callout .lab{font-family:var(--mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;display:block;margin-bottom:4px}
+  .callout.def{border-left:4px solid var(--accent-2)} .callout.def .lab{color:var(--accent-2)}
+  .callout.eg{border-left:4px solid var(--gold);background:linear-gradient(180deg,#fdf8ea,var(--card))} .callout.eg .lab{color:var(--gold)}
+  .callout.real{border-left:4px solid var(--accent);background:linear-gradient(180deg,#fbf0ea,var(--card))} .callout.real .lab{color:var(--accent)}
+  .callout.tip{border-left:4px solid var(--shield)} .callout.tip .lab{color:var(--shield)}
+  .callout p{margin:6px 0} .callout p:first-of-type{margin-top:0}
+
+  .analogy{background:linear-gradient(135deg,#2f4858,#23363f);color:#f0e9d8;border-radius:18px;padding:30px 32px;margin:30px 0;position:relative;overflow:hidden;box-shadow:0 20px 40px -22px rgba(20,30,40,.7)}
+  .analogy::after{content:"\201C";position:absolute;right:18px;top:-20px;font-family:var(--serif);font-size:160px;color:rgba(255,255,255,.06);font-weight:900}
+  .analogy .lab{font-family:var(--mono);font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--gold);display:block;margin-bottom:10px}
+  .analogy p{margin:8px 0;color:#ece4d3} .analogy strong{color:#fff}
+
+  .grid{display:grid;gap:16px;margin:26px 0}
+  .grid.c3{grid-template-columns:repeat(3,1fr)} .grid.c2{grid-template-columns:repeat(2,1fr)}
+  @media(max-width:680px){.grid.c3,.grid.c2{grid-template-columns:1fr}}
+  .mini{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px;box-shadow:var(--shadow);position:relative;overflow:hidden}
+  .mini .n{font-family:var(--serif);font-weight:900;font-size:30px;color:var(--accent);line-height:1}
+  .mini h5{font-family:var(--sans);font-weight:700;font-size:17px;margin:8px 0 4px;color:var(--ink)}
+  .mini p{font-size:14.5px;margin:0;color:var(--ink-soft);line-height:1.55}
+
+  .cia{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin:24px 0}
+  .cia .c{border-radius:14px;padding:20px;color:#fff;position:relative;overflow:hidden;box-shadow:var(--shadow)}
+  .cia .c .l{font-family:var(--serif);font-weight:900;font-size:42px;opacity:.25;position:absolute;right:14px;top:6px}
+  .cia .c h5{margin:0 0 4px;font-size:18px;font-weight:700} .cia .c p{margin:0;font-size:14px;opacity:.95;line-height:1.5}
+  .cia .conf{background:linear-gradient(135deg,#b5471f,#8a3416)} .cia .integ{background:linear-gradient(135deg,#1d6b5a,#13473c)} .cia .avail{background:linear-gradient(135deg,#c08a2e,#8f6418)}
+  @media(max-width:680px){.cia{grid-template-columns:1fr}}
+
+  .stride{margin:24px 0;border-radius:14px;overflow:hidden;border:1px solid var(--line);box-shadow:var(--shadow)}
+  .stride .row{display:grid;grid-template-columns:64px 1fr;align-items:center;border-bottom:1px solid var(--line);background:var(--card)}
+  .stride .row:last-child{border-bottom:none}
+  .stride .let{font-family:var(--serif);font-weight:900;font-size:30px;color:#fff;height:100%;display:flex;align-items:center;justify-content:center;padding:16px 0}
+  .stride .row:nth-child(1) .let{background:#b5471f} .stride .row:nth-child(2) .let{background:#1d6b5a} .stride .row:nth-child(3) .let{background:#c08a2e}
+  .stride .row:nth-child(4) .let{background:#7a4ba3} .stride .row:nth-child(5) .let{background:#2f4858} .stride .row:nth-child(6) .let{background:#9a3b12}
+  .stride .txt{padding:12px 18px} .stride .txt b{font-weight:700} .stride .txt span{display:block;font-size:14.5px;color:var(--ink-soft)}
+
+  .quiz{background:#fff7e6;border:1px dashed var(--gold);border-radius:16px;padding:24px 26px;margin:30px 0}
+  .quiz .lab{font-family:var(--mono);font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--gold);display:block;margin-bottom:12px}
+  .quiz details{border-top:1px solid #e8d9b0;padding:12px 0} .quiz details:first-of-type{border-top:none}
+  .quiz summary{cursor:pointer;font-weight:600;list-style:none;display:flex;gap:10px;align-items:flex-start}
+  .quiz summary::-webkit-details-marker{display:none}
+  .quiz summary::before{content:"?";font-family:var(--mono);background:var(--gold);color:#fff;width:22px;height:22px;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;font-size:13px;flex:none;margin-top:2px}
+  .quiz details[open] summary::before{content:"\2713";background:var(--accent-2)}
+  .quiz .ans{margin:10px 0 0 32px;font-size:15.5px;color:var(--ink-soft)}
+
+  .takeaways{background:var(--ink);color:var(--paper);border-radius:20px;padding:32px 34px;margin:50px 0}
+  .takeaways h3{color:var(--gold);margin-top:0}
+  .takeaways ul{margin:14px 0 0;padding:0;list-style:none}
+  .takeaways li{padding:11px 0 11px 32px;position:relative;border-bottom:1px solid rgba(255,255,255,.1);font-size:16px}
+  .takeaways li:last-child{border-bottom:none}
+  .takeaways li::before{content:"\2192";position:absolute;left:0;color:var(--accent);font-weight:700}
+  .takeaways strong{color:#fff}
+
+  footer{max-width:880px;margin:60px auto 40px;padding:30px 26px;border-top:1px solid var(--rule);font-family:var(--mono);font-size:12.5px;color:var(--ink-soft);letter-spacing:.04em;display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px}
+  code{font-family:var(--mono);font-size:.86em;background:var(--paper-2);border:1px solid var(--line);padding:1px 6px;border-radius:6px;color:var(--accent-2)}
+  .pull{font-family:var(--serif);font-style:italic;font-size:clamp(22px,4vw,30px);line-height:1.3;color:var(--ink);border-left:4px solid var(--accent);padding:6px 0 6px 24px;margin:40px 0}
+  .pull span{color:var(--accent)}
+  ::selection{background:var(--accent);color:#fff}
+
+  /* ============ INTERACTIVE DIAGRAM SYSTEM ============ */
+  .diagram{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:24px 24px 18px;margin:30px 0;box-shadow:var(--shadow);position:relative}
+  .diagram .dlabel{font-family:var(--mono);font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--accent);display:flex;align-items:center;gap:8px;margin-bottom:4px}
+  .diagram .dtitle{font-family:var(--serif);font-size:21px;font-weight:600;color:var(--ink);margin:0 0 4px}
+  .diagram .dhint{font-size:13.5px;color:var(--ink-soft);font-style:italic;margin:0 0 18px}
+  .diagram .dhint b{color:var(--accent);font-style:normal;font-weight:600}
+
+  .node{background:#fff;border:2px solid var(--ink);border-radius:12px;position:relative;transition:transform .25s cubic-bezier(.2,.8,.2,1),box-shadow .25s,border-color .25s}
+  .node:hover{transform:translateY(-3px);box-shadow:0 14px 28px -14px rgba(40,30,10,.5)}
+
+  @keyframes floatPkt{0%{transform:translateX(0);opacity:0}8%{opacity:1}92%{opacity:1}100%{transform:translateX(var(--travel,200px));opacity:0}}
+
+  .stepper{display:flex;flex-wrap:wrap;gap:8px;margin:18px 0 4px;align-items:center}
+  .stepper button{font-family:var(--mono);font-size:12px;letter-spacing:.04em;border:1.5px solid var(--line);background:var(--card);color:var(--ink-soft);
+    padding:8px 14px;border-radius:100px;cursor:pointer;transition:all .2s}
+  .stepper button:hover{border-color:var(--accent);color:var(--accent)}
+  .stepper button.active{background:var(--accent);border-color:var(--accent);color:#fff;box-shadow:0 6px 14px -6px var(--accent)}
+  .step-readout{background:var(--paper-2);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-top:14px;font-size:15px;min-height:54px;color:var(--ink)}
+  .step-readout b{color:var(--accent)}
+
+  .legend{display:flex;flex-wrap:wrap;gap:14px;margin-top:16px;padding-top:14px;border-top:1px dashed var(--rule);font-family:var(--mono);font-size:11.5px;color:var(--ink-soft)}
+  .legend .k{display:flex;align-items:center;gap:6px}
+  .legend .sw{width:16px;height:10px;border-radius:3px;display:inline-block}
+  .legend .sw.dash{background:none;border:2px dashed var(--accent);height:6px}
+
+  .dexplain{background:var(--paper-2);border:1px solid var(--line);border-left:4px solid var(--accent-2);border-radius:0 12px 12px 0;padding:18px 22px;margin:6px 0 30px;font-size:15.5px}
+  .dexplain h4{font-family:var(--mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--accent-2);margin:0 0 10px}
+  .dexplain ol{margin:8px 0 0;padding-left:20px} .dexplain li{margin:7px 0;padding-left:4px}
+  .dexplain b{color:var(--ink)}
+
+  .stage{flex:1;min-width:0;text-align:center;padding:16px 8px;border-radius:12px;border:2px solid var(--ink);background:#fff;
+    font-weight:600;font-size:14px;position:relative;transition:all .25s;cursor:pointer}
+  .stage small{display:block;font-family:var(--mono);font-size:9.5px;letter-spacing:.05em;color:var(--ink-soft);margin-top:4px;font-weight:400}
+  .stage:hover{transform:translateY(-3px)}
+  .stage.dim{opacity:.35;filter:grayscale(.4)}
+  .stage.on{box-shadow:0 0 0 4px rgba(181,71,31,.18);border-color:var(--accent)}
+
+  @media(max-width:680px){.diagram{padding:18px 14px}}
+
+  /* ===== Chapter 2 additions ===== */
+  /* code blocks */
+  .code{background:#1c1a16;border-radius:14px;margin:24px 0;box-shadow:var(--shadow);overflow:hidden;border:1px solid #2c2922}
+  .code .bar{display:flex;align-items:center;gap:7px;padding:11px 16px;background:#23201a;border-bottom:1px solid #2c2922}
+  .code .bar .dot{width:11px;height:11px;border-radius:50%}
+  .code .bar .t{margin-left:8px;font-family:var(--mono);font-size:11.5px;color:#9a9484;letter-spacing:.04em}
+  .code pre{margin:0;padding:18px 20px;overflow-x:auto;font-family:var(--mono);font-size:13.5px;line-height:1.7;color:#e8e2d4}
+  .code .cm{color:#7c8a6b;font-style:italic}      /* comment */
+  .code .kw{color:#e0995e}                          /* keyword */
+  .code .st{color:#9ec88a}                          /* string */
+  .code .fn{color:#6fb3c9}                          /* function/type */
+  .code .nm{color:#d98b7a}                          /* number */
+  .code .bad{color:#ff8a7a;background:rgba(255,80,60,.13);border-radius:3px;padding:0 2px}
+  .code .good{color:#9ee6a8;background:rgba(60,200,90,.12);border-radius:3px;padding:0 2px}
+  .codecap{font-family:var(--mono);font-size:12px;color:var(--ink-soft);margin:-14px 0 26px;padding-left:4px}
+  .codecap b{color:var(--accent)}
+
+  /* danger / attack callout */
+  .callout.danger{border-left:4px solid #b5471f;background:linear-gradient(180deg,#fbe9e3,var(--card))} .callout.danger .lab{color:#b5471f}
+  .callout.principle{border-left:4px solid var(--plum);background:linear-gradient(180deg,#f3ecf7,var(--card))} .callout.principle .lab{color:var(--plum)}
+
+  /* OWASP list */
+  .owasp{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:24px 0}
+  @media(max-width:680px){.owasp{grid-template-columns:1fr}}
+  .owasp .col h5{font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);margin:0 0 8px}
+  .owasp .it{display:flex;gap:8px;align-items:baseline;font-size:13.5px;padding:5px 0;border-bottom:1px dotted var(--rule);color:var(--ink-soft)}
+  .owasp .it b{font-family:var(--mono);font-size:11px;color:var(--accent);flex:none}
+  .owasp .it.hot b{color:#b5471f} .owasp .it.hot{font-weight:600;color:var(--ink)}
+
+  /* token stream for SQLi anatomy */
+  .tok{display:inline-block;padding:3px 7px;border-radius:6px;font-family:var(--mono);font-size:12.5px;margin:2px;border:1px solid transparent;white-space:nowrap}
+  .tok.sql{background:#e7e0cf;color:#3a352a;border-color:#d2c8b0}
+  .tok.inj{background:#fbe0d6;color:#9a3b12;border-color:#e8b9a8;font-weight:700}
+  .tok.cmt{background:#dfe9df;color:#3c5c3c;border-color:#c2d6c2}
+
+  /* security header table */
+  .hdrtbl{margin:24px 0;border:1px solid var(--line);border-radius:14px;overflow:hidden;box-shadow:var(--shadow)}
+  .hdrtbl .hrow{display:grid;grid-template-columns:minmax(140px,1fr) 1.4fr;gap:0;border-bottom:1px solid var(--line)}
+  .hdrtbl .hrow:last-child{border-bottom:none}
+  .hdrtbl .hrow:nth-child(even){background:#f7f1e3}
+  .hdrtbl .hk{padding:13px 16px;font-family:var(--mono);font-size:12.5px;color:var(--accent-2);font-weight:500;border-right:1px solid var(--line);word-break:break-word}
+  .hdrtbl .hv{padding:13px 16px;font-size:14px;color:var(--ink-soft)}
+  .hdrtbl .hhead{background:var(--ink)!important;color:var(--paper)}
+  .hdrtbl .hhead .hk,.hdrtbl .hhead .hv{color:var(--paper);font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;border-color:#333}
+
+
+  /* ===== Chapter 3 additions ===== */
+  /* the 5-control pipeline lab */
+  .pipelab{display:flex;gap:6px;align-items:stretch;flex-wrap:nowrap;overflow-x:auto;padding:6px 2px 10px}
+  .pipelab .pstage{flex:1;min-width:96px;text-align:center;padding:14px 8px;border-radius:12px;border:2px solid var(--ink);background:#fff;cursor:pointer;transition:all .25s;position:relative}
+  .pipelab .pstage .ico{font-size:20px;line-height:1}
+  .pipelab .pstage .nm{font-weight:700;font-size:12.5px;margin-top:5px}
+  .pipelab .pstage .st{display:block;font-family:var(--mono);font-size:8.5px;letter-spacing:.04em;color:var(--ink-soft);margin-top:3px}
+  .pipelab .pstage:hover{transform:translateY(-3px)}
+  .pipelab .pstage.dim{opacity:.32;filter:grayscale(.4)}
+  .pipelab .pstage.on{box-shadow:0 0 0 4px rgba(181,71,31,.18);border-color:var(--accent)}
+  .pipelab .pstage.reject{border-color:#b5471f;background:linear-gradient(180deg,#fbe9e3,#fff)}
+  .pipelab .arrow{display:flex;align-items:center;color:var(--ink-soft);font-size:15px;flex:none}
+  .pipelab .pstage.logic{flex:1.4;border-color:var(--shield);background:var(--paper-2)}
+
+  /* STRIDE → control mapping */
+  .map{display:grid;grid-template-columns:1fr;gap:8px;margin:22px 0}
+  .map .mrow{display:grid;grid-template-columns:minmax(150px,200px) 28px 1fr;align-items:center;gap:10px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 14px;box-shadow:var(--shadow)}
+  .map .threat{font-weight:700;font-size:14px}
+  .map .threat small{display:block;font-family:var(--mono);font-size:9px;color:var(--ink-soft);font-weight:400;letter-spacing:.04em}
+  .map .ar{text-align:center;color:var(--accent);font-size:16px}
+  .map .ctrl{font-size:14px;color:var(--ink-soft)} .map .ctrl b{color:var(--accent-2)}
+  .map .mrow.s{border-left:4px solid #b5471f} .map .mrow.t{border-left:4px solid #1d6b5a}
+  .map .mrow.r{border-left:4px solid #c08a2e} .map .mrow.i{border-left:4px solid #7a4ba3}
+  .map .mrow.d{border-left:4px solid #2f4858} .map .mrow.e{border-left:4px solid #9a3b12}
+
+  /* status code compare */
+  .codes{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:24px 0}
+  @media(max-width:680px){.codes{grid-template-columns:1fr}}
+  .codes .cc{border-radius:14px;padding:18px 20px;color:#fff;box-shadow:var(--shadow)}
+  .codes .cc.c401{background:linear-gradient(135deg,#c08a2e,#8f6418)}
+  .codes .cc.c403{background:linear-gradient(135deg,#b5471f,#8a3416)}
+  .codes .cc .num{font-family:var(--serif);font-weight:900;font-size:38px;line-height:1}
+  .codes .cc .ti{font-weight:700;font-size:16px;margin:2px 0 8px} .codes .cc p{margin:0;font-size:14px;opacity:.96;line-height:1.55}
+
+  /* ACL permission chips */
+  .perm{display:inline-flex;gap:3px;font-family:var(--mono);font-size:12px}
+  .perm span{width:22px;height:22px;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;font-weight:700;color:#fff}
+  .perm .r{background:#1d6b5a} .perm .w{background:#c08a2e} .perm .d{background:#b5471f} .perm .off{background:#cfc6b2;color:#fff}
+
+</style></head>
+<body>
+
+<div class="ribbon">
+  <div><span class="dot"></span>API Security · In Action</div>
+  <div>Chapter 03</div>
+</div>
+
+<header class="hero">
+  <div class="kicker">Chapter Three · The Five Defences</div>
+  <h1 class="title">Securing the <em>Natter API</em></h1>
+  <p class="sub">Now we stack five real security controls onto Natter &mdash; rate-limiting, authentication, encryption, audit logging, and access control &mdash; and watch each one neutralise a specific STRIDE threat.</p>
+  <div class="meta-row">
+    <span class="chip">⏱ ~28 min read</span>
+    <span class="chip">Level · Hands-on</span>
+    <span class="chip">Rate-limit · Auth · HTTPS · ACLs</span>
+  </div>
+</header>
+
+<div class="wrap">
+
+<nav class="toc">
+  <h4>On this page</h4>
+  <ol>
+    <li><a href="#controls">The 5 controls &amp; STRIDE</a></li>
+    <li><a href="#pipeline">The order they run in</a></li>
+    <li><a href="#ratelimit">Rate-limiting</a></li>
+    <li><a href="#amplification">DNS amplification attacks</a></li>
+    <li><a href="#auth">Authentication &amp; Basic auth</a></li>
+    <li><a href="#scrypt">Password hashing with Scrypt</a></li>
+    <li><a href="#https">Encryption with HTTPS</a></li>
+    <li><a href="#audit">Audit logging</a></li>
+    <li><a href="#access">Access control &amp; ACLs</a></li>
+    <li><a href="#privesc">Privilege escalation</a></li>
+    <li><a href="#takeaways">Key takeaways</a></li>
+    <li><a href="#quiz">Test yourself</a></li>
+  </ol>
+</nav>
+
+<!-- ===================== 1 ===================== -->
+<section id="controls">
+  <div class="sec-head"><span class="sec-num">1</span><div><h2>Five controls, one threat model</h2></div></div>
+  <p class="lead">In Chapter 2 we made Natter <em>functionally</em> sound &mdash; no SQL injection, no XSS. But the API still trusts anyone who shows up. This chapter adds the proactive machinery that decides <strong>who</strong> may do <strong>what</strong>, and proves it later if something goes wrong.</p>
+
+  <p>The elegant part is that these five controls aren't an arbitrary grab-bag. Each one is the direct antidote to one of the six <strong>STRIDE</strong> threats we met in Chapter 1. If you remember nothing else from this chapter, remember this mapping &mdash; it's how a security engineer reasons backwards from "what could go wrong" to "what do I build."</p>
+
+  <div class="map">
+    <div class="mrow d"><div class="threat">Denial of Service<small>STRIDE &mdash; D</small></div><div class="ar">&rarr;</div><div class="ctrl"><b>Rate-limiting</b> &mdash; cap how fast anyone can hit the API, so a flood can't exhaust your resources.</div></div>
+    <div class="mrow s"><div class="threat">Spoofing<small>STRIDE &mdash; S</small></div><div class="ar">&rarr;</div><div class="ctrl"><b>Authentication</b> &mdash; verify users really are who they claim, so nobody can impersonate another.</div></div>
+    <div class="mrow i"><div class="threat">Information disclosure<small>STRIDE &mdash; I</small></div><div class="ar">&rarr;</div><div class="ctrl"><b>Encryption (HTTPS)</b> &mdash; hide data in transit and at rest from eavesdroppers.</div></div>
+    <div class="mrow t"><div class="threat">Tampering<small>STRIDE &mdash; T</small></div><div class="ar">&rarr;</div><div class="ctrl"><b>Encryption</b> + <b>access control</b> &mdash; modern encryption also detects modification; ACLs stop unauthorised writes.</div></div>
+    <div class="mrow r"><div class="threat">Repudiation<small>STRIDE &mdash; R</small></div><div class="ar">&rarr;</div><div class="ctrl"><b>Audit logging</b> &mdash; record who did what and when, so actions can't be denied later.</div></div>
+    <div class="mrow e"><div class="threat">Elevation of privilege<small>STRIDE &mdash; E</small></div><div class="ar">&rarr;</div><div class="ctrl"><b>Access control</b> &mdash; enforce that users can only do what they're permitted, nothing more.</div></div>
+  </div>
+
+  <div class="callout tip">
+    <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="#2f4858" stroke-width="2"><path d="M12 2 4 6v6c0 5 3.5 8 8 10 4.5-2 8-5 8-10V6z"/></svg>
+    <span class="lab">A subtle but vital detail</span>
+    <p>Only <strong>two</strong> of these controls actually <em>reject</em> a request outright: rate-limiting and access control. Authentication does <strong>not</strong> &mdash; a failed login doesn't immediately bounce you. Why? Because we want <em>every</em> attempt logged, including the failed ones (those are often the first sign of an attack). So authentication just <em>records</em> whether you're verified, and access control later decides whether that's good enough.</p>
+  </div>
+</section>
+
+<hr class="rule">
+
+<!-- ===================== 2 ===================== -->
+<section id="pipeline">
+  <div class="sec-head"><span class="sec-num">2</span><div><h2>The order matters &mdash; a guided pipeline</h2></div></div>
+  <p class="lead">These controls run as a sequence of filters, and the <em>sequence is deliberate</em>. Put them in the wrong order and you either waste resources on requests you'll reject anyway, or you fail to log an attack. Step through the pipeline below to see exactly why each control sits where it does.</p>
+
+  <!-- INTERACTIVE DIAGRAM 1 : the control pipeline -->
+  <div class="diagram" id="dg-pipe">
+    <div class="dlabel">Interactive · Figure 3.1 &amp; 3.3</div>
+    <div class="dtitle">A request's path through the five controls</div>
+    <p class="dhint"><b>Tap each control</b> to learn its job and why its position is non-negotiable. Watch which ones can <span style="color:var(--accent);font-weight:600">reject</span> a request and which only observe.</p>
+
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap">
+      <div class="node" style="padding:9px 13px;text-align:center;font-size:12px;font-weight:600;border-color:var(--shield)">&#128100; User</div>
+      <div style="font-family:var(--mono);font-size:10px;color:var(--accent-2);text-align:center;line-height:1.2">&#128274;HTTPS<br>&#10142;</div>
+      <div class="node" style="padding:9px 13px;text-align:center;font-size:12px;font-weight:600;border-color:var(--accent-2)">&#128187;/&#128241; Clients</div>
+      <div style="font-family:var(--mono);font-size:10px;color:var(--ink-soft)">request &darr;</div>
+    </div>
+
+    <div class="pipelab">
+      <div class="pstage on reject" data-p="0" onclick="pipeStep(0,this)"><div class="ico">&#128683;</div><div class="nm">Rate-limit</div><span class="st">CAN REJECT</span></div>
+      <div class="arrow">&#8594;</div>
+      <div class="pstage" data-p="1" onclick="pipeStep(1,this)"><div class="ico">&#128273;</div><div class="nm">Authenticate</div><span class="st">observes only</span></div>
+      <div class="arrow">&#8594;</div>
+      <div class="pstage" data-p="2" onclick="pipeStep(2,this)"><div class="ico">&#128221;</div><div class="nm">Audit log</div><span class="st">observes only</span></div>
+      <div class="arrow">&#8594;</div>
+      <div class="pstage" data-p="3" onclick="pipeStep(3,this)"><div class="ico">&#128272;</div><div class="nm">Access control</div><span class="st">CAN REJECT</span></div>
+      <div class="arrow">&#8594;</div>
+      <div class="pstage logic" data-p="4" onclick="pipeStep(4,this)"><div class="ico">&#9881;</div><div class="nm">App logic</div><span class="st">the real work</span></div>
+    </div>
+    <div style="display:flex;justify-content:space-between;margin-top:6px;font-family:var(--mono);font-size:10px;color:var(--accent)">
+      <span>&#11015; rejected here use fewest resources</span>
+      <span>survivors run your code &#11157;</span>
+    </div>
+
+    <div class="step-readout" id="pipe-readout"><b>Rate-limiting</b> is first &mdash; and that's the whole point. Tap any control to see why its position matters. Notice that encryption (HTTPS) isn't a stage here: it wraps the <i>entire</i> conversation, protecting every arrow in both directions.</div>
+
+    <div class="legend">
+      <div class="k"><span class="sw" style="background:#b5471f"></span> Can reject the request</div>
+      <div class="k"><span class="sw" style="background:var(--accent-2)"></span> Observes / records only</div>
+      <div class="k">&#128274; HTTPS wraps everything</div>
+    </div>
+  </div>
+
+  <div class="dexplain">
+    <h4>Reading the diagram</h4>
+    <p>Read it strictly left to right, and think about <i>cost</i> at each step &mdash; the guiding idea is "spend the least effort to throw out a bad request."</p>
+    <ol>
+      <li><b>Rate-limiting first.</b> It's the cheapest possible check, so it goes before anything that costs real CPU. If you're being flooded, you want to drop requests <i>before</i> spending effort authenticating them.</li>
+      <li><b>Authentication second</b> &mdash; but it never rejects. It just attaches "this is verified user <code>demo</code>" (or "anonymous") to the request, so everything downstream knows who's asking.</li>
+      <li><b>Audit logging third</b>, right after we know <i>who</i> but <i>before</i> we decide allow/deny. That ordering is what guarantees failed and denied attempts still get recorded.</li>
+      <li><b>Access control fourth.</b> Now &mdash; armed with identity and a logged record &mdash; we make the allow-or-deny call. Denied requests stop here with a 403.</li>
+      <li><b>Application logic last.</b> Only fully-vetted requests ever reach your actual business code. And the whole exchange travels inside <b>HTTPS</b>, so none of it is readable on the wire.</li>
+    </ol>
+  </div>
+</section>
+
+<hr class="rule">
+
+<!-- ===================== 3 ===================== -->
+<section id="ratelimit">
+  <div class="sec-head"><span class="sec-num">3</span><div><h2>Rate-limiting for availability</h2></div></div>
+  <p class="lead">Availability is genuinely hard to defend. An attacker can rent a botnet and generate enormous traffic for almost nothing, while you spend real money trying to absorb it. You can't make denial of service impossible &mdash; but you can make sure that when you're overwhelmed, you <em>degrade gracefully</em> instead of collapsing entirely.</p>
+
+  <p>The single most important habit: <strong>never let an unauthenticated request consume significant resources.</strong> A flood of anonymous requests should be shed as early and as cheaply as possible. That's the whole philosophy behind putting rate-limiting first.</p>
+
+  <div class="callout def">
+    <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="#1d6b5a" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
+    <span class="lab">Two flavours of DoS</span>
+    <p><strong>Network-level DoS</strong> floods you with traffic unrelated to real requests (easy to spot, often filtered by a firewall). <strong>Application-layer DoS (L7)</strong> is sneakier &mdash; it sends <em>syntactically valid</em> requests, just far too many of them, so it looks like legitimate traffic until it buries you.</p>
+  </div>
+
+  <p>It's also worth understanding <strong>amplification</strong>, the trick that makes distributed DoS so devastatingly cheap for attackers. The classic example is DNS amplification &mdash; and seeing how it works explains why "small request in, huge response out" protocols are so dangerous.</p>
+
+  <!-- INTERACTIVE DIAGRAM 2 : DNS amplification -->
+  <div class="diagram" id="dg-ampl">
+    <div class="dlabel">Interactive · Figure 3.2</div>
+    <div class="dtitle">DNS amplification: tiny lie, enormous flood</div>
+    <p class="dhint"><b>Step through the attack</b> to see how an attacker turns small spoofed requests into a torrent of traffic aimed at someone else.</p>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;align-items:center;text-align:center">
+      <div class="node amp" data-amp="att" style="padding:14px;font-weight:700;font-size:13px;border-color:var(--shield)">&#129488;<br>Attacker</div>
+      <div style="font-family:var(--mono);font-size:10px;color:var(--ink-soft)" id="amp-mid">&nbsp;</div>
+      <div class="node amp" data-amp="vic" style="padding:14px;font-weight:700;font-size:13px;border-color:var(--accent)">&#127919;<br>Victim</div>
+
+      <div style="grid-column:1 / 4;display:flex;justify-content:space-around;gap:8px;margin:6px 0">
+        <div class="node amp" data-amp="dns" style="padding:10px 14px;font-size:12px;font-weight:600;border-color:var(--accent-2)">&#128225; DNS server</div>
+        <div class="node amp" data-amp="dns" style="padding:10px 14px;font-size:12px;font-weight:600;border-color:var(--accent-2)">&#128225; DNS server</div>
+        <div class="node amp" data-amp="dns" style="padding:10px 14px;font-size:12px;font-weight:600;border-color:var(--accent-2)">&#128225; DNS server</div>
+      </div>
+    </div>
+
+    <div class="stepper" id="amp-steps">
+      <button onclick="ampStep(0,this)" class="active">Start</button>
+      <button onclick="ampStep(1,this)">1 · Spoof the source</button>
+      <button onclick="ampStep(2,this)">2 · Small queries out</button>
+      <button onclick="ampStep(3,this)">3 · Huge replies flood victim</button>
+    </div>
+    <div class="step-readout" id="amp-readout">In amplification, the attacker never touches the victim directly. Instead they trick innocent servers into doing it. Step through to see the three moves &mdash; and why the size difference is the killer.</div>
+
+    <div class="legend">
+      <div class="k"><span class="sw" style="background:#cfc6b2;height:3px"></span> Small spoofed request</div>
+      <div class="k"><span class="sw" style="background:var(--accent);height:8px"></span> Large amplified reply</div>
+    </div>
+  </div>
+
+  <div class="dexplain">
+    <h4>Reading the diagram</h4>
+    <p>The cleverness of amplification is that it abuses a protocol's <i>asymmetry</i> &mdash; a small question that triggers a big answer.</p>
+    <ol>
+      <li><b>Spoof the source.</b> The attacker sends DNS queries but forges the "return address" so it reads as the <i>victim's</i> IP rather than their own.</li>
+      <li><b>Small queries out.</b> Each query is tiny and cheap, scattered across many DNS servers. Crucially, DNS is unauthenticated &mdash; the servers have no way to know the request is forged.</li>
+      <li><b>Huge replies flood the victim.</b> Each server dutifully sends a <i>much larger</i> response &mdash; to the victim. Multiply that across thousands of servers and a trickle of attacker traffic becomes a tidal wave hitting the target.</li>
+    </ol>
+    <p style="margin-top:10px">These exploit <b>UDP-based</b> protocols (common in IoT). Network-level attacks like this are filtered with firewalls or specialist DoS-protection services with the capacity to soak up the flood.</p>
+  </div>
+
+  <h3>Implementing rate-limiting with Guava</h3>
+  <p>For application-layer protection, you add a rate limiter right in the API. In production you'd <em>also</em> rate-limit at a load balancer or reverse proxy &mdash; but enforcing it in the server too is a deliberate choice. It's an example of <em class="term">defense in depth</em>: if the proxy is misconfigured or bypassed, the server still protects itself.</p>
+
+  <div class="callout principle">
+    <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="#7a4ba3" stroke-width="2"><path d="M12 2 4 6v6c0 5 3.5 8 8 10 4.5-2 8-5 8-10V6z"/><path d="M9 12l2 2 4-4"/></svg>
+    <span class="lab">Principle · Defense in depth</span>
+    <p>Use <strong>multiple independent layers</strong> of defence, so that the failure of any single layer doesn't breach the whole system. Rate-limit at the proxy <em>and</em> at the server. Belt and braces.</p>
+  </div>
+
+  <div class="code">
+    <div class="bar"><span class="dot" style="background:#ff5f56"></span><span class="dot" style="background:#ffbd2e"></span><span class="dot" style="background:#27c93f"></span><span class="t">Main.java &mdash; the very first filter</span></div>
+<pre><span class="cm">// Allow just 2 requests/second so it's easy to see in action.</span>
+<span class="cm">// In production, set this BELOW what one server can truly handle.</span>
+<span class="kw">var</span> rateLimiter = <span class="fn">RateLimiter</span>.create(<span class="nm">2.0d</span>);
+
+before((request, response) -> {
+  <span class="kw">if</span> (!rateLimiter.tryAcquire()) {        <span class="cm">// non-blocking: false = over the limit</span>
+    response.header(<span class="st">"Retry-After"</span>, <span class="st">"2"</span>);  <span class="cm">// tell client when to come back</span>
+    halt(<span class="nm">429</span>);                            <span class="cm">// 429 Too Many Requests</span>
+  }
+});</pre>
+  </div>
+  <p class="codecap">The <b>429</b> status and <b>Retry-After</b> header are the polite, standard way to say "you're going too fast, try again in 2 seconds." Rejecting instantly costs almost nothing, which is exactly what you want when under load.</p>
+
+  <div class="callout tip">
+    <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="#2f4858" stroke-width="2"><path d="M9 11l3 3L22 4M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+    <span class="lab">Sizing the limit</span>
+    <p>Per-server limits should be a <em>fraction</em> of your total target. Need 1,000 req/s across 10 servers? Set each server to ~100 req/s &mdash; and actually test that each one can sustain it. Always leave headroom below the true ceiling.</p>
+  </div>
+</section>
+
+<hr class="rule">
+
+<!-- ===================== 4 ===================== -->
+<section id="auth">
+  <div class="sec-head"><span class="sec-num">4</span><div><h2>Authentication &mdash; proving who you are</h2></div></div>
+  <p class="lead">Almost everything Natter does needs to know <em>who</em> is doing it. In person you recognise a friend by their face; online, you can't. So you have to ask people to tell you who they are &mdash; and then make them prove it. For a social app, weak proof means impersonation and rumour-spreading; for a bank, it means someone spends your money. Nearly all security begins here.</p>
+
+  <p>Currently, Natter just <em>believes</em> the <code>owner</code> field when you create a space and the <code>author</code> field when you post. That's pure spoofing waiting to happen. The fix is to require a verified login and then check that claimed identities match the authenticated user.</p>
+
+  <p>The most important conceptual point is one the book is careful about, and it's easy to get wrong: <strong>authentication itself must not reject the request.</strong> Look at how it sits in the pipeline.</p>
+
+  <!-- INTERACTIVE DIAGRAM 3 : authentication populates, doesn't reject -->
+  <div class="diagram" id="dg-auth">
+    <div class="dlabel">Interactive · Figure 3.4</div>
+    <div class="dtitle">Why authentication <em>records</em> instead of <em>rejecting</em></div>
+    <p class="dhint"><b>Try both buttons</b> &mdash; a valid login and a failed one &mdash; and watch how the request keeps flowing either way, only to be stopped (or not) later at access control.</p>
+
+    <div style="display:flex;align-items:stretch;gap:8px;flex-wrap:nowrap;overflow-x:auto;padding-bottom:6px">
+      <div class="node af" data-af="rl" style="flex:1;min-width:84px;text-align:center;padding:12px 6px;font-size:12px;font-weight:600">&#128683;<br>Rate-limit</div>
+      <div style="display:flex;align-items:center;color:var(--ink-soft)">&#8594;</div>
+      <div class="node af" data-af="auth" style="flex:1;min-width:96px;text-align:center;padding:12px 6px;font-size:12px;font-weight:600;border-color:var(--accent)">&#128273;<br>Authenticate<small style="display:block;font-weight:400;font-family:var(--mono);font-size:8px;color:var(--ink-soft)" id="auth-state">tags identity</small></div>
+      <div style="display:flex;align-items:center;color:var(--ink-soft)">&#8594;</div>
+      <div class="node af" data-af="log" style="flex:1;min-width:84px;text-align:center;padding:12px 6px;font-size:12px;font-weight:600">&#128221;<br>Audit log</div>
+      <div style="display:flex;align-items:center;color:var(--ink-soft)">&#8594;</div>
+      <div class="node af" data-af="ac" style="flex:1;min-width:96px;text-align:center;padding:12px 6px;font-size:12px;font-weight:600;border-color:#b5471f">&#128272;<br>Access control<small style="display:block;font-weight:400;font-family:var(--mono);font-size:8px;color:var(--ink-soft)" id="ac-state">decides</small></div>
+      <div style="display:flex;align-items:center;color:var(--ink-soft)">&#8594;</div>
+      <div class="node af" data-af="app" style="flex:1.2;min-width:84px;text-align:center;padding:12px 6px;font-size:12px;font-weight:600;border-color:var(--shield);background:var(--paper-2)">&#9881;<br>App logic</div>
+    </div>
+
+    <div class="stepper">
+      <button onclick="authFlow('ok',this)" class="active">&#9989; Valid credentials</button>
+      <button onclick="authFlow('fail',this)">&#10060; Wrong / missing credentials</button>
+    </div>
+    <div class="step-readout" id="auth-readout">Press a button to trace each case. The key insight: even a <b>failed</b> login keeps moving through the pipeline so it can be <b>logged</b> &mdash; it only gets stopped later, at access control, if that particular operation requires authentication.</div>
+  </div>
+
+  <div class="dexplain">
+    <h4>Reading the diagram</h4>
+    <p>Compare the two runs and notice what's the <i>same</i>: in both, the request reaches the audit log. That's the entire reason for this design.</p>
+    <ol>
+      <li><b>Valid credentials</b> &rarr; authentication tags the request with the verified username (<code>subject = "demo"</code>). Audit logs it. Access control sees a valid subject and lets it through to the app.</li>
+      <li><b>Wrong/missing credentials</b> &rarr; authentication tags the request as <i>anonymous</i> (subject stays <code>null</code>) but <b>does not reject it</b>. Audit still logs the attempt. Only then does access control reject it &mdash; if the operation needs a login &mdash; with a 401.</li>
+      <li>The payoff: <b>failed and malicious attempts get recorded</b>. If authentication rejected immediately, those attempts would vanish before the audit log ever saw them &mdash; blinding you to attacks in progress.</li>
+    </ol>
+  </div>
+
+  <h3>HTTP Basic authentication</h3>
+  <p>APIs don't render login forms, so Natter uses the standard <strong>HTTP Basic</strong> scheme (RFC 7617): the client sends the username and password in an <code>Authorization</code> header. The credentials are joined with a colon (<code>demo:changeit</code>) and <strong>Base64-encoded</strong>.</p>
+
+  <div class="code">
+    <div class="bar"><span class="dot" style="background:#ff5f56"></span><span class="dot" style="background:#ffbd2e"></span><span class="dot" style="background:#27c93f"></span><span class="t">An HTTP Basic auth header</span></div>
+<pre>Authorization: Basic <span class="st">ZGVtbzpjaGFuZ2VpdA==</span>
+                      <span class="cm">&#8593; just Base64 of "demo:changeit"</span></pre>
+  </div>
+
+  <div class="callout danger">
+    <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="#b5471f" stroke-width="2"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4m0 4h.01"/></svg>
+    <span class="lab">Critical · Base64 is NOT encryption</span>
+    <p>Base64 is just a reversible <em>encoding</em> &mdash; anyone watching the network can decode it back to <code>demo:changeit</code> in one step. So Basic auth credentials are sent <strong>in effectively plain text</strong>. You must <em>only</em> ever use Basic auth over an encrypted HTTPS connection (section 7). This is a perfect example of how threats chain: information disclosure on the wire instantly becomes a spoofing attack.</p>
+  </div>
+</section>
+
+<hr class="rule">
+
+<!-- ===================== 5 ===================== -->
+<section id="scrypt">
+  <div class="sec-head"><span class="sec-num">5</span><div><h2>Storing passwords safely with Scrypt</h2></div></div>
+  <p class="lead">Here's a rule with no exceptions: <strong>never store passwords directly.</strong> Instead you store a <em class="term">hash</em> &mdash; a fixed-length, random-looking fingerprint. To check a login, you hash the supplied password the same way and compare fingerprints. The real password never touches your disk, so a database breach doesn't immediately hand over everyone's password.</p>
+
+  <p>But not just any hash will do. Fast hashes (like plain SHA-256) are a <em>liability</em> here, because attackers can compute billions of them per second. Modern password hashes &mdash; <strong>Scrypt</strong>, Argon2, Bcrypt, PBKDF2 &mdash; are deliberately <strong>slow and memory-hungry</strong> to cripple brute-force attacks. Two ideas make them work.</p>
+
+  <!-- INTERACTIVE DIAGRAM 4 : hashing + salt -->
+  <div class="diagram" id="dg-hash">
+    <div class="dlabel">Interactive · Concept</div>
+    <div class="dtitle">Two ideas that make password hashing safe</div>
+    <p class="dhint"><b>Toggle the two defences</b> to see what each one stops. Together they turn a stolen database from a disaster into merely a headache.</p>
+
+    <div class="stepper" id="hash-toggle">
+      <button onclick="hashMode('slow',this)" class="active">&#128012; Make it SLOW</button>
+      <button onclick="hashMode('salt',this)">&#127844; Add a SALT</button>
+    </div>
+    <div id="hash-view" style="margin-top:6px"></div>
+    <div class="step-readout" id="hash-readout">Scrypt combines both defences. Toggle above to see why each matters. The headline: a hash that takes ~100ms and 32MB of memory drops an attacker from <b>billions</b> of guesses per second to a few <b>thousand</b>.</div>
+  </div>
+
+  <div class="dexplain">
+    <h4>Reading the diagram</h4>
+    <p>These two ideas attack the two different ways a thief tries to crack stolen hashes.</p>
+    <ol>
+      <li><b>Slowness (work factor).</b> Scrypt is tuned to burn ~100ms of CPU and ~32MB of RAM per hash. That's invisible to a real user logging in once, but it throttles an attacker from billions of guesses per second down to a few thousand &mdash; buying everyone time to change passwords after a breach.</li>
+      <li><b>Salting.</b> A <b>salt</b> is a unique random value mixed into each password before hashing. It means two users with the same password get totally different hashes &mdash; which defeats <b>rainbow tables</b> (giant precomputed lookup tables of common-password hashes). The attacker can no longer crack everyone at once; they must attack each password individually.</li>
+    </ol>
+    <p style="margin-top:10px">Scrypt stores its parameters and the salt <i>inside</i> the hash string itself, so verification later can reproduce the exact same computation automatically.</p>
+  </div>
+
+  <div class="callout principle">
+    <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="#7a4ba3" stroke-width="2"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+    <span class="lab">Principle · Secure defaults</span>
+    <p>Establish <strong>secure defaults</strong> for every security-sensitive parameter &mdash; like Scrypt's cost factors &mdash; and only relax them if you've proven they genuinely hurt performance. Start safe; loosen only with evidence.</p>
+  </div>
+
+  <div class="code">
+    <div class="bar"><span class="dot" style="background:#ff5f56"></span><span class="dot" style="background:#ffbd2e"></span><span class="dot" style="background:#27c93f"></span><span class="t">UserController.java &mdash; registering a user</span></div>
+<pre><span class="kw">var</span> username = json.getString(<span class="st">"username"</span>);
+<span class="kw">var</span> password = json.getString(<span class="st">"password"</span>);
+
+<span class="kw">if</span> (!username.matches(USERNAME_PATTERN))     <span class="cm">// same allowlist validation as ch.2</span>
+  <span class="kw">throw new</span> <span class="fn">IllegalArgumentException</span>(<span class="st">"invalid username"</span>);
+<span class="kw">if</span> (password.length() < <span class="nm">8</span>)                     <span class="cm">// minimum length</span>
+  <span class="kw">throw new</span> <span class="fn">IllegalArgumentException</span>(<span class="st">"password must be at least 8 characters"</span>);
+
+<span class="cm">// Scrypt params (recommended ~2019): 32768 = CPU/mem cost, 8 = block, 1 = parallelism</span>
+<span class="kw">var</span> hash = <span class="fn">SCryptUtil</span>.scrypt(password, <span class="nm">32768</span>, <span class="nm">8</span>, <span class="nm">1</span>);
+database.updateUnique(
+    <span class="good">"INSERT INTO users(user_id, pw_hash) VALUES(?, ?)"</span>, username, hash);</pre>
+  </div>
+  <p class="codecap">Note the prepared statement (chapter 2's lesson) and the deliberately expensive hash. The salt is generated automatically and baked into the stored <code>hash</code> string.</p>
+
+  <p>Authentication then runs as a <code>before</code> filter on every request: pull the Base64 credentials from the header, look up the user's stored hash, and let Scrypt verify the password. On success it tags the request &mdash; <code>request.attribute("subject", username)</code> &mdash; and on failure it simply leaves that attribute null. (Remember: it never rejects here.)</p>
+</section>
+
+<hr class="rule">
+
+<!-- ===================== 6 ===================== -->
+<section id="https">
+  <div class="sec-head"><span class="sec-num">6</span><div><h2>Encryption with HTTPS</h2></div></div>
+  <p class="lead">Authentication stops people lying about who they are &mdash; but it does nothing to protect the request itself as it crosses the network. Picture checking your work gossip over coffee-shop wifi: without encryption, anyone on that hotspot can read every message you send and receive. Worse, they can read your Base64 password sailing past and then simply log in as you.</p>
+
+  <p>This is exactly the threat-chaining we keep seeing. One weakness (unencrypted traffic = information disclosure) directly enables another (stolen credentials = spoofing). The fix is to encrypt everything in transit with <strong>HTTPS</strong> &mdash; which is just ordinary HTTP running over <strong>TLS</strong> (Transport Layer Security; older versions were called SSL).</p>
+
+  <!-- INTERACTIVE DIAGRAM 5 : in transit vs at rest -->
+  <div class="diagram" id="dg-tls">
+    <div class="dlabel">Interactive · Figure 3.5</div>
+    <div class="dtitle">Two places data needs protecting</div>
+    <p class="dhint"><b>Tap each shield</b> to see what it protects against. Notice that <em>inside</em> the API, between filters, the data is decrypted &mdash; that's normal and fine.</p>
+
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:center">
+      <div class="node" style="padding:10px 13px;text-align:center;font-size:12px;font-weight:600;border-color:var(--shield)">&#128187;/&#128241;<br>Client</div>
+      <div class="node tls" data-tls="transit" onclick="tlsNode('transit',this)" style="cursor:pointer;padding:8px 12px;text-align:center;font-size:11px;font-weight:700;border-color:var(--accent-2);background:linear-gradient(180deg,#e3f0ec,#fff)">&#128274; HTTPS<br><small style="font-weight:400;font-family:var(--mono);font-size:8px">in transit</small></div>
+      <div class="node" style="padding:10px 13px;text-align:center;font-size:12px;font-weight:600;border-color:var(--accent)">&#9881;<br>Natter API<br><small style="font-weight:400;font-family:var(--mono);font-size:8px;color:var(--ink-soft)">decrypted here</small></div>
+      <div class="node tls" data-tls="rest" onclick="tlsNode('rest',this)" style="cursor:pointer;padding:8px 12px;text-align:center;font-size:11px;font-weight:700;border-color:var(--gold);background:linear-gradient(180deg,#f7efd6,#fff)">&#128274; Encrypt<br><small style="font-weight:400;font-family:var(--mono);font-size:8px">at rest</small></div>
+      <div class="node" style="padding:10px 13px;text-align:center;font-size:12px;font-weight:600;border-color:var(--shield)">&#128451;<br>Database</div>
+    </div>
+    <div class="step-readout" id="tls-readout">Data is vulnerable in two places: <b>moving</b> across the network, and <b>sitting</b> in the database. HTTPS handles the first; encryption-at-rest handles the second. Tap a shield to learn more.</div>
+  </div>
+
+  <div class="dexplain">
+    <h4>Reading the diagram</h4>
+    <p>The mental model is "data is safe at the endpoints but exposed in between" &mdash; and there are two separate "in betweens" to worry about.</p>
+    <ol>
+      <li><b>In transit (HTTPS/TLS).</b> Protects data on the wire between client and API. The first time a client connects, TLS performs a <b>handshake</b>: the server proves its identity with a certificate, then both sides agree on fresh encryption keys for that session. After that, every request and response is encrypted and tamper-checked.</li>
+      <li><b>At rest (database encryption).</b> Protects data sitting in storage from anyone with database access &mdash; whether a curious employee or an attacker who got in another way. This chapter focuses on transit; at-rest encryption comes later.</li>
+      <li><b>Inside the API, data is decrypted</b> &mdash; and that's expected. TLS operates at a lower layer, so your code just sees normal plain requests. The encryption is invisible to your application logic.</li>
+    </ol>
+  </div>
+
+  <p>Enabling it in Spark is genuinely a one-liner once you have a certificate. For local development the <code>mkcert</code> tool generates a certificate trusted by your browser; Java wants it in PKCS#12 format.</p>
+
+  <div class="code">
+    <div class="bar"><span class="dot" style="background:#ff5f56"></span><span class="dot" style="background:#ffbd2e"></span><span class="dot" style="background:#27c93f"></span><span class="t">Main.java &mdash; turning on HTTPS</span></div>
+<pre><span class="kw">import static</span> spark.Spark.secure;
+
+<span class="cm">// First two args: keystore file + its password. Last two (client certs) → null for now.</span>
+secure(<span class="st">"localhost.p12"</span>, <span class="st">"changeit"</span>, <span class="kw">null</span>, <span class="kw">null</span>);</pre>
+  </div>
+
+  <div class="callout danger">
+    <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="#b5471f" stroke-width="2"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4m0 4h.01"/></svg>
+    <span class="lab">Never disable certificate validation</span>
+    <p>It's tempting to pass <code>-k</code> / <code>--insecure</code> to curl (or the equivalent in a library) to silence certificate errors. Don't make a habit of it. In production, disabling certificate checks throws away the entire identity guarantee of TLS &mdash; an attacker can then impersonate your server. Get comfortable generating real certificates instead.</p>
+  </div>
+
+  <h3>Strict Transport Security (HSTS)</h3>
+  <p>For browser clients, you can add a <strong>Strict-Transport-Security</strong> header so the browser refuses to ever use plain HTTP for your domain again &mdash; closing the small window where a first request might go out unencrypted. (Just don't set it on <code>localhost</code>, or you'll lock yourself out of plain-HTTP dev servers until it expires.) And note from the CIA triad: TLS gives you confidentiality and integrity, but <em>not</em> availability &mdash; encryption alone won't save you from a DoS.</p>
+</section>
+
+<hr class="rule">
+
+<!-- ===================== 7 ===================== -->
+<section id="audit">
+  <div class="sec-head"><span class="sec-num">7</span><div><h2>Audit logging for accountability</h2></div></div>
+  <p class="lead">Accountability is simply being able to answer "who did what, and when?" &mdash; and the way you answer it is an <strong>audit log</strong>. It's hard to overstate how important this is. A good audit log is what lets you reconstruct an attack after the fact, prove who was responsible, and &mdash; analysed in real time &mdash; spot an attack while it's still happening.</p>
+
+  <p>Two design decisions make audit logging genuinely useful, and both are about <em>when</em> you log.</p>
+
+  <!-- INTERACTIVE DIAGRAM 6 : audit before + after -->
+  <div class="diagram" id="dg-audit">
+    <div class="dlabel">Interactive · Figure 3.6</div>
+    <div class="dtitle">Why audit logging happens <em>twice</em> &mdash; and where</div>
+    <p class="dhint"><b>Tap the two log points</b> to see why you record both the start and the end of every request, and why the position in the pipeline is so deliberate.</p>
+
+    <div style="display:flex;align-items:stretch;gap:8px;flex-wrap:nowrap;overflow-x:auto;padding-bottom:6px">
+      <div class="node" style="flex:1;min-width:80px;text-align:center;padding:11px 6px;font-size:11.5px;font-weight:600">&#128683;<br>Rate-limit</div>
+      <div style="display:flex;align-items:center;color:var(--ink-soft)">&#8594;</div>
+      <div class="node" style="flex:1;min-width:88px;text-align:center;padding:11px 6px;font-size:11.5px;font-weight:600;border-color:var(--accent)">&#128273;<br>Authenticate</div>
+      <div style="display:flex;align-items:center;color:var(--ink-soft)">&#8594;</div>
+      <div class="node aud" data-aud="start" onclick="auditNode('start',this)" style="flex:1.2;min-width:96px;text-align:center;padding:11px 6px;font-size:11.5px;font-weight:700;cursor:pointer;border-color:var(--gold);background:linear-gradient(180deg,#f9f0d6,#fff)">&#128221;<br>Log START<small style="display:block;font-weight:400;font-family:var(--mono);font-size:8px;color:var(--ink-soft)">before filter</small></div>
+      <div style="display:flex;align-items:center;color:var(--ink-soft)">&#8594;</div>
+      <div class="node" style="flex:1;min-width:84px;text-align:center;padding:11px 6px;font-size:11.5px;font-weight:600;border-color:#b5471f">&#128272;<br>Access ctrl</div>
+      <div style="display:flex;align-items:center;color:var(--ink-soft)">&#8594;</div>
+      <div class="node" style="flex:1;min-width:74px;text-align:center;padding:11px 6px;font-size:11.5px;font-weight:600;border-color:var(--shield);background:var(--paper-2)">&#9881;<br>Logic</div>
+      <div style="display:flex;align-items:center;color:var(--ink-soft)">&#8594;</div>
+      <div class="node aud" data-aud="end" onclick="auditNode('end',this)" style="flex:1.2;min-width:96px;text-align:center;padding:11px 6px;font-size:11.5px;font-weight:700;cursor:pointer;border-color:var(--gold);background:linear-gradient(180deg,#f9f0d6,#fff)">&#128221;<br>Log END<small style="display:block;font-weight:400;font-family:var(--mono);font-size:8px;color:var(--ink-soft)">afterAfter filter</small></div>
+    </div>
+
+    <div class="step-readout" id="audit-readout">Logging happens at <b>two</b> points wrapping the request, and sits <b>after authentication but before access control</b>. Tap each log point to see why that exact placement is what makes the log trustworthy.</div>
+  </div>
+
+  <div class="dexplain">
+    <h4>Reading the diagram</h4>
+    <p>Two placement decisions do all the work here, and both are about capturing things you'd otherwise lose.</p>
+    <ol>
+      <li><b>Log START (before the request runs).</b> A matching start and end record (tied together by a shared audit ID) means that if the server <b>crashes mid-request</b> &mdash; say, on an input an attacker crafted to crash it &mdash; you still have a record that the request was attempted. Log only at the end, and a crash erases all trace.</li>
+      <li><b>After authentication</b> &mdash; so the log knows <i>who</i> made each request. Logging before authentication would leave you with anonymous, near-useless entries.</li>
+      <li><b>Before access control</b> &mdash; so that <i>denied</i> and failed attempts are recorded too. Those rejected requests are frequently the most interesting ones from a security standpoint; logging after access control would silently discard them.</li>
+      <li><b>Log END (after the response).</b> Captures the outcome &mdash; the status code, whether it succeeded or was forbidden &mdash; completing the picture.</li>
+    </ol>
+  </div>
+
+  <div class="callout principle">
+    <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="#7a4ba3" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+    <span class="lab">Principle · Separation of duties</span>
+    <p>Audit logs should be readable by <strong>different</strong> people than the system administrators. Why? Because admin accounts are the most powerful &mdash; and therefore the most in need of monitoring. The watchers shouldn't be able to quietly edit the record of what they watched. (In finance, the same principle means whoever <em>requests</em> a payment can't also <em>approve</em> it &mdash; a guard against fraud.)</p>
+  </div>
+
+  <p>Practically, audit logs go to durable storage (a database table or file) so they survive a crash, and the audit table deliberately has <strong>no foreign-key constraints</strong> &mdash; you want to record exactly what was attempted, even if it's inconsistent with other data. In production you'd ship these to a centralised <strong>SIEM</strong> system that correlates logs across many services to hunt for threats.</p>
+</section>
+
+<hr class="rule">
+
+<!-- ===================== 8 ===================== -->
+<section id="access">
+  <div class="sec-head"><span class="sec-num">8</span><div><h2>Access control with ACLs</h2></div></div>
+  <p class="lead">We now know who every caller is &mdash; but Natter still lets anyone do anything. Any user can read any space, post anywhere, even delete other people's messages as a self-appointed moderator. The final control, <strong>access control</strong>, fixes that by deciding, for each request, whether this authenticated user is actually allowed to do this particular thing.</p>
+
+  <p>Access control comes <em>after</em> authentication (you must know who someone is before deciding what they can do) and is one of only two controls that reject requests outright. When it does reject, the right HTTP status matters &mdash; and the two relevant codes are endlessly confused, so let's pin them down.</p>
+
+  <!-- INTERACTIVE: 401 vs 403 -->
+  <div class="codes">
+    <div class="cc c401">
+      <div class="num">401</div>
+      <div class="ti">Unauthorized</div>
+      <p>Despite the name, this means <b>not authenticated</b>. The server doesn't know who you are &mdash; you sent no credentials, or wrong ones. You might fix it by trying different credentials. Comes with a <code>WWW-Authenticate</code> header telling you how to log in.</p>
+    </div>
+    <div class="cc c403">
+      <div class="num">403</div>
+      <div class="ti">Forbidden</div>
+      <p>This means <b>authenticated, but not allowed</b>. We know exactly who you are &mdash; you're just not permitted to do this. Trying different credentials won't help; you need someone to grant you access.</p>
+    </div>
+  </div>
+  <p>A useful one-liner: <strong>401 = "who are you?"</strong> &middot; <strong>403 = "I know who you are, and no."</strong></p>
+
+  <h3>Access control lists (ACLs)</h3>
+  <p>Natter uses one of the simplest access-control models: an <em class="term">access control list</em>. For each space, we keep a list of which users may access it and what they're permitted to do. Permissions are just three letters &mdash; <strong>r</strong> (read), <strong>w</strong> (write/post), and <strong>d</strong> (delete, for moderators).</p>
+
+  <!-- INTERACTIVE DIAGRAM 7 : ACL permissions -->
+  <div class="diagram" id="dg-acl">
+    <div class="dlabel">Interactive · Concept</div>
+    <div class="dtitle">How an ACL grants &mdash; or denies &mdash; an action</div>
+    <p class="dhint"><b>Pick a user</b>, then <b>try an action</b>. The ACL is checked before your controller ever runs &mdash; allowed actions pass, others get a 403.</p>
+
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px">
+      <div class="node aclu" data-u="owner" onclick="aclUser('owner',this)" style="cursor:pointer;padding:11px 14px;border-color:var(--accent);flex:1;min-width:150px">
+        <div style="font-weight:700;font-size:13px">&#128081; demo (owner)</div>
+        <div style="margin-top:6px" class="perm"><span class="r">r</span><span class="w">w</span><span class="d">d</span></div>
+      </div>
+      <div class="node aclu" data-u="reader" onclick="aclUser('reader',this)" style="cursor:pointer;padding:11px 14px;border-color:var(--accent-2);flex:1;min-width:150px">
+        <div style="font-weight:700;font-size:13px">&#128100; demo2 (reader)</div>
+        <div style="margin-top:6px" class="perm"><span class="r">r</span><span class="off">w</span><span class="off">d</span></div>
+      </div>
+    </div>
+
+    <div class="stepper">
+      <button onclick="aclTry('r',this)">&#128065; Read a message</button>
+      <button onclick="aclTry('w',this)">&#9999; Post a message</button>
+      <button onclick="aclTry('d',this)">&#128465; Delete a message</button>
+    </div>
+    <div class="step-readout" id="acl-readout">Currently testing as <b>demo (owner)</b>, who holds <b>rwd</b>. Pick a user above, then try an action. The filter looks up that user's permissions for the space and checks whether the required letter is present.</div>
+  </div>
+
+  <div class="dexplain">
+    <h4>Reading the diagram</h4>
+    <p>An ACL check is mechanical and runs as a <code>before</code> filter, keeping the access decision cleanly separated from the business logic.</p>
+    <ol>
+      <li>The space owner is automatically granted <b>rwd</b> when they create the space &mdash; full control, in the same database transaction that creates the space.</li>
+      <li>Each protected route declares the permission it needs &mdash; posting needs <code>w</code>, reading needs <code>r</code>, deleting needs <code>d</code>.</li>
+      <li>The filter looks up the caller's permission string for that space and checks whether the required letter is present. Missing letter &rarr; <b>403 Forbidden</b>, and the controller never even runs.</li>
+      <li>This mirrors the <b>principle of least authority</b> from chapter 1: a reader gets exactly <code>r</code> and no more, so they can't accidentally (or maliciously) do damage.</li>
+    </ol>
+  </div>
+
+  <div class="code">
+    <div class="bar"><span class="dot" style="background:#ff5f56"></span><span class="dot" style="background:#ffbd2e"></span><span class="dot" style="background:#27c93f"></span><span class="t">UserController.java &mdash; a permission-checking filter factory</span></div>
+<pre><span class="cm">// Returns a filter that demands `permission` for a given HTTP method.</span>
+<span class="kw">public</span> <span class="fn">Filter</span> requirePermission(<span class="fn">String</span> method, <span class="fn">String</span> permission) {
+  <span class="kw">return</span> (request, response) -> {
+    <span class="kw">if</span> (!method.equalsIgnoreCase(request.requestMethod())) <span class="kw">return</span>;  <span class="cm">// not our method</span>
+    requireAuthentication(request, response);                          <span class="cm">// must be logged in first</span>
+
+    <span class="kw">var</span> spaceId = <span class="fn">Long</span>.parseLong(request.params(<span class="st">":spaceId"</span>));
+    <span class="kw">var</span> username = (<span class="fn">String</span>) request.attribute(<span class="st">"subject"</span>);
+
+    <span class="kw">var</span> perms = database.findOptional(<span class="fn">String</span>.class,
+        <span class="good">"SELECT perms FROM permissions WHERE space_id = ? AND user_id = ?"</span>,
+        spaceId, username).orElse(<span class="st">""</span>);            <span class="cm">// default: no permissions</span>
+
+    <span class="kw">if</span> (!perms.contains(permission)) halt(<span class="nm">403</span>);   <span class="cm">// missing → Forbidden</span>
+  };
+}</pre>
+  </div>
+  <p class="codecap">Wiring it up is then just one <code>before(...)</code> line per route &mdash; e.g. posting a message requires <code>"w"</code>, reading requires <code>"r"</code>. The controllers stay blissfully unaware of access control.</p>
+</section>
+
+<hr class="rule">
+
+<!-- ===================== 9 ===================== -->
+<section id="privesc">
+  <div class="sec-head"><span class="sec-num">9</span><div><h2>The privilege-escalation trap</h2></div></div>
+  <p class="lead">Here's a subtle bug that's easy to ship and nasty in practice. To make Natter social, we add an operation that lets a member invite others into a space. The natural choice is to require only <strong>read</strong> permission to add a member &mdash; after all, any member should be able to bring a friend, right? That tiny decision opens a hole.</p>
+
+  <div class="callout def">
+    <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="#1d6b5a" stroke-width="2"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+    <span class="lab">Definition · Privilege escalation</span>
+    <p>A <strong>privilege escalation</strong> (or elevation of privilege &mdash; the "E" in STRIDE) happens when a user with limited permissions exploits a flaw to grant themselves, or someone else, <em>more</em> permissions than they were given.</p>
+  </div>
+
+  <!-- INTERACTIVE DIAGRAM 8 : privilege escalation -->
+  <div class="diagram" id="dg-privesc">
+    <div class="dlabel">Interactive · Attack walkthrough</div>
+    <div class="dtitle">How a read-only user grabs full control</div>
+    <p class="dhint"><b>Step through the exploit</b> to watch a user with only <code>r</code> permission escalate all the way to deleting other people's messages.</p>
+
+    <div style="display:grid;grid-template-columns:1fr;gap:8px" id="pe-steps-view">
+      <!-- filled by JS -->
+    </div>
+
+    <div class="stepper" id="pe-steps">
+      <button onclick="peStep(0,this)" class="active">Start</button>
+      <button onclick="peStep(1,this)">1</button>
+      <button onclick="peStep(2,this)">2</button>
+      <button onclick="peStep(3,this)">3</button>
+      <button onclick="peStep(4,this)">The fix</button>
+    </div>
+    <div class="step-readout" id="pe-readout">demo2 was granted only <b>read</b> access &mdash; the weakest permission. Step through to see how that's enough to seize total control, and how a one-line change shuts it down.</div>
+  </div>
+
+  <div class="dexplain">
+    <h4>Reading the diagram</h4>
+    <p>The exploit chains the "add member" operation against itself, and it works because the operation could grant <i>more</i> power than the caller holds.</p>
+    <ol>
+      <li><b>demo2 has only <code>r</code>.</b> They can read messages in the space &mdash; nothing else, supposedly.</li>
+      <li><b>They create a fresh account</b> (<code>evildemo2</code>) &mdash; registration is open to anyone.</li>
+      <li><b>They add that account to the space with <code>rwd</code>.</b> The "add member" route only required <code>r</code> to call, but let the caller choose <i>any</i> permissions for the new member &mdash; including ones the caller never had.</li>
+      <li><b>Now they delete messages</b> through their new full-power account. A read-only user just escalated to moderator.</li>
+      <li><b>The fix:</b> require <code>rwd</code> (full permissions) to add a member &mdash; so only owners and moderators can hand out access. The safer general rule is to never let anyone grant permissions they don't themselves possess.</li>
+    </ol>
+  </div>
+
+  <div class="callout tip">
+    <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="#2f4858" stroke-width="2"><path d="M9 11l3 3L22 4M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+    <span class="lab">The deeper lesson</span>
+    <p>Whenever an operation hands out authority, ask: <em>"could the caller use this to gain power they don't already have?"</em> Two safe patterns: only let users grant permissions they themselves hold, or restrict the granting operation to fully-privileged users. The flaw here wasn't in any one line of SQL &mdash; it was in the <strong>permission required to call the operation</strong>. Access-control bugs hide in policy, not just code.</p>
+  </div>
+</section>
+
+<!-- ===================== takeaways ===================== -->
+<section id="takeaways">
+  <div class="takeaways">
+    <h3>Key takeaways</h3>
+    <ul>
+      <li>The five controls map cleanly onto <strong>STRIDE</strong>: rate-limiting&rarr;DoS, authentication&rarr;spoofing, encryption&rarr;disclosure/tampering, audit logging&rarr;repudiation, access control&rarr;elevation of privilege.</li>
+      <li><strong>Order is deliberate:</strong> rate-limit &rarr; authenticate &rarr; audit log &rarr; access control &rarr; logic. Only rate-limiting and access control reject; the rest observe.</li>
+      <li><strong>Rate-limiting goes first</strong> and rejects cheaply, ideally at a proxy <em>and</em> the server (defense in depth). Use <code>429</code> + <code>Retry-After</code>.</li>
+      <li><strong>Authentication never rejects</strong> &mdash; it tags identity so failed attempts still get logged. Use HTTP Basic, but <em>only</em> over HTTPS, since Base64 is trivially decoded.</li>
+      <li>Store passwords with a slow, salted hash like <strong>Scrypt</strong> &mdash; slowness defeats brute force, salt defeats rainbow tables. Establish secure defaults.</li>
+      <li><strong>HTTPS/TLS</strong> protects data in transit (and encrypt sensitive data at rest too). It gives confidentiality and integrity, but not availability.</li>
+      <li><strong>Audit log before and after</strong> each request, positioned after authentication but before access control, so denied and crashed requests are still recorded. Apply separation of duties.</li>
+      <li><strong>ACLs</strong> enforce least authority; beware <strong>privilege escalation</strong> &mdash; never let users grant permissions they don't hold. 401 = not authenticated, 403 = not allowed.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ===================== quiz ===================== -->
+<section id="quiz">
+  <div class="sec-head"><span class="sec-num">&#9733;</span><div><h2>Test yourself</h2></div></div>
+  <div class="quiz">
+    <span class="lab">Pop quiz · tap to reveal</span>
+    <details><summary>Which statement about rate-limiting is true? (after access control · stops all DoS · enforced as early as possible · only for high-traffic APIs)</summary><div class="ans"><strong>Rate-limiting should be enforced as early as possible.</strong> The whole point is to reject excess requests before they consume resources &mdash; so it runs before even authentication.</div></details>
+    <details><summary>Which response header tells a client how long to wait before retrying?</summary><div class="ans"><strong>Retry-After.</strong> Sent alongside a 429 to say "come back in N seconds."</div></details>
+    <details><summary>Which are desirable properties of a secure password hash? (parallelizable · lots of disk · lots of bandwidth · lots of memory · random salt · lots of CPU)</summary><div class="ans"><strong>Lots of memory, a random salt per password, and lots of CPU.</strong> High CPU/memory cost slows brute-force and dictionary attacks; the per-password salt defeats precomputed rainbow tables.</div></details>
+    <details><summary>Why must HTTP Basic auth only be used over HTTPS?</summary><div class="ans"><strong>The credentials are only Base64-encoded, which anyone snooping the network can trivially decode</strong> back to the plaintext password.</div></details>
+    <details><summary>Which CIA-triad goal does TLS <em>not</em> provide?</summary><div class="ans"><strong>Availability.</strong> TLS gives confidentiality and integrity, but does nothing to stop a denial-of-service attack.</div></details>
+    <details><summary>Which principle says audit logs should be managed by different people than the system admins?</summary><div class="ans">The <strong>principle of separation of duties</strong> &mdash; the most privileged accounts are the ones most in need of independent monitoring.</div></details>
+    <details><summary>Which status code means "authenticated, but not permitted"?</summary><div class="ans"><strong>403 Forbidden.</strong> (401 Unauthorized, confusingly, actually means <em>not authenticated</em>.)</div></details>
+  </div>
+</section>
+
+</div>
+
+<footer>
+  <div>API Security in Action</div>
+  <div>Chapter 03 &mdash; Securing the Natter API</div>
+  <div>Next &#9656; Session Cookie Authentication</div>
+</footer>
+
+<script>
+/* ---------- Diagram 1: control pipeline ---------- */
+const pipeData = [
+  "<b>1 · Rate-limiting (can reject).</b> First and cheapest. If you're flooded, drop excess requests here before spending any CPU on them. Rejecting early is what protects the requests you <i>can</i> serve.",
+  "<b>2 · Authentication (observes only).</b> Verifies credentials and tags the request with the user's identity &mdash; or marks it anonymous. It never rejects, so even failed logins flow onward to be logged.",
+  "<b>3 · Audit logging (observes only).</b> Records the attempt now that we know who's asking, but <i>before</i> the allow/deny decision &mdash; so denied and failed attempts are captured too.",
+  "<b>4 · Access control (can reject).</b> With identity known and the attempt logged, decides allow or deny. Denied requests stop here with a 403 and never touch your code.",
+  "<b>5 · Application logic.</b> Only fully-vetted requests arrive. And remember &mdash; the entire round trip is wrapped in HTTPS, so nothing here was readable on the wire."
+];
+function pipeStep(i, el){
+  document.querySelectorAll('#dg-pipe .pstage').forEach((s,idx)=>{s.classList.remove('on'); if(idx<=i) s.classList.remove('dim'); else s.classList.add('dim');});
+  el.classList.add('on');
+  document.getElementById('pipe-readout').innerHTML = pipeData[i];
+}
+
+/* ---------- Diagram 2: DNS amplification ---------- */
+const ampData = [
+  {mid:"&nbsp;", read:"Here are the players: the attacker, three innocent DNS servers, and the victim. Watch how the attacker weaponises the servers against the victim without ever attacking them directly."},
+  {mid:"&#9888; source IP forged &rarr; victim", read:"<b>Step 1 &mdash; Spoof the source.</b> The attacker crafts DNS queries but forges the return address to read as the <i>victim's</i> IP. Because DNS is unauthenticated, the servers have no way to detect the lie."},
+  {mid:"&middot; &middot; &middot; small queries &middot; &middot; &middot;", read:"<b>Step 2 &mdash; Small queries out.</b> The attacker fires off many tiny, cheap queries, scattered across lots of DNS servers. Each one costs them almost nothing."},
+  {mid:"&#11119;&#11119;&#11119; HUGE replies &#11119;&#11119;&#11119;", read:"<b>Step 3 &mdash; Huge replies flood the victim.</b> Every server sends a <i>much larger</i> response &mdash; to the victim, not the attacker. Multiplied across thousands of servers, a trickle becomes a flood. That size ratio is the 'amplification.'"}
+];
+function ampStep(i, btn){
+  document.querySelectorAll('#amp-steps button').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('amp-mid').innerHTML = ampData[i].mid;
+  document.getElementById('amp-readout').innerHTML = ampData[i].read;
+  // highlight relevant nodes
+  const att=document.querySelector('#dg-ampl [data-amp="att"]');
+  const vic=document.querySelector('#dg-ampl [data-amp="vic"]');
+  const dns=document.querySelectorAll('#dg-ampl [data-amp="dns"]');
+  [att,vic,...dns].forEach(n=>n.style.boxShadow='');
+  if(i===1){att.style.boxShadow='0 0 0 3px rgba(181,71,31,.3)';}
+  if(i===2){att.style.boxShadow='0 0 0 3px rgba(47,72,88,.3)';dns.forEach(d=>d.style.boxShadow='0 0 0 3px rgba(29,107,90,.25)');}
+  if(i===3){vic.style.boxShadow='0 0 0 4px rgba(181,71,31,.35)';dns.forEach(d=>d.style.boxShadow='0 0 0 3px rgba(29,107,90,.25)');}
+}
+
+/* ---------- Diagram 3: authentication flow ---------- */
+function authFlow(mode, btn){
+  document.querySelectorAll('#dg-auth .stepper button').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  const ac=document.querySelector('#dg-auth [data-af="ac"]');
+  const auth=document.querySelector('#dg-auth [data-af="auth"]');
+  document.querySelectorAll('#dg-auth .af').forEach(n=>{n.style.opacity='1';n.style.boxShadow='';});
+  if(mode==='ok'){
+    document.getElementById('auth-state').textContent='subject = demo';
+    document.getElementById('ac-state').textContent='allow ✓';
+    auth.style.boxShadow='0 0 0 3px rgba(29,107,90,.3)';
+    ac.style.boxShadow='0 0 0 3px rgba(29,107,90,.3)';
+    document.getElementById('auth-readout').innerHTML="<b>Valid credentials:</b> authentication tags the request <code>subject = demo</code> and passes it on. The audit log records it. Access control sees a valid subject &rarr; <b>allowed</b> through to the app. Smooth sailing.";
+  } else {
+    document.getElementById('auth-state').textContent='subject = null';
+    document.getElementById('ac-state').textContent='deny → 401';
+    auth.style.boxShadow='0 0 0 3px rgba(192,138,46,.35)';
+    ac.style.boxShadow='0 0 0 4px rgba(181,71,31,.35)';
+    document.getElementById('auth-readout').innerHTML="<b>Wrong/missing credentials:</b> authentication marks the request anonymous (<code>subject = null</code>) but <b>does NOT reject it</b> &mdash; so the audit log still records the attempt. Only then does access control reject with a <b>401</b>. The failed attempt is on the record.";
+  }
+}
+
+/* ---------- Diagram 4: hashing + salt ---------- */
+function hashMode(mode, btn){
+  document.querySelectorAll('#hash-toggle button').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  const v=document.getElementById('hash-view');
+  if(mode==='slow'){
+    v.innerHTML =
+      '<div style="background:#1c1a16;border-radius:12px;padding:16px;font-family:var(--mono);font-size:12.5px;color:#e8e2d4;line-height:1.7">'+
+      '<div style="color:#9a9484;font-size:10px;margin-bottom:8px">ATTACKER WITH STOLEN HASHES, GUESSING SPEED:</div>'+
+      '<div style="display:flex;align-items:center;gap:10px;margin:6px 0"><span style="color:#ff8a7a;width:130px">Fast hash (SHA-256)</span><span style="color:#ff8a7a">~1,000,000,000 / sec &#128557;</span></div>'+
+      '<div style="display:flex;align-items:center;gap:10px;margin:6px 0"><span style="color:#9ee6a8;width:130px">Scrypt (slow)</span><span style="color:#9ee6a8">~1,000 / sec &#128076;</span></div>'+
+      '<div style="margin-top:10px;color:#7c8a6b">A real user logs in once &mdash; 100ms is nothing. An attacker needs <b>billions</b> of guesses &mdash; now it takes years.</div>'+
+      '</div>';
+    document.getElementById('hash-readout').innerHTML="<b>Slowness</b> deliberately wastes the attacker's time. Tuned to ~100ms + 32MB per hash, it cuts guessing speed by a factor of a million &mdash; without any noticeable cost to a genuine login.";
+  } else {
+    v.innerHTML =
+      '<div style="background:#1c1a16;border-radius:12px;padding:16px;font-family:var(--mono);font-size:12.5px;color:#e8e2d4;line-height:1.7">'+
+      '<div style="color:#9a9484;font-size:10px;margin-bottom:8px">TWO USERS, SAME PASSWORD "hunter2":</div>'+
+      '<div style="margin:6px 0"><span style="color:#6fb3c9">alice</span> + salt <span style="color:#e0995e">x7Fq..</span> &rarr; <span style="color:#9ee6a8">a91c4f2e8b...</span></div>'+
+      '<div style="margin:6px 0"><span style="color:#6fb3c9">bob</span> &nbsp;&nbsp;+ salt <span style="color:#e0995e">k2Lp..</span> &rarr; <span style="color:#9ee6a8">3d8e07ba6c...</span></div>'+
+      '<div style="margin-top:10px;color:#7c8a6b">Same password, <b>totally different hashes</b>. A precomputed rainbow table is useless &mdash; the attacker must crack each one separately.</div>'+
+      '</div>';
+    document.getElementById('hash-readout').innerHTML="<b>Salting</b> mixes a unique random value into each password before hashing. Identical passwords get different hashes, so attackers can't use precomputed <b>rainbow tables</b> or crack everyone at once.";
+  }
+}
+hashMode('slow', document.querySelector('#hash-toggle button'));
+
+/* ---------- Diagram 5: TLS in transit vs at rest ---------- */
+const tlsData = {
+  transit:"<b>In transit (HTTPS/TLS).</b> Encrypts everything between client and API on the network. A TLS handshake first proves the server's identity via a certificate, then both sides agree fresh keys. After that, every byte is encrypted and tamper-checked &mdash; defeating eavesdroppers on that coffee-shop wifi.",
+  rest:"<b>At rest (database encryption).</b> Protects data sitting in storage from anyone with database access &mdash; a curious insider or an attacker who got in another way. This chapter focuses on transit; encrypting at rest comes later."
+};
+function tlsNode(k, el){
+  document.querySelectorAll('#dg-tls .tls').forEach(n=>n.style.boxShadow='');
+  el.style.boxShadow='0 0 0 4px rgba(181,71,31,.22)';
+  document.getElementById('tls-readout').innerHTML = tlsData[k];
+}
+
+/* ---------- Diagram 6: audit before + after ---------- */
+const auditData = {
+  start:"<b>Log START (before filter).</b> Records the request the moment it arrives &mdash; with a unique audit ID. If the server <b>crashes mid-request</b>, you still have proof it was attempted. It sits <i>after</i> authentication (so it knows who) but <i>before</i> access control (so denied attempts are captured).",
+  end:"<b>Log END (afterAfter filter).</b> Runs after the response, matching the same audit ID. It captures the <b>outcome</b> &mdash; the status code, success or 403 &mdash; completing the story of what happened."
+};
+function auditNode(k, el){
+  document.querySelectorAll('#dg-audit .aud').forEach(n=>n.style.boxShadow='');
+  el.style.boxShadow='0 0 0 4px rgba(192,138,46,.3)';
+  document.getElementById('audit-readout').innerHTML = auditData[k];
+}
+
+/* ---------- Diagram 7: ACL ---------- */
+let aclCurrent = 'owner';
+const aclPerms = {owner:'rwd', reader:'r'};
+const aclName = {owner:'demo (owner)', reader:'demo2 (reader)'};
+function aclUser(u, el){
+  aclCurrent = u;
+  document.querySelectorAll('#dg-acl .aclu').forEach(n=>n.style.boxShadow='');
+  el.style.boxShadow='0 0 0 3px rgba(181,71,31,.25)';
+  document.getElementById('acl-readout').innerHTML="Now testing as <b>"+aclName[u]+"</b>, who holds <b>"+aclPerms[u]+"</b>. Try an action below to see if it's allowed.";
+}
+const actName={r:'read a message',w:'post a message',d:'delete a message'};
+function aclTry(perm, btn){
+  const has = aclPerms[aclCurrent].includes(perm);
+  if(has){
+    document.getElementById('acl-readout').innerHTML="&#9989; <b>"+aclName[aclCurrent]+"</b> tried to <b>"+actName[perm]+"</b> (needs <code>"+perm+"</code>) &mdash; <b style='color:#1d6b5a'>ALLOWED</b>. The filter found <code>"+perm+"</code> in their permissions, so the request passes through to the controller.";
+  } else {
+    document.getElementById('acl-readout').innerHTML="&#10060; <b>"+aclName[aclCurrent]+"</b> tried to <b>"+actName[perm]+"</b> (needs <code>"+perm+"</code>) &mdash; <b style='color:#b5471f'>403 FORBIDDEN</b>. They only hold <code>"+aclPerms[aclCurrent]+"</code>, so the filter halts the request before the controller ever runs.";
+  }
+}
+
+/* ---------- Diagram 8: privilege escalation ---------- */
+const peStages = [
+  {cls:'',  title:"&#128100; demo2 has only READ",   body:"demo2 was added to the space with permission <code>r</code>. They can read messages &mdash; and that's supposed to be all.", color:'var(--accent-2)'},
+  {cls:'',  title:"1 &middot; Create a new account",  body:"demo2 registers a brand-new user <code>evildemo2</code>. Registration is open to anyone, so this is allowed.", color:'var(--ink-soft)'},
+  {cls:'',  title:"2 &middot; Add it with FULL perms", body:"demo2 calls 'add member' to add <code>evildemo2</code> with <code>rwd</code>. The route only required <code>r</code> to call &mdash; but let the caller pick <i>any</i> permissions. &#128165;", color:'var(--accent)'},
+  {cls:'',  title:"3 &middot; Delete anyone's messages", body:"Now logged in as <code>evildemo2</code> (full rwd), they delete other people's messages. A read-only user just became a moderator.", color:'#b5471f'},
+  {cls:'',  title:"&#9989; The fix",                   body:"Require <code>rwd</code> to add a member &mdash; so only owners/moderators can grant access. Better still: never let anyone grant permissions they don't themselves hold.", color:'#1d6b5a'}
+];
+function peStep(i, btn){
+  document.querySelectorAll('#pe-steps button').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  const v=document.getElementById('pe-steps-view');
+  v.innerHTML='';
+  for(let k=0;k<=i;k++){
+    const s=peStages[k];
+    v.innerHTML += '<div class="node" style="padding:12px 14px;border-color:'+s.color+';opacity:'+(k===i?'1':'.6')+'">'+
+      '<div style="font-weight:700;font-size:13.5px;color:'+s.color+'">'+s.title+'</div>'+
+      '<div style="font-size:13px;color:var(--ink-soft);margin-top:3px">'+s.body+'</div></div>';
+  }
+  document.getElementById('pe-readout').innerHTML = (i===4)
+    ? "<b>Fixed.</b> With <code>rwd</code> required to add members, demo2's attack fails at step 2 &mdash; they can no longer add anyone, let alone with elevated rights."
+    : peStages[i].body;
+}
+peStep(0, document.querySelector('#pe-steps button'));
+</script>
+
+</body>
+</html>

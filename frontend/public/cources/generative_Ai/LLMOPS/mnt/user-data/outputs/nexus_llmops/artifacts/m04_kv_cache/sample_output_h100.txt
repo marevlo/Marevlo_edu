@@ -1,0 +1,208 @@
+═══════════════════════════════════════════════════════════════════════════════
+Reference outputs for M4 KV cache artifact scripts
+═══════════════════════════════════════════════════════════════════════════════
+
+Use this file when you don't have GPU access or a real production prompt log.
+The numbers shown are what correct output looks like for representative
+production scenarios. Your numbers will vary by ±5-15% depending on specific
+workload shape, but the shape of the answer should match.
+
+───────────────────────────────────────────────────────────────────────────────
+SCENARIO 1 · paged_kv_simulator.py on typical chat workload
+───────────────────────────────────────────────────────────────────────────────
+
+Command:
+  python paged_kv_simulator.py --model llama-3-70b-fp8 \
+      --seq-len-dist lognormal --mean-tokens 1200 --num-requests 10000
+
+Expected output:
+
+  ════════════════════════════════════════════════════════════════════════════
+   PAGED KV BLOCK-SIZE SIMULATION
+  ════════════════════════════════════════════════════════════════════════════
+   Model: llama-3-70b-fp8  · KV per token:  160.00 KB
+   Distribution: lognormal  · 10,000 requests
+   Seq length — mean: 1202  p50: 862  p95: 3361  p99: 5653  max: 18321
+  ════════════════════════════════════════════════════════════════════════════
+
+     block_size     util %     frag %     avg blocks/req       total KV       PT ops
+   ---------------------------------------------------------------------------------
+              8      99.7%       0.3%             150.83        1.80 TB    1,508,313
+             16      99.4%       0.6%              75.67        1.81 TB      756,651
+             32      98.7%       1.3%              38.09        1.82 TB      380,850
+             64      97.4%       2.6%              19.30        1.84 TB      192,999
+            128      94.9%       5.1%               9.90        1.89 TB       99,012
+
+  ────────────────────────────────────────────────────────────────────────────
+   VERDICT
+  ────────────────────────────────────────────────────────────────────────────
+   Ship block_size=32.
+   At this block size: 98.7% pool utilization, 1.3% internal fragmentation.
+
+INTERPRETATION
+  The verdict favors block=32 because at this workload shape, larger blocks
+  cost too much in internal fragmentation (larger than the PT-overhead
+  savings). This matches vLLM's default value and the Nexus v4 production
+  config. Smaller blocks (16, 8) have higher util but the page-table
+  indirection overhead in the attention kernel isn't worth the ~1pp gain.
+
+
+───────────────────────────────────────────────────────────────────────────────
+SCENARIO 2 · radix_prefix_analyzer.py with timestamp violations (demo)
+───────────────────────────────────────────────────────────────────────────────
+
+Command:
+  python radix_prefix_analyzer.py --demo
+
+Expected output:
+
+  ══════════════════════════════════════════════════════════════════════════
+   RADIX PREFIX ANALYSIS
+  ══════════════════════════════════════════════════════════════════════════
+   Prompts analyzed: 1,000
+   Prompt length — min: 215  mean: 219  max: 224
+  ══════════════════════════════════════════════════════════════════════════
+
+     prefix chars     hit rate    unique prefixes     top prefix shared by
+   ------------------------------------------------------------------------------
+               64        99.9%                  1          1,000 prompts
+              256         0.0%              1,000              1 prompts
+             1024         0.0%              1,000              1 prompts
+             4096         0.0%              1,000              1 prompts
+
+  ──────────────────────────────────────────────────────────────────────────
+   BYTE-STABILITY VIOLATIONS (in first 4096 chars)
+  ──────────────────────────────────────────────────────────────────────────
+    timestamp: ISO-8601 timestamp    300 prompts ( 30.0%)  e.g. '2026-04-02T14:06:00'
+    timestamp: Time of day (HH:MM[:SS])  300 prompts ( 30.0%)  e.g. '06:00'
+
+  ──────────────────────────────────────────────────────────────────────────
+   VERDICT
+  ──────────────────────────────────────────────────────────────────────────
+   ✗ Broken. Hit rate at L=256: 0.0%.
+     The first 64 chars are stable (99.9% hit) but something between chars
+     64 and 256 varies per request. That's what's killing your hit rate.
+     RadixAttention will give essentially no benefit until fixed.
+     Primary cause: timestamp: ISO-8601 timestamp in 300 prompts — fix this first.
+
+INTERPRETATION
+  The "stable at 64 chars, broken at 256" pattern is the exact fingerprint of
+  a variable embedded in the middle of the system prompt. The short prefix
+  captures "You are Nexus...", which is stable; the longer prefix captures
+  "The current time is 2026-04-02T14:06:00", which isn't. Diagnostic rule:
+  if shallow hit > 90% but deep hit < 30%, binary-search the prefix length
+  to find exactly which character position breaks stability.
+
+
+───────────────────────────────────────────────────────────────────────────────
+SCENARIO 3 · chunked_prefill_calculator.py for Nexus v4 workload
+───────────────────────────────────────────────────────────────────────────────
+
+Command:
+  python chunked_prefill_calculator.py --ttft-budget-ms 400 \
+      --prefill-p50 2048 --prefill-p99 4096 --tpot-ms 12 \
+      --prefill-throughput-tok-per-sec 20000
+
+Expected verdict:
+
+  ────────────────────────────────────────────────────────────────────────────
+   VERDICT
+  ────────────────────────────────────────────────────────────────────────────
+   Ship chunk_size=512.
+     TTFT at p99 prefill: 222ms (budget: 400ms).
+     Max decode stall: 26.2ms (target: 40ms).
+     Launch overhead: 4.8ms across 8 chunks.
+
+INTERPRETATION
+  The calculator finds chunk_size=512 as the sweet spot: TTFT comfortably
+  inside the 400ms budget and decode stall below the 40ms target. Smaller
+  chunks (256, 128) bloat launch overhead; larger chunks (1024+) cause
+  decode stalls over 40ms. Matches the Nexus v4 production config.
+
+  If your TTFT budget is tighter (e.g. 250ms), the calculator will report
+  "no chunk size satisfies both targets" — at that point the fix isn't
+  chunked prefill, it's disaggregated P/D.
+
+
+───────────────────────────────────────────────────────────────────────────────
+SCENARIO 4 · kv_transport_benchmark.py sweep
+───────────────────────────────────────────────────────────────────────────────
+
+Command:
+  python kv_transport_benchmark.py --sweep
+
+Expected output (condensed):
+
+   transport                   10MB    50MB   170MB   500MB  2000MB
+   --------------------------------------------------------------------------
+   nvlink                      0.0ms   0.1ms   0.2ms   0.5ms   2.2ms
+   pcie_5x16                   0.2ms   0.8ms   2.6ms   7.6ms  30.5ms
+   infiniband_ndr              0.2ms   1.0ms   3.3ms   9.8ms  39.1ms
+   rdma_roce                   0.8ms   3.9ms  13.3ms  39.1ms 156.3ms
+   ethernet_100g               0.8ms   3.9ms  13.3ms  39.1ms 156.3ms
+   tcp_internet              128.1ms 440.6ms 1378.1ms 3956.2ms 15675.0ms
+
+INTERPRETATION
+  For Nexus v4 (170MB KV per request at 16K context):
+    NVLink:         0.2ms → disaggregation is FREE
+    PCIe 5.0 x16:   2.6ms → disaggregation fine
+    Infiniband NDR: 3.3ms → disaggregation fine (cross-rack)
+    RDMA RoCE:     13.3ms → disaggregation MARGINAL — benchmark E2E first
+    Internet TCP: 1378ms  → disaggregation will destroy p99 latency
+
+  The rule that emerges: KV transport must be NVLink, PCIe 5.0, or Infiniband.
+  Everything else is a trap (see M8 war story #5).
+
+
+───────────────────────────────────────────────────────────────────────────────
+SCENARIO 5 · break_prefix_cache.py demonstrating the timestamp failure
+───────────────────────────────────────────────────────────────────────────────
+
+Command:
+  python break_prefix_cache.py --n-requests 1000
+
+Expected key output:
+
+   ─── SCENARIO A · Stable system prompt (healthy) ───
+    Cache hits:         999 / 1000 =  99.9%
+
+   ─── SCENARIO B · Timestamp embedded in system prompt (broken) ───
+    Cache hits:           0 / 1000 =   0.0%
+
+   THE COST
+    Hit rate dropped 99.9 percentage points.
+    Scenario A avg TTFT reduction: 0.999 hit-rate × 40% = 40.0% average TTFT saved
+    Scenario B avg TTFT reduction: 0.000 hit-rate × 40% = 0.0% average TTFT saved
+
+INTERPRETATION
+  This is the M7 war story #1 reproduction — a single timestamp in the
+  system prompt caused production hit rate to drop from 78% to 4% and
+  tripled TTFT p99. This script shows the mechanism at the prompt level
+  without needing a running inference engine. If you're designing a new
+  prompt template, run this on the planned prompts before they reach
+  production — it's a one-minute check that can save a one-hour outage.
+
+
+───────────────────────────────────────────────────────────────────────────────
+WHAT THESE OUTPUTS TELL YOU ABOUT YOUR DEPLOYMENT
+───────────────────────────────────────────────────────────────────────────────
+
+1. Before deploying: run the simulator + analyzer + calculator on your
+   actual workload. The three together answer:
+     - block_size (paged_kv_simulator)
+     - achievable prefix hit rate (radix_prefix_analyzer)
+     - chunk_size (chunked_prefill_calculator)
+   These are the three config values that matter most for KV engineering.
+
+2. When considering disaggregation: run kv_transport_benchmark --sweep
+   first. If your only option is RDMA RoCE or slower, don't disaggregate.
+   Stay cohabitated with chunked prefill.
+
+3. When prefix hit rate is lower than expected: run
+   radix_prefix_analyzer on a sample of production prompts. It will tell
+   you which specific pattern (timestamp, UUID, email) is the leak.
+
+4. Before any production change to the prompt template: run
+   break_prefix_cache semantically — check whether the change introduces
+   any per-request variable into the first 512 chars. If yes, refactor
+   before shipping.

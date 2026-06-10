@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Counting Lattice Points - Visualization</title>
+    <style>
+        :root {
+            --bg-page: #070b14;
+            --bg-surface: rgba(255, 255, 255, 0.045);
+            --bg-input: rgba(255, 255, 255, 0.04);
+            --border-main: rgba(255, 255, 255, 0.10);
+            --btn-bg: rgba(255, 255, 255, 0.05);
+            --btn-hover: rgba(255, 255, 255, 0.10);
+            --text-main: #e8eefb;
+            --text-dim: #8b98b3;
+            --accent-orange: #f5a524;   /* current circle / region        */
+            --accent-blue:   #06b6d4;   /* candidate point / chrome        */
+            --accent-green:  #22c55e;   /* point inside (counted)          */
+            --accent-red:    #f43f5e;   /* point outside                   */
+            --accent-purple: #a855f7;   /* point being evaluated           */
+            --mono: ui-monospace, 'SF Mono', 'Cascadia Code', 'Courier New', monospace;
+            --sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+            --shell: 900px;
+        }
+
+        * { box-sizing: border-box; }
+        html, body { overflow-x: hidden; }
+        body {
+            background:
+                radial-gradient(1100px 600px at 15% -10%, rgba(168, 85, 247, 0.10), transparent 60%),
+                radial-gradient(900px 600px at 100% 10%, rgba(6, 182, 212, 0.10), transparent 55%),
+                linear-gradient(160deg, #070b14 0%, #0b1120 55%, #0a0f1c 100%);
+            background-attachment: fixed;
+            color: var(--text-main); font-family: var(--sans); margin: 0;
+            display: flex; flex-direction: column; align-items: center; min-height: 100vh;
+            padding-bottom: 48px; -webkit-font-smoothing: antialiased;
+        }
+        body::before, body::after { content: ''; position: fixed; border-radius: 50%; filter: blur(70px); pointer-events: none; z-index: 0; opacity: 0.45; }
+        body::before { width: 380px; height: 380px; top: 8%; left: -120px; background: radial-gradient(circle, rgba(168,85,247,0.30), transparent 70%); }
+        body::after  { width: 420px; height: 420px; bottom: 4%; right: -140px; background: radial-gradient(circle, rgba(6,182,212,0.22), transparent 70%); }
+        body > * { position: relative; z-index: 1; }
+
+        .input-bar {
+            width: 100%; background: rgba(10, 15, 28, 0.55);
+            backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+            padding: 14px 16px; display: flex; justify-content: center; align-items: center; gap: 10px;
+            border-bottom: 1px solid var(--border-main); flex-wrap: wrap; position: sticky; top: 0; z-index: 50;
+        }
+        label.ui-label, .ui-label { font-family: var(--mono); font-size: 13px; color: var(--text-dim); letter-spacing: 0.2px; }
+        input[type="text"] {
+            background: var(--bg-input); border: 1px solid var(--border-main); color: var(--text-main);
+            height: 34px; border-radius: 9px; padding: 0 12px; font-size: 13px; font-family: var(--mono); width: 200px;
+            transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+        }
+        input[type="text"]:focus { outline: none; border-color: var(--accent-purple); box-shadow: 0 0 0 3px rgba(168, 85, 247, 0.18); background: rgba(168, 85, 247, 0.06); }
+
+        button {
+            height: 34px; border-radius: 9px; padding: 0 14px; background: var(--btn-bg);
+            border: 1px solid var(--border-main); color: var(--text-main); font-size: 13px; font-weight: 600; cursor: pointer;
+            transition: transform 0.15s ease, background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+        }
+        button:hover { background: var(--btn-hover); border-color: rgba(6, 182, 212, 0.5); box-shadow: 0 0 18px rgba(6, 182, 212, 0.18); transform: translateY(-1px); }
+        button:active { transform: translateY(0); }
+        #play-btn { background: linear-gradient(135deg, rgba(6,182,212,0.22), rgba(6,182,212,0.10)); border-color: rgba(6, 182, 212, 0.45); color: #a5f3fc; min-width: 80px; }
+
+        .shell { width: var(--shell); max-width: 95%; margin: 24px auto 0; display: flex; flex-direction: column; gap: 16px; }
+
+        .title-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+        .title-row h1 { font-size: 18px; font-weight: 800; margin: 0; letter-spacing: 0.2px; }
+        .title-row .sub { color: var(--text-dim); font-weight: 500; font-size: 13px; }
+        .step-badge { font-family: var(--mono); font-size: 12px; font-weight: 700; color: #a5f3fc; background: rgba(6,182,212,0.12); border: 1px solid rgba(6,182,212,0.3); padding: 4px 10px; border-radius: 999px; white-space: nowrap; }
+        .progress-track { height: 4px; width: 100%; background: rgba(255,255,255,0.07); border-radius: 999px; overflow: hidden; margin-top: -6px; }
+        .progress-fill { height: 100%; width: 0%; border-radius: 999px; background: linear-gradient(90deg, var(--accent-blue), var(--accent-purple)); box-shadow: 0 0 12px rgba(6,182,212,0.5); transition: width 0.45s cubic-bezier(0.34,1.1,0.64,1); }
+
+        .narration { background: var(--bg-surface); border: 1px solid rgba(6,182,212,0.22); border-radius: 12px; padding: 12px 18px; font-family: var(--mono); font-size: 14px; line-height: 1.5; color: #cfe9f5; min-height: 48px; display: flex; align-items: center; gap: 10px; transition: border-color 0.3s, background 0.3s; }
+        .narration::before { content: '\25B8'; color: var(--accent-blue); font-size: 13px; }
+        .narration.done { border-color: rgba(34,197,94,0.4); background: rgba(34,197,94,0.06); }
+        .narration.done::before { content: '\2713'; color: var(--accent-green); }
+        .narration code { background: rgba(6,182,212,0.14); color: #7dd3fc; padding: 1px 6px; border-radius: 5px; font-size: 12.5px; }
+        .narration b { color: #fff; }
+
+        .stage-card { background: var(--bg-surface); border: 1px solid var(--border-main); border-radius: 18px; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); box-shadow: 0 12px 38px rgba(0,0,0,0.4); overflow: hidden; }
+        .stage-screen { position: relative; margin: 14px; border-radius: 14px; background: radial-gradient(700px 300px at 50% -10%, rgba(6,182,212,0.08), transparent 70%), #090d18; border: 1px solid rgba(255,255,255,0.06); }
+        .grid-stage { position: relative; width: 100%; overflow: auto; scrollbar-width: thin; padding: 22px; display: flex; justify-content: center; }
+        .grid-stage::-webkit-scrollbar { height: 8px; width: 8px; }
+        .grid-stage::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 8px; }
+
+        /* coordinate plane */
+        .plane { position: relative; }
+        .lattice { display: grid; gap: 0; }
+        .node {
+            position: relative; display: flex; align-items: center; justify-content: center;
+            width: 38px; height: 38px; will-change: transform;
+        }
+        .node .dot {
+            width: 10px; height: 10px; border-radius: 50%;
+            background: rgba(255,255,255,0.14); border: 1.5px solid rgba(255,255,255,0.16);
+            transition: background 0.3s, border-color 0.3s, box-shadow 0.3s, transform 0.3s, width 0.3s, height 0.3s;
+        }
+        .node .axis-lbl { position: absolute; font-family: var(--mono); font-size: 10px; color: var(--text-dim); pointer-events: none; }
+        .node.col-axis::before, .node.row-axis::before { content: ''; position: absolute; background: rgba(255,255,255,0.12); }
+        .node.col-axis::before { width: 1.5px; height: 100%; left: 50%; transform: translateX(-50%); }
+        .node.row-axis::before { height: 1.5px; width: 100%; top: 50%; transform: translateY(-50%); }
+        .node.origin .dot { background: rgba(255,255,255,0.30); border-color: rgba(255,255,255,0.42); }
+        /* states */
+        .node.in-region .dot { background: rgba(245,165,36,0.12); border-color: rgba(245,165,36,0.45); }
+        .node.counted .dot { width: 16px; height: 16px; background: linear-gradient(180deg, rgba(47,224,143,0.95), rgba(33,194,117,0.95)); border-color: var(--accent-green); box-shadow: 0 0 12px rgba(34,197,94,0.55); }
+        .node.cand .dot { width: 16px; height: 16px; background: rgba(168,85,247,0.20); border-color: var(--accent-purple); box-shadow: 0 0 16px rgba(168,85,247,0.6); transform: scale(1.05); z-index: 3; }
+        .node.cand.inside .dot { background: linear-gradient(180deg, rgba(47,224,143,0.95), rgba(33,194,117,0.95)); border-color: var(--accent-green); box-shadow: 0 0 18px rgba(34,197,94,0.65); }
+        .node.cand.outside .dot { background: rgba(244,63,94,0.18); border-color: var(--accent-red); box-shadow: 0 0 16px rgba(244,63,94,0.5); }
+        /* drawn region outline (one per circle) */
+        .region {
+            position: absolute; border-radius: 50%; pointer-events: none;
+            border: 2px dashed rgba(245,165,36,0.55); background: rgba(245,165,36,0.05);
+            box-shadow: 0 0 22px rgba(245,165,36,0.18) inset;
+            transition: opacity 0.35s, border-color 0.35s, background 0.35s;
+        }
+
+        .action-stage { position: relative; min-height: 92px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; }
+        .answer-track { display: flex; gap: 6px; align-items: center; min-height: 40px; }
+        .ans-tile { min-width: 34px; padding: 0 8px; height: 40px; border-radius: 9px; display: flex; align-items: center; justify-content: center; font-family: var(--mono); font-size: 18px; font-weight: 800; border: 2px solid var(--accent-orange); background: rgba(245,165,36,0.16); color: #ffd591; box-shadow: 0 0 12px rgba(245,165,36,0.35); }
+        .action-word { font-family: var(--mono); font-weight: 800; font-size: 18px; letter-spacing: 0.4px; min-height: 22px; text-align: center; transition: color 0.3s; }
+        #confetti { position: absolute; inset: 0; overflow: visible; pointer-events: none; }
+        .confetti-piece { position: absolute; top: 0; left: 50%; width: 8px; height: 13px; border-radius: 2px; opacity: 0; animation: confettiFall ease-out forwards; }
+
+        .controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: center; }
+        .controls .kbd-hint { font-size: 11px; color: var(--text-dim); font-family: var(--mono); margin-left: 4px; }
+        .kbd { background: rgba(255,255,255,0.07); border: 1px solid var(--border-main); border-radius: 5px; padding: 1px 6px; font-size: 10px; }
+        input[type="range"] { accent-color: var(--accent-blue); width: 110px; cursor: pointer; }
+
+        .details-toggle { align-self: center; height: 32px; padding: 0 16px; border-radius: 999px; cursor: pointer; background: rgba(255,255,255,0.04); border: 1px solid var(--border-main); color: var(--text-dim); font-family: var(--mono); font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; gap: 8px; transition: color 0.2s, border-color 0.2s, background 0.2s; }
+        .details-toggle:hover { color: var(--text-main); border-color: rgba(6,182,212,0.4); background: rgba(6,182,212,0.06); }
+        .details-toggle .chev { transition: transform 0.3s ease; }
+        .details-wrap.open .details-toggle .chev { transform: rotate(180deg); }
+        .details-body { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.4s ease; }
+        .details-wrap.open .details-body { grid-template-rows: 1fr; }
+        .details-inner { overflow: hidden; min-height: 0; }
+        .details-grid { display: flex; flex-direction: column; gap: 14px; padding-top: 14px; }
+
+        .panel-card { background: var(--bg-surface); border: 1px solid var(--border-main); border-radius: 16px; backdrop-filter: blur(10px); box-shadow: 0 8px 30px rgba(0,0,0,0.35); }
+        .panel-head { display: flex; align-items: center; gap: 8px; padding: 11px 16px; border-bottom: 1px solid var(--border-main); font-size: 11px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; color: var(--text-dim); }
+        .panel-head .pip { width: 7px; height: 7px; border-radius: 50%; background: var(--accent-blue); box-shadow: 0 0 8px var(--accent-blue); }
+        .code-body { padding: 12px 6px 14px; font-family: var(--mono); font-size: 12.5px; line-height: 1.7; }
+        .code-line { display: flex; gap: 12px; padding: 1px 16px; border-left: 2px solid transparent; transition: background 0.3s, border-color 0.3s; white-space: pre; }
+        .code-line .lno { color: #4b5772; width: 16px; text-align: right; user-select: none; }
+        .code-line .src { color: #c4cee0; }
+        .code-line .kw { color: #c792ea; }
+        .code-line .fn { color: #82aaff; }
+        .code-line.active { background: rgba(6,182,212,0.12); border-left-color: var(--accent-blue); }
+        .code-line.active .src, .code-line.active .lno { color: #e8eefb; }
+
+        .state-strip { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 0 2px; }
+        .pill { display: inline-flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 12px; color: var(--text-dim); background: rgba(255,255,255,0.04); border: 1px solid var(--border-main); border-radius: 999px; padding: 4px 11px; }
+        .pill b { color: var(--text-main); font-weight: 800; }
+        .pill.c b { color: var(--accent-purple); } .pill.b b { color: var(--accent-orange); } .pill.g b { color: var(--accent-green); }
+
+        .log-panel { border-radius: 14px; padding: 12px 16px; height: 110px; overflow-y: auto; font-family: var(--mono); font-size: 12.5px; line-height: 1.5; background: var(--bg-surface); border: 1px solid var(--border-main); }
+        .log-panel::-webkit-scrollbar { width: 8px; }
+        .log-panel::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 8px; }
+
+        @keyframes confettiFall { 0%{ opacity:1; transform: translate(-50%, 0) rotate(0deg); } 100%{ opacity:0; transform: translate(calc(-50% + var(--x)), 220px) rotate(var(--rot)); } }
+        @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; } }
+    </style>
+</head>
+<body>
+
+    <div class="input-bar">
+        <label class="ui-label">Circles (h,k,r)</label>
+        <input type="text" id="circles-input" value="[[0,0,1],[2,2,1]]">
+        <button onclick="loadCustom()">Load</button>
+        <span class="ui-label" style="opacity:.5">|</span>
+        <button onclick="loadExample(0)">Ex 1 [[0,0,1],[2,2,1]]</button>
+        <button onclick="loadExample(1)">Ex 2 [[0,0,2],[1,1,1]]</button>
+    </div>
+
+    <div class="shell">
+        <div class="title-row">
+            <h1>Counting Lattice Points <span class="sub">&middot; integer points in a union of disks &middot; (x&minus;h)&sup2;+(y&minus;k)&sup2; &le; r&sup2; &middot; dedupe via set</span></h1>
+            <span class="step-badge" id="step-badge">Step 1 / 1</span>
+        </div>
+        <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+
+        <div class="narration" id="main-panel">&mdash;</div>
+
+        <div class="stage-card">
+            <div class="stage-screen">
+                <div class="grid-stage" id="grid-stage">
+                    <div class="plane" id="plane">
+                        <div class="lattice" id="lattice"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="action-stage">
+            <div id="confetti"></div>
+            <div class="answer-track" id="answer-track"></div>
+            <div class="action-word" id="action-word"></div>
+        </div>
+
+        <div class="controls">
+            <button onclick="resetSim()">&#8634; Reset</button>
+            <button onclick="prevStep()">&#8592; Back</button>
+            <button onclick="togglePlay()" id="play-btn">Play</button>
+            <button onclick="nextStep()">Next &#8594;</button>
+            <span class="ui-label" style="margin-left:6px; font-size:11px">Speed</span>
+            <input type="range" id="speed" min="0" max="2" value="1">
+            <span class="kbd-hint"><span class="kbd">&#8592;</span> <span class="kbd">&#8594;</span> step &middot; <span class="kbd">space</span> play</span>
+        </div>
+
+        <div class="details-wrap" id="details-wrap">
+            <button class="details-toggle" onclick="toggleDetails()" aria-expanded="false">
+                <span id="details-label">Show code, state &amp; log</span> <span class="chev">&#9662;</span>
+            </button>
+            <div class="details-body">
+                <div class="details-inner">
+                    <div class="details-grid">
+                        <div class="state-strip">
+                            <span class="pill b">circle <b id="st-circle">&mdash;</b></span>
+                            <span class="pill c">point (x,y) <b id="st-point">&mdash;</b></span>
+                            <span class="pill">dx&sup2;+dy&sup2; &le; r&sup2; <b id="st-dist">&mdash;</b></span>
+                            <span class="pill g">unique count <b id="st-count">0</b></span>
+                        </div>
+                        <div class="panel-card">
+                            <div class="panel-head"><span class="pip"></span> Algorithm</div>
+                            <div class="code-body" id="code-panel"></div>
+                        </div>
+                        <div class="log-panel" id="log"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        'use strict';
+
+        // ───────── Motion engine (spring pop, zero deps) ─────────
+        const REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        const FRAME = 1000 / 60;
+        function sampleSpring(stiffness, damping, mass) {
+            const dt = 1 / 60; let x = 1, v = 0; const out = [];
+            for (let i = 0; i < 240; i++) { const a = (-stiffness * x - damping * v) / mass; v += a * dt; x += v * dt; out.push(1 - x); if (Math.abs(x) < 0.0015 && Math.abs(v) < 0.0015) break; }
+            out.push(1); return out;
+        }
+        const SPRING_POP = sampleSpring(520, 17, 1);
+        const durOf = (a) => a.length * FRAME;
+        const Motion = {
+            pop(el) {
+                if (REDUCED) return;
+                const kf = SPRING_POP.map(p => ({ transform: `scale(${(0.4 + 0.66 * p).toFixed(3)})` }));
+                el.animate(kf, { duration: durOf(SPRING_POP), easing: 'linear' });
+            },
+        };
+
+        // ───────── State ─────────
+        let circles = [[0, 0, 1], [2, 2, 1]];
+        let steps = [];
+        let stepIdx = 0;
+        let timer = null;
+        let confettiArmed = true;
+        const delays = [1450, 720, 330];
+        const nodeEls = {};      // 'x,y' -> node element
+        const regionEls = {};    // circle index -> region element
+        let bounds = null;       // {xMin,xMax,yMin,yMax} for current input
+        const CELL = 38;         // px per lattice cell
+
+        const CODE = [
+            [['kw','def '],['fn','countLattice'],['src','(circles):']],
+            [['src','  seen = set()']],
+            [['kw','  for '],['src','(h, k, r) in circles:']],
+            [['kw','    for '],['src','x in h-r .. h+r:']],
+            [['kw','      for '],['src','y in k-r .. k+r:']],
+            [['kw','        if '],['src','(x-h)**2 + (y-k)**2 <= r*r:']],
+            [['src','          seen.add((x, y))']],
+            [['kw','  return '],['fn','len'],['src','(seen)']],
+        ];
+        function buildCodePanel() {
+            const panel = document.getElementById('code-panel'); panel.innerHTML = '';
+            CODE.forEach((tokens, i) => {
+                const line = document.createElement('div'); line.className = 'code-line'; line.dataset.line = i;
+                const lno = document.createElement('span'); lno.className = 'lno'; lno.textContent = i + 1; line.appendChild(lno);
+                const src = document.createElement('span');
+                tokens.forEach(([cls, txt]) => { const s = document.createElement('span'); s.className = cls; s.textContent = txt; src.appendChild(s); });
+                line.appendChild(src); panel.appendChild(line);
+            });
+        }
+        function highlightCode(arr) { document.querySelectorAll('.code-line').forEach(el => el.classList.toggle('active', arr && arr.includes(+el.dataset.line))); }
+        function toggleDetails() {
+            const wrap = document.getElementById('details-wrap'); const open = wrap.classList.toggle('open');
+            wrap.querySelector('.details-toggle').setAttribute('aria-expanded', open ? 'true' : 'false');
+            document.getElementById('details-label').textContent = open ? 'Hide code, state & log' : 'Show code, state & log';
+        }
+
+        // ───────── step generation (genuine simulation) ─────────
+        function computeBounds(cs) {
+            let xMin = Infinity, xMax = -Infinity, yMin = Infinity, yMax = -Infinity;
+            for (const [h, k, r] of cs) {
+                xMin = Math.min(xMin, h - r); xMax = Math.max(xMax, h + r);
+                yMin = Math.min(yMin, k - r); yMax = Math.max(yMax, k + r);
+            }
+            // pad by 1 so the plane breathes
+            return { xMin: xMin - 1, xMax: xMax + 1, yMin: yMin - 1, yMax: yMax + 1 };
+        }
+
+        function generateSteps() {
+            steps = [];
+            bounds = computeBounds(circles);
+            const seen = new Set();
+
+            // snapshot helper: copies the live "seen" set so each step is immutable
+            const snap = (extra) => Object.assign({
+                circleIdx: null, point: null, inside: null, dist: null, r2: null,
+                seen: new Set(seen), activeRegion: null
+            }, extra);
+
+            const circStr = JSON.stringify(circles);
+            steps.push(snap({
+                code: [0, 1], action: 'BUILD SET', actionColor: 'var(--accent-blue)',
+                panel: `Count every <b>distinct</b> integer point <code>(x,y)</code> lying inside or on any circle in <code>${circStr}</code>. A point covered by two circles is counted <b>once</b> &mdash; a <code>set</code> dedupes for us.`,
+                log: `init  circles = ${circStr}`
+            }));
+
+            for (let c = 0; c < circles.length; c++) {
+                const [h, k, r] = circles[c];
+                const r2 = r * r;
+                steps.push(snap({
+                    circleIdx: c, activeRegion: c, code: [2, 3, 4], action: `CIRCLE ${c}`, actionColor: 'var(--accent-orange)',
+                    panel: `Scan circle <b>${c}</b>: center <code>(${h},${k})</code>, radius <code>${r}</code>. Its bounding box is <code>x &isin; [${h - r},${h + r}]</code>, <code>y &isin; [${k - r},${k + r}]</code> &mdash; only points there can be inside.`,
+                    log: `circle ${c}: center (${h},${k}) r=${r}  box x[${h - r}..${h + r}] y[${k - r}..${k + r}]`
+                }));
+
+                for (let x = h - r; x <= h + r; x++) {
+                    for (let y = k - r; y <= k + r; y++) {
+                        const dx = x - h, dy = y - k;
+                        const dist = dx * dx + dy * dy;
+                        const inside = dist <= r2;
+                        const dup = inside && seen.has(`${x},${y}`);
+                        steps.push(snap({
+                            circleIdx: c, activeRegion: c, point: [x, y], inside, dist, r2,
+                            code: inside ? [5, 6] : [5],
+                            action: inside ? (dup ? 'INSIDE (seen)' : 'INSIDE +1') : 'OUTSIDE',
+                            actionColor: inside ? 'var(--accent-green)' : 'var(--accent-red)',
+                            panel: inside
+                                ? `<code>(${x}&minus;${h})&sup2;+(${y}&minus;${k})&sup2; = ${dist} &le; ${r2}</code> &#8594; <b>inside</b>. ${dup ? `Already in the set &#8594; count stays <b>${seen.size}</b>.` : `Add <code>(${x},${y})</code> &#8594; unique count <b>${seen.size + 1}</b>.`}`
+                                : `<code>(${x}&minus;${h})&sup2;+(${y}&minus;${k})&sup2; = ${dist} &gt; ${r2}</code> &#8594; <b>outside</b>, skip.`,
+                            log: `  (${x},${y}) d2=${dist} ${inside ? '<= ' + r2 + (dup ? '  in (dup)' : '  in +1') : '> ' + r2 + '  out'}`
+                        }));
+                        if (inside) seen.add(`${x},${y}`);
+                    }
+                }
+            }
+
+            const total = seen.size;
+            steps.push(snap({
+                complete: true, confetti: true, code: [7], action: `${total} POINTS`, actionColor: 'var(--accent-green)',
+                answer: String(total), total,
+                panel: `Done. Across all circles there are <b>${total}</b> distinct lattice points inside or on the union of disks.`,
+                log: `done  unique lattice points = ${total}`
+            }));
+        }
+
+        // ───────── build lattice skeleton once per input ─────────
+        function buildLattice() {
+            const lattice = document.getElementById('lattice');
+            lattice.innerHTML = '';
+            Object.keys(nodeEls).forEach(k => delete nodeEls[k]);
+            Object.keys(regionEls).forEach(k => delete regionEls[k]);
+            const plane = document.getElementById('plane');
+            // remove old region overlays
+            [...plane.querySelectorAll('.region')].forEach(n => n.remove());
+
+            const { xMin, xMax, yMin, yMax } = bounds;
+            const cols = xMax - xMin + 1;
+            const rows = yMax - yMin + 1;
+            lattice.style.gridTemplateColumns = `repeat(${cols}, ${CELL}px)`;
+            lattice.style.gridTemplateRows = `repeat(${rows}, ${CELL}px)`;
+
+            // rows top→bottom are y = yMax down to yMin (math up = visual up)
+            for (let gy = 0; gy < rows; gy++) {
+                const y = yMax - gy;
+                for (let gx = 0; gx < cols; gx++) {
+                    const x = xMin + gx;
+                    const node = document.createElement('div');
+                    node.className = 'node';
+                    if (x === 0) node.classList.add('col-axis');
+                    if (y === 0) node.classList.add('row-axis');
+                    if (x === 0 && y === 0) node.classList.add('origin');
+                    const dot = document.createElement('div'); dot.className = 'dot';
+                    node.appendChild(dot);
+                    // sparse axis labels
+                    if (y === yMin && x % 1 === 0) {
+                        const lbl = document.createElement('span'); lbl.className = 'axis-lbl';
+                        lbl.style.bottom = '0px'; lbl.style.transform = 'translateY(120%)';
+                        lbl.textContent = x; node.appendChild(lbl);
+                    }
+                    if (x === xMin) {
+                        const lbl = document.createElement('span'); lbl.className = 'axis-lbl';
+                        lbl.style.left = '0px'; lbl.style.transform = 'translateX(-130%)';
+                        lbl.textContent = y; node.appendChild(lbl);
+                    }
+                    nodeEls[`${x},${y}`] = node;
+                    lattice.appendChild(node);
+                }
+            }
+
+            // region overlays (one circle outline each). center node = (h,k)
+            circles.forEach(([h, k, r], idx) => {
+                const reg = document.createElement('div'); reg.className = 'region';
+                const cx = (h - xMin + 0.5) * CELL;       // px center
+                const cy = (yMax - k + 0.5) * CELL;
+                const px = r * CELL * 2 + CELL;            // diameter spanning r cells each side + node
+                reg.style.width = px + 'px';
+                reg.style.height = px + 'px';
+                reg.style.left = (cx - px / 2) + 'px';
+                reg.style.top = (cy - px / 2) + 'px';
+                reg.style.opacity = '0';
+                plane.appendChild(reg);
+                regionEls[idx] = reg;
+            });
+        }
+
+        // ───────── render (pure function of steps[idx], persistent DOM) ─────────
+        function renderStep(idx) {
+            stepIdx = idx; const step = steps[idx]; if (!step) return;
+
+            const curKey = step.point ? `${step.point[0]},${step.point[1]}` : null;
+            // region overlays: show active circle's region (and keep earlier ones faintly)
+            circles.forEach((c, i) => {
+                const reg = regionEls[i]; if (!reg) return;
+                if (step.activeRegion === i) { reg.style.opacity = '1'; reg.style.borderColor = 'rgba(245,165,36,0.65)'; }
+                else if (step.activeRegion != null && i < step.activeRegion) { reg.style.opacity = '0.25'; reg.style.borderColor = 'rgba(255,255,255,0.18)'; }
+                else if (step.complete) { reg.style.opacity = '0.4'; reg.style.borderColor = 'rgba(34,197,94,0.5)'; }
+                else { reg.style.opacity = '0'; }
+            });
+
+            // paint each lattice node from the immutable snapshot
+            for (const key in nodeEls) {
+                const node = nodeEls[key];
+                let cls = 'node';
+                // preserve axis/origin structural classes encoded on the element
+                if (node.classList.contains('col-axis')) cls += ' col-axis';
+                if (node.classList.contains('row-axis')) cls += ' row-axis';
+                if (node.classList.contains('origin')) cls += ' origin';
+                const wasCounted = node.classList.contains('counted');
+
+                if (step.seen.has(key)) cls += ' counted';
+                if (key === curKey) {
+                    cls += ' cand ' + (step.inside ? 'inside' : 'outside');
+                }
+                node.className = cls;
+
+                // spring-pop the moment a point becomes counted
+                if (key === curKey && step.inside && !wasCounted) Motion.pop(node);
+            }
+
+            // answer tile + action word
+            const at = document.getElementById('answer-track'); at.innerHTML = '';
+            if (step.complete && step.answer != null) {
+                const t = document.createElement('div'); t.className = 'ans-tile'; t.textContent = step.answer + ' points'; at.appendChild(t);
+            }
+
+            const mp = document.getElementById('main-panel');
+            mp.innerHTML = step.panel || '&mdash;';
+            mp.classList.toggle('done', !!step.complete);
+            const aw = document.getElementById('action-word'); aw.textContent = step.action || ''; aw.style.color = step.actionColor || 'var(--text-dim)';
+            highlightCode(step.code);
+
+            if (step.confetti) { if (confettiArmed) { fireConfetti(); confettiArmed = false; } } else confettiArmed = true;
+
+            // state pills
+            document.getElementById('st-circle').textContent = step.circleIdx != null ? `#${step.circleIdx}` : '—';
+            document.getElementById('st-point').textContent = step.point ? `(${step.point[0]},${step.point[1]})` : '—';
+            document.getElementById('st-dist').textContent = step.dist != null ? `${step.dist} ${step.inside ? '≤' : '>'} ${step.r2}` : '—';
+            document.getElementById('st-count').textContent = step.seen.size;
+
+            document.getElementById('step-badge').textContent = `Step ${idx + 1} / ${steps.length}`;
+            document.getElementById('progress-fill').style.width = `${(idx / Math.max(1, steps.length - 1)) * 100}%`;
+
+            const logEl = document.getElementById('log');
+            logEl.innerHTML = steps.slice(0, idx + 1).map(s => `<div style="margin:3px 0;white-space:pre-wrap;">${s.log}</div>`).join('');
+            logEl.scrollTop = logEl.scrollHeight;
+        }
+
+        function fireConfetti() {
+            const host = document.getElementById('confetti'); if (!host || REDUCED) return;
+            const colors = ['#22c55e', '#06b6d4', '#a855f7', '#f5a524', '#f43f5e'];
+            for (let i = 0; i < 38; i++) {
+                const p = document.createElement('div'); p.className = 'confetti-piece';
+                p.style.setProperty('--x', ((Math.random() * 2 - 1) * 220) + 'px');
+                p.style.setProperty('--rot', ((Math.random() * 720 - 360)) + 'deg');
+                p.style.background = colors[i % colors.length];
+                p.style.animationDuration = (0.9 + Math.random() * 0.8) + 's';
+                p.style.animationDelay = (Math.random() * 0.15) + 's';
+                host.appendChild(p); setTimeout(() => p.remove(), 1900);
+            }
+        }
+
+        // ───────── controls ─────────
+        function nextStep() { if (stepIdx < steps.length - 1) renderStep(stepIdx + 1); else pause(); }
+        function prevStep() { if (stepIdx > 0) renderStep(stepIdx - 1); }
+        function resetSim() { pause(); renderStep(0); }
+        function togglePlay() {
+            const btn = document.getElementById('play-btn');
+            if (timer) { pause(); return; }
+            btn.textContent = 'Pause';
+            if (stepIdx >= steps.length - 1) renderStep(0);
+            timer = setInterval(() => { if (stepIdx < steps.length - 1) nextStep(); else pause(); }, delays[document.getElementById('speed').value]);
+        }
+        function pause() { clearInterval(timer); timer = null; document.getElementById('play-btn').textContent = 'Play'; }
+
+        function loadCircles(cs) {
+            pause();
+            circles = cs;
+            confettiArmed = true;
+            generateSteps();
+            buildLattice();
+            renderStep(0);
+        }
+        function loadCustom() {
+            let cs;
+            try { cs = JSON.parse(document.getElementById('circles-input').value.trim()); }
+            catch (e) { document.getElementById('main-panel').innerHTML = 'Invalid format. Use <code>[[0,0,1],[2,2,1]]</code> style.'; return; }
+            if (!Array.isArray(cs) || !cs.length || !cs.every(c => Array.isArray(c) && c.length === 3)) {
+                document.getElementById('main-panel').innerHTML = 'Invalid format. Use <code>[[h,k,r],...]</code> with integer h,k and r&ge;0.'; return;
+            }
+            loadCircles(cs);
+        }
+        function loadExample(n) {
+            const ex = [[[0, 0, 1], [2, 2, 1]], [[0, 0, 2], [1, 1, 1]]][n];
+            document.getElementById('circles-input').value = JSON.stringify(ex);
+            loadCircles(ex);
+        }
+
+        document.addEventListener('keydown', (e) => {
+            const tag = (e.target.tagName || '').toLowerCase(); if (tag === 'input' || tag === 'textarea') return;
+            if (e.key === 'ArrowRight') { e.preventDefault(); pause(); nextStep(); }
+            else if (e.key === 'ArrowLeft') { e.preventDefault(); pause(); prevStep(); }
+            else if (e.key === ' ') { e.preventDefault(); togglePlay(); }
+        });
+        document.getElementById('circles-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') loadCustom(); });
+        window.addEventListener('resize', () => { if (steps.length) renderStep(stepIdx); });
+
+        buildCodePanel();
+        window.onload = () => loadExample(0);
+    </script>
+</body>
+</html>

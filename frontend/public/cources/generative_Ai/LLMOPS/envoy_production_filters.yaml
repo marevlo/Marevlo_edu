@@ -1,0 +1,214 @@
+# ═══════════════════════════════════════════════════════════════════════════
+# envoy_production_filters.yaml
+#
+# Production Envoy config for an LLM inference gateway. Combines five
+# resilience primitives that together produce a system that survives
+# the failure modes in M7:
+#
+#   1. Rate limiting (per tenant, per class)        — prevents abuse
+#   2. Circuit breakers (per upstream)              — prevents cascading
+#   3. Outlier detection (per host)                 — ejects bad pods
+#   4. Retry budget + jittered backoff              — prevents retry storms
+#   5. Timeout policies (per route)                 — bounds tail latency
+#
+# Every filter annotated with the failure mode it addresses and the
+# calculator/simulator in this artifact pack that justified its value.
+#
+# Usage:
+#   envoy -c envoy_production_filters.yaml --concurrency 4
+# ═══════════════════════════════════════════════════════════════════════════
+
+static_resources:
+  listeners:
+  - name: inference_listener
+    address:
+      socket_address: { address: 0.0.0.0, port_value: 8080 }
+
+    filter_chains:
+    - filters:
+      - name: envoy.filters.network.http_connection_manager
+        typed_config:
+          "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+          stat_prefix: inference_gateway
+          route_config:
+            name: inference_routes
+            virtual_hosts:
+            - name: llm_backend
+              domains: ["*"]
+              routes:
+              # ─── Interactive class · tight SLO · strict retry policy ──
+              - match: { prefix: "/v1/completions", headers: [{ name: "x-tenant-class", exact_match: "interactive" }] }
+                route:
+                  cluster: llm_decode_pool
+                  # Bound p99 at ~2× expected TTFT. Beyond this, fail fast.
+                  timeout: 500ms
+                  # Retry policy: only GRPC-cancelled or 503; never on 5xx
+                  # from overloaded upstream (which would amplify).
+                  retry_policy:
+                    retry_on: "5xx,reset,connect-failure"
+                    num_retries: 2
+                    per_try_timeout: 250ms
+                    # The retry budget — critical. Prevents retry storms.
+                    # retry_storm_simulator.py: at budget=10%, recovery is
+                    # <1s after failure ends. Without budget: 100s+ sustained
+                    # degradation.
+                    retry_budget:
+                      budget_percent: { value: 10.0 }
+                      min_retry_concurrency: 3
+                    retry_host_predicate:
+                    - name: envoy.retry_host_predicates.previous_hosts
+                    retry_back_off:
+                      base_interval: 50ms     # Jittered exponential backoff
+                      max_interval: 500ms
+
+              # ─── Batch class · loose SLO · admission throttling ──
+              - match: { prefix: "/v1/completions", headers: [{ name: "x-tenant-class", exact_match: "batch" }] }
+                route:
+                  cluster: llm_decode_pool
+                  timeout: 30s
+                  # Rate limit batch to a fraction of total capacity so it
+                  # can't starve interactive. Enforced at rate_limits below.
+                  rate_limits:
+                  - actions:
+                    - request_headers: { header_name: "x-tenant-class", descriptor_key: "class" }
+
+              # ─── Default class ──
+              - match: { prefix: "/" }
+                route:
+                  cluster: llm_decode_pool
+                  timeout: 2s
+                  retry_policy:
+                    retry_on: "5xx,reset"
+                    num_retries: 1
+                    per_try_timeout: 1s
+                    retry_budget:
+                      budget_percent: { value: 10.0 }
+                      min_retry_concurrency: 3
+
+          http_filters:
+          # ─── Filter 1 · Local rate limiter (admission control) ────────
+          # load_shedding_calculator.py recommends shedding at ρ* ≈ 0.83
+          # for typical workloads. At 1100 req/s capacity, that's 913 req/s
+          # at the gateway. The token bucket below caps gateway throughput
+          # to prevent the decode pool from crossing ρ*.
+          - name: envoy.filters.http.local_ratelimit
+            typed_config:
+              "@type": type.googleapis.com/envoy.extensions.filters.http.local_ratelimit.v3.LocalRateLimit
+              stat_prefix: gateway_shed
+              token_bucket:
+                max_tokens: 920             # burst capacity
+                tokens_per_fill: 920        # refill 920 tokens...
+                fill_interval: 1s           # ...every 1s = 920 req/s sustained
+              filter_enabled:
+                runtime_key: gateway_shed_enabled
+                default_value: { numerator: 100, denominator: HUNDRED }
+              filter_enforced:
+                runtime_key: gateway_shed_enforced
+                default_value: { numerator: 100, denominator: HUNDRED }
+              response_headers_to_add:
+              - append: false
+                header: { key: x-ratelimit-reason, value: "gateway-shedding" }
+
+          # ─── Filter 2 · Fault injection (for chaos testing) ──────────
+          # Enabled at 0% in production. Chaos test harness activates
+          # via runtime flag for test windows only.
+          - name: envoy.filters.http.fault
+            typed_config:
+              "@type": type.googleapis.com/envoy.extensions.filters.http.fault.v3.HTTPFault
+              delay:
+                fixed_delay: 0s
+                percentage: { numerator: 0, denominator: HUNDRED }
+              abort:
+                http_status: 503
+                percentage: { numerator: 0, denominator: HUNDRED }
+
+          - name: envoy.filters.http.router
+
+  clusters:
+  - name: llm_decode_pool
+    connect_timeout: 1s
+    type: STRICT_DNS
+    lb_policy: LEAST_REQUEST  # better than round-robin for skewed request cost
+
+    # ─── Filter 3 · Circuit breakers ──────────────────────────────────
+    # Prevents cascading failure: if one pod is slow, queue grows, eventually
+    # all pods look slow. Circuit breakers cap the damage.
+    circuit_breakers:
+      thresholds:
+      - priority: HIGH
+        max_connections: 1000           # total connections to this cluster
+        max_pending_requests: 100        # queued before rejecting new
+        max_requests: 500                # in-flight requests
+        max_retries: 30                  # simultaneous retries across all requests
+        track_remaining: true
+
+    # ─── Filter 4 · Outlier detection (eject bad pods) ────────────────
+    # If a specific pod produces 5xx faster than others, eject it from the
+    # load-balancer for N seconds. Healthy pods keep serving; the bad pod
+    # gets time to recover or be replaced by the orchestrator.
+    outlier_detection:
+      consecutive_5xx: 5                # 5 consecutive 5xx → eject
+      consecutive_gateway_failure: 5
+      interval: 10s
+      base_ejection_time: 30s
+      max_ejection_percent: 50          # never eject more than half the pool
+      min_health_percent: 30            # stop ejecting if healthy drops below this
+
+    # ─── Health checks ────────────────────────────────────────────────
+    health_checks:
+    - timeout: 1s
+      interval: 5s
+      unhealthy_threshold: 3
+      healthy_threshold: 2
+      http_health_check:
+        path: /health
+        # vLLM exposes /health returning 200 when engine is ready to serve
+
+    load_assignment:
+      cluster_name: llm_decode_pool
+      endpoints:
+      - locality:
+          region: us-east-1
+          zone: us-east-1a
+        priority: 0
+        lb_endpoints:
+        # Production: list the actual pod endpoints; for Istio/KServe this
+        # is populated automatically from service discovery.
+        - endpoint:
+            address:
+              socket_address: { address: llm-pod-0.svc.cluster.local, port_value: 8000 }
+        - endpoint:
+            address:
+              socket_address: { address: llm-pod-1.svc.cluster.local, port_value: 8000 }
+
+  # ─── Rate limit service cluster (if using external ratelimit) ────────
+  # Use the local_ratelimit filter for per-instance limits (fast, decentralized).
+  # Use an external rate limit service for per-tenant global limits (accurate,
+  # centralized). Most deployments need both.
+
+admin:
+  address:
+    socket_address: { address: 0.0.0.0, port_value: 9901 }
+
+# ═══════════════════════════════════════════════════════════════════════════
+# What this config defends against (failure mode → mitigation):
+#
+#   Retry storm (10s blip → 100s outage)
+#     → retry_budget: 10% caps retry amplification
+#     → retry_back_off: jitter prevents synchronized retry waves
+#
+#   Overloaded upstream (queue build-up → timeout cascade)
+#     → circuit_breakers.max_pending_requests: 100 caps queue depth
+#     → local_ratelimit: sheds new requests above ρ* = 920 req/s
+#
+#   Single bad pod (slow responses, partial failures)
+#     → outlier_detection ejects after 5 consecutive 5xx
+#     → lb_policy: LEAST_REQUEST steers load away from slow pods even before eject
+#
+#   Tail latency (one slow request blocks a connection forever)
+#     → timeout: 500ms per-route for interactive
+#     → per_try_timeout: 250ms with 2 retries = 500ms worst case
+#
+# Each of these has a corresponding failure_mode entry in the M7 course
+# and an operator_checklist item to verify.
+# ═══════════════════════════════════════════════════════════════════════════

@@ -1,0 +1,1849 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>RAG Academy • Module 8.0 — RAG Failure Postmortems</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  if (typeof console !== 'undefined') {
+    const origWarn = console.warn;
+    console.warn = function(...args) {
+      if (args[0] && typeof args[0] === 'string' && args[0].includes('cdn.tailwindcss.com')) return;
+      origWarn.apply(console, args);
+    };
+  }
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700;800;900&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+<style>
+  :root {
+    --bg-deep: #02030a;
+    --bg-mid: #060818;
+    --bg-card: rgba(12, 16, 38, 0.6);
+    --neon-cyan: #00f0ff;
+    --neon-blue: #4d8eff;
+    --neon-purple: #b86bff;
+    --neon-pink: #ff4dcf;
+    --neon-amber: #ffb84d;
+    --neon-green: #4dffb8;
+    --text-primary: #e8efff;
+    --text-secondary: #8a96b8;
+    --border-glow: rgba(0, 240, 255, 0.25);
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+
+  body {
+    margin: 0;
+    font-family: 'Inter', sans-serif;
+    background: var(--bg-deep);
+    color: var(--text-primary);
+    overflow-x: hidden;
+    min-height: 100vh;
+  }
+
+  .font-display { font-family: 'Orbitron', sans-serif; letter-spacing: 0.02em; }
+  .font-mono { font-family: 'JetBrains Mono', monospace; }
+
+  /* ===== STARFIELD ===== */
+  #starfield { position: fixed; inset: 0; z-index: 0; pointer-events: none; }
+
+  .nebula {
+    position: fixed;
+    border-radius: 50%;
+    filter: blur(120px);
+    opacity: 0.35;
+    pointer-events: none;
+    z-index: 0;
+  }
+  .nebula-1 { top: -10%; left: -5%; width: 50vw; height: 50vw; background: radial-gradient(circle, #4d8eff, transparent 70%); animation: drift1 22s ease-in-out infinite; }
+  .nebula-2 { top: 30%; right: -10%; width: 45vw; height: 45vw; background: radial-gradient(circle, #b86bff, transparent 70%); animation: drift2 28s ease-in-out infinite; }
+  .nebula-3 { bottom: -10%; left: 20%; width: 40vw; height: 40vw; background: radial-gradient(circle, #00f0ff, transparent 70%); animation: drift3 25s ease-in-out infinite; opacity: 0.22; }
+
+  @keyframes drift1 { 0%,100% { transform: translate(0,0); } 50% { transform: translate(40px, 60px); } }
+  @keyframes drift2 { 0%,100% { transform: translate(0,0); } 50% { transform: translate(-50px, 40px); } }
+  @keyframes drift3 { 0%,100% { transform: translate(0,0); } 50% { transform: translate(30px, -50px); } }
+
+  /* ===== NAV ===== */
+  .top-nav {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    z-index: 50;
+    backdrop-filter: blur(20px);
+    background: rgba(2, 3, 10, 0.7);
+    border-bottom: 1px solid rgba(0, 240, 255, 0.15);
+  }
+  .nav-logo {
+    background: linear-gradient(135deg, var(--neon-cyan), var(--neon-purple));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  /* ===== HOLO CARDS ===== */
+  .holo-card {
+    background: linear-gradient(135deg, rgba(12, 16, 38, 0.7), rgba(20, 12, 50, 0.5));
+    border: 1px solid rgba(0, 240, 255, 0.18);
+    border-radius: 18px;
+    backdrop-filter: blur(14px);
+    position: relative;
+    overflow: hidden;
+    transition: all 0.4s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  .holo-card::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, transparent 40%, rgba(0, 240, 255, 0.08) 50%, transparent 60%);
+    transform: translateX(-100%);
+    transition: transform 0.8s ease;
+    pointer-events: none;
+  }
+  .holo-card:hover::before { transform: translateX(100%); }
+  .holo-card:hover {
+    border-color: rgba(0, 240, 255, 0.5);
+    box-shadow: 0 0 40px rgba(0, 240, 255, 0.15), inset 0 0 30px rgba(77, 142, 255, 0.05);
+    transform: translateY(-4px);
+  }
+
+  /* ===== GRADIENT TEXT ===== */
+  .gradient-cyan { background: linear-gradient(135deg, #00f0ff, #4d8eff); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .gradient-purple { background: linear-gradient(135deg, #b86bff, #ff4dcf); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .gradient-amber { background: linear-gradient(135deg, #ffb84d, #ff4dcf); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .gradient-green { background: linear-gradient(135deg, #4dffb8, #00f0ff); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .gradient-multi { background: linear-gradient(135deg, #00f0ff 0%, #4d8eff 35%, #b86bff 70%, #ff4dcf 100%); -webkit-background-clip: text; background-clip: text; color: transparent; }
+
+  /* ===== BUTTONS ===== */
+  .btn-primary {
+    background: linear-gradient(135deg, #00f0ff, #4d8eff);
+    color: #02030a;
+    font-weight: 700;
+    padding: 14px 28px;
+    border-radius: 12px;
+    border: none;
+    position: relative;
+    overflow: hidden;
+    transition: all 0.3s ease;
+    cursor: pointer;
+    box-shadow: 0 0 30px rgba(0, 240, 255, 0.35);
+  }
+  .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 0 50px rgba(0, 240, 255, 0.6); }
+
+  .btn-ghost {
+    background: rgba(12, 16, 38, 0.5);
+    border: 1px solid rgba(0, 240, 255, 0.3);
+    color: var(--text-primary);
+    font-weight: 600;
+    padding: 14px 28px;
+    border-radius: 12px;
+    transition: all 0.3s ease;
+    cursor: pointer;
+  }
+  .btn-ghost:hover { border-color: var(--neon-cyan); background: rgba(0, 240, 255, 0.08); }
+
+  /* ===== HERO ===== */
+  .hero-title {
+    font-size: clamp(2.5rem, 7vw, 5.5rem);
+    line-height: 0.95;
+    font-weight: 900;
+  }
+  .scan-line {
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--neon-cyan), transparent);
+    animation: scan 4s linear infinite;
+  }
+  @keyframes scan { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }
+
+  /* ===== PILL ===== */
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 14px;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    border: 1px solid rgba(0, 240, 255, 0.3);
+    background: rgba(0, 240, 255, 0.06);
+    color: var(--neon-cyan);
+  }
+
+  /* ===== STAT ===== */
+  .stat-num {
+    font-family: 'Orbitron', sans-serif;
+    font-weight: 800;
+    font-size: 2.4rem;
+    background: linear-gradient(135deg, #00f0ff, #b86bff);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  /* ===== USE CASE ICON ===== */
+  .use-case-icon {
+    width: 56px; height: 56px;
+    border-radius: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 16px;
+  }
+
+  /* ===== CODE BLOCK ===== */
+  .code-block {
+    background: rgba(2, 3, 10, 0.85);
+    border: 1px solid rgba(0, 240, 255, 0.2);
+    border-radius: 14px;
+    padding: 24px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.82rem;
+    line-height: 1.7;
+    overflow-x: auto;
+    position: relative;
+  }
+  .code-block::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--neon-cyan), transparent);
+  }
+  .tok-keyword { color: #ff4dcf; }
+  .tok-string { color: #4dffb8; }
+  .tok-fn { color: #00f0ff; }
+  .tok-comment { color: #5a6788; font-style: italic; }
+  .tok-num { color: #ffb84d; }
+  .tok-var { color: #e8efff; }
+  .tok-dec { color: #b86bff; }
+  .code-label {
+    position: absolute;
+    top: 10px;
+    right: 14px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.65rem;
+    letter-spacing: 0.15em;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+  }
+
+  /* ===== PROGRESS BAR ===== */
+  .progress-bar {
+    height: 6px;
+    background: rgba(0, 240, 255, 0.1);
+    border-radius: 999px;
+    overflow: hidden;
+    position: relative;
+  }
+  .progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--neon-cyan), var(--neon-purple), var(--neon-pink));
+    border-radius: 999px;
+    transition: width 1.5s cubic-bezier(0.2, 0.8, 0.2, 1);
+    position: relative;
+  }
+  .progress-fill::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
+    animation: shimmer 2s linear infinite;
+  }
+  @keyframes shimmer { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }
+
+  /* ===== SIDE NAV DOTS ===== */
+  .side-dots {
+    position: fixed;
+    right: 24px;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 40;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  @media (max-width: 768px) { .side-dots { display: none; } }
+  .dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    background: rgba(0, 240, 255, 0.2);
+    border: 1px solid rgba(0, 240, 255, 0.4);
+    transition: all 0.3s ease;
+    cursor: pointer;
+  }
+  .dot.active { background: var(--neon-cyan); box-shadow: 0 0 15px var(--neon-cyan); transform: scale(1.3); }
+
+  /* ===== REVEAL ===== */
+  .reveal { transition: opacity 1s cubic-bezier(0.2, 0.8, 0.2, 1), transform 1s cubic-bezier(0.2, 0.8, 0.2, 1); }
+  .js-reveal .reveal { opacity: 0; transform: translateY(40px); }
+  .js-reveal .reveal.in { opacity: 1; transform: translateY(0); }
+
+  /* ===== FLOAT ===== */
+  .float-y { animation: floaty 6s ease-in-out infinite; }
+  @keyframes floaty { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-12px); } }
+
+  /* ===== CHECKPOINT ===== */
+  .checkpoint-glow {
+    background: radial-gradient(circle at center, rgba(0, 240, 255, 0.12), transparent 70%);
+    border: 1px solid rgba(0, 240, 255, 0.3);
+  }
+
+  /* ===== CALLOUTS ===== */
+  .callout {
+    background: linear-gradient(135deg, rgba(255, 184, 77, 0.08), rgba(255, 77, 207, 0.04));
+    border-left: 3px solid var(--neon-amber);
+    border-radius: 8px;
+    padding: 16px 20px;
+  }
+  .callout-info {
+    background: linear-gradient(135deg, rgba(0, 240, 255, 0.08), rgba(77, 142, 255, 0.04));
+    border-left: 3px solid var(--neon-cyan);
+    border-radius: 8px;
+    padding: 16px 20px;
+  }
+  .callout-success {
+    background: linear-gradient(135deg, rgba(77, 255, 184, 0.1), rgba(0, 240, 255, 0.04));
+    border-left: 3px solid var(--neon-green);
+    border-radius: 8px;
+    padding: 16px 20px;
+  }
+  .callout-danger {
+    background: linear-gradient(135deg, rgba(255, 77, 207, 0.12), rgba(255, 184, 77, 0.04));
+    border-left: 3px solid var(--neon-pink);
+    border-radius: 8px;
+    padding: 16px 20px;
+  }
+
+  /* ===== SCROLLBAR ===== */
+  ::-webkit-scrollbar { width: 10px; }
+  ::-webkit-scrollbar-track { background: var(--bg-deep); }
+  ::-webkit-scrollbar-thumb { background: linear-gradient(180deg, var(--neon-cyan), var(--neon-purple)); border-radius: 10px; }
+
+  /* ===== GRID FLOOR ===== */
+  .grid-floor {
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    height: 30vh;
+    background-image:
+      linear-gradient(rgba(0, 240, 255, 0.15) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0, 240, 255, 0.15) 1px, transparent 1px);
+    background-size: 50px 50px;
+    transform: perspective(500px) rotateX(60deg);
+    transform-origin: bottom;
+    opacity: 0.4;
+    mask-image: linear-gradient(180deg, transparent, black 50%);
+    -webkit-mask-image: linear-gradient(180deg, transparent, black 50%);
+  }
+
+  /* ===== ORBIT VISUAL ===== */
+  .orbit-container {
+    position: relative;
+    width: 100%;
+    max-width: 460px;
+    aspect-ratio: 1;
+    margin: 0 auto;
+  }
+  .orbit-core {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 130px; height: 130px;
+    border-radius: 50%;
+    background: radial-gradient(circle, #00f0ff 0%, #4d8eff 40%, #b86bff 100%);
+    box-shadow: 0 0 60px rgba(0, 240, 255, 0.7), 0 0 120px rgba(77, 142, 255, 0.4);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    animation: pulse-core 3s ease-in-out infinite;
+  }
+  @keyframes pulse-core {
+    0%,100% { box-shadow: 0 0 60px rgba(0, 240, 255, 0.7), 0 0 120px rgba(77, 142, 255, 0.4); }
+    50% { box-shadow: 0 0 80px rgba(0, 240, 255, 1), 0 0 160px rgba(184, 107, 255, 0.6); }
+  }
+  .orbit-ring {
+    position: absolute;
+    top: 50%; left: 50%;
+    border-radius: 50%;
+    border: 1px dashed rgba(0, 240, 255, 0.25);
+    transform: translate(-50%, -50%);
+  }
+  .ring-1 { width: 55%; height: 55%; animation: spin 20s linear infinite; }
+  .ring-2 { width: 78%; height: 78%; animation: spin 30s linear infinite reverse; }
+  .ring-3 { width: 100%; height: 100%; animation: spin 45s linear infinite; }
+  @keyframes spin { from { transform: translate(-50%, -50%) rotate(0deg); } to { transform: translate(-50%, -50%) rotate(360deg); } }
+
+  .orbit-planet {
+    position: absolute;
+    width: 44px; height: 44px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(255,255,255,0.2);
+  }
+  .orbit-planet i { width: 20px; height: 20px; }
+
+  /* ===== POSTMORTEM CASE FILE ===== */
+  .case-file {
+    background: rgba(2, 3, 10, 0.7);
+    border: 1px solid rgba(0, 240, 255, 0.18);
+    border-radius: 14px;
+    padding: 0;
+    transition: all 0.3s ease;
+    cursor: pointer;
+    overflow: hidden;
+    position: relative;
+  }
+  .case-file:hover { border-color: rgba(0, 240, 255, 0.5); transform: translateY(-2px); box-shadow: 0 0 30px rgba(0, 240, 255, 0.12); }
+  .case-file.expanded { border-color: var(--neon-cyan); box-shadow: 0 0 40px rgba(0, 240, 255, 0.2); }
+
+  .case-header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 18px 22px;
+    border-bottom: 1px solid transparent;
+    transition: border-color 0.3s ease;
+  }
+  .case-file.expanded .case-header { border-bottom-color: rgba(0, 240, 255, 0.15); }
+
+  .case-id {
+    font-family: 'Orbitron', sans-serif;
+    font-weight: 900;
+    font-size: 1.6rem;
+    color: rgba(0, 240, 255, 0.6);
+    letter-spacing: 0.05em;
+    min-width: 56px;
+  }
+
+  .case-severity {
+    padding: 4px 10px;
+    border-radius: 999px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.65rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+  .sev-critical { background: rgba(255, 77, 207, 0.15); color: #ff4dcf; border: 1px solid rgba(255, 77, 207, 0.4); }
+  .sev-high     { background: rgba(255, 184, 77, 0.15); color: #ffb84d; border: 1px solid rgba(255, 184, 77, 0.4); }
+  .sev-medium   { background: rgba(184, 107, 255, 0.15); color: #b86bff; border: 1px solid rgba(184, 107, 255, 0.4); }
+
+  .case-body {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.5s ease;
+  }
+  .case-file.expanded .case-body { max-height: 2400px; }
+  .case-body-inner { padding: 22px; }
+
+  .case-section {
+    margin-top: 18px;
+    padding-top: 16px;
+    border-top: 1px dashed rgba(0, 240, 255, 0.1);
+  }
+  .case-section:first-child { margin-top: 0; padding-top: 0; border-top: none; }
+
+  .case-section-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+    margin-bottom: 8px;
+  }
+
+  /* ===== TAXONOMY GRID ===== */
+  .tax-cell {
+    background: rgba(12, 16, 38, 0.6);
+    border: 1px solid rgba(0, 240, 255, 0.15);
+    border-radius: 12px;
+    padding: 16px;
+    transition: all 0.3s ease;
+    text-align: center;
+  }
+  .tax-cell:hover { border-color: rgba(0, 240, 255, 0.5); transform: translateY(-3px); }
+
+  /* ===== TIMELINE ===== */
+  .pm-timeline {
+    position: relative;
+    padding-left: 28px;
+  }
+  .pm-timeline::before {
+    content: '';
+    position: absolute;
+    left: 8px; top: 8px; bottom: 8px;
+    width: 2px;
+    background: linear-gradient(180deg, var(--neon-cyan), var(--neon-purple), var(--neon-pink));
+  }
+  .pm-event {
+    position: relative;
+    padding-bottom: 16px;
+  }
+  .pm-event:last-child { padding-bottom: 0; }
+  .pm-event::before {
+    content: '';
+    position: absolute;
+    left: -27px;
+    top: 6px;
+    width: 12px; height: 12px;
+    border-radius: 50%;
+    background: #02030a;
+    border: 2px solid var(--neon-cyan);
+    box-shadow: 0 0 12px var(--neon-cyan);
+  }
+  .pm-time {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.72rem;
+    color: var(--neon-cyan);
+    font-weight: 600;
+  }
+  .pm-desc {
+    font-size: 0.85rem;
+    color: var(--text-primary);
+    margin-top: 2px;
+  }
+
+  /* ===== FILTER PILLS ===== */
+  .filter-pill {
+    padding: 8px 16px;
+    border-radius: 999px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    border: 1px solid rgba(0, 240, 255, 0.25);
+    background: rgba(12, 16, 38, 0.5);
+    color: var(--text-secondary);
+    text-transform: uppercase;
+  }
+  .filter-pill.active {
+    background: linear-gradient(135deg, rgba(0, 240, 255, 0.2), rgba(184, 107, 255, 0.2));
+    border-color: var(--neon-cyan);
+    color: var(--text-primary);
+    box-shadow: 0 0 18px rgba(0, 240, 255, 0.25);
+  }
+  .filter-pill:hover:not(.active) { border-color: rgba(0, 240, 255, 0.5); color: var(--text-primary); }
+
+  /* ===== STAGE TAG ===== */
+  .stage-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: 6px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+  }
+  .tag-ingest    { background: rgba(0, 240, 255, 0.12); color: #00f0ff; }
+  .tag-chunk     { background: rgba(77, 142, 255, 0.12); color: #4d8eff; }
+  .tag-embed     { background: rgba(184, 107, 255, 0.12); color: #b86bff; }
+  .tag-index     { background: rgba(255, 77, 207, 0.12); color: #ff4dcf; }
+  .tag-retrieve  { background: rgba(255, 184, 77, 0.12); color: #ffb84d; }
+  .tag-rerank    { background: rgba(77, 255, 184, 0.12); color: #4dffb8; }
+  .tag-generate  { background: rgba(0, 240, 255, 0.12); color: #00f0ff; }
+  .tag-prod      { background: rgba(138, 150, 184, 0.12); color: #8a96b8; }
+
+  /* ===== ROOT CAUSE GRID ===== */
+  .root-cause-chart-wrapper { position: relative; width: 100%; height: 320px; }
+
+  /* ===== QUIZ ===== */
+  .quiz-option {
+    background: rgba(12, 16, 38, 0.5);
+    border: 1px solid rgba(0, 240, 255, 0.2);
+    border-radius: 12px;
+    padding: 14px 18px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    text-align: left;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .quiz-option:hover { border-color: var(--neon-cyan); background: rgba(0, 240, 255, 0.06); }
+  .quiz-option.correct { border-color: var(--neon-green); background: rgba(77, 255, 184, 0.1); }
+  .quiz-option.wrong { border-color: var(--neon-pink); background: rgba(255, 77, 207, 0.1); }
+  .quiz-option .badge {
+    width: 28px; height: 28px;
+    border-radius: 8px;
+    background: rgba(0, 240, 255, 0.12);
+    color: var(--neon-cyan);
+    font-family: 'Orbitron', sans-serif;
+    font-weight: 700;
+    font-size: 0.85rem;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+
+  /* ===== EXPAND ICON ===== */
+  .expand-icon { transition: transform 0.3s ease; }
+  .case-file.expanded .expand-icon { transform: rotate(180deg); }
+
+
+
+  /* ===== LEARN & PRACTICE CARDS ===== */
+  .resource-stack {
+    max-width: 860px;
+    margin: 0 auto;
+    display: grid;
+    gap: 14px;
+  }
+  .resource-card {
+    background: linear-gradient(135deg, rgba(6, 8, 24, 0.92), rgba(10, 12, 34, 0.86));
+    border: 1px solid rgba(0, 240, 255, 0.32);
+    border-radius: 16px;
+    padding: 20px;
+    box-shadow: 0 0 28px rgba(0, 240, 255, 0.08);
+  }
+  .resource-card.repo {
+    border-color: rgba(255, 77, 207, 0.35);
+    box-shadow: 0 0 28px rgba(255, 77, 207, 0.08);
+  }
+  .resource-icon {
+    width: 34px;
+    height: 34px;
+    border-radius: 10px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid rgba(0, 240, 255, 0.4);
+    background: rgba(0, 240, 255, 0.08);
+    color: var(--neon-cyan);
+    flex-shrink: 0;
+  }
+  .resource-card.repo .resource-icon {
+    border-color: rgba(255, 77, 207, 0.45);
+    background: rgba(255, 77, 207, 0.1);
+    color: var(--neon-pink);
+  }
+  .resource-cta {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 12px;
+    padding: 10px 18px;
+    border-radius: 10px;
+    border: 1px solid rgba(0, 240, 255, 0.55);
+    color: var(--neon-cyan);
+    font-family: 'Orbitron', sans-serif;
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    background: rgba(0, 240, 255, 0.06);
+    transition: all 0.25s ease;
+  }
+  .resource-cta:hover {
+    background: rgba(0, 240, 255, 0.12);
+    box-shadow: 0 0 20px rgba(0, 240, 255, 0.22);
+  }
+  .resource-card.repo .resource-cta {
+    border-color: rgba(255, 77, 207, 0.55);
+    color: var(--neon-pink);
+    background: rgba(255, 77, 207, 0.08);
+  }
+  .resource-card.repo .resource-cta:hover {
+    background: rgba(255, 77, 207, 0.15);
+    box-shadow: 0 0 20px rgba(255, 77, 207, 0.24);
+  }
+
+</style>
+</head>
+
+<body>
+
+<!-- Backgrounds -->
+<div class="nebula nebula-1"></div>
+<div class="nebula nebula-2"></div>
+<div class="nebula nebula-3"></div>
+<canvas id="starfield"></canvas>
+
+<!-- TOP NAV -->
+<nav class="top-nav">
+  <div class="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
+    <div class="flex items-center gap-3">
+      <div class="w-10 h-10 rounded-xl flex items-center justify-center" style="background: linear-gradient(135deg, #00f0ff, #b86bff); box-shadow: 0 0 20px rgba(0,240,255,0.5);">
+        <i data-lucide="orbit" class="w-5 h-5 text-black"></i>
+      </div>
+      <div>
+        <div class="font-display font-bold text-lg nav-logo">RAG ACADEMY</div>
+        <div class="text-[10px] text-gray-400 tracking-widest -mt-1">TRACK 08 • MODULE 8.0</div>
+      </div>
+    </div>
+
+    <div class="hidden md:flex items-center gap-8 text-sm">
+      <a href="#hero" class="text-cyan-300 font-medium">Overview</a>
+      <a href="#taxonomy" class="text-gray-300 hover:text-cyan-300 transition">Taxonomy</a>
+      <a href="#cases" class="text-gray-300 hover:text-cyan-300 transition">Case Files</a>
+      <a href="#patterns" class="text-gray-300 hover:text-cyan-300 transition">Patterns</a>
+      <a href="#playbook" class="text-gray-300 hover:text-cyan-300 transition">Playbook</a>
+      <a href="#checkpoint" class="text-gray-300 hover:text-cyan-300 transition">Checkpoint</a>
+    </div>
+
+    <div class="flex items-center gap-3">
+      <div class="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full" style="background: rgba(0,240,255,0.08); border: 1px solid rgba(0,240,255,0.25);">
+        <div class="w-2 h-2 rounded-full" style="background: #4dffb8; box-shadow: 0 0 8px #4dffb8;"></div>
+        <span class="text-xs font-mono text-cyan-200">CADET ONLINE</span>
+      </div>
+      <button class="btn-ghost text-sm py-2 px-4">Save Progress</button>
+    </div>
+  </div>
+  <div class="scan-line"></div>
+</nav>
+
+<!-- SIDE DOTS -->
+<div class="side-dots" id="sideDots">
+  <div class="dot active" data-target="hero" title="Hero"></div>
+  <div class="dot" data-target="objectives" title="Objectives"></div>
+  <div class="dot" data-target="taxonomy" title="Taxonomy"></div>
+  <div class="dot" data-target="cases" title="Case Files"></div>
+  <div class="dot" data-target="patterns" title="Patterns"></div>
+  <div class="dot" data-target="playbook" title="Playbook"></div>
+  <div class="dot" data-target="quiz" title="Quiz"></div>
+  <div class="dot" data-target="checkpoint" title="Checkpoint"></div>
+</div>
+
+<!-- ========== HERO ========== -->
+<section id="hero" class="relative min-h-screen flex items-center pt-32 pb-24 px-6">
+  <div class="grid-floor"></div>
+
+  <div class="max-w-7xl mx-auto w-full grid lg:grid-cols-2 gap-16 items-center relative z-10">
+    <!-- LEFT -->
+    <div class="reveal">
+      <div class="flex items-center gap-3 mb-6 flex-wrap">
+        <span class="pill"><i data-lucide="file-search" class="w-3 h-3"></i> Track 8 · Module 8.0</span>
+        <span class="text-xs text-gray-400 font-mono">EST. 60 MIN</span>
+      </div>
+
+      <h1 class="hero-title font-display mb-6">
+        <span class="block text-white">10 Real RAG</span>
+        <span class="block gradient-multi">Failures, Dissected</span>
+      </h1>
+
+      <p class="text-lg md:text-xl text-gray-300 leading-relaxed mb-8 max-w-xl">
+        Every great RAG engineer learns from <span class="text-cyan-300 font-semibold">other people's outages</span>.
+        These 10 postmortems — from anonymized real incidents — cover the failure modes that bite production systems.
+        Read each like a <span class="text-purple-300 font-semibold">case file</span>: symptom, root cause, blast radius, lesson.
+      </p>
+
+      <div class="flex flex-wrap gap-4 mb-12">
+        <button class="btn-primary flex items-center gap-2" onclick="document.getElementById('cases').scrollIntoView({behavior:'smooth'})">
+          <i data-lucide="folder-open" class="w-4 h-4"></i> Open Case Files
+        </button>
+        <button class="btn-ghost flex items-center gap-2" onclick="document.getElementById('playbook').scrollIntoView({behavior:'smooth'})">
+          <i data-lucide="book-open" class="w-4 h-4"></i> Postmortem Playbook
+        </button>
+      </div>
+
+      <!-- HERO STATS -->
+      <div class="grid grid-cols-3 gap-4">
+        <div class="holo-card p-4">
+          <div class="stat-num"><span data-count="10">0</span></div>
+          <div class="text-xs text-gray-400 uppercase tracking-wider mt-1">Case Files</div>
+        </div>
+        <div class="holo-card p-4">
+          <div class="stat-num"><span data-count="7">0</span></div>
+          <div class="text-xs text-gray-400 uppercase tracking-wider mt-1">Pipeline Stages</div>
+        </div>
+        <div class="holo-card p-4">
+          <div class="stat-num">$<span data-count="2">0</span>M+</div>
+          <div class="text-xs text-gray-400 uppercase tracking-wider mt-1">Damages Studied</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT — ORBIT -->
+    <div class="reveal flex flex-col items-center">
+      <div class="orbit-container float-y">
+        <div class="orbit-ring ring-3"></div>
+        <div class="orbit-ring ring-2"></div>
+        <div class="orbit-ring ring-1"></div>
+        <div class="orbit-core">
+          <i data-lucide="alert-octagon" style="width:54px;height:54px;color:#02030a;"></i>
+        </div>
+
+        <div class="orbit-planet" style="top: 4%; left: 50%; transform: translate(-50%,-50%); background: rgba(0, 240, 255, 0.25); color: #00f0ff;">
+          <i data-lucide="bug"></i>
+        </div>
+        <div class="orbit-planet" style="top: 50%; right: -2%; transform: translate(50%,-50%); background: rgba(184, 107, 255, 0.25); color: #b86bff;">
+          <i data-lucide="flame"></i>
+        </div>
+        <div class="orbit-planet" style="bottom: 4%; left: 50%; transform: translate(-50%,50%); background: rgba(255, 77, 207, 0.25); color: #ff4dcf;">
+          <i data-lucide="trending-down"></i>
+        </div>
+        <div class="orbit-planet" style="top: 50%; left: -2%; transform: translate(-50%,-50%); background: rgba(255, 184, 77, 0.25); color: #ffb84d;">
+          <i data-lucide="dollar-sign"></i>
+        </div>
+        <div class="orbit-planet" style="top: 14%; right: 14%; background: rgba(77, 255, 184, 0.25); color: #4dffb8;">
+          <i data-lucide="search-x"></i>
+        </div>
+        <div class="orbit-planet" style="bottom: 14%; left: 14%; background: rgba(77, 142, 255, 0.25); color: #4d8eff;">
+          <i data-lucide="ghost"></i>
+        </div>
+      </div>
+
+      <div class="text-center mt-6">
+        <div class="font-display text-xs tracking-[0.3em] text-cyan-300/70">THE INCIDENT VAULT</div>
+        <div class="text-sm text-gray-400 mt-1">Six failure dimensions seen in production</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========== OBJECTIVES ========== -->
+<section id="objectives" class="relative py-24 px-6 z-10">
+  <div class="max-w-7xl mx-auto">
+    <div class="text-center mb-16 reveal">
+      <span class="pill mb-4"><i data-lucide="target" class="w-3 h-3"></i> Mission Briefing</span>
+      <h2 class="font-display text-4xl md:text-5xl font-bold mt-4">
+        <span class="gradient-cyan">Learning Objectives</span>
+      </h2>
+      <p class="text-gray-400 mt-4 max-w-2xl mx-auto">By the end of this module, you'll have a pattern-recognition map of how RAG systems fail in the wild — and the playbook to investigate your own incidents.</p>
+    </div>
+
+    <div class="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div class="holo-card p-6 reveal">
+        <div class="use-case-icon" style="background: rgba(0, 240, 255, 0.12); color: #00f0ff;">
+          <i data-lucide="layers" class="w-7 h-7"></i>
+        </div>
+        <h3 class="font-display font-bold text-lg mb-2">Map the Failure Surface</h3>
+        <p class="text-sm text-gray-400 leading-relaxed">Classify failures by pipeline stage — ingest, chunk, embed, index, retrieve, rerank, generate.</p>
+      </div>
+      <div class="holo-card p-6 reveal">
+        <div class="use-case-icon" style="background: rgba(184, 107, 255, 0.12); color: #b86bff;">
+          <i data-lucide="search" class="w-7 h-7"></i>
+        </div>
+        <h3 class="font-display font-bold text-lg mb-2">Recognize Symptoms</h3>
+        <p class="text-sm text-gray-400 leading-relaxed">Spot the early signals: precision drops, latency spikes, weird citations, off-topic answers.</p>
+      </div>
+      <div class="holo-card p-6 reveal">
+        <div class="use-case-icon" style="background: rgba(255, 77, 207, 0.12); color: #ff4dcf;">
+          <i data-lucide="git-fork" class="w-7 h-7"></i>
+        </div>
+        <h3 class="font-display font-bold text-lg mb-2">Trace Root Causes</h3>
+        <p class="text-sm text-gray-400 leading-relaxed">Follow the 5-whys from "users complained" all the way back to a one-line config change.</p>
+      </div>
+      <div class="holo-card p-6 reveal">
+        <div class="use-case-icon" style="background: rgba(255, 184, 77, 0.12); color: #ffb84d;">
+          <i data-lucide="book-marked" class="w-7 h-7"></i>
+        </div>
+        <h3 class="font-display font-bold text-lg mb-2">Write Postmortems</h3>
+        <p class="text-sm text-gray-400 leading-relaxed">Run a blameless postmortem of your own using a battle-tested template.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========== TAXONOMY ========== -->
+<section id="taxonomy" class="relative py-24 px-6 z-10">
+  <div class="max-w-7xl mx-auto">
+    <div class="text-center mb-16 reveal">
+      <span class="pill mb-4"><i data-lucide="grid" class="w-3 h-3"></i> The Failure Map</span>
+      <h2 class="font-display text-4xl md:text-5xl font-bold mt-4">
+        <span class="gradient-purple">Taxonomy</span> of RAG Failures
+      </h2>
+      <p class="text-gray-400 mt-4 max-w-3xl mx-auto">Every bug we'll see lives at some stage of the pipeline. Knowing where to look is half the fix.</p>
+    </div>
+
+    <!-- STAGE GRID -->
+    <div class="reveal grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3 mb-12">
+      <div class="tax-cell">
+        <div class="w-12 h-12 mx-auto rounded-xl flex items-center justify-center mb-2" style="background:rgba(0,240,255,0.12);">
+          <i data-lucide="inbox" style="color:#00f0ff;width:22px;height:22px;"></i>
+        </div>
+        <div class="font-mono text-[10px] text-gray-500">STAGE 01</div>
+        <div class="font-display text-sm font-bold mt-1" style="color:#00f0ff;">Ingest</div>
+        <div class="text-[11px] text-gray-400 mt-1">Source quality, PDFs, dupes</div>
+      </div>
+      <div class="tax-cell">
+        <div class="w-12 h-12 mx-auto rounded-xl flex items-center justify-center mb-2" style="background:rgba(77,142,255,0.12);">
+          <i data-lucide="scissors" style="color:#4d8eff;width:22px;height:22px;"></i>
+        </div>
+        <div class="font-mono text-[10px] text-gray-500">STAGE 02</div>
+        <div class="font-display text-sm font-bold mt-1" style="color:#4d8eff;">Chunk</div>
+        <div class="text-[11px] text-gray-400 mt-1">Size, boundaries, context</div>
+      </div>
+      <div class="tax-cell">
+        <div class="w-12 h-12 mx-auto rounded-xl flex items-center justify-center mb-2" style="background:rgba(184,107,255,0.12);">
+          <i data-lucide="binary" style="color:#b86bff;width:22px;height:22px;"></i>
+        </div>
+        <div class="font-mono text-[10px] text-gray-500">STAGE 03</div>
+        <div class="font-display text-sm font-bold mt-1" style="color:#b86bff;">Embed</div>
+        <div class="text-[11px] text-gray-400 mt-1">Model swaps, dims, lang</div>
+      </div>
+      <div class="tax-cell">
+        <div class="w-12 h-12 mx-auto rounded-xl flex items-center justify-center mb-2" style="background:rgba(255,77,207,0.12);">
+          <i data-lucide="database" style="color:#ff4dcf;width:22px;height:22px;"></i>
+        </div>
+        <div class="font-mono text-[10px] text-gray-500">STAGE 04</div>
+        <div class="font-display text-sm font-bold mt-1" style="color:#ff4dcf;">Index</div>
+        <div class="text-[11px] text-gray-400 mt-1">HNSW tuning, sync drift</div>
+      </div>
+      <div class="tax-cell">
+        <div class="w-12 h-12 mx-auto rounded-xl flex items-center justify-center mb-2" style="background:rgba(255,184,77,0.12);">
+          <i data-lucide="search" style="color:#ffb84d;width:22px;height:22px;"></i>
+        </div>
+        <div class="font-mono text-[10px] text-gray-500">STAGE 05</div>
+        <div class="font-display text-sm font-bold mt-1" style="color:#ffb84d;">Retrieve</div>
+        <div class="text-[11px] text-gray-400 mt-1">Top-K, hybrid, recall</div>
+      </div>
+      <div class="tax-cell">
+        <div class="w-12 h-12 mx-auto rounded-xl flex items-center justify-center mb-2" style="background:rgba(77,255,184,0.12);">
+          <i data-lucide="list-ordered" style="color:#4dffb8;width:22px;height:22px;"></i>
+        </div>
+        <div class="font-mono text-[10px] text-gray-500">STAGE 06</div>
+        <div class="font-display text-sm font-bold mt-1" style="color:#4dffb8;">Rerank</div>
+        <div class="text-[11px] text-gray-400 mt-1">Cross-encoder, latency</div>
+      </div>
+      <div class="tax-cell">
+        <div class="w-12 h-12 mx-auto rounded-xl flex items-center justify-center mb-2" style="background:rgba(0,240,255,0.12);">
+          <i data-lucide="sparkles" style="color:#00f0ff;width:22px;height:22px;"></i>
+        </div>
+        <div class="font-mono text-[10px] text-gray-500">STAGE 07</div>
+        <div class="font-display text-sm font-bold mt-1" style="color:#00f0ff;">Generate</div>
+        <div class="text-[11px] text-gray-400 mt-1">Prompts, citation, halls</div>
+      </div>
+    </div>
+
+    <!-- ROOT CAUSE DISTRIBUTION -->
+    <div class="reveal holo-card p-8">
+      <div class="flex flex-wrap items-center justify-between gap-4 mb-6">
+        <div>
+          <h3 class="font-display font-bold text-xl">Where the 10 Failures Originated</h3>
+          <p class="text-sm text-gray-400 mt-1">Root cause distribution across our case files</p>
+        </div>
+        <span class="pill"><i data-lucide="pie-chart" class="w-3 h-3"></i> RCA · 10 INCIDENTS</span>
+      </div>
+      <div class="root-cause-chart-wrapper">
+        <canvas id="rootCauseChart" width="800" height="320"></canvas>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========== CASE FILES ========== -->
+<section id="cases" class="relative py-24 px-6 z-10">
+  <div class="max-w-7xl mx-auto">
+    <div class="text-center mb-12 reveal">
+      <span class="pill mb-4"><i data-lucide="folder-open" class="w-3 h-3"></i> Incident Vault</span>
+      <h2 class="font-display text-4xl md:text-5xl font-bold mt-4">
+        Case <span class="gradient-cyan">Files</span> · 01 — 10
+      </h2>
+      <p class="text-gray-400 mt-4 max-w-3xl mx-auto">Click any case to expand. Each follows the same anatomy: symptom → timeline → root cause → blast radius → fix → lesson.</p>
+    </div>
+
+    <!-- FILTERS -->
+    <div class="reveal flex flex-wrap gap-2 justify-center mb-10" id="caseFilters">
+      <button class="filter-pill active" data-filter="all">All · 10</button>
+      <button class="filter-pill" data-filter="ingest">Ingest</button>
+      <button class="filter-pill" data-filter="chunk">Chunk</button>
+      <button class="filter-pill" data-filter="embed">Embed</button>
+      <button class="filter-pill" data-filter="index">Index</button>
+      <button class="filter-pill" data-filter="retrieve">Retrieve</button>
+      <button class="filter-pill" data-filter="rerank">Rerank</button>
+      <button class="filter-pill" data-filter="generate">Generate</button>
+      <button class="filter-pill" data-filter="prod">Production</button>
+    </div>
+
+    <!-- CASE LIST -->
+    <div class="reveal grid gap-4" id="caseList">
+      <!-- Filled by JS -->
+    </div>
+  </div>
+</section>
+
+<!-- ========== CROSS-CASE PATTERNS ========== -->
+<section id="patterns" class="relative py-24 px-6 z-10">
+  <div class="max-w-7xl mx-auto">
+    <div class="text-center mb-16 reveal">
+      <span class="pill mb-4"><i data-lucide="git-merge" class="w-3 h-3"></i> Cross-Case Synthesis</span>
+      <h2 class="font-display text-4xl md:text-5xl font-bold mt-4">
+        Patterns That <span class="gradient-purple">Repeat</span>
+      </h2>
+      <p class="text-gray-400 mt-4 max-w-3xl mx-auto">Across all 10 cases, six patterns kept appearing. Memorize these — they're the predictive signals of trouble brewing.</p>
+    </div>
+
+    <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+      <div class="holo-card p-6 reveal">
+        <div class="text-5xl font-display font-bold gradient-cyan mb-3">01</div>
+        <h3 class="font-display font-bold text-xl mb-2">Silent Embedding Swaps</h3>
+        <p class="text-sm text-gray-400 leading-relaxed">A model provider quietly updates an embedding endpoint. Old vectors and new query vectors no longer share the same space. Recall collapses overnight.</p>
+        <div class="mt-3 font-mono text-xs text-gray-500">→ DEFENSE: pin model versions, re-embed on upgrade</div>
+      </div>
+      <div class="holo-card p-6 reveal">
+        <div class="text-5xl font-display font-bold gradient-purple mb-3">02</div>
+        <h3 class="font-display font-bold text-xl mb-2">Chunk Boundary Loss</h3>
+        <p class="text-sm text-gray-400 leading-relaxed">Important context — a definition, a number, a name — gets split across two chunks. Neither chunk alone is retrievable for the right query.</p>
+        <div class="mt-3 font-mono text-xs text-gray-500">→ DEFENSE: overlap windows, semantic chunking</div>
+      </div>
+      <div class="holo-card p-6 reveal">
+        <div class="text-5xl font-display font-bold gradient-amber mb-3">03</div>
+        <h3 class="font-display font-bold text-xl mb-2">Stale Index Lag</h3>
+        <p class="text-sm text-gray-400 leading-relaxed">Source-of-truth docs update daily. The vector index updates weekly. Users get last week's policy for this week's question.</p>
+        <div class="mt-3 font-mono text-xs text-gray-500">→ DEFENSE: incremental re-indexing, doc TTLs</div>
+      </div>
+      <div class="holo-card p-6 reveal">
+        <div class="text-5xl font-display font-bold gradient-cyan mb-3">04</div>
+        <h3 class="font-display font-bold text-xl mb-2">Eval / Prod Mismatch</h3>
+        <p class="text-sm text-gray-400 leading-relaxed">Golden eval set covers 80% of real query distribution. The 20% it misses is exactly where production fails — and you never noticed.</p>
+        <div class="mt-3 font-mono text-xs text-gray-500">→ DEFENSE: sample real prod queries weekly</div>
+      </div>
+      <div class="holo-card p-6 reveal">
+        <div class="text-5xl font-display font-bold gradient-purple mb-3">05</div>
+        <h3 class="font-display font-bold text-xl mb-2">Prompt Brittleness</h3>
+        <p class="text-sm text-gray-400 leading-relaxed">A tiny wording change in the system prompt — added "be helpful" — and refusal rate drops from 12% to 0.4%, including legitimate refusals on out-of-scope queries.</p>
+        <div class="mt-3 font-mono text-xs text-gray-500">→ DEFENSE: prompt regression tests, A/B every change</div>
+      </div>
+      <div class="holo-card p-6 reveal">
+        <div class="text-5xl font-display font-bold gradient-amber mb-3">06</div>
+        <h3 class="font-display font-bold text-xl mb-2">Citation Theater</h3>
+        <p class="text-sm text-gray-400 leading-relaxed">Model cites a real document but invents a sentence that isn't in it. Users trust the citation; the hallucination ships.</p>
+        <div class="mt-3 font-mono text-xs text-gray-500">→ DEFENSE: post-gen verifier, span-grounded citations</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========== POSTMORTEM PLAYBOOK ========== -->
+<section id="playbook" class="relative py-24 px-6 z-10">
+  <div class="max-w-7xl mx-auto">
+    <div class="text-center mb-16 reveal">
+      <span class="pill mb-4"><i data-lucide="book-open" class="w-3 h-3"></i> Run Your Own</span>
+      <h2 class="font-display text-4xl md:text-5xl font-bold mt-4">
+        The Blameless <span class="gradient-cyan">Postmortem Playbook</span>
+      </h2>
+      <p class="text-gray-400 mt-4 max-w-3xl mx-auto">When (not if) you have a production RAG incident, follow this template. The goal isn't blame — it's a systemic fix that makes the same failure impossible.</p>
+    </div>
+
+    <!-- TEMPLATE -->
+    <div class="reveal code-block">
+      <span class="code-label">postmortem_INCIDENT-2026-0517.md</span>
+<pre style="margin:0;"><span class="tok-keyword"># Incident</span> <span class="tok-string">INC-2026-0517 — Refund queries returning wrong policy</span>
+
+<span class="tok-comment">## Summary (1–2 sentences)</span>
+<span class="tok-var">Between 14:00–17:30 UTC, ~12% of customer support queries about
+refunds returned policy text from a deprecated 2024 KB article.
+2,300 users affected, 47 escalated tickets filed.</span>
+
+<span class="tok-comment">## Impact</span>
+<span class="tok-var">- Users affected:    2,300
+- Tickets escalated: 47
+- Revenue at risk:   ~$8,400 in mishandled refund disputes
+- SLA breach:        yes (Tier-1 latency)</span>
+
+<span class="tok-comment">## Timeline (UTC)</span>
+<span class="tok-var">- 13:42  Deploy v3.7.2 to prod (chunker upgrade)
+- 14:08  First user complaint via support
+- 14:55  On-call paged by faithfulness alert (RAGAS &lt; 0.85)
+- 15:20  War room opened
+- 16:10  Root cause identified: deprecated docs not filtered
+- 16:25  Rollback initiated
+- 17:30  Faithfulness recovered to 0.94 — incident closed</span>
+
+<span class="tok-comment">## Root Cause (use 5 Whys)</span>
+<span class="tok-var">1. WHY did users see old policy? Index returned 2024 KB chunks.
+2. WHY were 2024 chunks in the index? They were never deleted.
+3. WHY weren't they deleted? Ingestion script doesn't tombstone.
+4. WHY no tombstoning? Original design assumed "ADD ONLY" sources.
+5. WHY assumption wrong? Confluence pages can be deleted in source.</span>
+
+<span class="tok-comment">## What went well</span>
+<span class="tok-var">- Alerting fired within 47 min of deploy
+- Rollback procedure executed cleanly
+- Customer support team had pre-drafted apology template</span>
+
+<span class="tok-comment">## What went wrong</span>
+<span class="tok-var">- No CI check for stale-doc retention
+- The chunker upgrade was bundled with an unrelated change
+- War room delayed because owner was in 1:1 (no backup paged)</span>
+
+<span class="tok-comment">## Action Items (Owner · Due)</span>
+<span class="tok-var">- [P0] Add tombstone column to chunks table  · @alex · 2026-05-21
+- [P0] CI test: deleted source ⇒ chunk gone   · @priya · 2026-05-22
+- [P1] Split deploys: one logical change each · @team  · ongoing
+- [P1] Add secondary on-call for every deploy · @leo   · 2026-05-25
+- [P2] Run game day simulating stale-doc bug  · @team  · 2026-06-01</span>
+
+<span class="tok-comment">## Lessons</span>
+<span class="tok-var">Vector indexes need DELETE semantics, not just INSERT. Treat them
+like databases, not append-only logs.</span></pre>
+    </div>
+
+    <!-- PLAYBOOK PRINCIPLES -->
+    <div class="reveal grid md:grid-cols-2 lg:grid-cols-4 gap-6 mt-12">
+      <div class="holo-card p-6">
+        <div class="use-case-icon" style="background: rgba(0, 240, 255, 0.12); color: #00f0ff;">
+          <i data-lucide="users" class="w-7 h-7"></i>
+        </div>
+        <h4 class="font-display font-bold text-lg mb-2">Blameless</h4>
+        <p class="text-sm text-gray-400 leading-relaxed">Talk about <em>systems</em> that allowed the bug, never the person who shipped it. Otherwise people hide incidents.</p>
+      </div>
+      <div class="holo-card p-6">
+        <div class="use-case-icon" style="background: rgba(184, 107, 255, 0.12); color: #b86bff;">
+          <i data-lucide="git-fork" class="w-7 h-7"></i>
+        </div>
+        <h4 class="font-display font-bold text-lg mb-2">Five Whys</h4>
+        <p class="text-sm text-gray-400 leading-relaxed">Keep asking "why" until you hit a process or design root cause — not a human one.</p>
+      </div>
+      <div class="holo-card p-6">
+        <div class="use-case-icon" style="background: rgba(255, 77, 207, 0.12); color: #ff4dcf;">
+          <i data-lucide="list-checks" class="w-7 h-7"></i>
+        </div>
+        <h4 class="font-display font-bold text-lg mb-2">Owned Actions</h4>
+        <p class="text-sm text-gray-400 leading-relaxed">Every action item has a single owner, a P0/P1/P2 priority, and a real due date — or it won't happen.</p>
+      </div>
+      <div class="holo-card p-6">
+        <div class="use-case-icon" style="background: rgba(255, 184, 77, 0.12); color: #ffb84d;">
+          <i data-lucide="share-2" class="w-7 h-7"></i>
+        </div>
+        <h4 class="font-display font-bold text-lg mb-2">Shared Widely</h4>
+        <p class="text-sm text-gray-400 leading-relaxed">Publish to the whole org. Lessons stay locked away when postmortems are private.</p>
+      </div>
+    </div>
+
+    <div class="callout-info mt-10 reveal text-sm text-gray-300 max-w-4xl mx-auto">
+      <strong class="text-cyan-300">📚 The compounding effect.</strong> Teams that publish postmortems consistently develop a shared mental model of failure modes. Within 12 months, your engineers will start <em>preventing</em> the failures other teams just had — because they read the case file last quarter.
+    </div>
+  </div>
+</section>
+
+<!-- ========== KNOWLEDGE CHECK ========== -->
+<section id="quiz" class="relative py-24 px-6 z-10">
+  <div class="max-w-4xl mx-auto">
+    <div class="text-center mb-12 reveal">
+      <span class="pill mb-4"><i data-lucide="brain-circuit" class="w-3 h-3"></i> Knowledge Check</span>
+      <h2 class="font-display text-4xl md:text-5xl font-bold mt-4">
+        Lock It <span class="gradient-cyan">In</span>
+      </h2>
+      <p class="text-gray-400 mt-4 max-w-2xl mx-auto">Three checkpoint questions. Answer all three to unlock the module checkpoint.</p>
+    </div>
+
+    <div class="space-y-8" id="quizContainer">
+      <!-- Q1 -->
+      <div class="holo-card p-7 reveal" data-q="0">
+        <div class="font-mono text-xs text-cyan-300 tracking-widest mb-2">QUESTION 01 · DIAGNOSIS</div>
+        <h3 class="font-display font-bold text-lg mb-4">Users report that a familiar query started returning unrelated docs <em>last Tuesday</em>. Nothing was deployed. What's the most likely root cause class?</h3>
+        <div class="grid gap-3" data-correct="1">
+          <button class="quiz-option" data-i="0"><div class="badge">A</div> Reranker model regressed in production</button>
+          <button class="quiz-option" data-i="1"><div class="badge">B</div> Silent embedding endpoint update by the model provider</button>
+          <button class="quiz-option" data-i="2"><div class="badge">C</div> The user just remembered the query incorrectly</button>
+          <button class="quiz-option" data-i="3"><div class="badge">D</div> Qdrant lost a shard overnight</button>
+        </div>
+        <div class="mt-4 text-sm text-gray-400 hidden" data-explain>
+          <strong class="text-emerald-300">Correct: B.</strong> No deploy + sudden retrieval regression is the classic embedding-drift signature. Old indexed vectors and new query vectors no longer share semantic space. Defense: pin model versions and re-embed on any provider upgrade.
+        </div>
+      </div>
+
+      <!-- Q2 -->
+      <div class="holo-card p-7 reveal" data-q="1">
+        <div class="font-mono text-xs text-purple-300 tracking-widest mb-2">QUESTION 02 · POSTMORTEM CULTURE</div>
+        <h3 class="font-display font-bold text-lg mb-4">A postmortem's "Root Cause" section concludes with: "Engineer Sarah forgot to add the tombstone column." Why is this a poor outcome?</h3>
+        <div class="grid gap-3" data-correct="2">
+          <button class="quiz-option" data-i="0"><div class="badge">A</div> It correctly identifies the bug — Sarah should know</button>
+          <button class="quiz-option" data-i="1"><div class="badge">B</div> It's fine as long as Sarah agrees with it</button>
+          <button class="quiz-option" data-i="2"><div class="badge">C</div> It's blameful and stops the analysis at a person, not a system; the real root cause is that the design allowed the bug to ship</button>
+          <button class="quiz-option" data-i="3"><div class="badge">D</div> Postmortems should always blame the most senior engineer</button>
+        </div>
+        <div class="mt-4 text-sm text-gray-400 hidden" data-explain>
+          <strong class="text-emerald-300">Correct: C.</strong> Blameless postmortems ask "why was it possible to forget?" and produce action items like "add CI test that rejects PRs without tombstone column." Blamed engineers hide future incidents — exactly the opposite of what you want.
+        </div>
+      </div>
+
+      <!-- Q3 -->
+      <div class="holo-card p-7 reveal" data-q="2">
+        <div class="font-mono text-xs text-pink-300 tracking-widest mb-2">QUESTION 03 · PATTERNS</div>
+        <h3 class="font-display font-bold text-lg mb-4">Your golden eval set scores 0.93 faithfulness. Production support tickets keep escalating. What pattern from this module explains the gap?</h3>
+        <div class="grid gap-3" data-correct="0">
+          <button class="quiz-option" data-i="0"><div class="badge">A</div> Eval / Prod Mismatch — the golden set doesn't cover the failing query distribution</button>
+          <button class="quiz-option" data-i="1"><div class="badge">B</div> Citation Theater — the model is making up references</button>
+          <button class="quiz-option" data-i="2"><div class="badge">C</div> Chunk Boundary Loss — context split across chunks</button>
+          <button class="quiz-option" data-i="3"><div class="badge">D</div> Stale Index Lag — docs are out of date</button>
+        </div>
+        <div class="mt-4 text-sm text-gray-400 hidden" data-explain>
+          <strong class="text-emerald-300">Correct: A.</strong> The other patterns are possible, but they'd typically show up in evals too. When evals are green but prod is red, your golden set isn't representative. Defense: sample real production queries weekly and feed them back into the eval pool.
+        </div>
+      </div>
+    </div>
+
+    <div class="text-center mt-10 reveal">
+      <div class="font-mono text-xs text-gray-400 tracking-widest mb-2">QUIZ PROGRESS</div>
+      <div class="max-w-md mx-auto progress-bar">
+        <div class="progress-fill" id="quizProgress" style="width: 0%;"></div>
+      </div>
+      <div class="text-sm text-gray-400 mt-2 font-mono" id="quizScore">0 / 3 answered</div>
+    </div>
+  </div>
+</section>
+
+<!-- ========== CHECKPOINT ========== -->
+
+<!-- RESOURCE SECTION -->
+<section class="relative py-16 px-6 z-10">
+  <div class="max-w-7xl mx-auto">
+    <div class="text-center mb-12 reveal">
+      <span class="pill mb-4"><i data-lucide="book" class="w-3 h-3"></i> Continue Learning</span>
+      <h3 class="font-display text-4xl md:text-5xl font-bold mt-4">Learn &amp; <span class="gradient-purple">Practice</span></h3>
+      <p class="text-gray-400 mt-2">Explore curated resources and practice with real code</p>
+    </div>
+
+    <div class="resource-stack mb-12">
+      <article class="resource-card">
+        <div class="flex items-start gap-3">
+          <div class="resource-icon">
+            <i data-lucide="lightbulb" class="w-4 h-4"></i>
+          </div>
+          <div class="min-w-0 flex-1">
+            <h4 class="font-display text-2xl font-bold leading-none">Progressive Article</h4>
+            <p class="text-xs text-gray-400 mt-1">Stuck? Start here - beginner-friendly explanation</p>
+            <p class="text-lg font-semibold mt-4 text-cyan-300">Top 7 Failure Points When Engineering RAG Systems</p>
+            <a href="https://www.ibm.com/think/topics/rag-failure-points" target="_blank" rel="noopener noreferrer" class="resource-cta" title="Top 7 Failure Points When Engineering RAG Systems">
+              <i data-lucide="external-link" class="w-4 h-4"></i> Read Article
+            </a>
+          </div>
+        </div>
+      </article>
+      <article class="resource-card">
+        <div class="flex items-start gap-3">
+          <div class="resource-icon">
+            <i data-lucide="file-text" class="w-4 h-4"></i>
+          </div>
+          <div class="min-w-0 flex-1">
+            <h4 class="font-display text-2xl font-bold leading-none">Canonical Article</h4>
+            <p class="text-xs text-gray-400 mt-1">Authoritative source - official docs or research</p>
+            <p class="text-lg font-semibold mt-4 text-cyan-300">Seven Failure Points paper</p>
+            <a href="https://arxiv.org/abs/2401.05856" target="_blank" rel="noopener noreferrer" class="resource-cta" title="Seven Failure Points paper">
+              <i data-lucide="external-link" class="w-4 h-4"></i> Read Canonical
+            </a>
+          </div>
+        </div>
+      </article>
+      <article class="resource-card repo">
+        <div class="flex items-start gap-3">
+          <div class="resource-icon">
+            <i data-lucide="github" class="w-4 h-4"></i>
+          </div>
+          <div class="min-w-0 flex-1">
+            <h4 class="font-display text-2xl font-bold leading-none">GitHub Repository</h4>
+            <p class="text-xs text-gray-400 mt-1">Hands-on - reference implementation & examples</p>
+            <p class="text-lg font-semibold mt-4 text-pink-400">RAGAS</p>
+            <a href="https://github.com/explodinggradients/ragas" target="_blank" rel="noopener noreferrer" class="resource-cta" title="RAGAS">
+              <i data-lucide="external-link" class="w-4 h-4"></i> Explore Repo
+            </a>
+          </div>
+        </div>
+      </article>
+    </div>
+  </div>
+</section>
+
+<section id="checkpoint" class="relative py-24 px-6 z-10">
+  <div class="max-w-5xl mx-auto">
+    <div class="checkpoint-glow holo-card p-10 md:p-16 reveal text-center">
+      <div class="inline-flex items-center justify-center w-20 h-20 rounded-full mb-6" style="background: linear-gradient(135deg, #00f0ff, #b86bff); box-shadow: 0 0 60px rgba(0,240,255,0.5);">
+        <i data-lucide="flag" class="w-9 h-9 text-black"></i>
+      </div>
+
+      <span class="pill mb-4"><i data-lucide="check-circle" class="w-3 h-3"></i> Module 8.0 · Checkpoint</span>
+      <h2 class="font-display text-3xl md:text-5xl font-bold mt-4 mb-4">
+        <span class="gradient-multi">Mission 8.0 Complete</span>
+      </h2>
+      <p class="text-gray-300 max-w-2xl mx-auto mb-8">You've studied 10 real RAG outages, mapped the failure taxonomy, internalized the six repeating patterns, and have the postmortem template ready for your own incidents. You're ready for the final capstone.</p>
+
+      <!-- Self-check questions -->
+      <div class="grid md:grid-cols-3 gap-4 text-left mb-10">
+        <div class="holo-card p-5">
+          <div class="font-mono text-xs text-cyan-300 mb-2">CHECK 01</div>
+          <p class="text-sm text-gray-300">Can you list the <span class="text-cyan-300 font-semibold">7 pipeline stages</span> where RAG bugs originate?</p>
+        </div>
+        <div class="holo-card p-5">
+          <div class="font-mono text-xs text-purple-300 mb-2">CHECK 02</div>
+          <p class="text-sm text-gray-300">Can you name the <span class="text-purple-300 font-semibold">6 repeating patterns</span> across all 10 case files?</p>
+        </div>
+        <div class="holo-card p-5">
+          <div class="font-mono text-xs text-pink-300 mb-2">CHECK 03</div>
+          <p class="text-sm text-gray-300">Can you run a <span class="text-pink-300 font-semibold">blameless postmortem</span> using 5 Whys + owned action items?</p>
+        </div>
+      </div>
+
+      <div class="flex flex-wrap gap-4 justify-center mb-8">
+        <button class="btn-primary flex items-center gap-2" onclick="completeModule()">
+          <i data-lucide="check" class="w-4 h-4"></i> Mark Module Complete
+        </button>
+        <button class="btn-ghost flex items-center gap-2">
+          <i data-lucide="arrow-right" class="w-4 h-4"></i> Module 8.1 · Capstone Selection
+        </button>
+      </div>
+
+      <!-- Course progress -->
+      <div class="max-w-md mx-auto">
+        <div class="flex justify-between text-xs text-gray-400 mb-2 font-mono">
+          <span>COURSE PROGRESS</span>
+          <span id="progressText">28 / 38 modules</span>
+        </div>
+        <div class="progress-bar"><div class="progress-fill" id="courseProgress" style="width: 73.7%;"></div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer class="relative py-12 px-6 z-10 border-t border-cyan-500/10">
+  <div class="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4 text-sm text-gray-500">
+    <div class="flex items-center gap-3">
+      <i data-lucide="orbit" class="w-4 h-4 text-cyan-400"></i>
+      <span class="font-display tracking-wider">RAG ACADEMY · GENAI GALAXY</span>
+    </div>
+    <div class="font-mono text-xs">v1.0.0 · Module 8.0 · Stardate 2026.05</div>
+  </div>
+</footer>
+
+<!-- ============== SCRIPTS ============== -->
+<script>
+  function safeCreateIcons() {
+    try {
+      if (typeof lucide !== 'undefined' && lucide.createIcons) {
+        lucide.createIcons();
+      }
+    } catch (e) { console.warn('Lucide init skipped:', e); }
+  }
+  safeCreateIcons();
+
+  // ===== STARFIELD =====
+  const canvas = document.getElementById('starfield');
+  const ctx = canvas.getContext('2d');
+  let stars = [];
+
+  function resizeCanvas() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    initStars();
+  }
+  function initStars() {
+    stars = [];
+    const count = Math.floor((canvas.width * canvas.height) / 8000);
+    for (let i = 0; i < count; i++) {
+      stars.push({
+        x: Math.random() * canvas.width,
+        y: Math.random() * canvas.height,
+        z: Math.random() * 1.5 + 0.3,
+        size: Math.random() * 1.5,
+        twinkle: Math.random() * Math.PI * 2
+      });
+    }
+  }
+  function drawStars() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const now = Date.now() * 0.001;
+    stars.forEach(s => {
+      const alpha = 0.4 + 0.6 * Math.abs(Math.sin(s.twinkle + now * s.z));
+      ctx.beginPath();
+      ctx.fillStyle = `rgba(${180 + s.z*30}, ${220 + s.z*20}, 255, ${alpha})`;
+      ctx.arc(s.x, s.y, s.size * s.z, 0, Math.PI * 2);
+      ctx.fill();
+      s.y += s.z * 0.08;
+      if (s.y > canvas.height) { s.y = 0; s.x = Math.random() * canvas.width; }
+    });
+    requestAnimationFrame(drawStars);
+  }
+  window.addEventListener('resize', resizeCanvas);
+  resizeCanvas();
+  drawStars();
+
+  // ===== REVEAL =====
+  document.documentElement.classList.add('js-reveal');
+  const revealEls = document.querySelectorAll('.reveal');
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('in');
+        observer.unobserve(entry.target);
+      }
+    });
+  }, { threshold: 0.05, rootMargin: '0px 0px -50px 0px' });
+  revealEls.forEach(el => observer.observe(el));
+
+  function revealVisibleNow() {
+    revealEls.forEach(el => {
+      const rect = el.getBoundingClientRect();
+      if (rect.top < window.innerHeight && rect.bottom > 0) {
+        el.classList.add('in');
+      }
+    });
+  }
+  revealVisibleNow();
+  setTimeout(revealVisibleNow, 100);
+  setTimeout(revealVisibleNow, 500);
+  setTimeout(() => { revealEls.forEach(el => el.classList.add('in')); }, 2000);
+
+  // ===== COUNTERS =====
+  function animateCounters() {
+    document.querySelectorAll('[data-count]').forEach(el => {
+      const target = parseInt(el.dataset.count);
+      let current = 0;
+      const step = Math.max(1, Math.ceil(target / 40));
+      const timer = setInterval(() => {
+        current += step;
+        if (current >= target) { current = target; clearInterval(timer); }
+        el.textContent = current;
+      }, 40);
+    });
+  }
+  setTimeout(animateCounters, 600);
+
+  // ===== ROOT CAUSE CHART =====
+  const rcCtx = document.getElementById('rootCauseChart').getContext('2d');
+  new Chart(rcCtx, {
+    type: 'bar',
+    data: {
+      labels: ['Ingest', 'Chunk', 'Embed', 'Index', 'Retrieve', 'Rerank', 'Generate', 'Prod / Ops'],
+      datasets: [{
+        label: 'Cases originating here',
+        data: [1, 1, 2, 1, 2, 0, 2, 1],
+        backgroundColor: [
+          '#00f0ff', '#4d8eff', '#b86bff', '#ff4dcf',
+          '#ffb84d', '#4dffb8', '#00f0ff', '#8a96b8'
+        ],
+        borderRadius: 8,
+        borderSkipped: false,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: 'rgba(2, 3, 10, 0.95)',
+          borderColor: 'rgba(0, 240, 255, 0.3)',
+          borderWidth: 1,
+          titleFont: { family: 'Orbitron' },
+          bodyFont: { family: 'JetBrains Mono' }
+        }
+      },
+      scales: {
+        x: { grid: { display: false }, ticks: { color: '#8a96b8', font: { family: 'JetBrains Mono', size: 11 } } },
+        y: {
+          beginAtZero: true,
+          ticks: { color: '#8a96b8', font: { family: 'JetBrains Mono', size: 10 }, stepSize: 1 },
+          grid: { color: 'rgba(0, 240, 255, 0.05)' }
+        }
+      }
+    }
+  });
+
+  // ===== CASE FILES DATA =====
+  const cases = [
+    {
+      id: '01',
+      title: 'The Silent Embedding Swap',
+      stages: ['embed'],
+      severity: 'critical',
+      sevLabel: 'CRITICAL',
+      icon: 'binary',
+      iconColor: '#b86bff',
+      one_liner: 'A model provider updated their embedding endpoint without a version bump. Recall fell from 0.91 to 0.43 overnight — with zero code changes.',
+      symptom: 'Customer support analytics team noticed top-K retrieval was returning unrelated chunks for queries that had worked fine the week before. Faithfulness alerts didn\'t fire because retrieved chunks were still high-confidence — just wrong.',
+      timeline: [
+        { t: 'D-7  09:00', d: 'Provider silently rolls new embedding endpoint behind same URL.' },
+        { t: 'D-7  17:00', d: 'Newly indexed docs go in with new vectors.' },
+        { t: 'D-0  10:30', d: 'User reports "the bot doesn\'t know our refund policy anymore."' },
+        { t: 'D-0  14:00', d: 'Engineer reproduces locally — vectors of identical text differ.' },
+        { t: 'D-0  16:00', d: 'Re-embed entire corpus with pinned model — recall restored.' },
+      ],
+      root: 'The provider treated the endpoint update as a minor improvement. From their perspective, all metrics on their benchmarks improved. But our index had millions of old-space vectors, while queries were now in new space. Cosine similarity becomes meaningless when comparing vectors from two different models.',
+      blast: '4 days of degraded answers, ~18K queries affected, an estimated $42K in support overhead and three churned enterprise pilots.',
+      fix: 'Pin model versions explicitly in code. Subscribe to provider release notes. Add a "sanity vector test" to CI — embed a fixed string and compare to a saved baseline; alert if cosine similarity diverges.',
+      lesson: 'Treat your embedding model like a dependency, not a service. Pin it. Test for drift. Re-embed on every upgrade — never assume the math is stable.'
+    },
+    {
+      id: '02',
+      title: 'The PDF Footer That Ate Recall',
+      stages: ['ingest', 'chunk'],
+      severity: 'high',
+      sevLabel: 'HIGH',
+      icon: 'file-warning',
+      iconColor: '#00f0ff',
+      one_liner: 'Every chunk in the corpus contained the same 200-token legal footer. Embeddings clustered tightly — every query returned similar nonsense.',
+      symptom: 'Top-3 retrieved chunks were always from different documents but always semantically "about the company." Specific questions like "what is the 401k match?" returned random chunks because all chunks were dominated by the boilerplate footer.',
+      timeline: [
+        { t: 'D-30 12:00', d: 'Bulk-imported 8K HR PDFs into the index.' },
+        { t: 'D-29 09:00', d: 'Eval scores look fine — golden set has same boilerplate.' },
+        { t: 'D-2  14:00', d: 'Real user query "what\'s our parental leave?" returns irrelevant chunks.' },
+        { t: 'D-0  10:00', d: 'Engineer visualizes chunk embeddings — all collapsed into one tight cluster.' },
+        { t: 'D-0  15:00', d: 'Footer stripped at ingestion. Re-embed. Recall jumps from 0.31 to 0.84.' },
+      ],
+      root: 'The 200-token footer (legal disclaimer, page numbers, copyright) was ~25% of every chunk\'s content. The embedding model spent that proportion of its capacity on the footer, making chunks indistinguishable in vector space.',
+      blast: 'HR-bot pilot deemed "not working" by a major customer. Project nearly killed. Recovery took 2 weeks of credibility rebuilding.',
+      fix: 'Add a header/footer stripping stage to PDF ingestion. Use a "boilerplate detector" that flags any sequence appearing in >40% of chunks. Visualize chunk embeddings with UMAP/t-SNE during onboarding of new doc sources.',
+      lesson: 'Boilerplate is the silent killer of embedding quality. Always profile chunk content before trusting the index. If 25% of every chunk is the same text, your retrieval is just retrieving the boilerplate.'
+    },
+    {
+      id: '03',
+      title: 'Top-K=3 vs the Long-Tail Query',
+      stages: ['retrieve'],
+      severity: 'high',
+      sevLabel: 'HIGH',
+      icon: 'search-x',
+      iconColor: '#ffb84d',
+      one_liner: 'Top-K=3 worked great on the eval set. Long-tail real queries needed top-K=15 to recall the right chunk. Users got confidently wrong answers.',
+      symptom: 'Eval set: 92% answer correctness. Production: 71%. The gap was a mystery for weeks until someone bucketed queries by query-frequency rank.',
+      timeline: [
+        { t: 'D-60', d: 'Top-K=3 chosen during dev — eval scores best at that value.' },
+        { t: 'D-30', d: 'Production launch.' },
+        { t: 'D-20', d: 'Eng team notices users hitting "regenerate" 3x more than predicted.' },
+        { t: 'D-10', d: 'Production logs analyzed by query frequency.' },
+        { t: 'D-2',  d: 'Long-tail queries (frequency &lt;5) had 23% correctness at K=3, 78% at K=15.' },
+        { t: 'D-0',  d: 'Adaptive top-K rolled out (K based on retrieval confidence).' },
+      ],
+      root: 'Common queries hit chunks that match strongly — top-3 suffices. Long-tail queries match weakly — the right chunk is often at rank 8 or 12. Eval set over-represented common queries, so K=3 looked optimal.',
+      blast: 'Estimated 30% user dissatisfaction on long-tail (low-frequency) queries. Hard to quantify in dollars but qualitative reviews tanked.',
+      fix: 'Adaptive top-K based on score gap between rank-1 and rank-3. If gap is small, expand K. Pair with a reranker so increasing K doesn\'t blow up prompt size.',
+      lesson: 'Your eval set\'s query frequency distribution must match production. Otherwise you optimize for the easy cases and ship broken behavior for the hard ones.'
+    },
+    {
+      id: '04',
+      title: 'The Vector DB That Forgot Deletes',
+      stages: ['index', 'ingest'],
+      severity: 'critical',
+      sevLabel: 'CRITICAL',
+      icon: 'database-zap',
+      iconColor: '#ff4dcf',
+      one_liner: 'Documents were deleted from Confluence. The vector index kept their chunks. Users saw deprecated, sometimes legally retracted, content for months.',
+      symptom: 'Compliance team flagged that the bot was citing a policy that had been formally retracted 3 months earlier after a regulator complaint.',
+      timeline: [
+        { t: 'M-3', d: 'Policy retracted from Confluence after regulator complaint.' },
+        { t: 'M-3 to D-0', d: 'Vector DB happily serves chunks of the retracted policy.' },
+        { t: 'D-0  08:00', d: 'Compliance audit catches the retracted policy in a bot answer.' },
+        { t: 'D-0  09:30', d: 'War room. Tombstone column added. All deleted chunks purged.' },
+      ],
+      root: 'Ingestion was implemented as ADD ONLY. The original design treated the vector DB as an append-only log. No one connected "source doc deleted" → "chunk should disappear from index."',
+      blast: 'Regulatory disclosure required. ~$180K in legal fees. 3 weeks of compliance review on every other RAG system in the company.',
+      fix: 'Tombstone-based deletes. Every chunk carries source_doc_id and last_seen_at. Nightly job: if source_doc_id no longer exists in source system, delete the chunk. CI test verifies deletion semantics.',
+      lesson: 'Vector indexes are databases, not logs. They need full CRUD semantics. Plan deletion BEFORE production — retrofitting it under compliance pressure is brutal.'
+    },
+    {
+      id: '05',
+      title: 'The Reranker That Dropped the Gold',
+      stages: ['rerank'],
+      severity: 'medium',
+      sevLabel: 'MEDIUM',
+      icon: 'list-ordered',
+      iconColor: '#4dffb8',
+      one_liner: 'Adding a cross-encoder reranker improved average scores but tanked recall on numerical-fact queries — the reranker was biased toward longer chunks.',
+      symptom: 'After reranker rollout, RAGAS faithfulness went up 4%. But "what is the limit on X?" style queries silently dropped — the chunk with the exact number was 3 sentences long; the reranker preferred 12-sentence chunks "about" the topic.',
+      timeline: [
+        { t: 'D-14', d: 'Cross-encoder reranker rolled out. Average scores improve.' },
+        { t: 'D-7',  d: 'A specific question stops returning the right answer; engineer notes "it used to work."' },
+        { t: 'D-2',  d: 'Per-query-type analysis reveals numerical-fact queries lost 18% accuracy.' },
+        { t: 'D-0',  d: 'Reranker tuned to penalize length. Numerical queries recovered.' },
+      ],
+      root: 'The reranker was trained on web-passage retrieval datasets where longer passages tend to be more informative. In a corporate KB, the right answer is often "the limit is $500" — a short sentence — which the reranker scored low.',
+      blast: 'Quiet quality regression on ~8% of query types for two weeks. Caught early through per-query-type slicing.',
+      fix: 'Slice eval metrics by query type, not just average. Test reranker on length-distribution-controlled eval set. Consider hybrid scoring: reranker_score + boost for queries with strong numerical/named-entity intent.',
+      lesson: 'A rising average can hide a falling slice. Always evaluate per-segment when you change retrieval components.'
+    },
+    {
+      id: '06',
+      title: 'The Citation That Cited Itself',
+      stages: ['generate'],
+      severity: 'high',
+      sevLabel: 'HIGH',
+      icon: 'message-square-quote',
+      iconColor: '#00f0ff',
+      one_liner: 'The model cited a real document — but the cited sentence didn\'t exist in the document. Hallucination dressed as evidence.',
+      symptom: 'A user filed a support ticket: "your bot quoted a number from doc X, but doc X doesn\'t have that number." On investigation, the answer correctly cited the document filename but invented a sentence.',
+      timeline: [
+        { t: 'D-21', d: 'New prompt template rolled out: "include citations for every claim."' },
+        { t: 'D-14', d: 'User filed a ticket — quoted text wasn\'t in the cited source.' },
+        { t: 'D-7',  d: 'Engineers found 6% of responses contained hallucinated citations.' },
+        { t: 'D-0',  d: 'Post-generation verifier added that checks every quoted span exists in retrieved chunks.' },
+      ],
+      root: 'The LLM, instructed to "include citations," learned to <em>perform</em> citation rather than ground it. It synthesized claims, then attributed them to real document names from context. The citation pattern was structural, not factual.',
+      blast: 'Brand-trust damage. The bot was sold as "always cites." Customer trust dropped on Day 14 announcement.',
+      fix: 'Post-generation verifier: parse citation markers in output, check the quoted span actually appears in the retrieved chunk text. If not, either strip the claim or regenerate.',
+      lesson: 'Models perform compliance. If you ask for citations, they\'ll produce citations — real or invented. Always verify the citation\'s text exists in the source.'
+    },
+    {
+      id: '07',
+      title: 'The Multilingual Backfire',
+      stages: ['embed'],
+      severity: 'medium',
+      sevLabel: 'MEDIUM',
+      icon: 'languages',
+      iconColor: '#b86bff',
+      one_liner: 'An English-only embedding model was used on a multilingual corpus. French docs clustered together regardless of topic — semantic search became language search.',
+      symptom: 'French-speaking users got answers from random French documents. The bot was retrieving by language, not by topic. English queries worked fine.',
+      timeline: [
+        { t: 'D-30', d: 'European rollout launched.' },
+        { t: 'D-20', d: 'French support tickets spike with "this answer has nothing to do with my question."' },
+        { t: 'D-5',  d: 'Engineer visualizes embeddings, sees clear language clusters.' },
+        { t: 'D-0',  d: 'Switched to multilingual model (m3-embedding). Recall fixed.' },
+      ],
+      root: 'The original embedding model was trained primarily on English. For non-English text, it captured surface patterns ("this is French") more strongly than semantic content ("this is about taxes"). Cosine similarity then grouped by language.',
+      blast: 'European launch delayed 3 weeks. Two enterprise deals in France stalled.',
+      fix: 'Use a multilingual embedding model (e.g. m3-embedding, multilingual-e5) when the corpus or query language is mixed. Even if 95% is English, the 5% non-English will dominate retrieval for those users.',
+      lesson: 'Embedding model selection is downstream of your data\'s language distribution. Profile language coverage before choosing the model — not after launch.'
+    },
+    {
+      id: '08',
+      title: 'The Prompt Tweak That Broke Refusals',
+      stages: ['generate'],
+      severity: 'high',
+      sevLabel: 'HIGH',
+      icon: 'message-square-warning',
+      iconColor: '#ffb84d',
+      one_liner: 'Adding "be helpful and confident" to the system prompt dropped legitimate refusal rate from 12% to 0.4%. The bot started confidently answering out-of-scope questions.',
+      symptom: 'A user asked the corporate-policy bot about a medical condition. It confidently invented an answer instead of refusing. Brand and legal both lit up.',
+      timeline: [
+        { t: 'D-21', d: 'Prompt updated to fix "too many refusals" complaints. "Be helpful and confident" added.' },
+        { t: 'D-14', d: 'Refusal rate drops as expected. Some teams celebrate.' },
+        { t: 'D-7',  d: 'First out-of-scope hallucination reported.' },
+        { t: 'D-3',  d: 'Compliance team flags pattern: refusals dropped from 12% to 0.4%, but ground-truth-supported refusals were 9%.' },
+        { t: 'D-0',  d: 'Prompt reverted. Refusal regression tests added to CI.' },
+      ],
+      root: 'The original 12% refusal rate included a 9% subset of <em>correct</em> refusals — out-of-scope queries the bot wisely declined. The new prompt didn\'t distinguish "be confident on what you know" from "be confident always." It collapsed both.',
+      blast: 'Two near-incident reports filed by compliance. Brand-trust audit ordered.',
+      fix: 'Add explicit refusal instructions to the prompt. Maintain a regression set of "should-refuse" questions; require refusal rate on that set to stay near 100% on every prompt change.',
+      lesson: 'Prompts are code. Every change needs a regression test — including for what the model should NOT do.'
+    },
+    {
+      id: '09',
+      title: 'The Latency Spike at 4pm',
+      stages: ['prod', 'retrieve'],
+      severity: 'medium',
+      sevLabel: 'MEDIUM',
+      icon: 'gauge',
+      iconColor: '#8a96b8',
+      one_liner: 'p95 latency tripled every weekday at 4pm. Took two weeks to discover: nightly re-indexing was misconfigured to run during peak hours.',
+      symptom: 'Slack channel filled with "the bot is slow" complaints at 4pm every Tuesday-Thursday. Mornings and evenings fine.',
+      timeline: [
+        { t: 'W-2 Tue 16:00', d: 'First latency spike observed. Engineers blame "thundering herd."' },
+        { t: 'W-1 Wed 16:00', d: 'Spike repeats. Pattern emerging.' },
+        { t: 'W-0 Mon 16:00', d: 'Spike. Engineer correlates timing with re-indexing cron logs.' },
+        { t: 'W-0 Mon 17:00', d: 'Cron rescheduled to 03:00 UTC. Latency normal next day.' },
+      ],
+      root: 'Re-indexing job was set with a cron expression for "16:00" — local time of the dev who configured it, in a timezone misaligned with production traffic. The job slammed Qdrant during peak query hours.',
+      blast: 'Quiet UX degradation. ~2 weeks of "the bot is slow" tickets. Reputation as "unreliable at the end of the day."',
+      fix: 'All cron jobs use UTC. Re-indexing jobs schedule during lowest-traffic windows (verify with prod metrics, not assumptions). Add a "background job latency contribution" panel to dashboards.',
+      lesson: 'Production timezone matters. Schedule background jobs against your actual traffic curve, not your local clock.'
+    },
+    {
+      id: '10',
+      title: 'The Cost Bomb in a For-Loop',
+      stages: ['prod', 'generate'],
+      severity: 'critical',
+      sevLabel: 'CRITICAL',
+      icon: 'dollar-sign',
+      iconColor: '#ff4dcf',
+      one_liner: 'A retry-on-failure for-loop with no backoff hit the LLM API 50,000 times in 6 hours. Bill: $51,200.',
+      symptom: 'Pre-dawn page from finance ops: "OpenAI usage just hit your monthly cap in one night." On-call eng wakes up, finds a runaway worker.',
+      timeline: [
+        { t: 'N-1 22:00', d: 'Deploy of a new ingestion worker with retry logic.' },
+        { t: 'N-1 23:15', d: 'A poison document keeps failing at parse step.' },
+        { t: 'N-1 23:15 →', d: 'Retry loop with no backoff, no max-retries, no idempotency key. Each retry hits the LLM for "summarize document."' },
+        { t: 'N+1 04:00', d: 'Cost monitoring fires. On-call kills the worker.' },
+      ],
+      root: 'Three bugs combined: (1) the retry loop had no backoff, no max-retries, (2) every retry re-ran the full pipeline including an LLM summarization call, (3) there was no per-job cost cap. Each was minor alone; together they were catastrophic.',
+      blast: '$51,200 in API spend. Quarterly budget blown. Engineering leadership had to explain to the CFO.',
+      fix: 'Exponential backoff + max-retries on all external calls. Per-job cost ceiling (kill the job if cost &gt; $5). Idempotency keys so retries don\'t double-spend. Synthetic "expensive-document" test in staging.',
+      lesson: 'In AI systems, retries cost real money. Every retry loop needs backoff, max-retries, AND a cost ceiling. Two of three isn\'t enough.'
+    },
+  ];
+
+  // ===== RENDER CASES =====
+  const caseList = document.getElementById('caseList');
+
+  function renderCases(filter = 'all') {
+    caseList.innerHTML = '';
+    const filtered = filter === 'all' ? cases : cases.filter(c => c.stages.includes(filter));
+
+    if (filtered.length === 0) {
+      caseList.innerHTML = `<div class="text-center py-8 text-gray-500 font-mono text-sm">No cases in this category.</div>`;
+      return;
+    }
+
+    filtered.forEach(c => {
+      const card = document.createElement('div');
+      card.className = 'case-file';
+
+      const stageTags = c.stages.map(s => {
+        const cls = `tag-${s}`;
+        const label = s.toUpperCase();
+        return `<span class="stage-tag ${cls}">${label}</span>`;
+      }).join('');
+
+      const timelineHtml = c.timeline.map(e => `
+        <div class="pm-event">
+          <div class="pm-time">${e.t}</div>
+          <div class="pm-desc">${e.d}</div>
+        </div>
+      `).join('');
+
+      card.innerHTML = `
+        <div class="case-header">
+          <div class="case-id">${c.id}</div>
+          <div class="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0" style="background:${c.iconColor}20;">
+            <i data-lucide="${c.icon}" style="color:${c.iconColor};width:22px;height:22px;"></i>
+          </div>
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center gap-2 mb-1 flex-wrap">
+              ${stageTags}
+              <span class="case-severity sev-${c.severity}">${c.sevLabel}</span>
+            </div>
+            <h3 class="font-display font-bold text-lg leading-snug">${c.title}</h3>
+            <p class="text-sm text-gray-400 mt-1">${c.one_liner}</p>
+          </div>
+          <i data-lucide="chevron-down" class="expand-icon w-5 h-5 text-cyan-400 flex-shrink-0"></i>
+        </div>
+        <div class="case-body">
+          <div class="case-body-inner">
+            <div class="case-section">
+              <div class="case-section-label">🔍 SYMPTOM</div>
+              <p class="text-sm text-gray-300 leading-relaxed">${c.symptom}</p>
+            </div>
+            <div class="case-section">
+              <div class="case-section-label">⏱️ TIMELINE</div>
+              <div class="pm-timeline mt-3">${timelineHtml}</div>
+            </div>
+            <div class="case-section">
+              <div class="case-section-label">🎯 ROOT CAUSE</div>
+              <p class="text-sm text-gray-300 leading-relaxed">${c.root}</p>
+            </div>
+            <div class="case-section">
+              <div class="case-section-label">💥 BLAST RADIUS</div>
+              <p class="text-sm text-gray-300 leading-relaxed">${c.blast}</p>
+            </div>
+            <div class="case-section">
+              <div class="case-section-label">🛠️ FIX</div>
+              <p class="text-sm text-gray-300 leading-relaxed">${c.fix}</p>
+            </div>
+            <div class="case-section">
+              <div class="case-section-label">📖 LESSON</div>
+              <div class="callout">
+                <p class="text-sm text-gray-200 leading-relaxed"><strong class="text-amber-300">${c.lesson}</strong></p>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+
+      card.querySelector('.case-header').addEventListener('click', () => {
+        card.classList.toggle('expanded');
+      });
+
+      caseList.appendChild(card);
+    });
+
+    safeCreateIcons();
+  }
+  renderCases('all');
+
+  // ===== FILTER PILLS =====
+  document.querySelectorAll('#caseFilters .filter-pill').forEach(pill => {
+    pill.addEventListener('click', () => {
+      document.querySelectorAll('#caseFilters .filter-pill').forEach(p => p.classList.remove('active'));
+      pill.classList.add('active');
+      renderCases(pill.dataset.filter);
+    });
+  });
+
+  // ===== QUIZ =====
+  let answered = new Set();
+  document.querySelectorAll('#quizContainer [data-q]').forEach(qBlock => {
+    const qIdx = qBlock.dataset.q;
+    const optsContainer = qBlock.querySelector('[data-correct]');
+    const correct = parseInt(optsContainer.dataset.correct);
+    const explain = qBlock.querySelector('[data-explain]');
+    qBlock.querySelectorAll('.quiz-option').forEach(opt => {
+      opt.addEventListener('click', () => {
+        if (answered.has(qIdx)) return;
+        const i = parseInt(opt.dataset.i);
+        qBlock.querySelectorAll('.quiz-option').forEach((o, idx) => {
+          if (idx === correct) o.classList.add('correct');
+          else if (idx === i) o.classList.add('wrong');
+          o.style.pointerEvents = 'none';
+        });
+        explain.classList.remove('hidden');
+        answered.add(qIdx);
+        updateQuizProgress();
+      });
+    });
+  });
+  function updateQuizProgress() {
+    const pct = (answered.size / 3) * 100;
+    document.getElementById('quizProgress').style.width = pct + '%';
+    document.getElementById('quizScore').textContent = `${answered.size} / 3 answered`;
+  }
+
+  // ===== SIDE DOTS =====
+  const sections = ['hero', 'objectives', 'taxonomy', 'cases', 'patterns', 'playbook', 'quiz', 'checkpoint'];
+  const dots = document.querySelectorAll('.dot');
+  dots.forEach(dot => {
+    dot.addEventListener('click', () => {
+      document.getElementById(dot.dataset.target).scrollIntoView({ behavior: 'smooth' });
+    });
+  });
+  window.addEventListener('scroll', () => {
+    const scrollPos = window.scrollY + window.innerHeight / 2;
+    sections.forEach((id, i) => {
+      const el = document.getElementById(id);
+      if (el && el.offsetTop <= scrollPos && el.offsetTop + el.offsetHeight > scrollPos) {
+        dots.forEach(d => d.classList.remove('active'));
+        dots[i]?.classList.add('active');
+      }
+    });
+  });
+
+  // ===== MODULE COMPLETION =====
+  function completeModule() {
+    const fill = document.getElementById('courseProgress');
+    const txt = document.getElementById('progressText');
+    fill.style.width = '73.7%';
+    txt.textContent = '28 / 38 modules ✓';
+
+    try {
+      const saved = JSON.parse(localStorage.getItem('rag_academy_progress') || '{}');
+      const completed = new Set(saved.completed || []);
+      completed.add('8.0');
+      localStorage.setItem('rag_academy_progress', JSON.stringify({
+        completed: Array.from(completed),
+        lastModule: '8.0'
+      }));
+    } catch(e) {}
+
+    const burst = document.createElement('div');
+    burst.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);font-family:Orbitron,sans-serif;font-size:2rem;font-weight:900;color:#00f0ff;text-shadow:0 0 30px #00f0ff;z-index:9999;pointer-events:none;opacity:0;transition:all 0.8s ease;text-align:center;';
+    burst.innerHTML = '✦ MISSION 8.0 COMPLETE ✦<br><span style="font-size:0.9rem;color:#b86bff;text-shadow:0 0 20px #b86bff;">10 CASES · ABSORBED</span>';
+    document.body.appendChild(burst);
+    requestAnimationFrame(() => {
+      burst.style.opacity = '1';
+      burst.style.transform = 'translate(-50%, -50%) scale(1.2)';
+    });
+    setTimeout(() => { burst.style.opacity = '0'; setTimeout(() => burst.remove(), 800); }, 2000);
+  }
+  window.completeModule = completeModule;
+
+  // ===== LOAD PROGRESS =====
+  try {
+    const saved = JSON.parse(localStorage.getItem('rag_academy_progress') || '{}');
+    if (saved.completed && saved.completed.includes('8.0')) {
+      document.getElementById('courseProgress').style.width = '73.7%';
+      document.getElementById('progressText').textContent = '28 / 38 modules ✓';
+    }
+  } catch(e) {}
+</script>
+
+</body>
+</html>

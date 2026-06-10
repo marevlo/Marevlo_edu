@@ -1,0 +1,712 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Alien Dictionary (Topological Sort) - Visualization</title>
+    <style>
+        :root {
+            --bg-page: #000000;
+            --bg-surface: #161b22;
+            --bg-input: #000000;
+            --border-main: #30363d;
+            --btn-bg: #21262d;
+            --btn-hover: #2d333b;
+            --text-main: #c9d1d9;
+            --text-dim: #8b949e;
+            --text-log: #58a6ff;
+            --accent-orange: #e3b341;
+            --accent-blue: #388bfd;
+            --accent-green: #3fb950;
+            --accent-red: #f85149;
+            --accent-purple: #a371f7;
+        }
+
+        * { box-sizing: border-box; }
+        body {
+            background-color: var(--bg-page);
+            color: var(--text-main);
+            font-family: system-ui, -apple-system, sans-serif;
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            padding-bottom: 40px;
+        }
+
+        /* ROW 1: INPUT BAR */
+        .input-bar {
+            width: 100%;
+            background-color: var(--bg-surface);
+            padding: 12px 16px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 8px;
+            border-bottom: 1px solid var(--border-main);
+            flex-wrap: wrap;
+        }
+        label.ui-label { font-family: 'Courier New', monospace; font-size: 13px; color: var(--text-dim); }
+        input[type="text"] {
+            background: var(--bg-input);
+            border: 1px solid var(--border-main);
+            color: var(--text-main);
+            height: 32px;
+            border-radius: 6px;
+            padding: 0 10px;
+            font-size: 13px;
+        }
+        .med-input { width: 350px; font-family: monospace;}
+
+        button {
+            height: 32px; border-radius: 6px; padding: 0 14px; background: var(--btn-bg);
+            border: 1px solid var(--border-main); color: var(--text-main); font-size: 13px; cursor: pointer;
+            transition: background 0.2s ease;
+        }
+        button:hover { background: var(--btn-hover); }
+
+        /* ROW 2: GRAPH AREA & ARRAYS */
+        .visual-container { margin-top: 20px; display: flex; align-items: flex-start; gap: 30px; width: 100%; justify-content: center; flex-wrap: wrap; }
+        
+        .graph-area {
+            position: relative;
+            width: 450px;
+            height: 380px;
+            background: var(--bg-surface);
+            border: 1px solid var(--border-main);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        #edges-svg {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none; z-index: 0;
+        }
+
+        .nodes-container {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            z-index: 1;
+        }
+
+        .node {
+            position: absolute;
+            width: 44px; height: 44px; border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            background: #21262d; border: 2px solid var(--border-main);
+            color: var(--text-main); font-weight: bold; font-size: 18px;
+            font-family: 'Courier New', monospace;
+            transform: translate(-50%, -50%);
+            transition: all 0.3s ease;
+        }
+        
+        .node.active-u { transform: translate(-50%, -50%) scale(1.2); box-shadow: 0 0 15px var(--accent-orange); border-color: var(--accent-orange); z-index: 3; color: var(--accent-orange); }
+        .node.active-v { transform: translate(-50%, -50%) scale(1.15); box-shadow: 0 0 10px var(--accent-purple); border-color: var(--accent-purple); z-index: 2; color: var(--accent-purple); }
+        .node.processed { background: #0f2a1a; border-color: var(--accent-green); color: var(--accent-green); opacity: 0.5;}
+        .node.cycle { background: #3a0d0d; border-color: var(--accent-red); color: var(--accent-red); }
+
+        .arrays-col { display: flex; flex-direction: column; gap: 16px; min-width: 250px; max-width: 320px; }
+        .array-section { display: flex; flex-direction: column; gap: 8px; background: var(--bg-surface); padding: 12px; border-radius: 8px; border: 1px solid var(--border-main); min-height: 80px;}
+        .tiles-wrapper { display: flex; gap: 8px; flex-wrap: wrap; align-content: flex-start;}
+        
+        .tile-container { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+        .tile-index { font-size: 11px; color: var(--text-dim); font-family: monospace; }
+        .tile {
+            min-width: 40px; height: 40px; display: flex; align-items: center; justify-content: center;
+            border-radius: 6px; font-size: 15px; font-weight: bold; font-family: 'Courier New', monospace;
+            transition: all 0.3s ease; background: #21262d; border: 1px solid var(--border-main);
+            color: var(--text-main); text-transform: uppercase;
+        }
+        
+        .tile.queue-tile { background: #0d213f; border-color: var(--accent-blue); color: var(--accent-blue); text-transform: lowercase;}
+        .tile.res-tile { background: #0f2a1a; border-color: var(--accent-green); color: var(--accent-green); text-transform: lowercase;}
+        .tile.ind-tile { border-color: #6e5518; color: var(--accent-orange); background: #2a200a; }
+        
+        .tile.highlight-update { animation: highlightFlash 0.6s ease; }
+        .tile.pushing { animation: pushAnim 0.3s ease; }
+        .tile.popping { transform: scale(1.1); opacity: 0; }
+
+        @keyframes highlightFlash { 0% { transform: scale(1); filter: brightness(1); } 50% { transform: scale(1.2); filter: brightness(1.5); box-shadow: 0 0 10px currentColor; } 100% { transform: scale(1); filter: brightness(1); } }
+        @keyframes pushAnim { 0%{transform:scale(0.5); opacity:0;} 100%{transform:scale(1); opacity:1;} }
+
+        /* ROW 3: PANEL */
+        .action-panel {
+            margin-top: 14px; background: var(--bg-surface); border: 1px solid var(--border-main);
+            border-radius: 6px; padding: 12px 20px; width: 800px; text-align: center; font-family: monospace; min-height: 80px;
+            display: flex; flex-direction: column; justify-content: center; font-size: 14px; line-height: 1.5;
+        }
+
+        /* ROW 4: INFO PANEL */
+        .info-panel { margin-top: 10px; display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; width: 800px;}
+        .info-cell {
+            background: var(--bg-surface); border: 1px solid var(--border-main); border-radius: 6px;
+            padding: 8px 14px; display: flex; flex-direction: column; align-items: center; justify-content: center; min-width: 120px; gap: 4px; flex: 1; min-height: 60px;
+        }
+        .info-label { font-size: 11px; color: var(--text-dim); }
+        .info-value { font-family: monospace; font-size: 15px; font-weight: 700; text-align: center;}
+        
+        .word-comp-container { display: flex; flex-direction: column; font-family: monospace; font-size: 18px; letter-spacing: 4px; line-height: 1.2; font-weight: bold;}
+        .char-u { color: var(--accent-orange); text-shadow: 0 0 8px var(--accent-orange); }
+        .char-v { color: var(--accent-purple); text-shadow: 0 0 8px var(--accent-purple); }
+        .char-dim { color: var(--border-main); }
+
+        /* ROW 5: RESULT DISPLAY */
+        .result-display { margin-top: 10px; display: flex; flex-direction: column; align-items: center; }
+        #res-val { font-size: 20px; color: var(--text-dim); font-family: monospace; transition: all 0.3s; font-weight: bold; margin-top: 4px; letter-spacing: 2px;}
+        .pop { animation: popAnim 400ms ease; color: var(--accent-green) !important; text-shadow: 0 0 12px var(--accent-green); font-size: 26px !important;}
+        .pop-false { animation: popAnim 400ms ease; color: var(--accent-red) !important; text-shadow: 0 0 12px var(--accent-red); font-size: 26px !important;}
+
+        @keyframes popAnim { 0%{transform:scale(1)} 50%{transform:scale(1.15)} 100%{transform:scale(1)} }
+
+        /* ROW 6: STATUS BAR */
+        .status-bar { margin-top: 8px; font-size: 13px; color: var(--text-dim); height: 1.2em; text-align: center; width: 600px;}
+
+        /* ROW 7: CONTROLS */
+        .controls { margin-top: 24px; display: flex; align-items: center; gap: 8px; }
+        input[type="range"] { accent-color: var(--accent-blue); width: 100px; cursor: pointer; }
+
+        /* ROW 8: LEGEND */
+        .legend { margin-top: 12px; display: flex; gap: 16px; flex-wrap: wrap; justify-content: center; max-width: 800px; }
+        .legend-item { display: flex; align-items: center; font-size: 12px; color: var(--text-dim); }
+        .dot { width: 12px; height: 12px; border-radius: 2px; margin-right: 6px; display: inline-block; border: 1px solid var(--border-main);}
+
+        /* ROW 9: LOG PANEL */
+        .log-panel {
+            margin-top: 12px; background: var(--bg-page); border: 1px solid var(--border-main);
+            border-radius: 6px; padding: 12px 16px; width: 800px; max-width: 90%; height: 130px;
+            overflow-y: auto; font-family: 'Courier New', monospace; font-size: 13px;
+        }
+
+        .line-anim { stroke-dasharray: 6; animation: dash 1s linear infinite; }
+        @keyframes dash { to { stroke-dashoffset: -12; } }
+    </style>
+</head>
+<body>
+
+    <div class="input-bar">
+        <label class="ui-label">words =</label>
+        <input type="text" id="w-input" class="med-input" placeholder='["wrt","wrf","er","ett","rftt"]'>
+        <button onclick="loadCustom()">Load</button>
+        <button onclick="loadExample('[\x22wrt\x22,\x22wrf\x22,\x22er\x22,\x22ett\x22,\x22rftt\x22]')">Ex 1</button>
+        <button onclick="loadExample('[\x22z\x22,\x22x\x22,\x22z\x22]')">Ex 2</button>
+    </div>
+
+    <div class="visual-container">
+        <div class="graph-area" id="graph-area">
+            <svg id="edges-svg">
+                <defs>
+                    <marker id="arrow-normal" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                        <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--border-main)" />
+                    </marker>
+                    <marker id="arrow-active" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                        <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--accent-purple)" />
+                    </marker>
+                </defs>
+            </svg>
+            <div class="nodes-container" id="nodes-container"></div>
+        </div>
+        <div class="arrays-col">
+            <div class="array-section">
+                <div class="ui-label" style="color: var(--accent-orange);">In-Degree Array:</div>
+                <div class="tiles-wrapper" id="indegree-tiles"></div>
+                <div style="font-size: 10px; color: var(--text-dim); margin-top: 4px;">Number of character prerequisites</div>
+            </div>
+            <div class="array-section">
+                <div class="ui-label" style="color: var(--accent-blue);">BFS Queue (Ready Chars):</div>
+                <div class="tiles-wrapper" id="queue-tiles"></div>
+            </div>
+            <div class="array-section">
+                <div class="ui-label" style="color: var(--accent-green);">Topological Order:</div>
+                <div class="tiles-wrapper" id="result-tiles"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="action-panel" id="main-panel">—</div>
+
+    <div class="info-panel">
+        <div class="info-cell">
+            <span class="info-label">Active Character (u)</span>
+            <span class="info-value" id="val-u" style="color: var(--accent-orange);">—</span>
+        </div>
+        <div class="info-cell">
+            <span class="info-label">Dependent Character (v)</span>
+            <span class="info-value" id="val-v" style="color: var(--accent-purple);">—</span>
+        </div>
+        <div class="info-cell" style="min-width: 180px;">
+            <span class="info-label">Word Comparison / Edge Check</span>
+            <div id="val-comp" style="color: var(--text-main); font-size:13px; margin-top: 4px;">—</div>
+        </div>
+    </div>
+
+    <div class="result-display">
+        <span class="ui-label">alien dictionary order =</span>
+        <span id="res-val">—</span>
+    </div>
+
+    <div class="status-bar" id="status-text"></div>
+
+    <div class="controls">
+        <button onclick="reset()">↺ Reset</button>
+        <button onclick="back()">← Back</button>
+        <button onclick="togglePlay()" id="play-btn">Play</button>
+        <button onclick="next()">Next →</button>
+        <div class="controls" style="margin-top:0">
+            <span class="ui-label" style="margin-right:4px; font-size:11px">Speed</span>
+            <input type="range" id="speed-slider" min="0" max="2" value="1">
+        </div>
+    </div>
+
+    <div class="legend">
+        <div class="legend-item"><span class="dot" style="background:transparent; border-color:var(--accent-orange); border-width:2px;"></span> Active Character (u)</div>
+        <div class="legend-item"><span class="dot" style="background:transparent; border-color:var(--accent-purple); border-width:2px;"></span> Dependent (v)</div>
+        <div class="legend-item"><span class="dot" style="background:#0f2a1a; border-color:var(--accent-green)"></span> Processed</div>
+        <div class="legend-item"><span class="dot" style="background:#3a0d0d; border-color:var(--accent-red)"></span> Cycle Detected</div>
+    </div>
+
+    <div class="log-panel" id="log"></div>
+
+    <script>
+        let wordsList = ["wrt","wrf","er","ett","rftt"];
+        let chars = [];
+        let edges = [];
+        let nodeCoords = {};
+        
+        let steps = [];
+        let stepIndex = 0;
+        let timer = null;
+        const delays = [2800, 1400, 700];
+
+        function init() { loadExample('["wrt","wrf","er","ett","rftt"]'); }
+
+        function loadExample(wStr) {
+            document.getElementById('w-input').value = wStr;
+            parseAndGenerate();
+        }
+
+        function loadCustom() {
+            parseAndGenerate();
+        }
+
+        function parseAndGenerate() {
+            try {
+                wordsList = JSON.parse(document.getElementById('w-input').value);
+                if (!Array.isArray(wordsList) || wordsList.length === 0) throw "Invalid array";
+                
+                let charSet = new Set();
+                for (let w of wordsList) {
+                    for (let c of w) charSet.add(c);
+                }
+                chars = Array.from(charSet);
+                
+                setupGraph();
+                generateSteps();
+                reset();
+            } catch(e) {
+                alert("Invalid format. Ensure words is a valid JSON array of strings.");
+            }
+        }
+
+        function setupGraph() {
+            const container = document.getElementById('nodes-container');
+            container.innerHTML = '';
+            nodeCoords = {};
+            const N = chars.length;
+            if (N === 0) return;
+
+            const cx = 225;
+            const cy = 190;
+            const radius = 130;
+
+            for (let i = 0; i < N; i++) {
+                const cId = chars[i];
+                const angle = (Math.PI * 2 * i) / N - Math.PI / 2;
+                const x = cx + radius * Math.cos(angle);
+                const y = cy + radius * Math.sin(angle);
+                nodeCoords[cId] = {x, y};
+
+                const node = document.createElement('div');
+                node.className = 'node';
+                node.id = `node-${cId}`;
+                node.style.left = `${x}px`;
+                node.style.top = `${y}px`;
+                node.innerText = cId;
+                container.appendChild(node);
+            }
+        }
+
+        function generateSteps() {
+            steps = [];
+            edges = [];
+            
+            let adj = {};
+            let inDegree = {};
+            for (let c of chars) {
+                adj[c] = new Set();
+                inDegree[c] = 0;
+            }
+
+            steps.push({
+                type: 'init', edges: [], inDegree: {...inDegree}, queue: [], result: [],
+                u: null, v: null, updatedInd: null, pushed: null, popped: null, isCycle: false, compData: null,
+                panel: `<b>Alien Dictionary (Topological Sort)</b><br>Step 1: Extract all unique characters: {${chars.join(', ')}}.<br>Step 2: Compare adjacent words to build the Directed Graph.`,
+                statusText: `Initialization complete.`,
+                log: `Extracted unique characters. Ready to build graph.`
+            });
+
+            // Graph Construction
+            let isInvalidPrefix = false;
+            for (let i = 0; i < wordsList.length - 1; i++) {
+                let w1 = wordsList[i];
+                let w2 = wordsList[i+1];
+                let minLen = Math.min(w1.length, w2.length);
+                let foundDiff = false;
+
+                steps.push({
+                    type: 'compare', edges: [...edges], inDegree: {...inDegree}, queue: [], result: [],
+                    u: null, v: null, updatedInd: null, pushed: null, popped: null, isCycle: false,
+                    compData: {w1, w2, idx: -1, diff: false},
+                    panel: `Comparing adjacent words: <b>"${w1}"</b> and <b>"${w2}"</b> to find the first differing character.`,
+                    statusText: `Comparing words...`,
+                    log: `Comparing "${w1}" and "${w2}"`
+                });
+
+                for (let j = 0; j < minLen; j++) {
+                    if (w1[j] !== w2[j]) {
+                        let u = w1[j], v = w2[j];
+                        
+                        if (!adj[u].has(v)) {
+                            adj[u].add(v);
+                            inDegree[v]++;
+                            edges.push({u, v});
+                            
+                            steps.push({
+                                type: 'add_edge', edges: [...edges], inDegree: {...inDegree}, queue: [], result: [],
+                                u: u, v: v, updatedInd: v, pushed: null, popped: null, isCycle: false,
+                                compData: {w1, w2, idx: j, diff: true, valid: true},
+                                panel: `First difference at index ${j}: <b>'${u}'</b> vs <b>'${v}'</b>.<br>This means <b>${u}</b> comes before <b>${v}</b>! Adding directed edge <b>${u} ➔ ${v}</b>.`,
+                                statusText: `Added constraint: ${u} < ${v}`,
+                                log: `  -> Diff at index ${j}: ${u} != ${v}. Added edge ${u}->${v}. inDegree[${v}] is now ${inDegree[v]}.`,
+                                logColor: 'var(--accent-orange)'
+                            });
+                        } else {
+                            steps.push({
+                                type: 'dup_edge', edges: [...edges], inDegree: {...inDegree}, queue: [], result: [],
+                                u: u, v: v, updatedInd: null, pushed: null, popped: null, isCycle: false,
+                                compData: {w1, w2, idx: j, diff: true, valid: true},
+                                panel: `First difference at index ${j}: <b>'${u}'</b> vs <b>'${v}'</b>.<br>Edge <b>${u} ➔ ${v}</b> already exists. Continuing.`,
+                                statusText: `Constraint already exists.`,
+                                log: `  -> Diff at index ${j}. Edge ${u}->${v} already exists.`
+                            });
+                        }
+                        foundDiff = true;
+                        break;
+                    }
+                }
+
+                if (!foundDiff && w1.length > w2.length) {
+                    isInvalidPrefix = true;
+                    steps.push({
+                        type: 'invalid', edges: [...edges], inDegree: {...inDegree}, queue: [], result: [],
+                        u: null, v: null, updatedInd: null, pushed: null, popped: null, isCycle: false,
+                        compData: {w1, w2, idx: minLen, diff: false, valid: false},
+                        panel: `<b>Invalid Prefix Detected!</b><br>Word "${w1}" is longer than "${w2}", but "${w2}" is a prefix of "${w1}". In a sorted dictionary, the shorter prefix must come first.`,
+                        statusText: `Invalid input detected.`,
+                        log: `  -> Invalid prefix constraint. "${w2}" is prefix of "${w1}".`,
+                        logColor: 'var(--accent-red)'
+                    });
+                    break;
+                }
+            }
+
+            if (isInvalidPrefix) {
+                steps.push({
+                    type: 'final', edges: [...edges], inDegree: {...inDegree}, queue: [], result: [],
+                    u: null, v: null, updatedInd: null, pushed: null, popped: null, isCycle: true, compData: null,
+                    panel: `<b>Algorithm Halted.</b> Invalid prefix detected. Returning empty string <code>""</code>.`,
+                    complete: true, result: '""',
+                    statusText: `Failed: Invalid Prefix.`,
+                    log: `\nAlgorithm terminated due to invalid prefix. Result: ""`,
+                    logColor: 'var(--accent-red)'
+                });
+                return;
+            }
+
+            // Topological Sort (Kahn's Algorithm)
+            let queue = [];
+            for (let c of chars) {
+                if (inDegree[c] === 0) queue.push(c);
+            }
+
+            steps.push({
+                type: 'kahn_init', edges: [...edges], inDegree: {...inDegree}, queue: [...queue], result: [],
+                u: null, v: null, updatedInd: null, pushed: null, popped: null, isCycle: false, compData: null,
+                panel: `<b>Topological Sort (Kahn's Algorithm)</b><br>Graph is built. Initializing Queue with all characters having <code>In-Degree = 0</code> (No prerequisites).`,
+                statusText: `Graph built. Starting BFS.`,
+                log: `\nGraph building complete. Starting Kahn's algorithm.\nInitial queue: [${queue.join(', ')}]`
+            });
+
+            let result = [];
+            
+            while (queue.length > 0) {
+                let u = queue.shift();
+                result.push(u);
+
+                steps.push({
+                    type: 'dequeue', edges: [...edges], inDegree: {...inDegree}, queue: [...queue], result: [...result],
+                    u: u, v: null, updatedInd: null, pushed: null, popped: u, isCycle: false, compData: null,
+                    panel: `<b>Dequeue:</b> Character <b>'${u}'</b> has 0 prerequisites. Appending to Result Order.<br>Now resolving its dependencies...`,
+                    statusText: `Processing character '${u}'...`,
+                    log: `\nDequeue '${u}'. Added to result: "${result.join('')}"`
+                });
+
+                for (let v of adj[u]) {
+                    inDegree[v]--;
+
+                    steps.push({
+                        type: 'decrement', edges: [...edges], inDegree: {...inDegree}, queue: [...queue], result: [...result],
+                        u: u, v: v, updatedInd: v, pushed: null, popped: null, isCycle: false, compData: null,
+                        panel: `Character <b>'${v}'</b> depended on <b>'${u}'</b>.<br>Since '${u}' is resolved, we decrement <code>inDegree['${v}']</code> to <b>${inDegree[v]}</b>.`,
+                        statusText: `Decremented in-degree for '${v}'.`,
+                        log: `  Edge ${u}->${v}: Decrement inDegree['${v}'] = ${inDegree[v]}`
+                    });
+
+                    if (inDegree[v] === 0) {
+                        queue.push(v);
+                        steps.push({
+                            type: 'enqueue', edges: [...edges], inDegree: {...inDegree}, queue: [...queue], result: [...result],
+                            u: u, v: v, updatedInd: v, pushed: v, popped: null, isCycle: false, compData: null,
+                            panel: `<code>inDegree['${v}']</code> is now 0!<br>All prerequisites for <b>'${v}'</b> are met. <b style="color:var(--accent-blue)">Enqueue '${v}'</b>.`,
+                            statusText: `Character '${v}' ready! Enqueued.`,
+                            log: `    -> inDegree['${v}'] is 0. Enqueued.`,
+                            logColor: 'var(--accent-blue)'
+                        });
+                    }
+                }
+            }
+
+            let isCycle = result.length !== chars.length;
+
+            steps.push({
+                type: 'final', edges: [...edges], inDegree: {...inDegree}, queue: [...queue], result: [...result],
+                u: null, v: null, updatedInd: null, pushed: null, popped: null, isCycle: isCycle, compData: null,
+                panel: isCycle ? 
+                    `<b style="color:var(--accent-red)">Cycle Detected!</b><br>Queue is empty, but we only placed ${result.length} out of ${chars.length} characters.<br>Contradictory constraints exist. Returning <code>""</code>.` :
+                    `<b style="color:var(--accent-green)">Success!</b><br>All characters processed. Valid topological order found!`,
+                complete: true, result: isCycle ? '""' : `"${result.join('')}"`,
+                statusText: isCycle ? `Algorithm Failed: Cycle Detected.` : `Algorithm Complete.`,
+                log: isCycle ? `\nResult length != unique characters. Cycle detected! Return ""` : `\nAlgorithm Finished. Valid order: "${result.join('')}"`,
+                logColor: isCycle ? 'var(--accent-red)' : 'var(--accent-green)'
+            });
+        }
+
+        function drawEdges(step) {
+            const svg = document.getElementById('edges-svg');
+            svg.innerHTML = '';
+            const nodeRadius = 22;
+
+            step.edges.forEach(e => {
+                const p1 = nodeCoords[e.u];
+                const p2 = nodeCoords[e.v];
+                if(!p1 || !p2) return;
+
+                let isChecking = step.u === e.u && step.v === e.v;
+                let isResolved = step.result && step.result.includes(e.u);
+
+                const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                
+                const dx = p2.x - p1.x;
+                const dy = p2.y - p1.y;
+                const len = Math.hypot(dx, dy);
+                const shrinkTarget = nodeRadius + 5; 
+                const shrinkSource = nodeRadius + 2; 
+                
+                line.setAttribute('x1', p1.x + (dx/len)*shrinkSource); 
+                line.setAttribute('y1', p1.y + (dy/len)*shrinkSource);
+                line.setAttribute('x2', p2.x - (dx/len)*shrinkTarget); 
+                line.setAttribute('y2', p2.y - (dy/len)*shrinkTarget);
+
+                if (isChecking) {
+                    line.setAttribute('stroke', 'var(--accent-purple)');
+                    line.setAttribute('stroke-width', '4');
+                    line.setAttribute('marker-end', 'url(#arrow-active)');
+                    line.classList.add('line-anim');
+                    setTimeout(() => svg.appendChild(line), 0);
+                } else {
+                    line.setAttribute('stroke', 'var(--border-main)');
+                    line.setAttribute('stroke-width', '2');
+                    line.setAttribute('marker-end', 'url(#arrow-normal)');
+                    if (isResolved) line.setAttribute('opacity', '0.2');
+                    svg.appendChild(line);
+                }
+            });
+        }
+
+        function renderArray(containerId, dataMap, keysOrder, tileClass, stepData, targetKey) {
+            const container = document.getElementById(containerId);
+            container.innerHTML = '';
+            
+            if (keysOrder.length === 0 && !stepData.popped) {
+                container.innerHTML = '<span style="color:var(--text-dim); font-size:13px; font-family:monospace; margin-top:8px;">{ empty }</span>';
+                return;
+            }
+
+            if (containerId === 'queue-tiles' && stepData.type === 'dequeue' && stepData.popped !== null) {
+                const popTile = document.createElement('div');
+                popTile.className = `tile ${tileClass} popping`;
+                popTile.innerText = stepData.popped;
+                container.appendChild(popTile);
+            }
+
+            keysOrder.forEach((k) => {
+                const wrapper = document.createElement('div');
+                wrapper.className = 'tile-container';
+                
+                const tile = document.createElement('div');
+                tile.className = `tile ${tileClass}`;
+                
+                if (stepData.pushed === k && targetKey === 'queue') {
+                    tile.classList.add('pushing');
+                }
+                if (stepData.updatedInd === k && targetKey === 'indegree') {
+                    tile.classList.add('highlight-update');
+                }
+                
+                tile.innerText = targetKey === 'indegree' ? dataMap[k] : k;
+                
+                const idxLabel = document.createElement('div');
+                idxLabel.className = 'tile-index';
+                idxLabel.innerText = targetKey === 'indegree' ? `[${k}]` : ` `;
+
+                wrapper.appendChild(tile);
+                if (targetKey === 'indegree') wrapper.appendChild(idxLabel);
+                
+                container.appendChild(wrapper);
+            });
+        }
+
+        function formatWordComparison(comp) {
+            if (!comp) return "—";
+            let {w1, w2, idx, diff, valid} = comp;
+            
+            let html = `<div class="word-comp-container"><div>`;
+            for (let i=0; i<w1.length; i++) {
+                if (i === idx && diff) html += `<span class="char-u">${w1[i]}</span>`;
+                else if (i >= w2.length && !valid) html += `<span style="color:var(--accent-red)">${w1[i]}</span>`;
+                else if (i < idx || (!diff && valid)) html += `<span class="char-dim">${w1[i]}</span>`;
+                else html += w1[i];
+            }
+            html += `</div><div>`;
+            for (let i=0; i<w2.length; i++) {
+                if (i === idx && diff) html += `<span class="char-v">${w2[i]}</span>`;
+                else if (i < idx || (!diff && valid)) html += `<span class="char-dim">${w2[i]}</span>`;
+                else html += w2[i];
+            }
+            html += `</div></div>`;
+            return html;
+        }
+
+        function renderStep(idx) {
+            const step = steps[idx];
+            if (!step) return;
+
+            // Render Nodes
+            chars.forEach(c => {
+                const el = document.getElementById(`node-${c}`);
+                if(!el) return;
+                
+                el.className = 'node';
+                
+                if (step.result.includes(c)) el.classList.add('processed');
+                
+                if (step.isCycle && step.inDegree[c] > 0) el.classList.add('cycle');
+                
+                if (step.u === c && step.type !== 'add_edge' && step.type !== 'dup_edge' && step.type !== 'compare') el.classList.add('active-u');
+                if (step.v === c) el.classList.add('active-v');
+                
+                // Highlight during comparison
+                if ((step.type === 'add_edge' || step.type === 'dup_edge') && step.u === c) el.classList.add('active-u');
+            });
+
+            drawEdges(step);
+
+            // Render Arrays
+            renderArray('indegree-tiles', step.inDegree, chars, 'ind-tile', step, 'indegree');
+            renderArray('queue-tiles', null, step.queue, 'queue-tile', step, 'queue');
+            renderArray('result-tiles', null, step.result, 'res-tile', step, 'result');
+
+            // Update Info Panel
+            document.getElementById('main-panel').innerHTML = step.panel;
+            
+            document.getElementById('val-u').innerText = step.u !== null ? step.u : '—';
+            document.getElementById('val-v').innerText = step.v !== null ? step.v : '—';
+            document.getElementById('val-comp').innerHTML = formatWordComparison(step.compData);
+
+            const resVal = document.getElementById('res-val');
+            resVal.innerText = step.complete ? step.result : '—';
+            if (step.complete) {
+                resVal.className = step.isCycle || step.result === '""' ? 'pop-false' : 'pop';
+            } else {
+                resVal.className = '';
+            }
+
+            document.getElementById('status-text').innerText = step.statusText;
+
+            // Update Log
+            const logPanel = document.getElementById('log');
+            logPanel.innerHTML = '';
+            for (let k = 0; k <= idx; k++) {
+                if (steps[k].log) {
+                    const line = document.createElement('div');
+                    line.style.marginBottom = '2px';
+                    line.style.whiteSpace = 'pre-wrap';
+                    if (steps[k].logColor) line.style.color = steps[k].logColor;
+                    line.innerText = steps[k].log;
+                    logPanel.appendChild(line);
+                }
+            }
+            logPanel.scrollTop = logPanel.scrollHeight;
+        }
+
+        function next() {
+            if (stepIndex < steps.length - 1) {
+                stepIndex++;
+                renderStep(stepIndex);
+            } else pause();
+        }
+
+        function back() {
+            if (stepIndex > 0) {
+                stepIndex--;
+                renderStep(stepIndex);
+            }
+        }
+
+        function reset() {
+            pause();
+            stepIndex = 0;
+            renderStep(0);
+        }
+
+        function togglePlay() {
+            const btn = document.getElementById('play-btn');
+            if (timer) pause();
+            else {
+                btn.innerText = 'Pause';
+                if (stepIndex >= steps.length - 1) stepIndex = 0;
+                timer = setInterval(next, delays[document.getElementById('speed-slider').value]);
+            }
+        }
+
+        function pause() {
+            clearInterval(timer);
+            timer = null;
+            document.getElementById('play-btn').innerText = 'Play';
+        }
+
+        window.onload = () => { setTimeout(init, 100); };
+    </script>
+</body>
+</html>

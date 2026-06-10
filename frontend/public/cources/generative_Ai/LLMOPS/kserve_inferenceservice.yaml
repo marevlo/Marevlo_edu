@@ -1,0 +1,229 @@
+# ═══════════════════════════════════════════════════════════════════════════
+# kserve_inferenceservice.yaml
+#
+# Production KServe InferenceService for a vLLM-backed Nexus deployment.
+# Wraps the core vLLM serving config with:
+#
+#   - Queue-depth-based autoscaler (NOT CPU/GPU util — see M7 section 02)
+#   - Canary traffic split with automated rollback
+#   - PodDisruptionBudget to prevent mass eviction
+#   - Readiness gates tied to vLLM engine warmup
+#   - Locality-aware routing for disaggregated P/D (if enabled)
+#   - GPU-aware tolerations and node affinity
+#
+# Drop-in replacement for a default KServe inference service. Every knob
+# annotated with the reason for its value.
+#
+# Usage:
+#   kubectl apply -f kserve_inferenceservice.yaml
+# ═══════════════════════════════════════════════════════════════════════════
+
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: nexus-llm
+  namespace: llm-serving
+  annotations:
+    # Canary traffic percentage. The other 90% goes to the stable revision.
+    serving.kserve.io/canaryTrafficPercent: "10"
+
+    # Autoscaler metric — queue depth, not CPU or GPU util. See section 02
+    # of M7: CPU is irrelevant on a GPU-bound workload; GPU util is always
+    # near 100% during decode so doesn't indicate saturation. Queue depth
+    # is the only signal that directly tracks whether requests are waiting.
+    autoscaling.knative.dev/metric: "concurrency"
+    autoscaling.knative.dev/target: "48"       # target concurrent requests per pod
+    autoscaling.knative.dev/target-utilization-percentage: "80"
+
+    # Scale-down delay — don't rush to scale down after a spike. vLLM takes
+    # 45-90 seconds to warm up a new replica (load weights, compile kernels).
+    # If we scale down too fast, the next spike will miss SLO while new pods
+    # warm up.
+    autoscaling.knative.dev/scale-down-delay: "5m"
+    autoscaling.knative.dev/window: "30s"
+
+    # Pod-level overrides for queue proxy
+    queue.sidecar.serving.knative.dev/cpu-resource-request: "500m"
+    queue.sidecar.serving.knative.dev/memory-resource-request: "512Mi"
+
+spec:
+  predictor:
+    # Minimum 2 pods per region for HA (tolerating one pod loss from PDB).
+    # Max sized to handle traffic at 1.5× expected peak.
+    minReplicas: 2
+    maxReplicas: 12
+
+    # Scale-to-zero disabled for Nexus. Cold-start of a 70B model is 60-90s;
+    # would break interactive SLO every time it happens.
+    scaleMetric: concurrency
+    scaleTarget: 48
+    containerConcurrency: 64     # hard cap per pod; aligns with max_num_seqs
+
+    # ─── Canary rollout policy ────────────────────────────────────────
+    # Canary gets 10% of traffic (set via annotation above). Automated
+    # rollback if canary metrics regress:
+    #   - TTFT p99 > 1.25× of stable for 5m → rollback
+    #   - Error rate > 1.5% → rollback
+    #   - α drop > 0.05 for 10m → rollback
+    # These checks run in a sidecar; the details are in prometheus_production_alerts.yaml
+
+    # ─── Pod spec ─────────────────────────────────────────────────────
+    podSpec:
+      # Don't evict all pods at once during node maintenance
+      terminationGracePeriodSeconds: 60
+
+      # GPU node affinity — run on H200 nodes only
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: nvidia.com/gpu.product
+                operator: In
+                values: ["NVIDIA-H200"]
+        # Spread across nodes and zones
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: serving.kserve.io/inferenceservice
+                  operator: In
+                  values: ["nexus-llm"]
+              topologyKey: "topology.kubernetes.io/zone"
+
+      tolerations:
+      - key: nvidia.com/gpu
+        operator: Equal
+        value: "present"
+        effect: NoSchedule
+
+      containers:
+      - name: kserve-container
+        image: vllm/vllm-openai:v0.6.3
+        imagePullPolicy: IfNotPresent
+
+        # Resource reservations
+        resources:
+          requests:
+            cpu: "8"
+            memory: "64Gi"
+            nvidia.com/gpu: "4"           # TP=4 across 4 H200s
+          limits:
+            cpu: "16"
+            memory: "128Gi"
+            nvidia.com/gpu: "4"
+
+        # vLLM command — refers to the M5 batching config
+        command: ["vllm", "serve"]
+        args:
+        - "--model=meta-llama/Meta-Llama-3-70B-Instruct"
+        - "--quantization=awq"
+        - "--kv-cache-dtype=fp8_e4m3"
+        - "--tensor-parallel-size=4"
+        - "--max-num-seqs=64"
+        - "--enable-prefix-caching"
+        - "--enable-chunked-prefill"
+        - "--config-file=/config/vllm_batching_config.yaml"
+
+        # ─── Readiness gate: vLLM engine warm + serving ──────────────
+        # startupProbe: wide window for initial model load
+        startupProbe:
+          httpGet: { path: /health, port: 8000 }
+          initialDelaySeconds: 60        # model weights load
+          periodSeconds: 10
+          failureThreshold: 18            # up to 3 minutes total
+          timeoutSeconds: 5
+
+        # readinessProbe: gate traffic on engine ready
+        readinessProbe:
+          httpGet: { path: /health, port: 8000 }
+          periodSeconds: 5
+          timeoutSeconds: 2
+          failureThreshold: 2
+          successThreshold: 1
+
+        # livenessProbe: restart if hung — but only after a LONG window
+        # (LLM inference can produce multi-second single requests; don't
+        # confuse that with a hang).
+        livenessProbe:
+          httpGet: { path: /health, port: 8000 }
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 5
+
+        # graceful shutdown: stop accepting new requests, drain in-flight
+        lifecycle:
+          preStop:
+            exec:
+              command: ["/bin/sh", "-c", "sleep 30"]
+
+        volumeMounts:
+        - name: model-cache
+          mountPath: /models
+        - name: config
+          mountPath: /config
+
+      volumes:
+      - name: model-cache
+        persistentVolumeClaim:
+          claimName: model-cache-pvc
+      - name: config
+        configMap:
+          name: vllm-config
+
+---
+
+# ─── PodDisruptionBudget ──────────────────────────────────────────────
+# Prevents Kubernetes from evicting all pods during node maintenance or
+# cluster upgrades. Without this, a rolling node update can take down the
+# entire serving pool simultaneously.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: nexus-llm-pdb
+  namespace: llm-serving
+spec:
+  minAvailable: 2         # always keep 2 pods alive
+  selector:
+    matchLabels:
+      serving.kserve.io/inferenceservice: nexus-llm
+
+---
+
+# ─── HorizontalPodAutoscaler (alternate to Knative autoscaler) ────────
+# Only used if the Knative autoscaler is disabled. For most deployments,
+# the Knative concurrency-based scaler above is preferred.
+#
+# apiVersion: autoscaling/v2
+# kind: HorizontalPodAutoscaler
+# metadata:
+#   name: nexus-llm-hpa
+# spec:
+#   scaleTargetRef:
+#     apiVersion: serving.kserve.io/v1beta1
+#     kind: InferenceService
+#     name: nexus-llm
+#   minReplicas: 2
+#   maxReplicas: 12
+#   metrics:
+#   - type: Pods
+#     pods:
+#       metric:
+#         name: vllm_num_requests_waiting
+#       target:
+#         type: AverageValue
+#         averageValue: "5"      # scale when avg queue depth exceeds 5 per pod
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Pre-deploy verification checklist:
+#
+#   1. Autoscaler target (scaleTarget) aligns with batching_throughput_model.py
+#      SLO-compliant batch recommendation (max_num_seqs).
+#   2. PodDisruptionBudget set — verify via: kubectl get pdb
+#   3. Startup probe timeout > actual model load time (verify once in staging).
+#   4. Graceful-shutdown preStop sleep ≥ longest expected request duration.
+#   5. GPU node affinity matches your actual node labels (describe nodes).
+#   6. Image tag pinned (not `:latest`) to prevent surprise upgrades.
+# ═══════════════════════════════════════════════════════════════════════════

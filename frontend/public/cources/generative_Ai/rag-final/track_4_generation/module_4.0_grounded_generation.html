@@ -1,0 +1,2237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>RAG Academy • Module 4.0 — Generation: Prompting, Grounding, Hallucination</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  if (typeof console !== 'undefined') {
+    const origWarn = console.warn;
+    console.warn = function(...args) {
+      if (args[0] && typeof args[0] === 'string' && args[0].includes('cdn.tailwindcss.com')) return;
+      origWarn.apply(console, args);
+    };
+  }
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700;800;900&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+<style>
+  :root {
+    --bg-deep: #02030a;
+    --bg-mid: #060818;
+    --bg-card: rgba(12, 16, 38, 0.6);
+    --neon-cyan: #00f0ff;
+    --neon-blue: #4d8eff;
+    --neon-purple: #b86bff;
+    --neon-pink: #ff4dcf;
+    --neon-amber: #ffb84d;
+    --neon-green: #4dffb8;
+    --text-primary: #e8efff;
+    --text-secondary: #8a96b8;
+    --border-glow: rgba(0, 240, 255, 0.25);
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    font-family: 'Inter', sans-serif;
+    background: var(--bg-deep);
+    color: var(--text-primary);
+    overflow-x: hidden;
+    min-height: 100vh;
+  }
+
+  .font-display { font-family: 'Orbitron', sans-serif; letter-spacing: 0.02em; }
+  .font-mono { font-family: 'JetBrains Mono', monospace; }
+
+  /* ===== STARFIELD ===== */
+  #starfield { position: fixed; inset: 0; z-index: 0; pointer-events: none; }
+  .nebula {
+    position: fixed; border-radius: 50%; filter: blur(120px);
+    opacity: 0.35; pointer-events: none; z-index: 0;
+  }
+  .nebula-1 { top: -10%; left: -5%; width: 50vw; height: 50vw; background: radial-gradient(circle, #4d8eff, transparent 70%); animation: drift1 22s ease-in-out infinite; }
+  .nebula-2 { top: 30%; right: -10%; width: 45vw; height: 45vw; background: radial-gradient(circle, #b86bff, transparent 70%); animation: drift2 28s ease-in-out infinite; }
+  .nebula-3 { bottom: -10%; left: 20%; width: 40vw; height: 40vw; background: radial-gradient(circle, #00f0ff, transparent 70%); animation: drift3 25s ease-in-out infinite; opacity: 0.22; }
+  @keyframes drift1 { 0%,100% { transform: translate(0,0); } 50% { transform: translate(40px, 60px); } }
+  @keyframes drift2 { 0%,100% { transform: translate(0,0); } 50% { transform: translate(-50px, 40px); } }
+  @keyframes drift3 { 0%,100% { transform: translate(0,0); } 50% { transform: translate(30px, -50px); } }
+
+  /* ===== NAV ===== */
+  .top-nav {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 50;
+    backdrop-filter: blur(20px); background: rgba(2, 3, 10, 0.7);
+    border-bottom: 1px solid rgba(0, 240, 255, 0.15);
+  }
+  .nav-logo {
+    background: linear-gradient(135deg, var(--neon-cyan), var(--neon-purple));
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+
+  /* ===== HOLO CARDS ===== */
+  .holo-card {
+    background: linear-gradient(135deg, rgba(12, 16, 38, 0.7), rgba(20, 12, 50, 0.5));
+    border: 1px solid rgba(0, 240, 255, 0.18);
+    border-radius: 18px;
+    backdrop-filter: blur(14px);
+    position: relative; overflow: hidden;
+    transition: all 0.4s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  .holo-card::before {
+    content: ''; position: absolute; inset: 0;
+    background: linear-gradient(135deg, transparent 40%, rgba(0, 240, 255, 0.08) 50%, transparent 60%);
+    transform: translateX(-100%); transition: transform 0.8s ease;
+    pointer-events: none;
+  }
+  .holo-card:hover::before { transform: translateX(100%); }
+  .holo-card:hover {
+    border-color: rgba(0, 240, 255, 0.5);
+    box-shadow: 0 0 40px rgba(0, 240, 255, 0.15), inset 0 0 30px rgba(77, 142, 255, 0.05);
+    transform: translateY(-4px);
+  }
+
+  /* ===== GRADIENTS ===== */
+  .gradient-cyan { background: linear-gradient(135deg, #00f0ff, #4d8eff); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .gradient-purple { background: linear-gradient(135deg, #b86bff, #ff4dcf); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .gradient-amber { background: linear-gradient(135deg, #ffb84d, #ff4dcf); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .gradient-green { background: linear-gradient(135deg, #4dffb8, #00f0ff); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .gradient-multi { background: linear-gradient(135deg, #00f0ff 0%, #4d8eff 35%, #b86bff 70%, #ff4dcf 100%); -webkit-background-clip: text; background-clip: text; color: transparent; }
+
+  /* ===== BUTTONS ===== */
+  .btn-primary {
+    background: linear-gradient(135deg, #00f0ff, #4d8eff);
+    color: #02030a; font-weight: 700;
+    padding: 14px 28px; border-radius: 12px; border: none;
+    position: relative; overflow: hidden;
+    transition: all 0.3s ease; cursor: pointer;
+    box-shadow: 0 0 30px rgba(0, 240, 255, 0.35);
+  }
+  .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 0 50px rgba(0, 240, 255, 0.6); }
+  .btn-ghost {
+    background: rgba(12, 16, 38, 0.5);
+    border: 1px solid rgba(0, 240, 255, 0.3);
+    color: var(--text-primary); font-weight: 600;
+    padding: 14px 28px; border-radius: 12px;
+    transition: all 0.3s ease; cursor: pointer;
+  }
+  .btn-ghost:hover { border-color: var(--neon-cyan); background: rgba(0, 240, 255, 0.08); }
+
+  /* ===== HERO ===== */
+  .hero-title { font-size: clamp(2.5rem, 7vw, 6rem); line-height: 0.95; font-weight: 900; }
+  .scan-line {
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--neon-cyan), transparent);
+    animation: scan 4s linear infinite;
+  }
+  @keyframes scan { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }
+
+  /* ===== PILL ===== */
+  .pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 6px 14px; border-radius: 999px;
+    font-size: 0.75rem; font-weight: 600;
+    letter-spacing: 0.08em; text-transform: uppercase;
+    border: 1px solid rgba(0, 240, 255, 0.3);
+    background: rgba(0, 240, 255, 0.06);
+    color: var(--neon-cyan);
+  }
+  .pill-green { border-color: rgba(77, 255, 184, 0.3); background: rgba(77, 255, 184, 0.06); color: var(--neon-green); }
+  .pill-pink { border-color: rgba(255, 77, 207, 0.3); background: rgba(255, 77, 207, 0.06); color: var(--neon-pink); }
+  .pill-amber { border-color: rgba(255, 184, 77, 0.3); background: rgba(255, 184, 77, 0.06); color: var(--neon-amber); }
+  .pill-purple { border-color: rgba(184, 107, 255, 0.3); background: rgba(184, 107, 255, 0.06); color: var(--neon-purple); }
+
+  /* ===== CODE ===== */
+  .code-block {
+    background: rgba(2, 3, 10, 0.8);
+    border: 1px solid rgba(0, 240, 255, 0.2);
+    border-radius: 14px;
+    padding: 24px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.82rem; line-height: 1.7;
+    overflow-x: auto; position: relative;
+  }
+  .code-block::before {
+    content: ''; position: absolute;
+    top: 0; left: 0; right: 0; height: 1px;
+    background: linear-gradient(90deg, transparent, var(--neon-cyan), transparent);
+  }
+  .code-block pre { margin: 0; }
+  .tok-keyword { color: #ff4dcf; }
+  .tok-string { color: #4dffb8; }
+  .tok-fn { color: #00f0ff; }
+  .tok-comment { color: #5a6788; font-style: italic; }
+  .tok-num { color: #ffb84d; }
+  .tok-var { color: #e8efff; }
+  .tok-key { color: #b86bff; }
+  .tok-bool { color: #ff4dcf; font-weight: 600; }
+  .tok-type { color: #4d8eff; font-style: italic; }
+  .tok-tag { color: #b86bff; }
+  .tok-attr { color: #ffb84d; }
+
+  .float-y { animation: floaty 6s ease-in-out infinite; }
+  @keyframes floaty { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-12px); } }
+
+  /* ===== REVEAL ===== */
+  .reveal { transition: opacity 1s cubic-bezier(0.2, 0.8, 0.2, 1), transform 1s cubic-bezier(0.2, 0.8, 0.2, 1); }
+  .js-reveal .reveal { opacity: 0; transform: translateY(40px); }
+  .js-reveal .reveal.in { opacity: 1; transform: translateY(0); }
+
+  /* ===== PROGRESS ===== */
+  .progress-bar { height: 6px; background: rgba(0, 240, 255, 0.1); border-radius: 999px; overflow: hidden; position: relative; }
+  .progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--neon-cyan), var(--neon-purple), var(--neon-pink));
+    border-radius: 999px;
+    transition: width 1.5s cubic-bezier(0.2, 0.8, 0.2, 1);
+    position: relative;
+  }
+  .progress-fill::after {
+    content: ''; position: absolute; inset: 0;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
+    animation: shimmer 2s linear infinite;
+  }
+  @keyframes shimmer { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }
+
+  /* ===== CHECKPOINT ===== */
+  .checkpoint-glow {
+    background: radial-gradient(circle at center, rgba(0, 240, 255, 0.12), transparent 70%);
+    border: 1px solid rgba(0, 240, 255, 0.3);
+  }
+
+  /* ===== SIDE NAV ===== */
+  .side-dots {
+    position: fixed; right: 24px; top: 50%;
+    transform: translateY(-50%); z-index: 40;
+    display: flex; flex-direction: column; gap: 14px;
+  }
+  @media (max-width: 768px) { .side-dots { display: none; } }
+  .dot {
+    width: 10px; height: 10px; border-radius: 50%;
+    background: rgba(0, 240, 255, 0.2);
+    border: 1px solid rgba(0, 240, 255, 0.4);
+    transition: all 0.3s ease; cursor: pointer;
+  }
+  .dot.active { background: var(--neon-cyan); box-shadow: 0 0 15px var(--neon-cyan); transform: scale(1.3); }
+
+  /* ===== SCROLLBAR ===== */
+  ::-webkit-scrollbar { width: 10px; }
+  ::-webkit-scrollbar-track { background: var(--bg-deep); }
+  ::-webkit-scrollbar-thumb { background: linear-gradient(180deg, var(--neon-cyan), var(--neon-purple)); border-radius: 10px; }
+
+  /* ===== HOLO BORDER ===== */
+  .holo-border { position: relative; }
+  .holo-border::after {
+    content: ''; position: absolute; inset: -1px; border-radius: inherit;
+    padding: 1px;
+    background: linear-gradient(135deg, var(--neon-cyan), transparent 40%, transparent 60%, var(--neon-purple));
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor; mask-composite: exclude;
+    pointer-events: none; opacity: 0.6;
+  }
+
+  /* ===== GRID FLOOR ===== */
+  .grid-floor {
+    position: absolute; bottom: 0; left: 0; right: 0; height: 30vh;
+    background-image:
+      linear-gradient(rgba(0, 240, 255, 0.15) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0, 240, 255, 0.15) 1px, transparent 1px);
+    background-size: 50px 50px;
+    transform: perspective(500px) rotateX(60deg);
+    transform-origin: bottom;
+    opacity: 0.4;
+    mask-image: linear-gradient(180deg, transparent, black 50%);
+    -webkit-mask-image: linear-gradient(180deg, transparent, black 50%);
+  }
+
+  /* ===== CALLOUT ===== */
+  .callout {
+    background: linear-gradient(135deg, rgba(255, 184, 77, 0.08), rgba(255, 77, 207, 0.04));
+    border-left: 3px solid var(--neon-amber);
+    border-radius: 8px;
+    padding: 16px 20px;
+  }
+  .callout-cyan {
+    background: linear-gradient(135deg, rgba(0, 240, 255, 0.08), rgba(77, 142, 255, 0.04));
+    border-left: 3px solid var(--neon-cyan);
+    border-radius: 8px; padding: 16px 20px;
+  }
+  .callout-green {
+    background: linear-gradient(135deg, rgba(77, 255, 184, 0.08), rgba(0, 240, 255, 0.04));
+    border-left: 3px solid var(--neon-green);
+    border-radius: 8px; padding: 16px 20px;
+  }
+  .callout-pink {
+    background: linear-gradient(135deg, rgba(255, 77, 207, 0.08), rgba(184, 107, 255, 0.04));
+    border-left: 3px solid var(--neon-pink);
+    border-radius: 8px; padding: 16px 20px;
+  }
+
+  /* ===== STAT NUM ===== */
+  .stat-num {
+    font-family: 'Orbitron', sans-serif;
+    font-weight: 800; font-size: 2.4rem;
+    background: linear-gradient(135deg, #00f0ff, #b86bff);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+
+  /* ===== TAB ===== */
+  .tab-btn {
+    padding: 10px 20px;
+    border-radius: 10px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.82rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    border: 1px solid rgba(0, 240, 255, 0.2);
+    background: rgba(12, 16, 38, 0.5);
+    color: var(--text-secondary);
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .tab-btn:hover { border-color: var(--neon-cyan); color: var(--text-primary); }
+  .tab-btn.active {
+    background: linear-gradient(135deg, var(--neon-cyan), var(--neon-purple));
+    color: #02030a;
+    border-color: transparent;
+    box-shadow: 0 0 25px rgba(0, 240, 255, 0.4);
+  }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; animation: fadeUp 0.5s ease; }
+  @keyframes fadeUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+  /* ===== COPY ===== */
+  .copy-btn {
+    position: absolute;
+    top: 12px; right: 12px;
+    background: rgba(0, 240, 255, 0.1);
+    border: 1px solid rgba(0, 240, 255, 0.3);
+    color: var(--neon-cyan);
+    padding: 4px 10px;
+    border-radius: 6px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.7rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    z-index: 2;
+  }
+  .copy-btn:hover { background: rgba(0, 240, 255, 0.2); }
+  .copy-btn.copied { background: var(--neon-green); color: #02030a; border-color: var(--neon-green); }
+
+  /* ===== STEP CARD ===== */
+  .step-card {
+    position: relative;
+    background: rgba(12, 16, 38, 0.7);
+    border: 1px solid rgba(0, 240, 255, 0.2);
+    border-radius: 14px;
+    padding: 20px 22px;
+    transition: all 0.3s ease;
+  }
+  .step-card:hover {
+    border-color: var(--neon-cyan);
+    transform: translateY(-3px);
+    box-shadow: 0 0 25px rgba(0, 240, 255, 0.2);
+  }
+  .step-card .step-num {
+    position: absolute;
+    top: -12px; left: 18px;
+    background: linear-gradient(135deg, var(--neon-cyan), var(--neon-purple));
+    color: #02030a;
+    font-family: 'Orbitron', sans-serif;
+    font-weight: 800;
+    font-size: 0.7rem;
+    padding: 3px 10px;
+    border-radius: 999px;
+    box-shadow: 0 0 15px rgba(0, 240, 255, 0.5);
+    letter-spacing: 0.08em;
+  }
+
+  /* ===== QUIZ ===== */
+  .quiz-option {
+    background: rgba(12, 16, 38, 0.6);
+    border: 1px solid rgba(0, 240, 255, 0.2);
+    border-radius: 12px;
+    padding: 14px 18px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    display: flex; align-items: center; gap: 12px;
+    text-align: left;
+    width: 100%;
+    font-family: inherit;
+    color: var(--text-primary);
+  }
+  .quiz-option:hover:not(.locked) {
+    border-color: var(--neon-cyan);
+    background: rgba(0, 240, 255, 0.06);
+    transform: translateX(4px);
+  }
+  .quiz-option.correct {
+    border-color: var(--neon-green);
+    background: rgba(77, 255, 184, 0.1);
+    box-shadow: 0 0 20px rgba(77, 255, 184, 0.3);
+  }
+  .quiz-option.wrong {
+    border-color: var(--neon-pink);
+    background: rgba(255, 77, 207, 0.1);
+  }
+  .quiz-marker {
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    border: 1px solid rgba(0, 240, 255, 0.3);
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Orbitron', sans-serif;
+    font-size: 0.8rem;
+    color: var(--neon-cyan);
+    flex-shrink: 0;
+  }
+  .quiz-option.correct .quiz-marker { background: var(--neon-green); border-color: var(--neon-green); color: #02030a; }
+  .quiz-option.wrong .quiz-marker { background: var(--neon-pink); border-color: var(--neon-pink); color: #02030a; }
+
+  /* ===== BEHAVIOR CARD ===== */
+  .behavior-card {
+    background: rgba(12, 16, 38, 0.7);
+    border: 1px solid rgba(0, 240, 255, 0.2);
+    border-radius: 14px;
+    padding: 20px;
+    transition: all 0.3s ease;
+    position: relative;
+    overflow: hidden;
+  }
+  .behavior-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 0 30px rgba(0, 240, 255, 0.18);
+  }
+  .behavior-num {
+    position: absolute;
+    top: 12px; right: 14px;
+    font-family: 'Orbitron', sans-serif;
+    font-weight: 800;
+    font-size: 0.7rem;
+    padding: 3px 10px;
+    border-radius: 999px;
+    color: #02030a;
+  }
+  .behavior-1 { border-color: rgba(77, 255, 184, 0.4); }
+  .behavior-1 .behavior-num { background: linear-gradient(135deg, #4dffb8, #00f0ff); }
+  .behavior-2 { border-color: rgba(0, 240, 255, 0.4); }
+  .behavior-2 .behavior-num { background: linear-gradient(135deg, #00f0ff, #4d8eff); }
+  .behavior-3 { border-color: rgba(255, 184, 77, 0.4); }
+  .behavior-3 .behavior-num { background: linear-gradient(135deg, #ffb84d, #ff4dcf); }
+  .behavior-4 { border-color: rgba(255, 77, 207, 0.4); }
+  .behavior-4 .behavior-num { background: linear-gradient(135deg, #ff4dcf, #b86bff); }
+
+  /* ===== HALLUCINATION CARD ===== */
+  .hallu-card {
+    background: rgba(2, 3, 10, 0.65);
+    border: 1px solid rgba(255, 77, 207, 0.25);
+    border-radius: 14px;
+    padding: 18px;
+    transition: all 0.3s ease;
+  }
+  .hallu-card:hover {
+    border-color: var(--neon-pink);
+    background: rgba(255, 77, 207, 0.04);
+    transform: translateY(-3px);
+  }
+
+  /* ===== INPUT ===== */
+  .text-input {
+    width: 100%;
+    padding: 12px 14px;
+    background: rgba(2,3,10,0.7);
+    border: 1px solid rgba(0,240,255,0.3);
+    border-radius: 10px;
+    color: var(--text-primary);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.85rem;
+    outline: none;
+    transition: border 0.2s ease;
+    resize: vertical;
+  }
+  .text-input:focus { border-color: var(--neon-cyan); }
+  textarea.text-input { min-height: 100px; }
+
+  /* ===== TOGGLE SWITCH ===== */
+  .toggle-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 14px;
+    background: rgba(2, 3, 10, 0.5);
+    border: 1px solid rgba(0, 240, 255, 0.15);
+    border-radius: 10px;
+    gap: 12px;
+    transition: all 0.2s ease;
+  }
+  .toggle-row.active { border-color: rgba(0, 240, 255, 0.4); background: rgba(0, 240, 255, 0.05); }
+  .toggle-row label { cursor: pointer; }
+  .toggle {
+    position: relative;
+    width: 38px; height: 20px;
+    background: rgba(0, 240, 255, 0.12);
+    border-radius: 999px;
+    transition: all 0.3s ease;
+    cursor: pointer;
+    border: 1px solid rgba(0, 240, 255, 0.25);
+    flex-shrink: 0;
+  }
+  .toggle::after {
+    content: '';
+    position: absolute;
+    top: 2px; left: 2px;
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    background: var(--text-secondary);
+    transition: all 0.3s ease;
+  }
+  .toggle.on {
+    background: linear-gradient(135deg, var(--neon-cyan), var(--neon-purple));
+    border-color: transparent;
+  }
+  .toggle.on::after {
+    left: 20px;
+    background: #02030a;
+  }
+
+  /* ===== PROMPT PREVIEW ===== */
+  .prompt-preview {
+    background: rgba(2, 3, 10, 0.9);
+    border: 1px solid rgba(0, 240, 255, 0.25);
+    border-radius: 12px;
+    padding: 18px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.78rem;
+    line-height: 1.65;
+    max-height: 500px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+    color: var(--text-primary);
+  }
+  .prompt-section {
+    padding: 6px 0;
+    border-bottom: 1px dashed rgba(0, 240, 255, 0.08);
+  }
+  .prompt-section:last-child { border-bottom: none; }
+  .prompt-label {
+    color: var(--neon-cyan);
+    font-size: 0.7rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    display: block;
+    margin-bottom: 2px;
+  }
+  .prompt-content { color: #cfd6e8; }
+  .prompt-tag { color: var(--neon-purple); }
+
+  /* ===== POSITION GAUGE ===== */
+  .position-track {
+    height: 32px;
+    background: linear-gradient(90deg,
+      rgba(77, 255, 184, 0.18) 0%,
+      rgba(77, 255, 184, 0.10) 12%,
+      rgba(255, 184, 77, 0.10) 30%,
+      rgba(255, 77, 207, 0.15) 50%,
+      rgba(255, 184, 77, 0.10) 70%,
+      rgba(77, 255, 184, 0.10) 88%,
+      rgba(77, 255, 184, 0.18) 100%
+    );
+    border: 1px solid rgba(0, 240, 255, 0.2);
+    border-radius: 10px;
+    position: relative;
+    overflow: hidden;
+  }
+  .position-marker {
+    position: absolute;
+    top: -4px; bottom: -4px;
+    width: 3px;
+    background: var(--neon-cyan);
+    box-shadow: 0 0 15px var(--neon-cyan);
+    border-radius: 2px;
+    transition: left 0.3s ease;
+  }
+  .position-label {
+    position: absolute;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.65rem;
+    color: var(--text-secondary);
+    pointer-events: none;
+    letter-spacing: 0.08em;
+  }
+
+  /* ===== CHART ===== */
+  .chart-wrapper { position: relative; width: 100%; height: 280px; }
+  #lostMiddleChart { max-height: 280px !important; display: block !important; }
+
+
+
+  /* ===== LEARN & PRACTICE CARDS ===== */
+  .resource-stack {
+    max-width: 860px;
+    margin: 0 auto;
+    display: grid;
+    gap: 14px;
+  }
+  .resource-card {
+    background: linear-gradient(135deg, rgba(6, 8, 24, 0.92), rgba(10, 12, 34, 0.86));
+    border: 1px solid rgba(0, 240, 255, 0.32);
+    border-radius: 16px;
+    padding: 20px;
+    box-shadow: 0 0 28px rgba(0, 240, 255, 0.08);
+  }
+  .resource-card.repo {
+    border-color: rgba(255, 77, 207, 0.35);
+    box-shadow: 0 0 28px rgba(255, 77, 207, 0.08);
+  }
+  .resource-icon {
+    width: 34px;
+    height: 34px;
+    border-radius: 10px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid rgba(0, 240, 255, 0.4);
+    background: rgba(0, 240, 255, 0.08);
+    color: var(--neon-cyan);
+    flex-shrink: 0;
+  }
+  .resource-card.repo .resource-icon {
+    border-color: rgba(255, 77, 207, 0.45);
+    background: rgba(255, 77, 207, 0.1);
+    color: var(--neon-pink);
+  }
+  .resource-cta {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 12px;
+    padding: 10px 18px;
+    border-radius: 10px;
+    border: 1px solid rgba(0, 240, 255, 0.55);
+    color: var(--neon-cyan);
+    font-family: 'Orbitron', sans-serif;
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    background: rgba(0, 240, 255, 0.06);
+    transition: all 0.25s ease;
+  }
+  .resource-cta:hover {
+    background: rgba(0, 240, 255, 0.12);
+    box-shadow: 0 0 20px rgba(0, 240, 255, 0.22);
+  }
+  .resource-card.repo .resource-cta {
+    border-color: rgba(255, 77, 207, 0.55);
+    color: var(--neon-pink);
+    background: rgba(255, 77, 207, 0.08);
+  }
+  .resource-card.repo .resource-cta:hover {
+    background: rgba(255, 77, 207, 0.15);
+    box-shadow: 0 0 20px rgba(255, 77, 207, 0.24);
+  }
+
+</style>
+</head>
+
+<body>
+
+<!-- Nebula backgrounds -->
+<div class="nebula nebula-1"></div>
+<div class="nebula nebula-2"></div>
+<div class="nebula nebula-3"></div>
+
+<!-- Starfield Canvas -->
+<canvas id="starfield"></canvas>
+
+<!-- TOP NAV -->
+<nav class="top-nav">
+  <div class="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
+    <div class="flex items-center gap-3">
+      <div class="w-10 h-10 rounded-xl flex items-center justify-center" style="background: linear-gradient(135deg, #00f0ff, #b86bff); box-shadow: 0 0 20px rgba(0,240,255,0.5);">
+        <i data-lucide="message-square-quote" class="w-5 h-5 text-black"></i>
+      </div>
+      <div>
+        <div class="font-display font-bold text-lg nav-logo">RAG ACADEMY</div>
+        <div class="text-[10px] text-gray-400 tracking-widest -mt-1">TRACK 04 • MODULE 4.0</div>
+      </div>
+    </div>
+
+    <div class="hidden md:flex items-center gap-8 text-sm">
+      <a href="#hero" class="text-cyan-300 font-medium">Overview</a>
+      <a href="#behaviors" class="text-gray-300 hover:text-cyan-300 transition">Behaviors</a>
+      <a href="#anatomy" class="text-gray-300 hover:text-cyan-300 transition">Prompt Anatomy</a>
+      <a href="#lost-middle" class="text-gray-300 hover:text-cyan-300 transition">Lost-in-middle</a>
+      <a href="#citations" class="text-gray-300 hover:text-cyan-300 transition">Citations</a>
+      <a href="#hallucination" class="text-gray-300 hover:text-cyan-300 transition">Hallucination</a>
+      <a href="#playground" class="text-gray-300 hover:text-cyan-300 transition">Playground</a>
+      <a href="#checkpoint" class="text-gray-300 hover:text-cyan-300 transition">Checkpoint</a>
+    </div>
+
+    <div class="flex items-center gap-3">
+      <div class="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full" style="background: rgba(0,240,255,0.08); border: 1px solid rgba(0,240,255,0.25);">
+        <div class="w-2 h-2 rounded-full" style="background: #4dffb8; box-shadow: 0 0 8px #4dffb8;"></div>
+        <span class="text-xs font-mono text-cyan-200">CADET ONLINE</span>
+      </div>
+      <button class="btn-ghost text-sm py-2 px-4">Save Progress</button>
+    </div>
+  </div>
+  <div class="scan-line"></div>
+</nav>
+
+<!-- SIDE NAV DOTS -->
+<div class="side-dots" id="sideDots">
+  <div class="dot active" data-target="hero" title="Hero"></div>
+  <div class="dot" data-target="objectives" title="Objectives"></div>
+  <div class="dot" data-target="behaviors" title="Behaviors"></div>
+  <div class="dot" data-target="anatomy" title="Prompt Anatomy"></div>
+  <div class="dot" data-target="lost-middle" title="Lost-in-middle"></div>
+  <div class="dot" data-target="citations" title="Citations"></div>
+  <div class="dot" data-target="synthesis" title="Synthesis"></div>
+  <div class="dot" data-target="refusal" title="Refusal"></div>
+  <div class="dot" data-target="hallucination" title="Hallucination"></div>
+  <div class="dot" data-target="playground" title="Playground"></div>
+  <div class="dot" data-target="checkpoint" title="Checkpoint"></div>
+</div>
+
+<!-- ========== HERO ========== -->
+<section id="hero" class="relative min-h-screen flex items-center pt-32 pb-24 px-6">
+  <div class="grid-floor"></div>
+
+  <div class="max-w-7xl mx-auto w-full grid lg:grid-cols-2 gap-16 items-center relative z-10">
+    <div class="reveal">
+      <div class="flex items-center gap-3 mb-6">
+        <span class="pill"><i data-lucide="message-square-quote" class="w-3 h-3"></i> Track 4 · Module 4.0</span>
+        <span class="text-xs text-gray-400 font-mono">EST. 60 MIN</span>
+      </div>
+
+      <h1 class="hero-title font-display mb-6">
+        <span class="block text-white">Grounded</span>
+        <span class="block gradient-multi">Generation</span>
+      </h1>
+
+      <p class="text-lg md:text-xl text-gray-300 leading-relaxed mb-8 max-w-xl">
+        Retrieval found the right docs. Now the LLM has to <span class="text-cyan-300 font-semibold">use them</span> —
+        not <span class="text-pink-300 font-semibold">paraphrase its training data</span>,
+        not <span class="text-amber-300 font-semibold">invent plausible facts</span>.
+        Five prompt components, four behaviors, one goal: <span class="text-purple-300 font-semibold">every claim citable</span>.
+      </p>
+
+      <div class="flex flex-wrap gap-4 mb-12">
+        <button class="btn-primary flex items-center gap-2" onclick="document.getElementById('objectives').scrollIntoView({behavior:'smooth'})">
+          <i data-lucide="play" class="w-4 h-4"></i> Begin Mission
+        </button>
+        <button class="btn-ghost flex items-center gap-2" onclick="document.getElementById('playground').scrollIntoView({behavior:'smooth'})">
+          <i data-lucide="zap" class="w-4 h-4"></i> Jump to Playground
+        </button>
+      </div>
+
+      <div class="grid grid-cols-4 gap-3">
+        <div class="holo-card p-4 text-center">
+          <div class="stat-num text-2xl">5</div>
+          <div class="text-[10px] text-gray-400 uppercase tracking-wider mt-1">Prompt Parts</div>
+        </div>
+        <div class="holo-card p-4 text-center">
+          <div class="stat-num text-2xl">4</div>
+          <div class="text-[10px] text-gray-400 uppercase tracking-wider mt-1">LLM Behaviors</div>
+        </div>
+        <div class="holo-card p-4 text-center">
+          <div class="stat-num text-2xl">6</div>
+          <div class="text-[10px] text-gray-400 uppercase tracking-wider mt-1">Hallu Types</div>
+        </div>
+        <div class="holo-card p-4 text-center">
+          <div class="stat-num text-2xl">∞</div>
+          <div class="text-[10px] text-gray-400 uppercase tracking-wider mt-1">User Trust</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT — sample grounded answer -->
+    <div class="reveal">
+      <div class="holo-card p-6 holo-border float-y">
+        <div class="flex items-center justify-between mb-4">
+          <div class="font-mono text-xs text-cyan-300 tracking-widest">SAMPLE OUTPUT</div>
+          <span class="pill pill-green text-[10px]"><i data-lucide="shield-check" class="w-3 h-3"></i> GROUNDED</span>
+        </div>
+
+        <div class="text-xs font-mono text-cyan-200 mb-4">User: <span class="text-gray-300">"What's the refund window for travel?"</span></div>
+
+        <div class="space-y-3 text-sm text-gray-300">
+          <p>
+            Travel purchases are refundable within <strong class="text-white">30 days</strong> of purchase
+            <span class="text-cyan-300 font-mono text-xs cursor-help" title="travel-faq.md">[1]</span>,
+            provided the booking has not been used. Refunds are issued back to the original payment method
+            within <strong class="text-white">5 business days</strong> after approval
+            <span class="text-cyan-300 font-mono text-xs cursor-help" title="refund-terms.md">[2]</span>.
+          </p>
+          <p>
+            To start a refund, contact support with your order number
+            <span class="text-cyan-300 font-mono text-xs cursor-help" title="support-kb.md">[3]</span>.
+          </p>
+        </div>
+
+        <div class="mt-5 pt-4 border-t border-cyan-500/10">
+          <div class="font-mono text-[10px] text-gray-500 tracking-widest mb-2">SOURCES</div>
+          <div class="space-y-1 font-mono text-[10px]">
+            <div class="flex justify-between text-gray-400"><span><span class="text-cyan-300">[1]</span> travel-faq.md</span><span class="text-gray-500">chunk 14</span></div>
+            <div class="flex justify-between text-gray-400"><span><span class="text-cyan-300">[2]</span> refund-terms.md</span><span class="text-gray-500">chunk 2</span></div>
+            <div class="flex justify-between text-gray-400"><span><span class="text-cyan-300">[3]</span> support-kb.md</span><span class="text-gray-500">chunk 7</span></div>
+          </div>
+        </div>
+
+        <div class="mt-4 pt-3 border-t border-cyan-500/10 flex justify-between text-xs font-mono">
+          <span class="text-gray-500">3 claims</span>
+          <span class="text-green-300">3 / 3 citable</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========== OBJECTIVES ========== -->
+<section id="objectives" class="relative py-24 px-6 z-10">
+  <div class="max-w-7xl mx-auto">
+    <div class="text-center mb-16 reveal">
+      <span class="pill mb-4"><i data-lucide="target" class="w-3 h-3"></i> Mission Objectives</span>
+      <h2 class="font-display text-4xl md:text-5xl font-bold mt-4">
+        What You'll <span class="gradient-cyan">Master</span>
+      </h2>
+      <p class="text-gray-400 mt-4 max-w-3xl mx-auto">Retrieval is half the battle. By the end of this module you'll write generation prompts that turn correct context into citable, hallucination-resistant answers.</p>
+    </div>
+
+    <div class="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div class="holo-card p-6 reveal">
+        <div class="w-12 h-12 rounded-xl flex items-center justify-center mb-4" style="background: rgba(0, 240, 255, 0.15);">
+          <i data-lucide="layers" class="w-6 h-6" style="color: #00f0ff;"></i>
+        </div>
+        <h3 class="font-display font-bold text-lg mb-2">Prompt Anatomy</h3>
+        <p class="text-sm text-gray-400 leading-relaxed">The 5 components every RAG prompt needs — system, task, context, query, format — and why their order matters.</p>
+      </div>
+
+      <div class="holo-card p-6 reveal">
+        <div class="w-12 h-12 rounded-xl flex items-center justify-center mb-4" style="background: rgba(184, 107, 255, 0.15);">
+          <i data-lucide="quote" class="w-6 h-6" style="color: #b86bff;"></i>
+        </div>
+        <h3 class="font-display font-bold text-lg mb-2">Citation Discipline</h3>
+        <p class="text-sm text-gray-400 leading-relaxed">Inline brackets, footnote chunks, structured JSON citations — and how to enforce each from the prompt.</p>
+      </div>
+
+      <div class="holo-card p-6 reveal">
+        <div class="w-12 h-12 rounded-xl flex items-center justify-center mb-4" style="background: rgba(255, 184, 77, 0.15);">
+          <i data-lucide="alert-triangle" class="w-6 h-6" style="color: #ffb84d;"></i>
+        </div>
+        <h3 class="font-display font-bold text-lg mb-2">Lost-in-the-Middle</h3>
+        <p class="text-sm text-gray-400 leading-relaxed">Why context buried at position 12 of 20 gets ignored — and how to lay out chunks so it doesn't happen.</p>
+      </div>
+
+      <div class="holo-card p-6 reveal">
+        <div class="w-12 h-12 rounded-xl flex items-center justify-center mb-4" style="background: rgba(255, 77, 207, 0.15);">
+          <i data-lucide="shield-x" class="w-6 h-6" style="color: #ff4dcf;"></i>
+        </div>
+        <h3 class="font-display font-bold text-lg mb-2">Hallucination Defense</h3>
+        <p class="text-sm text-gray-400 leading-relaxed">The 6 hallucination types in RAG and the prompt-level patches for each one.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========== FOUR LLM BEHAVIORS ========== -->
+<section id="behaviors" class="relative py-24 px-6 z-10">
+  <div class="max-w-7xl mx-auto">
+    <div class="text-center mb-16 reveal">
+      <span class="pill mb-4"><i data-lucide="brain" class="w-3 h-3"></i> The Model's Choice</span>
+      <h2 class="font-display text-4xl md:text-5xl font-bold mt-4">
+        Four <span class="gradient-cyan">LLM Behaviors</span> with Retrieved Context
+      </h2>
+      <p class="text-gray-400 mt-4 max-w-3xl mx-auto">Given a query plus context, every LLM picks one of four paths. Your prompt decides which one — whether you realize it or not.</p>
+    </div>
+
+    <div class="grid md:grid-cols-2 lg:grid-cols-4 gap-5 reveal">
+
+      <div class="behavior-card behavior-1">
+        <div class="behavior-num">GROUNDED</div>
+        <div class="w-10 h-10 rounded-xl flex items-center justify-center mb-3" style="background: rgba(77, 255, 184, 0.15);">
+          <i data-lucide="check-circle-2" class="w-5 h-5" style="color: #4dffb8;"></i>
+        </div>
+        <h3 class="font-display font-bold text-base text-white mb-2">Grounded · use the context</h3>
+        <p class="text-sm text-gray-400 leading-relaxed">Every claim traces to a retrieved chunk; refuse if not found. <strong class="text-green-300">This is the goal.</strong></p>
+        <p class="text-xs text-gray-500 mt-2 font-mono">"Refunds are 30 days [doc_213]."</p>
+      </div>
+
+      <div class="behavior-card behavior-2">
+        <div class="behavior-num">PARAMETRIC BLEED</div>
+        <div class="w-10 h-10 rounded-xl flex items-center justify-center mb-3" style="background: rgba(0, 240, 255, 0.15);">
+          <i data-lucide="layers" class="w-5 h-5" style="color: #00f0ff;"></i>
+        </div>
+        <h3 class="font-display font-bold text-base text-white mb-2">Parametric bleed · mix context + priors</h3>
+        <p class="text-sm text-gray-400 leading-relaxed">Cite some claims, silently fill gaps from training-data priors. <strong class="text-cyan-300">Plausible-looking, partially unsupported.</strong></p>
+        <p class="text-xs text-gray-500 mt-2 font-mono">"Refunds are 30 days [doc_213]. They take 7-10 days."</p>
+      </div>
+
+      <div class="behavior-card behavior-3">
+        <div class="behavior-num">CONTEXT IGNORANCE</div>
+        <div class="w-10 h-10 rounded-xl flex items-center justify-center mb-3" style="background: rgba(255, 184, 77, 0.15);">
+          <i data-lucide="x-circle" class="w-5 h-5" style="color: #ffb84d;"></i>
+        </div>
+        <h3 class="font-display font-bold text-base text-white mb-2">Context ignorance · answer from priors</h3>
+        <p class="text-sm text-gray-400 leading-relaxed">Answer purely from training data, no citations. <strong class="text-amber-300">The retrieved chunks may as well not exist.</strong></p>
+        <p class="text-xs text-gray-500 mt-2 font-mono">"Most companies offer 14-day refunds."</p>
+      </div>
+
+      <div class="behavior-card behavior-4">
+        <div class="behavior-num">FABRICATION</div>
+        <div class="w-10 h-10 rounded-xl flex items-center justify-center mb-3" style="background: rgba(255, 77, 207, 0.15);">
+          <i data-lucide="alert-octagon" class="w-5 h-5" style="color: #ff4dcf;"></i>
+        </div>
+        <h3 class="font-display font-bold text-base text-white mb-2">Fabrication · invent unsupported facts</h3>
+        <p class="text-sm text-gray-400 leading-relaxed">Confidently states details that exist in neither context nor training data — invented citations, made-up policies. <strong class="text-pink-300">The most dangerous failure.</strong></p>
+        <p class="text-xs text-gray-500 mt-2 font-mono">"Refunds are 45 days per [doc_904]." &nbsp;<span class="text-gray-600">(doc_904 doesn't exist)</span></p>
+      </div>
+
+    </div>
+
+    <!-- Formal mapping table -->
+    <div class="holo-card p-6 reveal mt-10 mb-10">
+      <h3 class="font-display font-bold text-lg mb-4 text-white flex items-center gap-2">
+        <i data-lucide="library" class="w-5 h-5 text-cyan-400"></i>
+        The diagnostic vocabulary — when you see X, the model is doing Y
+      </h3>
+      <div class="overflow-x-auto">
+      <table class="index-table" style="font-size: 0.82rem;">
+        <thead><tr><th>Symptom</th><th>Behavior name</th><th>What broke</th><th>Where in this module to fix</th></tr></thead>
+        <tbody>
+          <tr>
+            <td class="text-green-300">Every claim has a citation, all citations check out</td>
+            <td class="text-green-300 font-bold">Grounded</td>
+            <td>Nothing — this is the success case</td>
+            <td class="text-gray-400">All of it. Don't regress.</td>
+          </tr>
+          <tr>
+            <td class="text-cyan-300">Some claims cited, others slipped in unsourced</td>
+            <td class="text-cyan-300 font-bold">Parametric bleed</td>
+            <td>Citation discipline missing</td>
+            <td class="text-gray-400">Prompt Anatomy + Citation Discipline</td>
+          </tr>
+          <tr>
+            <td class="text-amber-300">Answer ignores the docs entirely</td>
+            <td class="text-amber-300 font-bold">Context ignorance</td>
+            <td>Prompt structure / lost-in-the-middle</td>
+            <td class="text-gray-400">Lost-in-the-Middle + Prompt Anatomy</td>
+          </tr>
+          <tr>
+            <td class="text-pink-300">Claims supported by citations that point nowhere</td>
+            <td class="text-pink-300 font-bold">Fabrication</td>
+            <td>Refusal path missing or weak</td>
+            <td class="text-gray-400">Refusal + Hallucination Defense</td>
+          </tr>
+        </tbody>
+      </table>
+      </div>
+    </div>
+
+    <!-- Faithfulness vs Relevance axes -->
+    <div class="reveal">
+      <h3 class="font-display font-bold text-xl mb-4 text-white flex items-center gap-2">
+        <i data-lucide="axis-3d" class="w-5 h-5 text-purple-400"></i>
+        Two independent axes — faithfulness and relevance
+      </h3>
+      <div class="grid lg:grid-cols-2 gap-6">
+        <div class="holo-card p-6">
+          <div class="text-xs text-cyan-300 uppercase tracking-wider mb-2">Axis 1 · Faithfulness</div>
+          <h4 class="font-display font-bold text-lg text-white mb-2">"Is every claim supported by the retrieved context?"</h4>
+          <p class="text-sm text-gray-300 leading-relaxed mb-3">Measures the <em>relationship between the answer and the context</em>. An answer can be fluent, on-topic, and helpful — and still score 0 on faithfulness if a single claim wasn't in the docs.</p>
+          <p class="text-xs text-gray-500">High faithfulness · low relevance: model copies the doc verbatim but ignores what the user asked.</p>
+        </div>
+        <div class="holo-card p-6">
+          <div class="text-xs text-purple-300 uppercase tracking-wider mb-2">Axis 2 · Answer Relevance</div>
+          <h4 class="font-display font-bold text-lg text-white mb-2">"Does the answer address what the user actually asked?"</h4>
+          <p class="text-sm text-gray-300 leading-relaxed mb-3">Measures the <em>relationship between the answer and the question</em>. An answer can be perfectly faithful (citation-clean) and still useless if it answers a question the user didn't ask.</p>
+          <p class="text-xs text-gray-500">Low faithfulness · high relevance: model answers exactly the question but invents the supporting facts.</p>
+        </div>
+      </div>
+      <div class="callout-cyan mt-6 text-sm text-gray-300">
+        <strong class="text-cyan-300">⚡ Why this matters for eval (Module 6.1):</strong> these axes are <em>independent</em> — improving one doesn't improve the other. RAGAS measures them separately for exactly this reason. The four behaviors above plot onto the (faithfulness, relevance) plane: Grounded = high/high, Bleed = mid/high, Context ignorance = low/varies, Fabrication = low/possibly high.
+      </div>
+    </div>
+
+    <div class="callout-cyan mt-10 reveal text-sm text-gray-300">
+      <strong class="text-cyan-300">⚡ Prompts decide which behavior the model takes.</strong> A weak prompt invites Parametric Bleed and Context Ignorance. A well-built one (everything in this module) makes Grounded the default and provides a clean refusal path that prevents Fabrication on unanswerable queries.
+    </div>
+  </div>
+</section>
+
+<!-- ========== PROMPT ANATOMY ========== -->
+<section id="anatomy" class="relative py-24 px-6 z-10">
+  <div class="max-w-7xl mx-auto">
+    <div class="text-center mb-16 reveal">
+      <span class="pill mb-4"><i data-lucide="layers" class="w-3 h-3"></i> The Five Parts</span>
+      <h2 class="font-display text-4xl md:text-5xl font-bold mt-4">
+        Anatomy of a <span class="gradient-purple">RAG Prompt</span>
+      </h2>
+      <p class="text-gray-400 mt-4 max-w-3xl mx-auto">Every production RAG prompt has the same five sections. Skip one and you'll feel it in the answers.</p>
+    </div>
+
+    <div class="grid lg:grid-cols-2 gap-8 reveal">
+      <!-- 5 step cards -->
+      <div class="space-y-5">
+        <div class="step-card">
+          <div class="step-num">PART 01 · SYSTEM</div>
+          <h3 class="font-display font-bold text-base text-white mt-3 mb-2 flex items-center gap-2">
+            <i data-lucide="user-cog" class="w-4 h-4 text-cyan-400"></i>
+            Role &amp; persona
+          </h3>
+          <p class="text-sm text-gray-400 leading-relaxed">Who is the model? What's its scope? Set the voice, the domain, and the non-negotiables once. "<em>You are a customer support assistant. You answer only from the provided documents.</em>"</p>
+        </div>
+
+        <div class="step-card">
+          <div class="step-num">PART 02 · TASK</div>
+          <h3 class="font-display font-bold text-base text-white mt-3 mb-2 flex items-center gap-2">
+            <i data-lucide="list-checks" class="w-4 h-4 text-purple-400"></i>
+            Rules &amp; constraints
+          </h3>
+          <p class="text-sm text-gray-400 leading-relaxed">The behavioral rules. Cite every claim. Refuse if not found. No filler. Keep it tight — 5-10 short rules outperform a wall of text.</p>
+        </div>
+
+        <div class="step-card">
+          <div class="step-num">PART 03 · CONTEXT</div>
+          <h3 class="font-display font-bold text-base text-white mt-3 mb-2 flex items-center gap-2">
+            <i data-lucide="library" class="w-4 h-4 text-amber-400"></i>
+            Retrieved chunks
+          </h3>
+          <p class="text-sm text-gray-400 leading-relaxed">The reranked top-K chunks, each clearly labeled with an ID for citation. Wrap in XML tags or use markdown headers so the LLM can tell where docs start and end.</p>
+        </div>
+
+        <div class="step-card">
+          <div class="step-num">PART 04 · QUERY</div>
+          <h3 class="font-display font-bold text-base text-white mt-3 mb-2 flex items-center gap-2">
+            <i data-lucide="message-circle-question" class="w-4 h-4 text-pink-400"></i>
+            User question
+          </h3>
+          <p class="text-sm text-gray-400 leading-relaxed">The user's actual question. Place after context, not before — the LLM should "have read the docs" by the time it sees the question.</p>
+        </div>
+
+        <div class="step-card">
+          <div class="step-num">PART 05 · FORMAT</div>
+          <h3 class="font-display font-bold text-base text-white mt-3 mb-2 flex items-center gap-2">
+            <i data-lucide="braces" class="w-4 h-4 text-green-400"></i>
+            Output spec
+          </h3>
+          <p class="text-sm text-gray-400 leading-relaxed">How the answer should look. Markdown bullets, JSON schema, inline brackets, a structured payload — match downstream needs. The last instruction the model reads.</p>
+        </div>
+      </div>
+
+      <!-- Sample prompt -->
+      <div>
+        <h3 class="font-display font-bold text-lg mb-3 text-white flex items-center gap-2">
+          <i data-lucide="file-code" class="w-5 h-5 text-cyan-400"></i>
+          Full prompt assembled
+        </h3>
+        <div class="code-block relative">
+          <button class="copy-btn" data-target="anatomyCode">COPY</button>
+<pre id="anatomyCode"><span class="tok-comment"># PART 1 — SYSTEM</span>
+<span class="tok-tag">&lt;system&gt;</span>
+You are a customer-support assistant for ACME Corp.
+You answer <span class="tok-keyword">only</span> from the documents in &lt;context&gt;.
+You never use outside knowledge.
+<span class="tok-tag">&lt;/system&gt;</span>
+
+<span class="tok-comment"># PART 2 — TASK / RULES</span>
+<span class="tok-tag">&lt;rules&gt;</span>
+1. Every factual claim must be cited as [doc_id].
+2. If the answer isn't in &lt;context&gt;, say
+   "I couldn't find this in the documents."
+3. Never speculate. Never fill gaps from memory.
+4. Quote exact numbers from documents verbatim.
+<span class="tok-tag">&lt;/rules&gt;</span>
+
+<span class="tok-comment"># PART 3 — CONTEXT (reranked chunks)</span>
+<span class="tok-tag">&lt;context&gt;</span>
+<span class="tok-tag">  &lt;doc</span> <span class="tok-attr">id=</span><span class="tok-string">"doc_213"</span> <span class="tok-attr">source=</span><span class="tok-string">"refund-terms.md"</span><span class="tok-tag">&gt;</span>
+    Refunds are issued to the original payment method
+    within 5 business days after approval.
+  <span class="tok-tag">&lt;/doc&gt;</span>
+  <span class="tok-tag">&lt;doc</span> <span class="tok-attr">id=</span><span class="tok-string">"doc_847"</span> <span class="tok-attr">source=</span><span class="tok-string">"travel-faq.md"</span><span class="tok-tag">&gt;</span>
+    Travel purchases are refundable within 30 days
+    if the booking has not been used.
+  <span class="tok-tag">&lt;/doc&gt;</span>
+<span class="tok-tag">&lt;/context&gt;</span>
+
+<span class="tok-comment"># PART 4 — QUERY</span>
+<span class="tok-tag">&lt;query&gt;</span>
+What's the refund window for travel?
+<span class="tok-tag">&lt;/query&gt;</span>
+
+<span class="tok-comment"># PART 5 — FORMAT</span>
+<span class="tok-tag">&lt;format&gt;</span>
+- Markdown bullets
+- Each bullet ends with [doc_id]
+- 1-3 bullets max
+<span class="tok-tag">&lt;/format&gt;</span></pre>
+        </div>
+
+        <div class="callout-cyan mt-4 text-xs text-gray-300">
+          <strong class="text-cyan-300">⚡ Order matters:</strong> system → rules → context → query → format. The model reads top-down. Putting format <em>before</em> context risks the model forgetting it by the time it answers; format <em>last</em> keeps it primed.
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========== LOST IN THE MIDDLE ========== -->
+<section id="lost-middle" class="relative py-24 px-6 z-10">
+  <div class="max-w-7xl mx-auto">
+    <div class="text-center mb-16 reveal">
+      <span class="pill mb-4"><i data-lucide="arrow-down" class="w-3 h-3"></i> The Liu et al. 2023 Phenomenon</span>
+      <h2 class="font-display text-4xl md:text-5xl font-bold mt-4">
+        The <span class="gradient-amber">Lost-in-the-Middle</span> Phenomenon
+      </h2>
+      <p class="text-gray-400 mt-4 max-w-3xl mx-auto">Formally documented in <em>"Lost in the Middle: How Language Models Use Long Contexts"</em> (Liu, Lin, Hewitt, Paranjape et al., 2023). The result is precise: across GPT-3.5, Claude, MPT-30B, and Longchat, retrieval accuracy from a 10-30 document context follows a <strong class="text-amber-300">U-shape</strong> — strong at position 1, strong at the last position, with a measurable trough in the middle that can drop accuracy by 20+ percentage points. This is not a bug to fix; it's a property to design around.</p>
+    </div>
+
+    <div class="grid lg:grid-cols-5 gap-8 reveal mb-10">
+      <div class="lg:col-span-3 holo-card p-6">
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="font-display font-bold text-base text-white">Recall accuracy vs answer position in context</h3>
+          <span class="pill text-[10px]">U-SHAPED CURVE</span>
+        </div>
+        <div class="chart-wrapper"><canvas id="lostMiddleChart"></canvas></div>
+        <p class="text-xs text-gray-500 mt-4 text-center">The "needle in a haystack" benchmark across major LLMs. Front and back of the context window dominate; the middle is a recall dead zone.</p>
+      </div>
+
+      <div class="lg:col-span-2 space-y-4">
+        <div class="step-card">
+          <div class="step-num">STRATEGY 01</div>
+          <h3 class="font-display font-bold text-base text-white mt-3 mb-2">Put critical chunks first AND last</h3>
+          <p class="text-sm text-gray-400 leading-relaxed">If you have 5 reranked chunks, place rank 1 first and rank 2 last. The model attends most to both ends.</p>
+        </div>
+
+        <div class="step-card">
+          <div class="step-num">STRATEGY 02</div>
+          <h3 class="font-display font-bold text-base text-white mt-3 mb-2">Keep context short</h3>
+          <p class="text-sm text-gray-400 leading-relaxed">5 reranked chunks beats 20 raw retrieval hits. Quality &gt; quantity. Lost-in-middle gets worse linearly with context length.</p>
+        </div>
+
+        <div class="step-card">
+          <div class="step-num">STRATEGY 03</div>
+          <h3 class="font-display font-bold text-base text-white mt-3 mb-2">Repeat the query after context</h3>
+          <p class="text-sm text-gray-400 leading-relaxed">Place the question both before and after the context block. The "end of prompt" attention boost catches what the model would otherwise miss.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Position gauge -->
+    <div class="reveal holo-card p-6">
+      <h3 class="font-display font-bold text-base text-white mb-3 flex items-center gap-2">
+        <i data-lucide="target" class="w-5 h-5 text-cyan-400"></i>
+        Where is the answer? Slide to see the recall hit
+      </h3>
+      <div class="grid lg:grid-cols-5 gap-6 items-center">
+        <div class="lg:col-span-3">
+          <div class="position-track" id="positionTrack">
+            <div class="position-label" style="left: 5%;">START</div>
+            <div class="position-label" style="left: 50%;">MIDDLE</div>
+            <div class="position-label" style="left: 95%;">END</div>
+            <div class="position-marker" id="positionMarker" style="left: 10%;"></div>
+          </div>
+          <input type="range" id="positionSlider" min="0" max="100" value="10" style="width: 100%; margin-top: 10px;">
+          <div class="flex justify-between text-[10px] text-gray-600 font-mono mt-1">
+            <span>position 0</span><span>position 50</span><span>position 100</span>
+          </div>
+        </div>
+        <div class="lg:col-span-2 text-center">
+          <div class="font-mono text-[10px] text-gray-500 tracking-widest mb-1">RECALL ACCURACY</div>
+          <div class="stat-num text-3xl" id="recallVal">85%</div>
+          <div class="text-xs text-gray-400 mt-2" id="recallLabel">High — the model sees this clearly.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="callout mt-8 reveal text-sm text-gray-300">
+      <strong class="text-amber-300">⚡ Real-world impact:</strong> If your reranker put the right answer at top-K, but you stuffed it into position 11 of a 20-chunk context, the model may still miss it. Pair good reranking with smart placement — rerank's #1 sits at the start, #2 at the end, the rest in between.
+    </div>
+  </div>
+</section>
+
+<!-- ========== CITATIONS ========== -->
+<section id="citations" class="relative py-24 px-6 z-10">
+  <div class="max-w-7xl mx-auto">
+    <div class="text-center mb-16 reveal">
+      <span class="pill mb-4"><i data-lucide="quote" class="w-3 h-3"></i> Make Every Claim Citable</span>
+      <h2 class="font-display text-4xl md:text-5xl font-bold mt-4">
+        Three <span class="gradient-cyan">Citation Patterns</span>
+      </h2>
+      <p class="text-gray-400 mt-4 max-w-3xl mx-auto">Citations are the audit trail. Without them, you can't tell hallucination from truth. Pick a pattern, enforce it in the prompt, validate the output.</p>
+    </div>
+
+    <div class="flex flex-wrap justify-center gap-3 mb-8 reveal">
+      <button class="tab-btn active" data-citation="inline"><i data-lucide="brackets" class="w-4 h-4"></i> Inline brackets</button>
+      <button class="tab-btn" data-citation="footnote"><i data-lucide="list-ordered" class="w-4 h-4"></i> Footnote chunks</button>
+      <button class="tab-btn" data-citation="json"><i data-lucide="braces" class="w-4 h-4"></i> Structured JSON</button>
+    </div>
+
+    <div class="reveal">
+
+      <!-- INLINE -->
+      <div class="tab-panel active" id="citation-inline">
+        <div class="grid lg:grid-cols-3 gap-6">
+          <div class="lg:col-span-2">
+            <div class="code-block relative">
+              <button class="copy-btn" data-target="inlineCode">COPY</button>
+<pre id="inlineCode"><span class="tok-comment"># Prompt instruction</span>
+<span class="tok-tag">&lt;rules&gt;</span>
+End <span class="tok-keyword">every</span> factual claim with the cited doc id in
+square brackets, e.g. [doc_213]. Multiple sources
+in one claim use [doc_213, doc_847].
+<span class="tok-tag">&lt;/rules&gt;</span>
+
+<span class="tok-comment"># Expected model output</span>
+Travel purchases are refundable within 30 days
+of booking <span class="tok-string">[doc_847]</span>. Refunds are issued back
+to the original payment method within 5 business
+days of approval <span class="tok-string">[doc_213]</span>. To start the process,
+contact support with your order number <span class="tok-string">[doc_159]</span>.
+
+<span class="tok-comment"># Post-processing — validate</span>
+<span class="tok-keyword">import</span> <span class="tok-var">re</span>
+<span class="tok-var">cited</span> = <span class="tok-fn">set</span>(<span class="tok-var">re</span>.<span class="tok-fn">findall</span>(<span class="tok-string">r"\[(doc_\d+)\]"</span>, <span class="tok-var">answer</span>))
+<span class="tok-var">retrieved</span> = {<span class="tok-var">c</span>.<span class="tok-var">id</span> <span class="tok-keyword">for</span> <span class="tok-var">c</span> <span class="tok-keyword">in</span> <span class="tok-var">context</span>}
+<span class="tok-keyword">assert</span> <span class="tok-var">cited</span>.<span class="tok-fn">issubset</span>(<span class="tok-var">retrieved</span>), <span class="tok-string">"hallucinated citation"</span></pre>
+            </div>
+          </div>
+          <div class="space-y-3">
+            <div class="holo-card p-5">
+              <h4 class="font-display font-bold text-base text-white mb-2">When to use</h4>
+              <ul class="space-y-2 text-sm text-gray-300">
+                <li class="flex gap-2"><i data-lucide="check" class="w-4 h-4 text-green-400 mt-0.5 flex-shrink-0"></i> Chat UIs, support assistants</li>
+                <li class="flex gap-2"><i data-lucide="check" class="w-4 h-4 text-green-400 mt-0.5 flex-shrink-0"></i> Human readers, scrollable answers</li>
+                <li class="flex gap-2"><i data-lucide="check" class="w-4 h-4 text-green-400 mt-0.5 flex-shrink-0"></i> Easy to render as clickable links</li>
+              </ul>
+            </div>
+            <div class="callout-cyan text-xs text-gray-300">
+              <strong class="text-cyan-300">⚡ Validate:</strong> after generation, regex out every <code class="font-mono">[doc_*]</code> and verify it's a real id from your context. Catches hallucinated citations.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- FOOTNOTE -->
+      <div class="tab-panel" id="citation-footnote">
+        <div class="grid lg:grid-cols-3 gap-6">
+          <div class="lg:col-span-2">
+            <div class="code-block relative">
+              <button class="copy-btn" data-target="footnoteCode">COPY</button>
+<pre id="footnoteCode"><span class="tok-comment"># Prompt instruction</span>
+<span class="tok-tag">&lt;format&gt;</span>
+Write the answer using <span class="tok-string">[1]</span>, <span class="tok-string">[2]</span>, <span class="tok-string">[3]</span> markers.
+Then list the sources <span class="tok-keyword">under</span> a "Sources:" section
+showing marker → doc id.
+<span class="tok-tag">&lt;/format&gt;</span>
+
+<span class="tok-comment"># Expected output</span>
+Travel purchases are refundable within 30 days
+of booking <span class="tok-string">[1]</span>. Refunds are processed within
+5 business days <span class="tok-string">[2]</span>. Contact support with your
+order number to start <span class="tok-string">[3]</span>.
+
+<span class="tok-comment">### Sources</span>
+<span class="tok-string">[1]</span> doc_847 · travel-faq.md
+<span class="tok-string">[2]</span> doc_213 · refund-terms.md
+<span class="tok-string">[3]</span> doc_159 · support-kb.md</pre>
+            </div>
+          </div>
+          <div class="space-y-3">
+            <div class="holo-card p-5">
+              <h4 class="font-display font-bold text-base text-white mb-2">When to use</h4>
+              <ul class="space-y-2 text-sm text-gray-300">
+                <li class="flex gap-2"><i data-lucide="check" class="w-4 h-4 text-green-400 mt-0.5 flex-shrink-0"></i> Long-form answers</li>
+                <li class="flex gap-2"><i data-lucide="check" class="w-4 h-4 text-green-400 mt-0.5 flex-shrink-0"></i> Reports, research summaries</li>
+                <li class="flex gap-2"><i data-lucide="check" class="w-4 h-4 text-green-400 mt-0.5 flex-shrink-0"></i> Reads cleaner than inline ids</li>
+              </ul>
+            </div>
+            <div class="callout text-xs text-gray-300">
+              <strong class="text-amber-300">⚠ Gotcha:</strong> the model has to maintain a mapping from <code class="font-mono">[1]</code> → doc_id. Smaller models drift after 3-4 footnotes. Validate before shipping.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- JSON -->
+      <div class="tab-panel" id="citation-json">
+        <div class="grid lg:grid-cols-3 gap-6">
+          <div class="lg:col-span-2">
+            <div class="code-block relative">
+              <button class="copy-btn" data-target="jsonCode">COPY</button>
+<pre id="jsonCode"><span class="tok-comment"># Pydantic schema · forced structured output</span>
+<span class="tok-keyword">class</span> <span class="tok-type">Citation</span>(<span class="tok-type">BaseModel</span>):
+    <span class="tok-var">claim</span>: <span class="tok-type">str</span>
+    <span class="tok-var">doc_ids</span>: <span class="tok-type">list</span>[<span class="tok-type">str</span>]
+    <span class="tok-var">verbatim_quote</span>: <span class="tok-type">str</span> | <span class="tok-type">None</span> = <span class="tok-bool">None</span>
+
+<span class="tok-keyword">class</span> <span class="tok-type">RAGAnswer</span>(<span class="tok-type">BaseModel</span>):
+    <span class="tok-var">answer</span>: <span class="tok-type">str</span>
+    <span class="tok-var">citations</span>: <span class="tok-type">list</span>[<span class="tok-type">Citation</span>] = <span class="tok-fn">Field</span>(<span class="tok-var">min_length</span>=<span class="tok-num">1</span>)
+    <span class="tok-var">unanswered</span>: <span class="tok-type">bool</span> = <span class="tok-bool">False</span>
+
+<span class="tok-comment"># Model output (constrained)</span>
+{
+  <span class="tok-key">"answer"</span>: <span class="tok-string">"Refunds: 30 days for travel; 5 biz days to process."</span>,
+  <span class="tok-key">"citations"</span>: [
+    {
+      <span class="tok-key">"claim"</span>: <span class="tok-string">"30 day window for travel"</span>,
+      <span class="tok-key">"doc_ids"</span>: [<span class="tok-string">"doc_847"</span>],
+      <span class="tok-key">"verbatim_quote"</span>: <span class="tok-string">"refundable within 30 days"</span>
+    },
+    {
+      <span class="tok-key">"claim"</span>: <span class="tok-string">"5 business days to process refund"</span>,
+      <span class="tok-key">"doc_ids"</span>: [<span class="tok-string">"doc_213"</span>],
+      <span class="tok-key">"verbatim_quote"</span>: <span class="tok-string">"within 5 business days after approval"</span>
+    }
+  ],
+  <span class="tok-key">"unanswered"</span>: <span class="tok-bool">false</span>
+}</pre>
+            </div>
+          </div>
+          <div class="space-y-3">
+            <div class="holo-card p-5">
+              <h4 class="font-display font-bold text-base text-white mb-2">When to use</h4>
+              <ul class="space-y-2 text-sm text-gray-300">
+                <li class="flex gap-2"><i data-lucide="check" class="w-4 h-4 text-green-400 mt-0.5 flex-shrink-0"></i> API endpoints / downstream tooling</li>
+                <li class="flex gap-2"><i data-lucide="check" class="w-4 h-4 text-green-400 mt-0.5 flex-shrink-0"></i> Need verbatim quote validation</li>
+                <li class="flex gap-2"><i data-lucide="check" class="w-4 h-4 text-green-400 mt-0.5 flex-shrink-0"></i> Want structured "unanswered" flag</li>
+              </ul>
+            </div>
+            <div class="callout-green text-xs text-gray-300">
+              <strong class="text-green-300">⚡ Highest discipline:</strong> verbatim quotes force the model to literally pull text out of context. Almost impossible to hallucinate around. Pair with strict JSON schema from Track 2.
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ========== MULTI-DOC SYNTHESIS ========== -->
+<section id="synthesis" class="relative py-24 px-6 z-10">
+  <div class="max-w-7xl mx-auto">
+    <div class="text-center mb-16 reveal">
+      <span class="pill mb-4"><i data-lucide="combine" class="w-3 h-3"></i> Cross-Doc Reasoning</span>
+      <h2 class="font-display text-4xl md:text-5xl font-bold mt-4">
+        Multi-Doc <span class="gradient-purple">Synthesis</span>
+      </h2>
+      <p class="text-gray-400 mt-4 max-w-3xl mx-auto">When the answer requires combining facts from 2+ chunks, the failure modes change. Three patterns handle the heavy lifting.</p>
+    </div>
+
+    <div class="grid lg:grid-cols-3 gap-6 reveal">
+
+      <div class="step-card">
+        <div class="step-num">PATTERN 01</div>
+        <h3 class="font-display font-bold text-base text-white mt-3 mb-2 flex items-center gap-2">
+          <i data-lucide="merge" class="w-4 h-4 text-cyan-400"></i>
+          Merge facts, cite each
+        </h3>
+        <p class="text-sm text-gray-400 leading-relaxed mb-3">"<em>Travel refunds are 30 days [doc_847]; processed in 5 business days [doc_213].</em>"</p>
+        <p class="text-xs text-gray-500">Two facts, two sources, one sentence. Cite where each fact came from.</p>
+      </div>
+
+      <div class="step-card">
+        <div class="step-num">PATTERN 02</div>
+        <h3 class="font-display font-bold text-base text-white mt-3 mb-2 flex items-center gap-2">
+          <i data-lucide="git-compare" class="w-4 h-4 text-purple-400"></i>
+          Compare &amp; contrast
+        </h3>
+        <p class="text-sm text-gray-400 leading-relaxed mb-3">"<em>Travel: 30 days [doc_847]. Standard products: 14 days [doc_213]. Software: non-refundable [doc_502].</em>"</p>
+        <p class="text-xs text-gray-500">Same dimension across docs. Use a table or short list. Never mix doc claims without saying which.</p>
+      </div>
+
+      <div class="step-card">
+        <div class="step-num">PATTERN 03</div>
+        <h3 class="font-display font-bold text-base text-white mt-3 mb-2 flex items-center gap-2">
+          <i data-lucide="alert-triangle" class="w-4 h-4 text-amber-400"></i>
+          Surface conflicts
+        </h3>
+        <p class="text-sm text-gray-400 leading-relaxed mb-3">"<em>Two sources disagree: doc_213 says 5 days; doc_088 says 7 days. The most recent (doc_213) supersedes.</em>"</p>
+        <p class="text-xs text-gray-500">Don't paper over conflicts — flag them. Use timestamps from metadata to pick the canonical source.</p>
+      </div>
+
+    </div>
+
+    <div class="callout-cyan mt-10 reveal text-sm text-gray-300">
+      <strong class="text-cyan-300">⚡ Synthesis prompt rule:</strong> add "<em>If two documents conflict, surface the conflict explicitly. Never invent a reconciliation.</em>" — one of the most underused lines in production RAG prompts.
+    </div>
+  </div>
+</section>
+
+<!-- ========== REFUSAL PATTERNS ========== -->
+<section id="refusal" class="relative py-24 px-6 z-10">
+  <div class="max-w-7xl mx-auto">
+    <div class="text-center mb-16 reveal">
+      <span class="pill mb-4"><i data-lucide="shield-x" class="w-3 h-3"></i> When to Say "I Don't Know"</span>
+      <h2 class="font-display text-4xl md:text-5xl font-bold mt-4">
+        <span class="gradient-cyan">Refusal</span> Done Right
+      </h2>
+      <p class="text-gray-400 mt-4 max-w-3xl mx-auto">A confident wrong answer is the worst outcome. A clean "I couldn't find this" is the second-best outcome — sometimes the best. Engineer it deliberately.</p>
+    </div>
+
+    <div class="grid md:grid-cols-2 gap-8 reveal">
+
+      <div class="holo-card p-6">
+        <div class="flex items-center gap-3 mb-4">
+          <div class="w-12 h-12 rounded-xl flex items-center justify-center" style="background: rgba(255, 184, 77, 0.15);">
+            <i data-lucide="x-octagon" class="w-6 h-6" style="color: #ffb84d;"></i>
+          </div>
+          <div>
+            <div class="text-xs text-amber-300 uppercase tracking-wider">Bad refusal</div>
+            <h4 class="font-display font-bold text-xl">Vague &amp; unhelpful</h4>
+          </div>
+        </div>
+        <div class="code-block text-xs mb-3" style="border-color: rgba(255, 184, 77, 0.3);">
+<pre>"I'm sorry, I can't help with that question."
+
+"I don't have access to that information."
+
+"That's outside my training data."</pre>
+        </div>
+        <p class="text-sm text-gray-400">No signal about <em>what</em> was missing. User can't refine. Looks like a broken system.</p>
+      </div>
+
+      <div class="holo-card p-6" style="border-color: rgba(77, 255, 184, 0.4);">
+        <div class="flex items-center gap-3 mb-4">
+          <div class="w-12 h-12 rounded-xl flex items-center justify-center" style="background: rgba(77, 255, 184, 0.15);">
+            <i data-lucide="check-circle-2" class="w-6 h-6" style="color: #4dffb8;"></i>
+          </div>
+          <div>
+            <div class="text-xs text-green-300 uppercase tracking-wider">Good refusal</div>
+            <h4 class="font-display font-bold text-xl">Specific &amp; actionable</h4>
+          </div>
+        </div>
+        <div class="code-block text-xs mb-3" style="border-color: rgba(77, 255, 184, 0.3);">
+<pre>"I couldn't find a specific refund window for
+international orders in the provided documents.
+The general refund terms in doc_213 might apply,
+but they don't mention international shipping
+explicitly. Try contacting support directly."</pre>
+        </div>
+        <p class="text-sm text-gray-400">Names what was missing. Points to the closest available info. Suggests a next step.</p>
+      </div>
+
+    </div>
+
+    <div class="reveal mt-10 holo-card p-6">
+      <h3 class="font-display font-bold text-base text-white mb-3 flex items-center gap-2">
+        <i data-lucide="quote" class="w-5 h-5 text-cyan-400"></i>
+        Drop-in refusal instruction
+      </h3>
+      <div class="code-block relative">
+        <button class="copy-btn" data-target="refusalCode">COPY</button>
+<pre id="refusalCode"><span class="tok-tag">&lt;refusal_policy&gt;</span>
+If the answer is <span class="tok-keyword">not</span> fully contained in &lt;context&gt;:
+
+1. Say "I couldn't find this in the documents."
+2. State <span class="tok-keyword">what specifically</span> is missing.
+3. Cite the closest related doc, if any.
+4. Suggest a next step (contact support,
+   try a more specific query, etc.).
+
+Do <span class="tok-keyword">not</span> guess. Do <span class="tok-keyword">not</span> use general knowledge.
+Do <span class="tok-keyword">not</span> apologize beyond one short sentence.
+<span class="tok-tag">&lt;/refusal_policy&gt;</span></pre>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========== HALLUCINATION TYPES ========== -->
+<section id="hallucination" class="relative py-24 px-6 z-10">
+  <div class="max-w-7xl mx-auto">
+    <div class="text-center mb-16 reveal">
+      <span class="pill mb-4"><i data-lucide="alert-octagon" class="w-3 h-3"></i> Defense Manual</span>
+      <h2 class="font-display text-4xl md:text-5xl font-bold mt-4">
+        Six <span class="gradient-purple">Hallucination Types</span> in RAG
+      </h2>
+      <p class="text-gray-400 mt-4 max-w-3xl mx-auto">"The model hallucinated" is a diagnosis, not a fix. There are six distinct failure modes, each with a known patch. Recognize, patch, ship.</p>
+    </div>
+
+    <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-5 reveal">
+
+      <div class="hallu-card">
+        <div class="flex items-center gap-2 mb-2">
+          <i data-lucide="book-x" class="w-5 h-5 text-pink-400"></i>
+          <h4 class="font-display font-bold text-base text-white">1 · Prior bleed</h4>
+        </div>
+        <p class="text-sm text-gray-400 mb-3">Model uses training-data knowledge for a claim that's <em>not</em> in context.</p>
+        <div class="text-[11px] text-gray-500 mb-2"><strong class="text-pink-300">Example:</strong> Context says nothing about refund speed. Answer says "5-10 business days" anyway.</div>
+        <div class="text-[11px] text-gray-300"><strong class="text-green-300">Fix:</strong> Add "<em>answer only from context</em>" + per-claim citation requirement.</div>
+      </div>
+
+      <div class="hallu-card">
+        <div class="flex items-center gap-2 mb-2">
+          <i data-lucide="quote" class="w-5 h-5 text-pink-400"></i>
+          <h4 class="font-display font-bold text-base text-white">2 · Citation fabrication</h4>
+        </div>
+        <p class="text-sm text-gray-400 mb-3">Model cites <code class="font-mono text-pink-300 text-xs">[doc_999]</code> — an id that doesn't exist in your context.</p>
+        <div class="text-[11px] text-gray-500 mb-2"><strong class="text-pink-300">Example:</strong> "Refunds take 5 days [doc_500]" — doc_500 was never retrieved.</div>
+        <div class="text-[11px] text-gray-300"><strong class="text-green-300">Fix:</strong> Post-validate every citation against retrieved ids; retry on mismatch.</div>
+      </div>
+
+      <div class="hallu-card">
+        <div class="flex items-center gap-2 mb-2">
+          <i data-lucide="quote" class="w-5 h-5 text-pink-400"></i>
+          <h4 class="font-display font-bold text-base text-white">3 · Misattribution</h4>
+        </div>
+        <p class="text-sm text-gray-400 mb-3">Citation exists, but the cited doc doesn't say what's claimed.</p>
+        <div class="text-[11px] text-gray-500 mb-2"><strong class="text-pink-300">Example:</strong> Cites doc_213 for "international shipping" — but doc_213 is about refunds.</div>
+        <div class="text-[11px] text-gray-300"><strong class="text-green-300">Fix:</strong> Force <code class="font-mono">verbatim_quote</code> in structured output; verify quote appears in chunk text.</div>
+      </div>
+
+      <div class="hallu-card">
+        <div class="flex items-center gap-2 mb-2">
+          <i data-lucide="git-merge" class="w-5 h-5 text-pink-400"></i>
+          <h4 class="font-display font-bold text-base text-white">4 · Fact extrapolation</h4>
+        </div>
+        <p class="text-sm text-gray-400 mb-3">Context says A; model concludes A → B without warrant.</p>
+        <div class="text-[11px] text-gray-500 mb-2"><strong class="text-pink-300">Example:</strong> Doc says "refunds processed in 5 days"; answer claims "so you'll have your money by Friday".</div>
+        <div class="text-[11px] text-gray-300"><strong class="text-green-300">Fix:</strong> "<em>Don't infer beyond what the documents state. Quote exact phrasing for numbers.</em>"</div>
+      </div>
+
+      <div class="hallu-card">
+        <div class="flex items-center gap-2 mb-2">
+          <i data-lucide="layers-2" class="w-5 h-5 text-pink-400"></i>
+          <h4 class="font-display font-bold text-base text-white">5 · Conflict papering</h4>
+        </div>
+        <p class="text-sm text-gray-400 mb-3">Two retrieved chunks contradict; model picks one silently or averages them.</p>
+        <div class="text-[11px] text-gray-500 mb-2"><strong class="text-pink-300">Example:</strong> doc_213 says 5 days, doc_088 says 7 days. Answer says "5-7 days".</div>
+        <div class="text-[11px] text-gray-300"><strong class="text-green-300">Fix:</strong> "<em>If sources disagree, surface the conflict and cite each.</em>"</div>
+      </div>
+
+      <div class="hallu-card">
+        <div class="flex items-center gap-2 mb-2">
+          <i data-lucide="message-square-warning" class="w-5 h-5 text-pink-400"></i>
+          <h4 class="font-display font-bold text-base text-white">6 · Over-confident refusal</h4>
+        </div>
+        <p class="text-sm text-gray-400 mb-3">Answer <em>is</em> in context, but model says it isn't.</p>
+        <div class="text-[11px] text-gray-500 mb-2"><strong class="text-pink-300">Example:</strong> Context has "refunds take 5 days"; answer says "no info on refund timing".</div>
+        <div class="text-[11px] text-gray-300"><strong class="text-green-300">Fix:</strong> Put strong chunks at the start; repeat query after context; raise reranker top-K confidence.</div>
+      </div>
+
+    </div>
+
+    <div class="callout-pink mt-10 reveal text-sm text-gray-300">
+      <strong class="text-pink-300">⚡ Diagnose before you fix:</strong> when a user reports a "hallucination", inspect the answer against the retrieved chunks. Which of the 6 types is it? Each one has a different patch — guessing wastes prompt engineering effort.
+    </div>
+  </div>
+</section>
+
+<!-- ========== PLAYGROUND ========== -->
+<section id="playground" class="relative py-24 px-6 z-10">
+  <div class="max-w-7xl mx-auto">
+    <div class="text-center mb-12 reveal">
+      <span class="pill mb-4"><i data-lucide="zap" class="w-3 h-3"></i> Hands-On</span>
+      <h2 class="font-display text-4xl md:text-5xl font-bold mt-4">
+        Live <span class="gradient-cyan">Prompt Builder</span>
+      </h2>
+      <p class="text-gray-400 mt-4 max-w-3xl mx-auto">Toggle prompt components on and off. See the assembled prompt rebuild in real time. Watch a quality score climb as you add each safeguard.</p>
+    </div>
+
+    <div class="reveal grid lg:grid-cols-3 gap-6">
+      <!-- LEFT — toggles -->
+      <div class="space-y-4">
+        <div class="holo-card p-5">
+          <div class="font-mono text-xs text-cyan-300 tracking-widest mb-3">SYSTEM &amp; ROLE</div>
+          <div class="space-y-2">
+            <div class="toggle-row active">
+              <label class="text-sm">Role definition</label>
+              <div class="toggle on" data-toggle="role"></div>
+            </div>
+            <div class="toggle-row active">
+              <label class="text-sm">"Only from context" rule</label>
+              <div class="toggle on" data-toggle="onlyContext"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="holo-card p-5">
+          <div class="font-mono text-xs text-cyan-300 tracking-widest mb-3">SAFEGUARDS</div>
+          <div class="space-y-2">
+            <div class="toggle-row active">
+              <label class="text-sm">Cite every claim</label>
+              <div class="toggle on" data-toggle="cite"></div>
+            </div>
+            <div class="toggle-row">
+              <label class="text-sm">Refusal policy</label>
+              <div class="toggle" data-toggle="refusal"></div>
+            </div>
+            <div class="toggle-row">
+              <label class="text-sm">Verbatim quotes</label>
+              <div class="toggle" data-toggle="verbatim"></div>
+            </div>
+            <div class="toggle-row">
+              <label class="text-sm">Conflict surfacing</label>
+              <div class="toggle" data-toggle="conflict"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="holo-card p-5">
+          <div class="font-mono text-xs text-cyan-300 tracking-widest mb-3">LAYOUT</div>
+          <div class="space-y-2">
+            <div class="toggle-row">
+              <label class="text-sm">Repeat query after context</label>
+              <div class="toggle" data-toggle="repeatQuery"></div>
+            </div>
+            <div class="toggle-row active">
+              <label class="text-sm">Place top chunk first</label>
+              <div class="toggle on" data-toggle="topFirst"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Quality score -->
+        <div class="holo-card p-5" style="border-color: rgba(0, 240, 255, 0.4);">
+          <div class="flex items-center justify-between mb-2">
+            <div class="font-mono text-xs text-cyan-300 tracking-widest">PROMPT QUALITY</div>
+            <div class="stat-num text-xl" id="qualityScore">0</div>
+          </div>
+          <div class="progress-bar"><div class="progress-fill" id="qualityFill" style="width: 0%;"></div></div>
+          <div class="text-xs text-gray-400 mt-2" id="qualityLabel">Toggle safeguards to improve.</div>
+        </div>
+      </div>
+
+      <!-- RIGHT — assembled prompt -->
+      <div class="lg:col-span-2">
+        <div class="holo-card p-5">
+          <div class="flex items-center justify-between mb-3">
+            <div class="font-mono text-xs text-cyan-300 tracking-widest">ASSEMBLED PROMPT</div>
+            <button class="copy-btn" data-target="promptPreview" style="position: relative; top: 0; right: 0;">COPY</button>
+          </div>
+          <div class="prompt-preview" id="promptPreview"></div>
+
+          <div class="grid grid-cols-3 gap-3 mt-4">
+            <div class="text-center">
+              <div class="font-mono text-[10px] text-gray-500 tracking-widest mb-1">PARTS ENABLED</div>
+              <div class="stat-num text-lg" id="statParts">3</div>
+            </div>
+            <div class="text-center">
+              <div class="font-mono text-[10px] text-gray-500 tracking-widest mb-1">SAFEGUARDS</div>
+              <div class="stat-num text-lg" id="statSafeguards">1</div>
+            </div>
+            <div class="text-center">
+              <div class="font-mono text-[10px] text-gray-500 tracking-widest mb-1">EST. TOKENS</div>
+              <div class="stat-num text-lg" id="statTokens">~140</div>
+            </div>
+          </div>
+
+          <div class="callout-green mt-4 text-xs text-gray-300">
+            <strong class="text-green-300">⚡ Try the full stack:</strong> toggle every safeguard on. The prompt grows ~3× — but answer quality jumps. Hallucination rate drops sharply on real evals. Worth the tokens.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========== QUIZ ========== -->
+<section id="quiz" class="relative py-24 px-6 z-10">
+  <div class="max-w-5xl mx-auto">
+    <div class="text-center mb-12 reveal">
+      <span class="pill mb-4"><i data-lucide="brain" class="w-3 h-3"></i> Self-Check</span>
+      <h2 class="font-display text-4xl md:text-5xl font-bold mt-4">
+        Three Quick <span class="gradient-purple">Questions</span>
+      </h2>
+      <p class="text-gray-400 mt-4">Cement the generation instincts before moving on to prompt structuring.</p>
+    </div>
+
+    <div class="space-y-8">
+      <div class="holo-card p-6 reveal" data-quiz="0">
+        <div class="font-mono text-xs text-cyan-300 mb-2">QUESTION 01</div>
+        <h3 class="font-display font-bold text-lg mb-4 text-white">Your reranker put the answer at top-K = 1, but the LLM keeps missing it. The context has 18 other chunks below it. Most likely cause?</h3>
+        <div class="space-y-2">
+          <button class="quiz-option" data-correct="false">
+            <div class="quiz-marker">A</div>
+            <span>The reranker isn't good enough</span>
+          </button>
+          <button class="quiz-option" data-correct="false">
+            <div class="quiz-marker">B</div>
+            <span>The LLM is too small</span>
+          </button>
+          <button class="quiz-option" data-correct="true">
+            <div class="quiz-marker">C</div>
+            <span>Lost-in-the-middle — too many chunks dilute attention. Reduce to 5</span>
+          </button>
+          <button class="quiz-option" data-correct="false">
+            <div class="quiz-marker">D</div>
+            <span>The system prompt is too short</span>
+          </button>
+        </div>
+        <div class="hidden mt-4 callout-cyan text-sm text-gray-300" data-explain>
+          <strong class="text-cyan-300">Correct.</strong> Even with the right chunk at the top, 18 distractor chunks below it pull attention away from the answer. Rerank to 5, place rank-1 first and rank-2 last, drop the rest.
+        </div>
+      </div>
+
+      <div class="holo-card p-6 reveal" data-quiz="1">
+        <div class="font-mono text-xs text-cyan-300 mb-2">QUESTION 02</div>
+        <h3 class="font-display font-bold text-lg mb-4 text-white">The LLM cites <code class="font-mono">[doc_999]</code> in its answer — but you only retrieved doc_213, doc_847, and doc_159. What's the right pipeline-level fix?</h3>
+        <div class="space-y-2">
+          <button class="quiz-option" data-correct="false">
+            <div class="quiz-marker">A</div>
+            <span>Increase the model temperature</span>
+          </button>
+          <button class="quiz-option" data-correct="false">
+            <div class="quiz-marker">B</div>
+            <span>Add doc_999 to the corpus retroactively</span>
+          </button>
+          <button class="quiz-option" data-correct="true">
+            <div class="quiz-marker">C</div>
+            <span>Post-validate citations against retrieved ids; retry on mismatch</span>
+          </button>
+          <button class="quiz-option" data-correct="false">
+            <div class="quiz-marker">D</div>
+            <span>Switch to footnote citations</span>
+          </button>
+        </div>
+        <div class="hidden mt-4 callout-cyan text-sm text-gray-300" data-explain>
+          <strong class="text-cyan-300">Correct.</strong> Citation fabrication is one of the six hallucination types. The right fix is mechanical: regex out every <code class="font-mono">[doc_*]</code> after generation, verify it's a retrieved id, retry with a stricter prompt on mismatch.
+        </div>
+      </div>
+
+      <div class="holo-card p-6 reveal" data-quiz="2">
+        <div class="font-mono text-xs text-cyan-300 mb-2">QUESTION 03</div>
+        <h3 class="font-display font-bold text-lg mb-4 text-white">Doc_213 says refunds take 5 days. Doc_088 says 7 days. The user asks "how long do refunds take?" — what's the right model behavior?</h3>
+        <div class="space-y-2">
+          <button class="quiz-option" data-correct="false">
+            <div class="quiz-marker">A</div>
+            <span>Answer "5-7 days" — averaging is fine</span>
+          </button>
+          <button class="quiz-option" data-correct="false">
+            <div class="quiz-marker">B</div>
+            <span>Pick whichever doc was retrieved first</span>
+          </button>
+          <button class="quiz-option" data-correct="true">
+            <div class="quiz-marker">C</div>
+            <span>Surface the conflict explicitly with both citations, suggest the most recent</span>
+          </button>
+          <button class="quiz-option" data-correct="false">
+            <div class="quiz-marker">D</div>
+            <span>Refuse to answer until docs are reconciled</span>
+          </button>
+        </div>
+        <div class="hidden mt-4 callout-cyan text-sm text-gray-300" data-explain>
+          <strong class="text-cyan-300">Correct.</strong> Conflict papering is hallucination type #5. Always surface conflicts and let the user (or downstream logic) decide. "Two sources disagree: doc_213 says 5 days [most recent], doc_088 says 7 days."
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========== CHECKPOINT ========== -->
+
+<!-- RESOURCE SECTION -->
+<section class="relative py-16 px-6 z-10">
+  <div class="max-w-7xl mx-auto">
+    <div class="text-center mb-12 reveal">
+      <span class="pill mb-4"><i data-lucide="book" class="w-3 h-3"></i> Continue Learning</span>
+      <h3 class="font-display text-4xl md:text-5xl font-bold mt-4">Learn &amp; <span class="gradient-purple">Practice</span></h3>
+      <p class="text-gray-400 mt-2">Explore curated resources and practice with real code</p>
+    </div>
+
+    <div class="resource-stack mb-12">
+      <article class="resource-card">
+        <div class="flex items-start gap-3">
+          <div class="resource-icon">
+            <i data-lucide="lightbulb" class="w-4 h-4"></i>
+          </div>
+          <div class="min-w-0 flex-1">
+            <h4 class="font-display text-2xl font-bold leading-none">Progressive Article</h4>
+            <p class="text-xs text-gray-400 mt-1">Stuck? Start here - beginner-friendly explanation</p>
+            <p class="text-lg font-semibold mt-4 text-cyan-300">RAG Prompt Engineering</p>
+            <a href="https://sureprompts.com/blog/rag-prompt-engineering-guide" target="_blank" rel="noopener noreferrer" class="resource-cta" title="RAG Prompt Engineering">
+              <i data-lucide="external-link" class="w-4 h-4"></i> Read Article
+            </a>
+          </div>
+        </div>
+      </article>
+      <article class="resource-card">
+        <div class="flex items-start gap-3">
+          <div class="resource-icon">
+            <i data-lucide="file-text" class="w-4 h-4"></i>
+          </div>
+          <div class="min-w-0 flex-1">
+            <h4 class="font-display text-2xl font-bold leading-none">Canonical Article</h4>
+            <p class="text-xs text-gray-400 mt-1">Authoritative source - official docs or research</p>
+            <p class="text-lg font-semibold mt-4 text-cyan-300">Lost in the Middle paper</p>
+            <a href="https://arxiv.org/abs/2307.03172" target="_blank" rel="noopener noreferrer" class="resource-cta" title="Lost in the Middle paper">
+              <i data-lucide="external-link" class="w-4 h-4"></i> Read Canonical
+            </a>
+          </div>
+        </div>
+      </article>
+      <article class="resource-card repo">
+        <div class="flex items-start gap-3">
+          <div class="resource-icon">
+            <i data-lucide="github" class="w-4 h-4"></i>
+          </div>
+          <div class="min-w-0 flex-1">
+            <h4 class="font-display text-2xl font-bold leading-none">GitHub Repository</h4>
+            <p class="text-xs text-gray-400 mt-1">Hands-on - reference implementation & examples</p>
+            <p class="text-lg font-semibold mt-4 text-pink-400">Anthropic Cookbook</p>
+            <a href="https://github.com/anthropics/anthropic-cookbook" target="_blank" rel="noopener noreferrer" class="resource-cta" title="Anthropic Cookbook">
+              <i data-lucide="external-link" class="w-4 h-4"></i> Explore Repo
+            </a>
+          </div>
+        </div>
+      </article>
+    </div>
+  </div>
+</section>
+
+<section id="checkpoint" class="relative py-24 px-6 z-10">
+  <div class="max-w-5xl mx-auto">
+    <div class="checkpoint-glow holo-card p-10 md:p-16 reveal text-center">
+      <div class="inline-flex items-center justify-center w-20 h-20 rounded-full mb-6" style="background: linear-gradient(135deg, #00f0ff, #b86bff); box-shadow: 0 0 60px rgba(0,240,255,0.5);">
+        <i data-lucide="flag" class="w-9 h-9 text-black"></i>
+      </div>
+
+      <span class="pill mb-4"><i data-lucide="check-circle" class="w-3 h-3"></i> Module 4.0 · Checkpoint</span>
+      <h2 class="font-display text-3xl md:text-5xl font-bold mt-4 mb-4">
+        <span class="gradient-multi">Mission 4.0 Complete</span>
+      </h2>
+      <p class="text-gray-300 max-w-2xl mx-auto mb-8">You now own generation. Retrieval feeds it, structure shapes it, and discipline keeps it honest. Every claim citable, every conflict surfaced, every hallucination type catalogued.</p>
+
+      <div class="grid md:grid-cols-3 gap-4 text-left mb-10">
+        <div class="holo-card p-5">
+          <div class="font-mono text-xs text-cyan-300 mb-2">CHECK 01</div>
+          <p class="text-sm text-gray-300">Can you list the <span class="text-cyan-300 font-semibold">5 parts</span> of a RAG prompt and explain why order matters?</p>
+        </div>
+        <div class="holo-card p-5">
+          <div class="font-mono text-xs text-purple-300 mb-2">CHECK 02</div>
+          <p class="text-sm text-gray-300">Can you describe <span class="text-purple-300 font-semibold">lost-in-the-middle</span> and three strategies to fight it?</p>
+        </div>
+        <div class="holo-card p-5">
+          <div class="font-mono text-xs text-pink-300 mb-2">CHECK 03</div>
+          <p class="text-sm text-gray-300">Can you name <span class="text-pink-300 font-semibold">three hallucination types</span> and the prompt-level patch for each?</p>
+        </div>
+      </div>
+
+      <div class="flex flex-wrap gap-4 justify-center mb-8">
+        <button class="btn-primary flex items-center gap-2" onclick="completeModule()">
+          <i data-lucide="check" class="w-4 h-4"></i> Mark Module Complete
+        </button>
+        <button class="btn-ghost flex items-center gap-2">
+          <i data-lucide="arrow-right" class="w-4 h-4"></i> Module 4.1 · XML &amp; Markdown for Prompts
+        </button>
+      </div>
+
+      <div class="max-w-md mx-auto">
+        <div class="flex justify-between text-xs text-gray-400 mb-2 font-mono">
+          <span>COURSE PROGRESS</span>
+          <span id="progressText">— / 38 modules</span>
+        </div>
+        <div class="progress-bar"><div class="progress-fill" id="courseProgress" style="width: 0%;"></div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer class="relative py-12 px-6 z-10 border-t border-cyan-500/10">
+  <div class="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4 text-sm text-gray-500">
+    <div class="flex items-center gap-3">
+      <i data-lucide="orbit" class="w-4 h-4 text-cyan-400"></i>
+      <span class="font-display tracking-wider">RAG ACADEMY · GENAI GALAXY</span>
+    </div>
+    <div class="font-mono text-xs">v1.0.0 · Module 4.0 · Stardate 2026.05</div>
+  </div>
+</footer>
+
+<!-- ============== SCRIPTS ============== -->
+<script>
+  function safeCreateIcons() {
+    try {
+      if (typeof lucide !== 'undefined' && lucide.createIcons) lucide.createIcons();
+    } catch (e) { console.warn('Lucide init skipped:', e); }
+  }
+  safeCreateIcons();
+
+  // ===== STARFIELD =====
+  const canvas = document.getElementById('starfield');
+  const ctx = canvas.getContext('2d');
+  let stars = [];
+  function resizeCanvas() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; initStars(); }
+  function initStars() {
+    stars = [];
+    const count = Math.floor((canvas.width * canvas.height) / 8000);
+    for (let i = 0; i < count; i++) {
+      stars.push({ x: Math.random() * canvas.width, y: Math.random() * canvas.height, z: Math.random() * 1.5 + 0.3, size: Math.random() * 1.5, twinkle: Math.random() * Math.PI * 2 });
+    }
+  }
+  function drawStars() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const now = Date.now() * 0.001;
+    stars.forEach(s => {
+      const alpha = 0.4 + 0.6 * Math.abs(Math.sin(s.twinkle + now * s.z));
+      ctx.beginPath();
+      ctx.fillStyle = `rgba(${180 + s.z*30}, ${220 + s.z*20}, 255, ${alpha})`;
+      ctx.arc(s.x, s.y, s.size * s.z, 0, Math.PI * 2);
+      ctx.fill();
+      s.y += s.z * 0.08;
+      if (s.y > canvas.height) { s.y = 0; s.x = Math.random() * canvas.width; }
+    });
+    requestAnimationFrame(drawStars);
+  }
+  window.addEventListener('resize', resizeCanvas);
+  resizeCanvas();
+  drawStars();
+
+  // ===== REVEAL =====
+  document.documentElement.classList.add('js-reveal');
+  const revealEls = document.querySelectorAll('.reveal');
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) { entry.target.classList.add('in'); observer.unobserve(entry.target); }
+    });
+  }, { threshold: 0.05, rootMargin: '0px 0px -50px 0px' });
+  revealEls.forEach(el => observer.observe(el));
+  function revealVisibleNow() {
+    revealEls.forEach(el => {
+      const rect = el.getBoundingClientRect();
+      if (rect.top < window.innerHeight && rect.bottom > 0) el.classList.add('in');
+    });
+  }
+  revealVisibleNow();
+  setTimeout(revealVisibleNow, 100);
+  setTimeout(revealVisibleNow, 500);
+  setTimeout(() => { revealEls.forEach(el => el.classList.add('in')); }, 2000);
+
+  // ===== COPY =====
+  document.querySelectorAll('.copy-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const targetId = btn.dataset.target;
+      const target = document.getElementById(targetId);
+      if (!target) return;
+      const text = target.innerText;
+      const fallbackCopy = () => {
+        const ta = document.createElement('textarea');
+        ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+        document.body.appendChild(ta); ta.select();
+        try { document.execCommand('copy'); } catch(e) {}
+        document.body.removeChild(ta);
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).catch(fallbackCopy);
+      } else { fallbackCopy(); }
+      const original = btn.textContent;
+      btn.textContent = 'COPIED!';
+      btn.classList.add('copied');
+      setTimeout(() => { btn.textContent = original; btn.classList.remove('copied'); }, 1500);
+    });
+  });
+
+  // ===== CITATION TABS =====
+  document.querySelectorAll('[data-citation]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('[data-citation]').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      document.querySelectorAll('[id^="citation-"]').forEach(p => {
+        if (p.classList.contains('tab-panel')) p.classList.remove('active');
+      });
+      document.getElementById('citation-' + btn.dataset.citation).classList.add('active');
+      setTimeout(safeCreateIcons, 50);
+    });
+  });
+
+  // ===== QUIZ =====
+  document.querySelectorAll('[data-quiz]').forEach(card => {
+    const options = card.querySelectorAll('.quiz-option');
+    options.forEach(opt => {
+      opt.addEventListener('click', () => {
+        if (card.dataset.answered === 'true') return;
+        const correct = opt.dataset.correct === 'true';
+        if (correct) opt.classList.add('correct');
+        else {
+          opt.classList.add('wrong');
+          card.querySelectorAll('.quiz-option').forEach(o => {
+            if (o.dataset.correct === 'true') o.classList.add('correct');
+          });
+        }
+        card.querySelectorAll('.quiz-option').forEach(o => o.classList.add('locked'));
+        card.dataset.answered = 'true';
+        const explain = card.querySelector('[data-explain]');
+        if (explain) explain.classList.remove('hidden');
+      });
+    });
+  });
+
+  // ===== SIDE NAV =====
+  const sections = ['hero','objectives','behaviors','anatomy','lost-middle','citations','synthesis','refusal','hallucination','playground','checkpoint'];
+  const dots = document.querySelectorAll('.dot');
+  dots.forEach(dot => {
+    dot.addEventListener('click', () => {
+      document.getElementById(dot.dataset.target).scrollIntoView({ behavior: 'smooth' });
+    });
+  });
+  window.addEventListener('scroll', () => {
+    const scrollPos = window.scrollY + window.innerHeight / 2;
+    sections.forEach((id, i) => {
+      const el = document.getElementById(id);
+      if (el && el.offsetTop <= scrollPos && el.offsetTop + el.offsetHeight > scrollPos) {
+        dots.forEach(d => d.classList.remove('active'));
+        dots[i]?.classList.add('active');
+      }
+    });
+  });
+
+  // =================================================
+  // ===== LOST-IN-THE-MIDDLE CHART =====
+  // =================================================
+  // U-shaped curve: accuracy by relative position in context
+  const lmCtx = document.getElementById('lostMiddleChart').getContext('2d');
+  const positions = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100];
+  // U-shape: high at extremes, dips in the middle
+  function recallAtPos(p) {
+    // U-shape via |0.5 - p|
+    const normalized = Math.abs(0.5 - p / 100) * 2; // 0..1, 0 at middle
+    return Math.round((45 + normalized * 45) * 10) / 10; // 45% middle → 90% extremes
+  }
+  const recallData = positions.map(p => recallAtPos(p));
+
+  const gradient = lmCtx.createLinearGradient(0, 0, 0, 280);
+  gradient.addColorStop(0, 'rgba(0, 240, 255, 0.3)');
+  gradient.addColorStop(1, 'rgba(0, 240, 255, 0)');
+
+  new Chart(lmCtx, {
+    type: 'line',
+    data: {
+      labels: positions.map(p => p + '%'),
+      datasets: [{
+        label: 'recall accuracy',
+        data: recallData,
+        borderColor: '#00f0ff',
+        backgroundColor: gradient,
+        tension: 0.4,
+        borderWidth: 2.5,
+        pointRadius: 4,
+        pointBackgroundColor: '#00f0ff',
+        pointHoverRadius: 7,
+        fill: true
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { labels: { color: '#8a96b8', font: { family: 'Inter', size: 11 }, usePointStyle: true, padding: 14 } },
+        tooltip: {
+          backgroundColor: 'rgba(2, 3, 10, 0.95)',
+          borderColor: 'rgba(0, 240, 255, 0.3)', borderWidth: 1,
+          titleFont: { family: 'Orbitron' }, bodyFont: { family: 'JetBrains Mono' }
+        }
+      },
+      scales: {
+        x: {
+          grid: { color: 'rgba(0, 240, 255, 0.05)' },
+          ticks: { color: '#5a6788', font: { size: 10, family: 'JetBrains Mono' } },
+          title: { display: true, text: 'answer position in context window', color: '#8a96b8', font: { family: 'Orbitron', size: 11 } }
+        },
+        y: {
+          grid: { color: 'rgba(0, 240, 255, 0.05)' },
+          ticks: { color: '#5a6788', font: { size: 10, family: 'JetBrains Mono' }, callback: v => v + '%' },
+          min: 30, max: 100,
+          title: { display: true, text: 'needle recall (%)', color: '#8a96b8', font: { family: 'Orbitron', size: 11 } }
+        }
+      }
+    }
+  });
+
+  // =================================================
+  // ===== POSITION GAUGE (lost-in-middle interactive) =====
+  // =================================================
+  const positionSlider = document.getElementById('positionSlider');
+  const positionMarker = document.getElementById('positionMarker');
+  const recallVal = document.getElementById('recallVal');
+  const recallLabel = document.getElementById('recallLabel');
+
+  positionSlider.addEventListener('input', () => {
+    const p = parseInt(positionSlider.value);
+    positionMarker.style.left = p + '%';
+    const r = recallAtPos(p);
+    recallVal.textContent = r + '%';
+    let label = '';
+    if (r >= 80) label = 'High — the model sees this clearly.';
+    else if (r >= 65) label = 'OK — recall starts to fade.';
+    else if (r >= 50) label = 'Risky — losing attention to surrounding text.';
+    else label = 'Lost — buried in the middle. Move this chunk to start or end.';
+    recallLabel.textContent = label;
+  });
+  // initial trigger
+  positionSlider.dispatchEvent(new Event('input'));
+
+  // =================================================
+  // ===== PROMPT BUILDER PLAYGROUND =====
+  // =================================================
+  const toggles = {
+    role: true,
+    onlyContext: true,
+    cite: true,
+    refusal: false,
+    verbatim: false,
+    conflict: false,
+    repeatQuery: false,
+    topFirst: true
+  };
+
+  document.querySelectorAll('[data-toggle]').forEach(t => {
+    t.addEventListener('click', () => {
+      const key = t.dataset.toggle;
+      toggles[key] = !toggles[key];
+      t.classList.toggle('on');
+      t.closest('.toggle-row').classList.toggle('active', toggles[key]);
+      renderPrompt();
+    });
+  });
+
+  function renderPrompt() {
+    const lines = [];
+
+    // SYSTEM section
+    if (toggles.role || toggles.onlyContext) {
+      lines.push('<span class="prompt-label">SYSTEM</span>');
+      let sys = '';
+      if (toggles.role) sys += '<span class="prompt-content">You are a customer-support assistant for ACME Corp.\n</span>';
+      if (toggles.onlyContext) sys += '<span class="prompt-content">You answer only from the documents inside &lt;context&gt;.\nYou never use outside knowledge.\n</span>';
+      lines.push('<div class="prompt-section"><span class="prompt-tag">&lt;system&gt;</span>\n' + sys + '<span class="prompt-tag">&lt;/system&gt;</span></div>');
+    }
+
+    // RULES section (safeguards)
+    const rules = [];
+    if (toggles.cite) rules.push('Every factual claim must end with [doc_id].');
+    if (toggles.refusal) rules.push('If the answer is not in &lt;context&gt;, say "I couldn\'t find this in the documents", state what is missing, and suggest a next step.');
+    if (toggles.verbatim) rules.push('When citing a number or date, quote the exact phrasing verbatim.');
+    if (toggles.conflict) rules.push('If two documents conflict, surface the conflict explicitly — never silently pick one.');
+
+    if (rules.length > 0) {
+      lines.push('<span class="prompt-label">RULES</span>');
+      let r = '<span class="prompt-content">';
+      rules.forEach((rule, i) => r += (i + 1) + '. ' + rule + '\n');
+      r += '</span>';
+      lines.push('<div class="prompt-section"><span class="prompt-tag">&lt;rules&gt;</span>\n' + r + '<span class="prompt-tag">&lt;/rules&gt;</span></div>');
+    }
+
+    // CONTEXT section
+    lines.push('<span class="prompt-label">CONTEXT</span>');
+    let ctxBody = '';
+    const chunks = [
+      { id: 'doc_847', src: 'travel-faq.md', text: 'Travel purchases are refundable within 30 days.' },
+      { id: 'doc_213', src: 'refund-terms.md', text: 'Refunds are issued to the original payment method within 5 business days after approval.' }
+    ];
+    if (toggles.topFirst) {
+      ctxBody += `  <span class="prompt-tag">&lt;doc id="doc_847" source="travel-faq.md"&gt;</span>\n`;
+      ctxBody += `    <span class="prompt-content">Travel purchases are refundable within 30 days.</span>\n`;
+      ctxBody += `  <span class="prompt-tag">&lt;/doc&gt;</span>\n`;
+      ctxBody += `  <span class="prompt-tag">&lt;doc id="doc_213" source="refund-terms.md"&gt;</span>\n`;
+      ctxBody += `    <span class="prompt-content">Refunds are issued within 5 business days after approval.</span>\n`;
+      ctxBody += `  <span class="prompt-tag">&lt;/doc&gt;</span>\n`;
+    } else {
+      ctxBody += `  <span class="prompt-tag">&lt;doc id="doc_213"&gt;</span><span class="prompt-content">...</span><span class="prompt-tag">&lt;/doc&gt;</span>\n`;
+      ctxBody += `  <span class="prompt-tag">&lt;doc id="doc_847"&gt;</span><span class="prompt-content">...</span><span class="prompt-tag">&lt;/doc&gt;</span>\n`;
+    }
+    lines.push('<div class="prompt-section"><span class="prompt-tag">&lt;context&gt;</span>\n' + ctxBody + '<span class="prompt-tag">&lt;/context&gt;</span></div>');
+
+    // QUERY section
+    lines.push('<span class="prompt-label">QUERY</span>');
+    lines.push('<div class="prompt-section"><span class="prompt-tag">&lt;query&gt;</span>\n<span class="prompt-content">  What\'s the refund window for travel?</span>\n<span class="prompt-tag">&lt;/query&gt;</span></div>');
+
+    // FORMAT section
+    lines.push('<span class="prompt-label">FORMAT</span>');
+    let fmt = '<span class="prompt-content">- Markdown bullets\n- Each bullet ends with [doc_id]\n- 1-3 bullets max</span>';
+    lines.push('<div class="prompt-section"><span class="prompt-tag">&lt;format&gt;</span>\n' + fmt + '\n<span class="prompt-tag">&lt;/format&gt;</span></div>');
+
+    // Repeat query
+    if (toggles.repeatQuery) {
+      lines.push('<div class="prompt-section"><span class="prompt-label">QUERY (repeated)</span><span class="prompt-content">Reminder: the user asked — "What\'s the refund window for travel?"</span></div>');
+    }
+
+    document.getElementById('promptPreview').innerHTML = lines.join('\n');
+
+    // Quality score
+    const safeguardKeys = ['cite', 'refusal', 'verbatim', 'conflict', 'repeatQuery'];
+    const enabledSafeguards = safeguardKeys.filter(k => toggles[k]).length;
+    const baseScore = (toggles.role ? 15 : 0) + (toggles.onlyContext ? 15 : 0) + (toggles.topFirst ? 10 : 0);
+    const safeguardScore = enabledSafeguards * 12;
+    const score = Math.min(100, baseScore + safeguardScore);
+
+    document.getElementById('qualityScore').textContent = score;
+    document.getElementById('qualityFill').style.width = score + '%';
+
+    let label = '';
+    if (score >= 90) label = 'Production-ready — full safeguard stack.';
+    else if (score >= 70) label = 'Strong — covers most failure modes.';
+    else if (score >= 50) label = 'Decent — missing some safeguards.';
+    else if (score >= 30) label = 'Risky — hallucination risk is high.';
+    else label = 'Unsafe — toggle safeguards to improve.';
+    document.getElementById('qualityLabel').textContent = label;
+
+    // Stats
+    const partsEnabled = (toggles.role || toggles.onlyContext ? 1 : 0) + (rules.length > 0 ? 1 : 0) + 1 + 1 + 1 + (toggles.repeatQuery ? 1 : 0);
+    document.getElementById('statParts').textContent = partsEnabled;
+    document.getElementById('statSafeguards').textContent = enabledSafeguards;
+    const baseTok = 100;
+    const ruleTok = rules.length * 25;
+    const repeatTok = toggles.repeatQuery ? 20 : 0;
+    document.getElementById('statTokens').textContent = '~' + (baseTok + ruleTok + repeatTok);
+  }
+  renderPrompt();
+
+  // ===== COMPLETION =====
+  function completeModule() {
+    try {
+      const saved = JSON.parse(localStorage.getItem('rag_academy_progress') || '{}');
+      const completed = new Set(saved.completed || []);
+      completed.add('4.0');
+      localStorage.setItem('rag_academy_progress', JSON.stringify({
+        completed: Array.from(completed),
+        lastModule: '4.0'
+      }));
+      updateProgress();
+    } catch(e) {}
+
+    const burst = document.createElement('div');
+    burst.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);font-family:Orbitron,sans-serif;font-size:2rem;font-weight:900;color:#00f0ff;text-shadow:0 0 30px #00f0ff;z-index:9999;pointer-events:none;opacity:0;transition:all 0.8s ease;';
+    burst.textContent = '✦ MISSION COMPLETE ✦';
+    document.body.appendChild(burst);
+    requestAnimationFrame(() => {
+      burst.style.opacity = '1';
+      burst.style.transform = 'translate(-50%, -50%) scale(1.2)';
+    });
+    setTimeout(() => { burst.style.opacity = '0'; setTimeout(() => burst.remove(), 800); }, 1800);
+  }
+  window.completeModule = completeModule;
+
+  function updateProgress() {
+    try {
+      const saved = JSON.parse(localStorage.getItem('rag_academy_progress') || '{}');
+      if (saved.completed && Array.isArray(saved.completed)) {
+        const count = saved.completed.length;
+        const pct = Math.round((count / 38) * 100);
+        const fill = document.getElementById('courseProgress');
+        const txt = document.getElementById('progressText');
+        if (fill && txt) {
+          fill.style.width = pct + '%';
+          txt.textContent = `${count} / 38 modules ${saved.completed.includes('4.0') ? '✓' : ''}`;
+        }
+      }
+    } catch(e) {}
+  }
+  updateProgress();
+</script>
+
+</body>
+</html>

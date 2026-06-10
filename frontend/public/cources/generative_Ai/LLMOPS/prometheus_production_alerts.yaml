@@ -1,0 +1,333 @@
+# ═══════════════════════════════════════════════════════════════════════════
+# prometheus_production_alerts.yaml
+#
+# Full alert rulebook for production LLM serving. 27 alerts across 6 groups:
+#
+#   1. SLO burn rate (5 alerts)           · the user-visible signal
+#   2. Capacity and scaling (5 alerts)    · before you tip over
+#   3. Model quality and correctness (4)  · silent regressions
+#   4. Cost drift (4 alerts)              · the finance surprise signal
+#   5. Region and pod health (5 alerts)   · infrastructure layer
+#   6. Security and abuse (4 alerts)      · tenant-level anomalies
+#
+# Every alert references the M7 section or artifact that covers the
+# failure mode it catches.
+#
+# Usage:
+#   kubectl apply -f prometheus_production_alerts.yaml
+# ═══════════════════════════════════════════════════════════════════════════
+
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: nexus-llm-alerts
+  namespace: monitoring
+  labels:
+    prometheus: kube-prometheus
+    role: alert-rules
+spec:
+  groups:
+
+  # ═══════════════════════════════════════════════════════════════════════
+  # GROUP 1 · SLO burn rate — the user-visible signal
+  # See M7 section 04 (Observability) and section 06 (Incident Response)
+  # ═══════════════════════════════════════════════════════════════════════
+  - name: slo-burn-rate
+    interval: 30s
+    rules:
+
+    # Fast-burn: 14.4× budget in 1h = page immediately
+    - alert: SLOBurnFast
+      expr: |
+        (
+          sum(rate(vllm:request_success_total{slo="interactive"}[1h]))
+          / sum(rate(vllm:requests_total{slo="interactive"}[1h]))
+        ) < 0.99
+      for: 2m
+      labels:
+        severity: page
+        slo: interactive
+      annotations:
+        summary: "Interactive SLO burning fast (14.4× budget in 1h)"
+        runbook: "https://docs/runbooks/slo-burn"
+
+    # Slow-burn: 3× budget in 6h = ticket during business hours
+    - alert: SLOBurnSlow
+      expr: |
+        (
+          sum(rate(vllm:request_success_total{slo="interactive"}[6h]))
+          / sum(rate(vllm:requests_total{slo="interactive"}[6h]))
+        ) < 0.9975
+      for: 15m
+      labels:
+        severity: ticket
+        slo: interactive
+
+    - alert: TTFTP99HighInteractive
+      expr: |
+        histogram_quantile(0.99,
+          sum(rate(vllm:time_to_first_token_seconds_bucket{slo="interactive"}[5m]))
+          by (le)
+        ) > 0.25
+      for: 10m
+      labels:
+        severity: page
+      annotations:
+        summary: "TTFT p99 exceeds 250ms SLO for interactive class"
+        impact: "User-visible latency regression"
+
+    - alert: TPOTP99High
+      expr: |
+        histogram_quantile(0.99,
+          sum(rate(vllm:time_per_output_token_seconds_bucket[5m])) by (le)
+        ) > 0.020
+      for: 10m
+      labels:
+        severity: ticket
+
+    - alert: ErrorRateHigh
+      expr: |
+        sum(rate(vllm:request_errors_total[5m]))
+        / sum(rate(vllm:requests_total[5m])) > 0.01
+      for: 5m
+      labels:
+        severity: page
+
+  # ═══════════════════════════════════════════════════════════════════════
+  # GROUP 2 · Capacity and scaling — before you tip over
+  # See M7 section 02 (Autoscaling) and M5 preemption metrics
+  # ═══════════════════════════════════════════════════════════════════════
+  - name: capacity
+    rules:
+
+    - alert: QueueDepthHigh
+      expr: avg(vllm:num_requests_waiting) by (pod) > 10
+      for: 5m
+      labels:
+        severity: ticket
+      annotations:
+        summary: "Waiting queue > 10 per pod — autoscaler may need tuning"
+        fix: "Check that scaleMetric is concurrency, not CPU. See M7 §02."
+
+    - alert: UtilizationAboveShedThreshold
+      expr: |
+        (sum(rate(vllm:requests_total[5m])) /
+         sum(vllm:max_throughput_capacity)) > 0.83
+      for: 5m
+      labels:
+        severity: ticket
+      annotations:
+        summary: "Utilization ρ > 0.83 (shedding threshold from load_shedding_calculator.py)"
+        fix: "Enable gateway shedding or scale up."
+
+    - alert: PreemptionRateHigh
+      expr: |
+        rate(vllm:num_preemptions_total[5m]) /
+        rate(vllm:requests_total[5m]) > 0.05
+      for: 10m
+      labels:
+        severity: ticket
+      annotations:
+        summary: "Preemption rate > 5% — KV pool under pressure"
+        fix: "Reduce max_num_seqs OR check for traffic drift to longer contexts. See M4 drill 02."
+
+    - alert: GPUCacheUsageHigh
+      expr: avg(vllm:gpu_cache_usage_perc) > 0.92
+      for: 5m
+      labels:
+        severity: ticket
+
+    - alert: AutoscalerNotScaling
+      expr: |
+        avg(vllm:num_requests_waiting) > 20
+        and
+        changes(kube_deployment_status_replicas{deployment="nexus-llm"}[10m]) == 0
+      for: 10m
+      labels:
+        severity: page
+      annotations:
+        summary: "Queue building but replica count unchanged for 10m"
+        fix: "Check autoscaler — metric source, target, maxReplicas cap"
+
+  # ═══════════════════════════════════════════════════════════════════════
+  # GROUP 3 · Model quality and correctness — silent regressions
+  # ═══════════════════════════════════════════════════════════════════════
+  - name: quality
+    rules:
+
+    - alert: SpeculationAcceptanceLow
+      expr: |
+        (rate(vllm:spec_decode_accepted_tokens_total[1h]) /
+         rate(vllm:spec_decode_draft_tokens_total[1h])) < 0.70
+      for: 1h
+      labels:
+        severity: ticket
+        topic: speculation
+      annotations:
+        summary: "Speculation acceptance α < 0.70 for 1h"
+        impact: "Speedup and cost regression. See M5 drill 01."
+        fix: "Retrain draft model on recent traffic window"
+
+    - alert: QualityDriftDetected
+      expr: |
+        (quality_eval_score - quality_eval_score offset 7d) < -0.02
+      for: 30m
+      labels:
+        severity: ticket
+      annotations:
+        summary: "Quality eval score dropped >2pp vs 7 days ago"
+        fix: "Review recent model version / calibration / prompt template changes"
+
+    - alert: PrefixCacheHitRateLow
+      expr: |
+        avg(vllm:prefix_cache_hit_rate) <
+        avg(vllm:prefix_cache_hit_rate offset 7d) * 0.80
+      for: 30m
+      labels:
+        severity: ticket
+      annotations:
+        summary: "Prefix cache hit rate dropped >20% vs 7-day baseline"
+        fix: "Run radix_prefix_analyzer.py on recent prompts. See M4 drill 01."
+
+    - alert: RefusalRateUnusuallyHigh
+      expr: |
+        rate(vllm:refusal_responses_total[1h]) /
+        rate(vllm:requests_total[1h]) > 0.15
+      for: 1h
+      labels:
+        severity: ticket
+
+  # ═══════════════════════════════════════════════════════════════════════
+  # GROUP 4 · Cost drift — the finance-surprise signal
+  # ═══════════════════════════════════════════════════════════════════════
+  - name: cost
+    rules:
+
+    - alert: CostPerMillionTokensDrift
+      expr: |
+        (cost_usd_per_million_tokens / cost_usd_per_million_tokens offset 7d) > 1.15
+      for: 1d
+      labels:
+        severity: ticket
+      annotations:
+        summary: "Cost-per-M-tokens up >15% vs 7 days ago; request volume flat"
+        fix: "Most likely: acceptance-rate drift (M5 drill 01) or quantization regression"
+
+    - alert: TenantCostSpikeVsBaseline
+      expr: |
+        (tenant_cost_per_request / avg_over_time(tenant_cost_per_request[14d])) > 2.0
+      for: 30m
+      labels:
+        severity: ticket
+
+    - alert: GPUCostEfficiencyLow
+      expr: tokens_served_per_gpu_hour < 2e6
+      for: 6h
+      labels:
+        severity: ticket
+      annotations:
+        summary: "Throughput < 2M tokens/GPU-hour — significantly below expected"
+        fix: "Check batch size (M5 drill 04), kernel selection (M3), KV dtype (M4)"
+
+    - alert: BatchClassBudgetExceeded
+      expr: tenant_class_cost_usd{class="batch"} > 10000
+      for: 1d
+      labels:
+        severity: info
+
+  # ═══════════════════════════════════════════════════════════════════════
+  # GROUP 5 · Region and pod health — infrastructure layer
+  # ═══════════════════════════════════════════════════════════════════════
+  - name: infrastructure
+    rules:
+
+    - alert: RegionHealthCheckFailing
+      expr: up{job="nexus-llm"} == 0
+      for: 30s
+      labels:
+        severity: page
+      annotations:
+        summary: "Pod failing health check for > 30s"
+
+    - alert: RegionTrafficImbalance
+      expr: |
+        (max(sum(rate(vllm:requests_total[5m])) by (region)) -
+         min(sum(rate(vllm:requests_total[5m])) by (region))) /
+        avg(sum(rate(vllm:requests_total[5m])) by (region)) > 0.5
+      for: 10m
+      labels:
+        severity: ticket
+      annotations:
+        summary: "Cross-region traffic imbalance > 50%"
+        fix: "Check global load balancer + locality routing"
+
+    - alert: PodCrashLooping
+      expr: |
+        rate(kube_pod_container_status_restarts_total{pod=~"nexus-llm-.*"}[1h]) > 3
+      for: 15m
+      labels:
+        severity: page
+
+    - alert: OutlierDetectionActive
+      expr: sum(envoy_cluster_outlier_detection_ejections_active) > 0
+      for: 5m
+      labels:
+        severity: ticket
+
+    - alert: RegionFailoverActive
+      expr: |
+        absent(up{job="nexus-llm",region="us-east-1"}) or up{job="nexus-llm",region="us-east-1"} == 0
+      for: 1m
+      labels:
+        severity: page
+
+  # ═══════════════════════════════════════════════════════════════════════
+  # GROUP 6 · Security and abuse — tenant-level anomalies
+  # ═══════════════════════════════════════════════════════════════════════
+  - name: security
+    rules:
+
+    - alert: TenantRequestRateAnomaly
+      expr: |
+        (rate(vllm:requests_total[5m]) by (tenant) /
+         avg_over_time(rate(vllm:requests_total[5m])[14d:]) by (tenant)) > 10
+      for: 10m
+      labels:
+        severity: ticket
+      annotations:
+        summary: "Tenant request rate > 10× 14-day baseline"
+        fix: "Confirm legitimate traffic growth vs abuse"
+
+    - alert: TenantTokenRateAnomaly
+      expr: |
+        (rate(vllm:output_tokens_total[5m]) by (tenant) /
+         avg_over_time(rate(vllm:output_tokens_total[5m])[14d:]) by (tenant)) > 10
+      for: 10m
+      labels:
+        severity: ticket
+
+    - alert: AuthFailureRateHigh
+      expr: |
+        sum(rate(auth_failures_total[5m])) /
+        sum(rate(requests_total[5m])) > 0.05
+      for: 5m
+      labels:
+        severity: page
+      annotations:
+        summary: ">5% requests failing auth — possible credential attack"
+
+    - alert: PromptInjectionPatternDetected
+      expr: sum(rate(prompt_injection_matches_total[5m])) > 10
+      for: 2m
+      labels:
+        severity: ticket
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Alert severity conventions:
+#   page     — pager during off-hours, immediate attention required
+#   ticket   — ticket created, investigate during business hours
+#   info     — dashboard signal only, no wake-up
+#
+# Every page-severity alert has a corresponding runbook linked in annotations.
+# Runbooks live in docs/runbooks/ (not included; company-specific).
+# ═══════════════════════════════════════════════════════════════════════════

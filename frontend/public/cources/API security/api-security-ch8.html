@@ -1,0 +1,994 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Identity-Based Access Control — API Security in Action</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;0,9..144,900;1,9..144,500&family=Spline+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#15140f; --ink-soft:#403c33; --paper:#f4efe4; --paper-2:#ece4d3;
+    --card:#fbf8f0; --line:#d9cfb8; --rule:#c7bca0;
+    --accent:#b5471f; --accent-2:#1d6b5a; --gold:#c08a2e; --shield:#2f4858; --plum:#7a4ba3; --warn:#9a3b12;
+    --shadow:0 1px 0 rgba(0,0,0,.04), 0 8px 28px -12px rgba(40,30,10,.35);
+    --mono:'JetBrains Mono',monospace; --serif:'Fraunces',Georgia,serif; --sans:'Spline Sans',system-ui,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    margin:0;
+    background:
+      radial-gradient(1200px 600px at 80% -5%, rgba(181,71,31,.07), transparent 60%),
+      radial-gradient(900px 500px at -10% 20%, rgba(29,107,90,.06), transparent 55%),
+      var(--paper);
+    color:var(--ink); font-family:var(--sans); font-size:18px; line-height:1.72; -webkit-font-smoothing:antialiased;
+  }
+  body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:0;opacity:.5;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E");}
+  .wrap{position:relative;z-index:1;max-width:880px;margin:0 auto;padding:0 26px}
+
+  .ribbon{max-width:880px;margin:0 auto;padding:18px 26px 0;display:flex;justify-content:space-between;align-items:center;
+    font-family:var(--mono);font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:var(--ink-soft)}
+  .ribbon .dot{width:8px;height:8px;border-radius:50%;background:var(--accent);display:inline-block;margin-right:8px;vertical-align:middle}
+
+  header.hero{max-width:880px;margin:0 auto;padding:34px 26px 18px;position:relative}
+  .kicker{font-family:var(--mono);font-size:12.5px;letter-spacing:.3em;text-transform:uppercase;color:var(--accent);margin-bottom:18px;display:flex;align-items:center;gap:12px}
+  .kicker::after{content:"";flex:1;height:1px;background:linear-gradient(90deg,var(--rule),transparent)}
+  h1.title{font-family:var(--serif);font-weight:900;font-size:clamp(40px,8vw,76px);line-height:.98;letter-spacing:-.02em;margin:0 0 8px;color:var(--ink)}
+  h1.title em{font-style:italic;color:var(--accent);font-weight:500}
+  .sub{font-family:var(--serif);font-style:italic;font-size:clamp(19px,3vw,24px);color:var(--ink-soft);max-width:60ch;margin:14px 0 0;font-weight:400}
+  .meta-row{display:flex;flex-wrap:wrap;gap:10px;margin-top:26px}
+  .chip{font-family:var(--mono);font-size:11.5px;letter-spacing:.08em;text-transform:uppercase;background:var(--card);border:1px solid var(--line);border-radius:100px;padding:7px 14px;color:var(--ink-soft);box-shadow:var(--shadow)}
+
+  nav.toc{margin:36px auto 0;background:var(--card);border:1px solid var(--line);border-radius:18px;padding:26px 30px;box-shadow:var(--shadow)}
+  nav.toc h4{font-family:var(--mono);font-size:12px;letter-spacing:.2em;text-transform:uppercase;color:var(--accent);margin:0 0 16px}
+  nav.toc ol{margin:0;padding:0;list-style:none;counter-reset:toc;display:grid;grid-template-columns:1fr 1fr;gap:4px 30px}
+  nav.toc li{counter-increment:toc;border-bottom:1px dotted var(--rule)}
+  nav.toc a{display:flex;align-items:baseline;gap:12px;text-decoration:none;color:var(--ink);padding:9px 0;font-size:16px;transition:color .2s,padding .2s}
+  nav.toc a::before{content:counter(toc,decimal-leading-zero);font-family:var(--mono);font-size:12px;color:var(--accent);flex:none}
+  nav.toc a:hover{color:var(--accent);padding-left:6px}
+  @media(max-width:640px){nav.toc ol{grid-template-columns:1fr}}
+
+  section{margin:64px auto 0}
+  .sec-head{display:flex;align-items:flex-start;gap:18px;margin-bottom:8px}
+  .sec-num{font-family:var(--serif);font-weight:900;font-size:54px;line-height:.8;color:var(--accent);flex:none;margin-top:4px}
+  h2{font-family:var(--serif);font-weight:600;font-size:clamp(28px,5vw,38px);line-height:1.05;letter-spacing:-.015em;margin:0;color:var(--ink)}
+  h2 em{font-style:italic;color:var(--accent);font-weight:500}
+  h3{font-family:var(--serif);font-weight:600;font-size:24px;letter-spacing:-.01em;margin:38px 0 6px;color:var(--ink)}
+  h3 .tag{font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--accent-2);vertical-align:middle;margin-left:10px;border:1px solid var(--accent-2);padding:2px 8px;border-radius:6px}
+  p{margin:16px 0}
+  .lead{font-size:20px;color:var(--ink-soft)}
+  strong{font-weight:700;color:var(--ink)}
+  em.term{font-style:normal;font-weight:600;color:var(--accent);border-bottom:2px solid rgba(181,71,31,.25)}
+  hr.rule{border:none;height:1px;background:linear-gradient(90deg,transparent,var(--rule),transparent);margin:54px 0}
+
+  .callout{border-radius:14px;padding:20px 22px 20px 54px;margin:26px 0;position:relative;background:var(--card);border:1px solid var(--line);box-shadow:var(--shadow);font-size:16.5px}
+  .callout .ic{position:absolute;left:18px;top:20px;width:24px;height:24px}
+  .callout .lab{font-family:var(--mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;display:block;margin-bottom:4px}
+  .callout.def{border-left:4px solid var(--accent-2)} .callout.def .lab{color:var(--accent-2)}
+  .callout.eg{border-left:4px solid var(--gold);background:linear-gradient(180deg,#fdf8ea,var(--card))} .callout.eg .lab{color:var(--gold)}
+  .callout.real{border-left:4px solid var(--accent);background:linear-gradient(180deg,#fbf0ea,var(--card))} .callout.real .lab{color:var(--accent)}
+  .callout.tip{border-left:4px solid var(--shield)} .callout.tip .lab{color:var(--shield)}
+  .callout p{margin:6px 0} .callout p:first-of-type{margin-top:0}
+
+  .analogy{background:linear-gradient(135deg,#2f4858,#23363f);color:#f0e9d8;border-radius:18px;padding:30px 32px;margin:30px 0;position:relative;overflow:hidden;box-shadow:0 20px 40px -22px rgba(20,30,40,.7)}
+  .analogy::after{content:"\201C";position:absolute;right:18px;top:-20px;font-family:var(--serif);font-size:160px;color:rgba(255,255,255,.06);font-weight:900}
+  .analogy .lab{font-family:var(--mono);font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--gold);display:block;margin-bottom:10px}
+  .analogy p{margin:8px 0;color:#ece4d3} .analogy strong{color:#fff}
+
+  .grid{display:grid;gap:16px;margin:26px 0}
+  .grid.c3{grid-template-columns:repeat(3,1fr)} .grid.c2{grid-template-columns:repeat(2,1fr)}
+  @media(max-width:680px){.grid.c3,.grid.c2{grid-template-columns:1fr}}
+  .mini{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px;box-shadow:var(--shadow);position:relative;overflow:hidden}
+  .mini .n{font-family:var(--serif);font-weight:900;font-size:30px;color:var(--accent);line-height:1}
+  .mini h5{font-family:var(--sans);font-weight:700;font-size:17px;margin:8px 0 4px;color:var(--ink)}
+  .mini p{font-size:14.5px;margin:0;color:var(--ink-soft);line-height:1.55}
+
+  .cia{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin:24px 0}
+  .cia .c{border-radius:14px;padding:20px;color:#fff;position:relative;overflow:hidden;box-shadow:var(--shadow)}
+  .cia .c .l{font-family:var(--serif);font-weight:900;font-size:42px;opacity:.25;position:absolute;right:14px;top:6px}
+  .cia .c h5{margin:0 0 4px;font-size:18px;font-weight:700} .cia .c p{margin:0;font-size:14px;opacity:.95;line-height:1.5}
+  .cia .conf{background:linear-gradient(135deg,#b5471f,#8a3416)} .cia .integ{background:linear-gradient(135deg,#1d6b5a,#13473c)} .cia .avail{background:linear-gradient(135deg,#c08a2e,#8f6418)}
+  @media(max-width:680px){.cia{grid-template-columns:1fr}}
+
+  .stride{margin:24px 0;border-radius:14px;overflow:hidden;border:1px solid var(--line);box-shadow:var(--shadow)}
+  .stride .row{display:grid;grid-template-columns:64px 1fr;align-items:center;border-bottom:1px solid var(--line);background:var(--card)}
+  .stride .row:last-child{border-bottom:none}
+  .stride .let{font-family:var(--serif);font-weight:900;font-size:30px;color:#fff;height:100%;display:flex;align-items:center;justify-content:center;padding:16px 0}
+  .stride .row:nth-child(1) .let{background:#b5471f} .stride .row:nth-child(2) .let{background:#1d6b5a} .stride .row:nth-child(3) .let{background:#c08a2e}
+  .stride .row:nth-child(4) .let{background:#7a4ba3} .stride .row:nth-child(5) .let{background:#2f4858} .stride .row:nth-child(6) .let{background:#9a3b12}
+  .stride .txt{padding:12px 18px} .stride .txt b{font-weight:700} .stride .txt span{display:block;font-size:14.5px;color:var(--ink-soft)}
+
+  .quiz{background:#fff7e6;border:1px dashed var(--gold);border-radius:16px;padding:24px 26px;margin:30px 0}
+  .quiz .lab{font-family:var(--mono);font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--gold);display:block;margin-bottom:12px}
+  .quiz details{border-top:1px solid #e8d9b0;padding:12px 0} .quiz details:first-of-type{border-top:none}
+  .quiz summary{cursor:pointer;font-weight:600;list-style:none;display:flex;gap:10px;align-items:flex-start}
+  .quiz summary::-webkit-details-marker{display:none}
+  .quiz summary::before{content:"?";font-family:var(--mono);background:var(--gold);color:#fff;width:22px;height:22px;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;font-size:13px;flex:none;margin-top:2px}
+  .quiz details[open] summary::before{content:"\2713";background:var(--accent-2)}
+  .quiz .ans{margin:10px 0 0 32px;font-size:15.5px;color:var(--ink-soft)}
+
+  .takeaways{background:var(--ink);color:var(--paper);border-radius:20px;padding:32px 34px;margin:50px 0}
+  .takeaways h3{color:var(--gold);margin-top:0}
+  .takeaways ul{margin:14px 0 0;padding:0;list-style:none}
+  .takeaways li{padding:11px 0 11px 32px;position:relative;border-bottom:1px solid rgba(255,255,255,.1);font-size:16px}
+  .takeaways li:last-child{border-bottom:none}
+  .takeaways li::before{content:"\2192";position:absolute;left:0;color:var(--accent);font-weight:700}
+  .takeaways strong{color:#fff}
+
+  footer{max-width:880px;margin:60px auto 40px;padding:30px 26px;border-top:1px solid var(--rule);font-family:var(--mono);font-size:12.5px;color:var(--ink-soft);letter-spacing:.04em;display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px}
+  code{font-family:var(--mono);font-size:.86em;background:var(--paper-2);border:1px solid var(--line);padding:1px 6px;border-radius:6px;color:var(--accent-2)}
+  .pull{font-family:var(--serif);font-style:italic;font-size:clamp(22px,4vw,30px);line-height:1.3;color:var(--ink);border-left:4px solid var(--accent);padding:6px 0 6px 24px;margin:40px 0}
+  .pull span{color:var(--accent)}
+  ::selection{background:var(--accent);color:#fff}
+
+  /* ============ INTERACTIVE DIAGRAM SYSTEM ============ */
+  .diagram{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:24px 24px 18px;margin:30px 0;box-shadow:var(--shadow);position:relative}
+  .diagram .dlabel{font-family:var(--mono);font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--accent);display:flex;align-items:center;gap:8px;margin-bottom:4px}
+  .diagram .dtitle{font-family:var(--serif);font-size:21px;font-weight:600;color:var(--ink);margin:0 0 4px}
+  .diagram .dhint{font-size:13.5px;color:var(--ink-soft);font-style:italic;margin:0 0 18px}
+  .diagram .dhint b{color:var(--accent);font-style:normal;font-weight:600}
+
+  .node{background:#fff;border:2px solid var(--ink);border-radius:12px;position:relative;transition:transform .25s cubic-bezier(.2,.8,.2,1),box-shadow .25s,border-color .25s}
+  .node:hover{transform:translateY(-3px);box-shadow:0 14px 28px -14px rgba(40,30,10,.5)}
+
+  @keyframes floatPkt{0%{transform:translateX(0);opacity:0}8%{opacity:1}92%{opacity:1}100%{transform:translateX(var(--travel,200px));opacity:0}}
+
+  .stepper{display:flex;flex-wrap:wrap;gap:8px;margin:18px 0 4px;align-items:center}
+  .stepper button{font-family:var(--mono);font-size:12px;letter-spacing:.04em;border:1.5px solid var(--line);background:var(--card);color:var(--ink-soft);
+    padding:8px 14px;border-radius:100px;cursor:pointer;transition:all .2s}
+  .stepper button:hover{border-color:var(--accent);color:var(--accent)}
+  .stepper button.active{background:var(--accent);border-color:var(--accent);color:#fff;box-shadow:0 6px 14px -6px var(--accent)}
+  .step-readout{background:var(--paper-2);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-top:14px;font-size:15px;min-height:54px;color:var(--ink)}
+  .step-readout b{color:var(--accent)}
+
+  .legend{display:flex;flex-wrap:wrap;gap:14px;margin-top:16px;padding-top:14px;border-top:1px dashed var(--rule);font-family:var(--mono);font-size:11.5px;color:var(--ink-soft)}
+  .legend .k{display:flex;align-items:center;gap:6px}
+  .legend .sw{width:16px;height:10px;border-radius:3px;display:inline-block}
+  .legend .sw.dash{background:none;border:2px dashed var(--accent);height:6px}
+
+  .dexplain{background:var(--paper-2);border:1px solid var(--line);border-left:4px solid var(--accent-2);border-radius:0 12px 12px 0;padding:18px 22px;margin:6px 0 30px;font-size:15.5px}
+  .dexplain h4{font-family:var(--mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--accent-2);margin:0 0 10px}
+  .dexplain ol{margin:8px 0 0;padding-left:20px} .dexplain li{margin:7px 0;padding-left:4px}
+  .dexplain b{color:var(--ink)}
+
+  .stage{flex:1;min-width:0;text-align:center;padding:16px 8px;border-radius:12px;border:2px solid var(--ink);background:#fff;
+    font-weight:600;font-size:14px;position:relative;transition:all .25s;cursor:pointer}
+  .stage small{display:block;font-family:var(--mono);font-size:9.5px;letter-spacing:.05em;color:var(--ink-soft);margin-top:4px;font-weight:400}
+  .stage:hover{transform:translateY(-3px)}
+  .stage.dim{opacity:.35;filter:grayscale(.4)}
+  .stage.on{box-shadow:0 0 0 4px rgba(181,71,31,.18);border-color:var(--accent)}
+
+  @media(max-width:680px){.diagram{padding:18px 14px}}
+
+  /* ===== Chapter 2 additions ===== */
+  /* code blocks */
+  .code{background:#1c1a16;border-radius:14px;margin:24px 0;box-shadow:var(--shadow);overflow:hidden;border:1px solid #2c2922}
+  .code .bar{display:flex;align-items:center;gap:7px;padding:11px 16px;background:#23201a;border-bottom:1px solid #2c2922}
+  .code .bar .dot{width:11px;height:11px;border-radius:50%}
+  .code .bar .t{margin-left:8px;font-family:var(--mono);font-size:11.5px;color:#9a9484;letter-spacing:.04em}
+  .code pre{margin:0;padding:18px 20px;overflow-x:auto;font-family:var(--mono);font-size:13.5px;line-height:1.7;color:#e8e2d4}
+  .code .cm{color:#7c8a6b;font-style:italic}      /* comment */
+  .code .kw{color:#e0995e}                          /* keyword */
+  .code .st{color:#9ec88a}                          /* string */
+  .code .fn{color:#6fb3c9}                          /* function/type */
+  .code .nm{color:#d98b7a}                          /* number */
+  .code .bad{color:#ff8a7a;background:rgba(255,80,60,.13);border-radius:3px;padding:0 2px}
+  .code .good{color:#9ee6a8;background:rgba(60,200,90,.12);border-radius:3px;padding:0 2px}
+  .codecap{font-family:var(--mono);font-size:12px;color:var(--ink-soft);margin:-14px 0 26px;padding-left:4px}
+  .codecap b{color:var(--accent)}
+
+  /* danger / attack callout */
+  .callout.danger{border-left:4px solid #b5471f;background:linear-gradient(180deg,#fbe9e3,var(--card))} .callout.danger .lab{color:#b5471f}
+  .callout.principle{border-left:4px solid var(--plum);background:linear-gradient(180deg,#f3ecf7,var(--card))} .callout.principle .lab{color:var(--plum)}
+
+  /* OWASP list */
+  .owasp{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:24px 0}
+  @media(max-width:680px){.owasp{grid-template-columns:1fr}}
+  .owasp .col h5{font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);margin:0 0 8px}
+  .owasp .it{display:flex;gap:8px;align-items:baseline;font-size:13.5px;padding:5px 0;border-bottom:1px dotted var(--rule);color:var(--ink-soft)}
+  .owasp .it b{font-family:var(--mono);font-size:11px;color:var(--accent);flex:none}
+  .owasp .it.hot b{color:#b5471f} .owasp .it.hot{font-weight:600;color:var(--ink)}
+
+  /* token stream for SQLi anatomy */
+  .tok{display:inline-block;padding:3px 7px;border-radius:6px;font-family:var(--mono);font-size:12.5px;margin:2px;border:1px solid transparent;white-space:nowrap}
+  .tok.sql{background:#e7e0cf;color:#3a352a;border-color:#d2c8b0}
+  .tok.inj{background:#fbe0d6;color:#9a3b12;border-color:#e8b9a8;font-weight:700}
+  .tok.cmt{background:#dfe9df;color:#3c5c3c;border-color:#c2d6c2}
+
+  /* security header table */
+  .hdrtbl{margin:24px 0;border:1px solid var(--line);border-radius:14px;overflow:hidden;box-shadow:var(--shadow)}
+  .hdrtbl .hrow{display:grid;grid-template-columns:minmax(140px,1fr) 1.4fr;gap:0;border-bottom:1px solid var(--line)}
+  .hdrtbl .hrow:last-child{border-bottom:none}
+  .hdrtbl .hrow:nth-child(even){background:#f7f1e3}
+  .hdrtbl .hk{padding:13px 16px;font-family:var(--mono);font-size:12.5px;color:var(--accent-2);font-weight:500;border-right:1px solid var(--line);word-break:break-word}
+  .hdrtbl .hv{padding:13px 16px;font-size:14px;color:var(--ink-soft)}
+  .hdrtbl .hhead{background:var(--ink)!important;color:var(--paper)}
+  .hdrtbl .hhead .hk,.hdrtbl .hhead .hv{color:var(--paper);font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;border-color:#333}
+
+
+  /* ===== Chapter 3 additions ===== */
+  /* the 5-control pipeline lab */
+  .pipelab{display:flex;gap:6px;align-items:stretch;flex-wrap:nowrap;overflow-x:auto;padding:6px 2px 10px}
+  .pipelab .pstage{flex:1;min-width:96px;text-align:center;padding:14px 8px;border-radius:12px;border:2px solid var(--ink);background:#fff;cursor:pointer;transition:all .25s;position:relative}
+  .pipelab .pstage .ico{font-size:20px;line-height:1}
+  .pipelab .pstage .nm{font-weight:700;font-size:12.5px;margin-top:5px}
+  .pipelab .pstage .st{display:block;font-family:var(--mono);font-size:8.5px;letter-spacing:.04em;color:var(--ink-soft);margin-top:3px}
+  .pipelab .pstage:hover{transform:translateY(-3px)}
+  .pipelab .pstage.dim{opacity:.32;filter:grayscale(.4)}
+  .pipelab .pstage.on{box-shadow:0 0 0 4px rgba(181,71,31,.18);border-color:var(--accent)}
+  .pipelab .pstage.reject{border-color:#b5471f;background:linear-gradient(180deg,#fbe9e3,#fff)}
+  .pipelab .arrow{display:flex;align-items:center;color:var(--ink-soft);font-size:15px;flex:none}
+  .pipelab .pstage.logic{flex:1.4;border-color:var(--shield);background:var(--paper-2)}
+
+  /* STRIDE → control mapping */
+  .map{display:grid;grid-template-columns:1fr;gap:8px;margin:22px 0}
+  .map .mrow{display:grid;grid-template-columns:minmax(150px,200px) 28px 1fr;align-items:center;gap:10px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 14px;box-shadow:var(--shadow)}
+  .map .threat{font-weight:700;font-size:14px}
+  .map .threat small{display:block;font-family:var(--mono);font-size:9px;color:var(--ink-soft);font-weight:400;letter-spacing:.04em}
+  .map .ar{text-align:center;color:var(--accent);font-size:16px}
+  .map .ctrl{font-size:14px;color:var(--ink-soft)} .map .ctrl b{color:var(--accent-2)}
+  .map .mrow.s{border-left:4px solid #b5471f} .map .mrow.t{border-left:4px solid #1d6b5a}
+  .map .mrow.r{border-left:4px solid #c08a2e} .map .mrow.i{border-left:4px solid #7a4ba3}
+  .map .mrow.d{border-left:4px solid #2f4858} .map .mrow.e{border-left:4px solid #9a3b12}
+
+  /* status code compare */
+  .codes{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:24px 0}
+  @media(max-width:680px){.codes{grid-template-columns:1fr}}
+  .codes .cc{border-radius:14px;padding:18px 20px;color:#fff;box-shadow:var(--shadow)}
+  .codes .cc.c401{background:linear-gradient(135deg,#c08a2e,#8f6418)}
+  .codes .cc.c403{background:linear-gradient(135deg,#b5471f,#8a3416)}
+  .codes .cc .num{font-family:var(--serif);font-weight:900;font-size:38px;line-height:1}
+  .codes .cc .ti{font-weight:700;font-size:16px;margin:2px 0 8px} .codes .cc p{margin:0;font-size:14px;opacity:.96;line-height:1.55}
+
+  /* ACL permission chips */
+  .perm{display:inline-flex;gap:3px;font-family:var(--mono);font-size:12px}
+  .perm span{width:22px;height:22px;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;font-weight:700;color:#fff}
+  .perm .r{background:#1d6b5a} .perm .w{background:#c08a2e} .perm .d{background:#b5471f} .perm .off{background:#cfc6b2;color:#fff}
+
+
+  /* ===== Chapter 4 additions ===== */
+  /* origin checker rows */
+  .originlist{display:flex;flex-direction:column;gap:8px;margin:18px 0}
+  .originlist .orow{display:grid;grid-template-columns:1fr auto;align-items:center;gap:12px;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 14px;cursor:pointer;transition:all .2s;box-shadow:var(--shadow)}
+  .originlist .orow:hover{transform:translateX(3px)}
+  .originlist .url{font-family:var(--mono);font-size:12.5px;color:var(--ink);word-break:break-all}
+  .originlist .verdict{font-family:var(--mono);font-size:11px;font-weight:700;padding:4px 10px;border-radius:100px;white-space:nowrap}
+  .originlist .verdict.same{background:#d9efe0;color:#1d6b5a} .originlist .verdict.diff{background:#fbe0d6;color:#b5471f} .originlist .verdict.idle{background:var(--paper-2);color:var(--ink-soft)}
+
+  /* timeline attack steps (stacked) */
+  .tl{display:flex;flex-direction:column;gap:0;margin:8px 0}
+  .tl .tlstep{display:grid;grid-template-columns:34px 1fr;gap:14px;position:relative}
+  .tl .tlstep .dotcol{display:flex;flex-direction:column;align-items:center}
+  .tl .tlstep .num{width:30px;height:30px;border-radius:50%;background:var(--accent);color:#fff;font-family:var(--mono);font-weight:700;font-size:13px;display:flex;align-items:center;justify-content:center;flex:none;z-index:1}
+  .tl .tlstep .line{width:2px;flex:1;background:var(--rule);margin:2px 0}
+  .tl .tlstep:last-child .line{display:none}
+  .tl .tlstep .body{padding-bottom:18px}
+  .tl .tlstep .body h6{margin:4px 0 4px;font-size:15px;font-weight:700;color:var(--ink);font-family:var(--sans)}
+  .tl .tlstep .body p{margin:0;font-size:14px;color:var(--ink-soft);line-height:1.55}
+  .tl .tlstep.evil .num{background:#9a3b12} .tl .tlstep.fix .num{background:#1d6b5a}
+  .tl .tlstep.dimmed{opacity:.3}
+
+  /* cookie attribute cards */
+  .cookieattr{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:22px 0}
+  @media(max-width:680px){.cookieattr{grid-template-columns:1fr}}
+  .cookieattr .ca{background:var(--card);border:1px solid var(--line);border-left:4px solid var(--accent-2);border-radius:0 12px 12px 0;padding:14px 16px;box-shadow:var(--shadow)}
+  .cookieattr .ca code{font-family:var(--mono);font-size:13px;color:var(--accent);background:none;border:none;padding:0;font-weight:700}
+  .cookieattr .ca p{margin:6px 0 0;font-size:13.5px;color:var(--ink-soft);line-height:1.5}
+
+  /* drawback list */
+  .draw{display:flex;flex-direction:column;gap:10px;margin:22px 0}
+  .draw .di{display:grid;grid-template-columns:36px 1fr;gap:12px;align-items:start;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:13px 16px;box-shadow:var(--shadow)}
+  .draw .di .ic2{font-size:20px}
+  .draw .di b{font-weight:700} .draw .di p{margin:3px 0 0;font-size:14px;color:var(--ink-soft);line-height:1.5}
+
+  /* cookie jar visual */
+  .jar{background:#1c1a16;border-radius:12px;padding:14px 16px;font-family:var(--mono);font-size:12.5px;color:#e8e2d4;margin:6px 0;line-height:1.7}
+  .jar .ck{display:flex;gap:8px;align-items:center;padding:4px 0}
+  .jar .ck .nm{color:#6fb3c9}
+  .jar .badge{font-size:9px;padding:1px 6px;border-radius:4px;background:#3a352a;color:#cbb98f}
+  .jar .badge.http{background:#2d4a3a;color:#9ee6a8}
+  .jar .badge.js{background:#4a3a2d;color:#e0995e}
+
+
+  /* ===== Chapter 5 additions ===== */
+  /* three pillars (cookie capabilities) */
+  .pillars{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:22px 0}
+  @media(max-width:680px){.pillars{grid-template-columns:1fr}}
+  .pillars .pil{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;box-shadow:var(--shadow);text-align:center;position:relative;overflow:hidden}
+  .pillars .pil .ic3{font-size:26px;line-height:1}
+  .pillars .pil h5{margin:8px 0 4px;font-size:15px;font-weight:700}
+  .pillars .pil .sub2{font-family:var(--mono);font-size:9.5px;letter-spacing:.04em;color:var(--accent-2);text-transform:uppercase}
+  .pillars .pil p{margin:8px 0 0;font-size:13px;color:var(--ink-soft);line-height:1.5}
+  .pillars .pil .arrow2{margin-top:10px;font-family:var(--mono);font-size:11px;color:var(--accent);border-top:1px dashed var(--rule);padding-top:8px}
+
+  /* CORS header reference table reuse hdrtbl; add a 'scope' pill */
+  .scopepill{font-family:var(--mono);font-size:9px;padding:2px 7px;border-radius:100px;font-weight:700;letter-spacing:.04em}
+  .scopepill.both{background:#d9efe0;color:#1d6b5a} .scopepill.pre{background:#e7e0f0;color:#7a4ba3} .scopepill.act{background:#fdeecf;color:#8f6418}
+
+  /* layered hardening stack */
+  .stack{display:flex;flex-direction:column;gap:10px;margin:22px 0}
+  .stack .layer{display:grid;grid-template-columns:40px 1fr;gap:14px;align-items:center;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px;box-shadow:var(--shadow);cursor:pointer;transition:all .2s}
+  .stack .layer:hover{transform:translateX(3px)}
+  .stack .layer .lnum{width:34px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-weight:700;font-size:14px;color:#fff;flex:none}
+  .stack .layer:nth-child(1) .lnum{background:#2f4858} .stack .layer:nth-child(2) .lnum{background:#1d6b5a}
+  .stack .layer:nth-child(3) .lnum{background:#c08a2e} .stack .layer:nth-child(4) .lnum{background:#b5471f}
+  .stack .layer h5{margin:0;font-size:15px;font-weight:700} .stack .layer p{margin:2px 0 0;font-size:13.5px;color:var(--ink-soft);line-height:1.5}
+  .stack .layer.on{box-shadow:0 0 0 3px rgba(181,71,31,.2)}
+
+  /* threat matrix for db access */
+  .threats3{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:22px 0}
+  @media(max-width:680px){.threats3{grid-template-columns:1fr}}
+  .threats3 .th{border-radius:14px;padding:16px;color:#fff;box-shadow:var(--shadow)}
+  .threats3 .th.read{background:linear-gradient(135deg,#c08a2e,#8f6418)}
+  .threats3 .th.write{background:linear-gradient(135deg,#b5471f,#8a3416)}
+  .threats3 .th.del{background:linear-gradient(135deg,#2f4858,#1c2c34)}
+  .threats3 .th h5{margin:0 0 4px;font-size:15px;font-weight:700} .threats3 .th p{margin:0;font-size:13px;opacity:.95;line-height:1.5}
+
+  /* token anatomy (tokenId.tag) */
+  .tokenviz{background:#1c1a16;border-radius:12px;padding:18px 16px;margin:8px 0;font-family:var(--mono);font-size:13px;text-align:center;overflow-x:auto}
+  .tokenviz .part{display:inline-block;padding:8px 12px;border-radius:8px;margin:3px}
+  .tokenviz .idpart{background:rgba(111,179,201,.18);color:#9cc9d8;border:1px solid #3a5560}
+  .tokenviz .dot{color:#9a9484;font-size:18px;font-weight:700;margin:0 2px}
+  .tokenviz .tagpart{background:rgba(158,230,168,.14);color:#9ee6a8;border:1px solid #3a5540}
+  .tokenviz .lbl{display:block;font-size:9px;color:#9a9484;letter-spacing:.08em;margin-top:6px;text-transform:uppercase}
+
+
+  /* ===== Chapter 6 additions ===== */
+  /* JWT/JWE part structure (segmented colored token) */
+  .jwtviz{background:#1c1a16;border-radius:12px;padding:18px 14px;margin:8px 0;font-family:var(--mono);font-size:12px;text-align:center;line-height:2.2;word-break:break-all}
+  .jwtviz .seg{display:inline;padding:4px 5px;border-radius:5px;cursor:pointer;transition:all .15s;border:1px solid transparent}
+  .jwtviz .seg:hover{filter:brightness(1.25)}
+  .jwtviz .seg.s-head{background:rgba(192,138,46,.22);color:#e0b860;border-color:#7a5e2a}
+  .jwtviz .seg.s-key{background:rgba(122,75,163,.22);color:#bd9cd8;border-color:#5a3a7a}
+  .jwtviz .seg.s-iv{background:rgba(111,179,201,.2);color:#9cc9d8;border-color:#3a5560}
+  .jwtviz .seg.s-pay{background:rgba(29,107,90,.22);color:#7fd4ba;border-color:#2a5547}
+  .jwtviz .seg.s-tag{background:rgba(181,71,31,.22);color:#e0926a;border-color:#7a3a1a}
+  .jwtviz .dotsep{color:#6a655a;font-weight:700;font-size:15px;padding:0 1px}
+  .jwtviz .seg.active{box-shadow:0 0 0 2px currentColor;filter:brightness(1.3)}
+  .jwtparts{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0 0;justify-content:center}
+  .jwtparts .pchip{font-family:var(--mono);font-size:10px;padding:5px 11px;border-radius:100px;cursor:pointer;border:1px solid var(--line);background:var(--card);transition:all .2s;font-weight:600}
+  .jwtparts .pchip:hover{transform:translateY(-1px)}
+  .jwtparts .pchip.on{color:#fff}
+  .jwtparts .pchip.c-head.on{background:#c08a2e;border-color:#c08a2e} .jwtparts .pchip.c-key.on{background:#7a4ba3;border-color:#7a4ba3}
+  .jwtparts .pchip.c-iv.on{background:#1d6b5a;border-color:#1d6b5a} .jwtparts .pchip.c-pay.on{background:#1d6b5a;border-color:#1d6b5a}
+  .jwtparts .pchip.c-tag.on{background:#b5471f;border-color:#b5471f}
+
+  /* claims reference table reuse hdrtbl; add claim tag pill */
+  .claimpill{font-family:var(--mono);font-size:10px;font-weight:700;padding:2px 8px;border-radius:6px;background:#1c1a16;color:#e0b860;letter-spacing:.02em}
+
+  /* ECB vs CTR penguin demo */
+  .penguin{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:22px 0}
+  @media(max-width:600px){.penguin{grid-template-columns:1fr}}
+  .penguin .pen{text-align:center;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;box-shadow:var(--shadow)}
+  .penguin .pen h6{margin:0 0 10px;font-family:var(--mono);font-size:11px;text-transform:uppercase;letter-spacing:.06em}
+  .penguin .pen.bad h6{color:var(--accent)} .penguin .pen.good h6{color:var(--accent-2)}
+  .penguin .pen .canvas{border-radius:8px;overflow:hidden;line-height:0}
+  .penguin .pen .verdict2{margin-top:10px;font-size:12px;color:var(--ink-soft);line-height:1.5}
+
+  /* marker interface type tree */
+  .typetree{margin:22px 0;display:flex;flex-direction:column;align-items:center;gap:0}
+  .typetree .ttbox{background:var(--card);border:2px solid var(--accent);border-radius:12px;padding:12px 18px;text-align:center;box-shadow:var(--shadow);max-width:340px}
+  .typetree .ttbox.iface{border-style:dashed;border-color:var(--accent-2)}
+  .typetree .ttbox h6{margin:0;font-family:var(--mono);font-size:13px;font-weight:700;color:var(--ink)}
+  .typetree .ttbox p{margin:3px 0 0;font-size:11.5px;color:var(--ink-soft)}
+  .typetree .ttrow{display:flex;gap:16px;justify-content:center;flex-wrap:wrap}
+  .typetree .connector{width:2px;height:18px;background:var(--rule)}
+  .typetree .connectorw{height:18px;border-left:2px solid var(--rule);border-right:2px solid var(--rule);border-top:2px solid var(--rule);border-radius:6px 6px 0 0;align-self:stretch}
+
+  /* revocation strategy cards */
+  .revstrat{display:flex;flex-direction:column;gap:10px;margin:22px 0}
+  .revstrat .rs{display:grid;grid-template-columns:auto 1fr;gap:14px;align-items:start;background:var(--card);border:1px solid var(--line);border-left:4px solid var(--gold);border-radius:0 12px 12px 0;padding:14px 16px;box-shadow:var(--shadow)}
+  .revstrat .rs .tag2{font-family:var(--mono);font-size:10px;font-weight:700;padding:5px 9px;border-radius:7px;background:var(--paper-2);color:var(--shield);white-space:nowrap;height:fit-content}
+  .revstrat .rs h6{margin:0 0 3px;font-size:14.5px;font-weight:700} .revstrat .rs p{margin:0;font-size:13px;color:var(--ink-soft);line-height:1.5}
+
+
+  /* ===== Chapter 7 additions ===== */
+  /* OAuth four-party cast */
+  .cast{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:22px 0}
+  @media(max-width:680px){.cast{grid-template-columns:1fr 1fr}}
+  .cast .role{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px 12px;box-shadow:var(--shadow);text-align:center;cursor:pointer;transition:all .2s;position:relative}
+  .cast .role:hover{transform:translateY(-2px)}
+  .cast .role .ic4{font-size:26px;line-height:1}
+  .cast .role .abbr{font-family:var(--mono);font-size:10px;font-weight:700;color:#fff;background:var(--shield);display:inline-block;padding:2px 9px;border-radius:100px;margin:8px 0 5px}
+  .cast .role.r-as .abbr{background:var(--accent)} .cast .role.r-ro .abbr{background:var(--accent-2)}
+  .cast .role.r-client .abbr{background:var(--plum)} .cast .role.r-rs .abbr{background:var(--gold)}
+  .cast .role h5{margin:2px 0 0;font-size:13px;font-weight:700} .cast .role p{margin:5px 0 0;font-size:11.5px;color:var(--ink-soft);line-height:1.45}
+  .cast .role.on{box-shadow:0 0 0 3px rgba(181,71,31,.22)}
+
+  /* MAC vs DAC split */
+  .macdac{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:22px 0}
+  @media(max-width:600px){.macdac{grid-template-columns:1fr}}
+  .macdac .md{border-radius:14px;padding:16px;box-shadow:var(--shadow)}
+  .macdac .md.mac{background:linear-gradient(135deg,#2f4858,#1c2c34);color:#fff}
+  .macdac .md.dac{background:linear-gradient(135deg,#1d6b5a,#155146);color:#fff}
+  .macdac .md h5{margin:0 0 4px;font-size:15px;font-weight:700} .macdac .md .tag3{font-family:var(--mono);font-size:9px;letter-spacing:.06em;opacity:.8;text-transform:uppercase}
+  .macdac .md p{margin:8px 0 0;font-size:12.5px;opacity:.95;line-height:1.5}
+
+  /* flow lane diagram (authorization code) */
+  .flowlane{display:flex;flex-direction:column;gap:0;margin:8px 0}
+  .flowlane .fstep{display:grid;grid-template-columns:30px 1fr;gap:14px;position:relative}
+  .flowlane .fstep .dc{display:flex;flex-direction:column;align-items:center}
+  .flowlane .fstep .fn{width:28px;height:28px;border-radius:50%;background:var(--plum);color:#fff;font-family:var(--mono);font-weight:700;font-size:12px;display:flex;align-items:center;justify-content:center;flex:none;z-index:1}
+  .flowlane .fstep .fl{width:2px;flex:1;background:var(--rule);margin:2px 0}
+  .flowlane .fstep:last-child .fl{display:none}
+  .flowlane .fstep .fb{padding-bottom:16px}
+  .flowlane .fstep .fb .actor{font-family:var(--mono);font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;padding:2px 7px;border-radius:5px;display:inline-block;margin-bottom:4px}
+  .flowlane .fstep .fb .actor.browser{background:#e0eef0;color:#1d6b5a} .flowlane .fstep .fb .actor.client{background:#efe6f5;color:#7a4ba3}
+  .flowlane .fstep .fb .actor.as{background:#fbe0d6;color:#b5471f}
+  .flowlane .fstep .fb p{margin:2px 0 0;font-size:13.5px;color:var(--ink-soft);line-height:1.5}
+  .flowlane .fstep.dimmed{opacity:.32}
+  .flowlane .fstep.pkce .fn{background:var(--accent-2)}
+
+  /* validation comparison (introspection vs jwt) */
+  .vcompare{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:8px 0}
+  @media(max-width:600px){.vcompare{grid-template-columns:1fr}}
+  .vcompare .vc{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;box-shadow:var(--shadow)}
+  .vcompare .vc h5{margin:0 0 8px;font-size:14px;font-weight:700;display:flex;align-items:center;gap:8px}
+  .vcompare .vc h5 .vdot{width:10px;height:10px;border-radius:50%;flex:none}
+  .vcompare .vc.intro h5 .vdot{background:var(--accent)} .vcompare .vc.jwt h5 .vdot{background:var(--accent-2)}
+  .vcompare .vc .vrow{font-size:12px;color:var(--ink-soft);padding:5px 0;border-top:1px solid var(--line);line-height:1.45;display:flex;gap:7px}
+  .vcompare .vc .vrow:first-of-type{border-top:none}
+  .vcompare .vc .vrow .vk{flex:none;width:14px}
+
+  /* scope chips */
+  .scopechips{display:flex;flex-wrap:wrap;gap:7px;margin:14px 0}
+  .scopechips .sc{font-family:var(--mono);font-size:11px;padding:5px 11px;border-radius:100px;background:var(--paper-2);border:1px solid var(--line);color:var(--shield);font-weight:600}
+  .scopechips .sc.read{color:#1d6b5a;border-color:#bcdcd2} .scopechips .sc.write{color:#b5471f;border-color:#e8c5b6}
+
+
+  /* ===== Chapter 8 additions ===== */
+  /* model-evolution: subject -> permission mapping diagrams (mini node graphs) */
+  .modelviz{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px 16px;margin:8px 0;box-shadow:var(--shadow)}
+  .modelviz .layer3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;align-items:center;text-align:center}
+  .modelviz .layer2{display:grid;grid-template-columns:1fr 1fr;gap:10px;align-items:center;text-align:center}
+  .modelviz .col h6{font-family:var(--mono);font-size:9.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-soft);margin:0 0 8px}
+  .modelviz .nodebox{background:var(--paper-2);border:1px solid var(--line);border-radius:8px;padding:7px 4px;font-size:11px;font-weight:600;margin:5px 0;color:var(--ink)}
+  .modelviz .nodebox.u{border-left:3px solid var(--accent-2)} .modelviz .nodebox.g{border-left:3px solid var(--plum)}
+  .modelviz .nodebox.r{border-left:3px solid var(--accent)} .modelviz .nodebox.p{border-left:3px solid var(--gold)}
+  .modelviz .arrowcol{font-size:18px;color:var(--rule);text-align:center}
+  .modelviz .edgecount{text-align:center;font-family:var(--mono);font-size:10px;color:var(--accent);margin-top:10px;font-weight:700}
+
+  /* ACL explosion grid */
+  .explode{display:grid;grid-template-columns:repeat(auto-fill,minmax(13px,1fr));gap:3px;margin:14px 0;max-width:380px}
+  .explode .cell{aspect-ratio:1;border-radius:2px;background:var(--paper-2)}
+  .explode .cell.on{background:var(--accent)}
+
+  /* model comparison cards (4 models) */
+  .models4{display:flex;flex-direction:column;gap:10px;margin:22px 0}
+  .models4 .m4{display:grid;grid-template-columns:auto 1fr;gap:14px;align-items:start;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px;box-shadow:var(--shadow);border-left:4px solid var(--accent)}
+  .models4 .m4:nth-child(1){border-left-color:var(--plum)} .models4 .m4:nth-child(2){border-left-color:var(--accent)}
+  .models4 .m4:nth-child(3){border-left-color:var(--accent-2)} .models4 .m4:nth-child(4){border-left-color:var(--gold)}
+  .models4 .m4 .badge3{font-family:var(--mono);font-size:11px;font-weight:700;padding:6px 10px;border-radius:8px;background:var(--paper-2);color:var(--shield);white-space:nowrap;height:fit-content}
+  .models4 .m4 h6{margin:0 0 3px;font-size:15px;font-weight:700} .models4 .m4 p{margin:0;font-size:13.5px;color:var(--ink-soft);line-height:1.5}
+
+  /* ABAC four-attribute decision engine */
+  .abacflow{display:grid;grid-template-columns:1fr auto 1fr;gap:14px;align-items:center;margin:8px 0}
+  @media(max-width:600px){.abacflow{grid-template-columns:1fr}}
+  .abacflow .attrs{display:flex;flex-direction:column;gap:8px}
+  .abacflow .acat{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 12px;box-shadow:var(--shadow);cursor:pointer;transition:all .2s}
+  .abacflow .acat:hover{transform:translateX(3px)}
+  .abacflow .acat .an{font-weight:700;font-size:13px;display:flex;align-items:center;gap:7px} .abacflow .acat .an .ai{font-size:16px}
+  .abacflow .acat.on{box-shadow:0 0 0 3px rgba(181,71,31,.2)}
+  .abacflow .engine{background:linear-gradient(135deg,#2f4858,#1c2c34);color:#fff;border-radius:14px;padding:18px 14px;text-align:center;box-shadow:var(--shadow)}
+  .abacflow .engine .ei{font-size:24px} .abacflow .engine h6{margin:6px 0 0;font-size:13px;font-weight:700}
+  .abacflow .verdictbox{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;text-align:center;box-shadow:var(--shadow);min-height:90px;display:flex;flex-direction:column;justify-content:center}
+
+  /* XACML PEP/PDP/PIP/PAP architecture */
+  .xacml{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin:22px 0}
+  @media(max-width:600px){.xacml{grid-template-columns:1fr}}
+  .xacml .xc{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:15px;box-shadow:var(--shadow);cursor:pointer;transition:all .2s;position:relative}
+  .xacml .xc:hover{transform:translateY(-2px)}
+  .xacml .xc .xabbr{font-family:var(--mono);font-size:11px;font-weight:700;color:#fff;display:inline-block;padding:3px 10px;border-radius:100px;margin-bottom:7px}
+  .xacml .xc.pep .xabbr{background:var(--accent)} .xacml .xc.pdp .xabbr{background:var(--accent-2)}
+  .xacml .xc.pip .xabbr{background:var(--gold)} .xacml .xc.pap .xabbr{background:var(--plum)}
+  .xacml .xc h6{margin:0 0 4px;font-size:14px;font-weight:700} .xacml .xc p{margin:0;font-size:12.5px;color:var(--ink-soft);line-height:1.5}
+  .xacml .xc.on{box-shadow:0 0 0 3px rgba(181,71,31,.22)}
+
+</style></head>
+<body>
+
+<div class="ribbon">
+  <div><span class="dot"></span>API Security · In Action</div>
+  <div>Chapter 08</div>
+</div>
+
+<header class="hero">
+  <div class="kicker">Chapter Eight · When Permissions Don't Scale</div>
+  <h1 class="title">Identity-Based <em>Access Control</em></h1>
+  <p class="sub">A million users times a million objects is a billion ACL entries. As Natter grows, raw permission lists buckle &mdash; so we climb a ladder of ever-more-powerful models: groups, roles, attributes, and finally centralized policy engines.</p>
+  <div class="meta-row">
+    <span class="chip">⏱ ~30 min read</span>
+    <span class="chip">Level · Hands-on</span>
+    <span class="chip">Groups · RBAC · ABAC · XACML</span>
+  </div>
+</header>
+
+<div class="wrap">
+
+<nav class="toc">
+  <h4>On this page</h4>
+  <ol>
+    <li><a href="#problem">The ACL explosion</a></li>
+    <li><a href="#groups">Users &amp; groups</a></li>
+    <li><a href="#ldap">LDAP groups</a></li>
+    <li><a href="#rbac">Role-based access control</a></li>
+    <li><a href="#mapping">Mapping roles to permissions</a></li>
+    <li><a href="#dynamic">Static &amp; dynamic roles</a></li>
+    <li><a href="#abac">Attribute-based access control</a></li>
+    <li><a href="#combining">Combining decisions</a></li>
+    <li><a href="#xacml">Policy engines &amp; XACML</a></li>
+    <li><a href="#bestpractice">ABAC best practices</a></li>
+    <li><a href="#takeaways">Key takeaways</a></li>
+    <li><a href="#quiz">Test yourself</a></li>
+  </ol>
+</nav>
+
+<!-- ===================== 1 ===================== -->
+<section id="problem">
+  <div class="sec-head"><span class="sec-num">1</span><div><h2>The ACL explosion</h2></div></div>
+  <p class="lead">Back in chapter 3, Natter controlled access with access control lists &mdash; a simple table linking each user to their permissions on each object. ACLs are wonderfully easy to understand. The trouble is arithmetic: they don't scale. As your users and objects multiply, the list of individual permissions multiplies <em>with them</em>, and eventually it collapses under its own weight.</p>
+
+  <p>The worst case is genuinely alarming. With a million users and a million objects, you could in principle need a <strong>billion</strong> ACL entries, one for every possible user-object pairing. Long before you reach that extreme, a subtler problem bites: permissions that are never cleaned up. Users drift between jobs, accumulating access they no longer need, quietly violating the principle of least privilege. This is what this chapter sets out to fix.</p>
+
+  <!-- INTERACTIVE DIAGRAM 1 : ACL explosion -->
+  <div class="diagram" id="dg-explode">
+    <div class="dlabel">Interactive · the scaling problem</div>
+    <div class="dtitle">Why direct permissions don't scale</div>
+    <p class="dhint"><b>Drag the slider</b> to grow the user base and watch the worst-case number of permission entries explode.</p>
+
+    <div style="margin:14px 0">
+      <input type="range" id="exp-slider" min="1" max="10" value="3" style="width:100%;accent-color:var(--accent)" oninput="explodeUpdate(this.value)">
+      <div style="display:flex;justify-content:space-between;font-family:var(--mono);font-size:10px;color:var(--ink-soft);margin-top:4px"><span>few users</span><span>many users</span></div>
+    </div>
+    <div class="explode" id="exp-grid"></div>
+    <div class="step-readout" id="exp-readout">Each cell is one user-object permission entry. As the number of users (and the objects they touch) grows, the entries you must store and review grow multiplicatively &mdash; not additively. Drag the slider to feel it.</div>
+  </div>
+
+  <div class="dexplain">
+    <h4>Reading the diagram</h4>
+    <p>The point isn't the exact numbers &mdash; it's the <i>shape</i> of the growth. Direct user-to-permission mappings grow as users &times; objects, which is multiplicative.</p>
+    <ol>
+      <li>With a handful of users and objects, an ACL is perfectly manageable &mdash; you can read the whole table at a glance.</li>
+      <li>Double the users <i>and</i> double the objects, and you've roughly <i>quadrupled</i> the entries. The grid fills fast.</li>
+      <li>The problem compounds when permissions are managed centrally (mandatory access control), because no individual user is responsible for pruning their own stale entries &mdash; so privileges accumulate.</li>
+    </ol>
+    <p style="margin-top:10px">The cure, in every model that follows, is the same idea: insert an <b>intermediary layer</b> between users and permissions, so you assign access to a <i>few</i> shared things rather than to <i>every</i> individual pairing.</p>
+  </div>
+
+  <div class="callout def">
+    <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="#1d6b5a" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21v-2a6 6 0 0 1 12 0v2"/></svg>
+    <span class="lab">Definition · Identity-Based Access Control (IBAC)</span>
+    <p><strong>Identity-based access control</strong> determines what you can do based on <em>who you are</em>. The user is first authenticated, then a check decides whether that identity is authorized for the requested action. Every model in this chapter &mdash; groups, roles, attributes &mdash; is a way of organizing IBAC so it scales. (Chapter 9 covers non-identity-based models.)</p>
+  </div>
+</section>
+
+<hr class="rule">
+
+<!-- ===================== 2 ===================== -->
+<section id="groups">
+  <div class="sec-head"><span class="sec-num">2</span><div><h2>Users and groups</h2></div></div>
+  <p class="lead">The first and most familiar intermediary is the <strong>group</strong>. Instead of always assigning permissions to individual users, you collect related users into a group and assign permissions to the <em>group</em>. Add a new engineer to the "software engineers" group and they instantly inherit the right access &mdash; no need to remember every individual permission they need.</p>
+
+  <p>The relationship is many-to-many: a group has many members, and a user can belong to many groups. And because a group's members can themselves be groups, you can nest them into hierarchies &mdash; "project managers" can be a member of "employees," so every project manager is automatically an employee too.</p>
+
+  <!-- INTERACTIVE DIAGRAM 2 : model evolution (groups) -->
+  <div class="diagram" id="dg-models">
+    <div class="dlabel">Interactive · Figures 8.1 &amp; 8.2</div>
+    <div class="dtitle">How each model wires subjects to permissions</div>
+    <p class="dhint"><b>Toggle</b> between the three structures. Watch how each new layer <em>shrinks the number of connections</em> you have to manage.</p>
+
+    <div class="stepper" id="model-toggle">
+      <button onclick="modelMode('direct',this)" class="active">Direct (ACLs)</button>
+      <button onclick="modelMode('groups',this)">Groups</button>
+      <button onclick="modelMode('roles',this)">Roles (RBAC)</button>
+    </div>
+    <div id="model-view" style="margin-top:10px"></div>
+    <div class="step-readout" id="model-readout">Toggle between the models. Notice that each one inserts an intermediary &mdash; first a group, then a role &mdash; between users and permissions, reducing the number of links you must create and review.</div>
+  </div>
+
+  <div class="dexplain">
+    <h4>Reading the diagram</h4>
+    <p>The whole story of this chapter is visible in these three pictures: every model adds a layer that collapses many connections into few.</p>
+    <ol>
+      <li><b>Direct (ACLs)</b> &mdash; every user links straight to every permission they hold. Simple, but the links multiply with users and objects.</li>
+      <li><b>Groups</b> &mdash; users join groups, and permissions attach to groups. Now adding a user means one link (join the group), not many. But permissions can <i>still</i> be assigned to individuals too, so you must check both.</li>
+      <li><b>Roles</b> &mdash; the next section's refinement: permissions attach <i>only</i> to roles, never to individuals, giving the cleanest separation of all.</li>
+    </ol>
+  </div>
+
+  <p>Implementing groups in Natter is straightforward: add a <code>group_members</code> table, look up the user's groups during <em>authentication</em>, and attach them as a request attribute. The permission check then accepts either the username or any of the user's groups.</p>
+
+  <div class="callout principle">
+    <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="#b5471f" stroke-width="2"><path d="M12 2 2 7l10 5 10-5-10-5z"/><path d="m2 17 10 5 10-5M2 12l10 5 10-5"/></svg>
+    <span class="lab">Principle · keep the layers separated</span>
+    <p>It's tempting to fold group lookup into a single clever SQL <code>JOIN</code> at permission-check time. Resist it. Collect all the attributes you need for access control &mdash; including group membership &mdash; during the <strong>authentication</strong> step, then make the authorization decision purely from those attributes. Why? Because if you later switch to an external user store like LDAP or an OIDC identity provider, group membership arrives <em>as part of authentication</em> (e.g. in the ID token), and code that assumed a local database JOIN would break.</p>
+  </div>
+</section>
+
+<hr class="rule">
+
+<!-- ===================== 3 ===================== -->
+<section id="ldap">
+  <div class="sec-head"><span class="sec-num">3</span><div><h2>LDAP groups</h2></div></div>
+  <p class="lead">In most large organizations, users aren't stored in your API's own database at all &mdash; they live in a central <strong>LDAP directory</strong> (Lightweight Directory Access Protocol), purpose-built for storing user information and with groups baked right in. If you're integrating with a corporate environment, this is almost certainly where group membership comes from.</p>
+
+  <p>The LDAP standard defines two kinds of groups, plus a widely-implemented hybrid, and the distinction is really about <em>how membership is decided</em>:</p>
+
+  <div class="grid c3">
+    <div class="mini"><h5>Static groups</h5><p>Explicitly list their members (<code>groupOfNames</code> / <code>groupOfUniqueNames</code>). You know exactly who's in by reading the <code>member</code> attribute. Simple and fast, but every member must be listed.</p></div>
+    <div class="mini"><h5>Dynamic groups</h5><p>Defined by a <em>search query</em> (<code>groupOfURLs</code>): anyone matching the query is a member. Great for huge groups where listing everyone is impractical &mdash; but evaluating the query can be expensive.</p></div>
+    <div class="mini"><h5>Virtual static groups</h5><p>Non-standard but common: <em>look</em> like static groups but resolve membership by querying a dynamic group behind the scenes. The best of both, where supported.</p></div>
+  </div>
+
+  <p>To find a user's static groups, you search the directory for every group whose <code>member</code> attribute contains that user's distinguished name. The critical security detail: <strong>always parameterize the search filter</strong> rather than concatenating user input into it, exactly as you parameterize SQL to prevent injection. JNDI's numbered placeholders (<code>{0}</code>, <code>{1}</code>) let the library escape input safely, defeating LDAP injection.</p>
+
+  <div class="code">
+    <div class="bar"><span class="dot" style="background:#ff5f56"></span><span class="dot" style="background:#ffbd2e"></span><span class="dot" style="background:#27c93f"></span><span class="t">Looking up a user's LDAP groups safely</span></div>
+<pre><span class="kw">var</span> results = directory.search(
+    <span class="st">"ou=groups,dc=example,dc=com"</span>,
+    <span class="st">"(&(objectClass=groupOfNames)"</span> +              <span class="cm">// static groups...</span>
+    <span class="st">"(member=uid={0},ou=people,dc=example,dc=com))"</span>, <span class="cm">// ...containing this user</span>
+    <span class="kw">new</span> Object[]{ username },                         <span class="good">// {0} is safely escaped — no LDAP injection</span>
+    searchControls);
+
+<span class="kw">while</span> (results.hasMore()) {
+  <span class="kw">var</span> result = results.next();
+  groups.add((String) result.getAttributes().get(<span class="st">"cn"</span>).get(<span class="nm">0</span>));  <span class="cm">// the group's name</span>
+}</pre>
+  </div>
+
+  <div class="callout tip">
+    <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="#2f4858" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
+    <span class="lab">A faster shortcut · the <code>isMemberOf</code> attribute</span>
+    <p>Searching for every group a user belongs to can be slow. Many directory servers offer a non-standard <em>virtual attribute</em> on the user entry itself &mdash; often called <code>isMemberOf</code> &mdash; that lists all their groups (static <em>and</em> dynamic), kept up to date automatically by the server. Reading one attribute off the user is far cheaper than running a directory-wide search. And if you must search regularly, cache the results for a short while.</p>
+  </div>
+</section>
+
+<hr class="rule">
+
+<!-- ===================== 4 ===================== -->
+<section id="rbac">
+  <div class="sec-head"><span class="sec-num">4</span><div><h2>Role-based access control</h2></div></div>
+  <p class="lead">Groups help, but they don't fully solve the problem. They still usually allow permissions on individual users (so you must check both), they're often defined organization-wide and may not match your API's needs, and a single group can accumulate a sprawling pile of fine-grained permissions that nobody can review. <strong>RBAC</strong> tightens all of this up by inserting a cleaner intermediary: the <em>role</em>.</p>
+
+  <p>The defining move of RBAC is that permissions are assigned <em>only</em> to roles &mdash; never directly to users or groups. Users are then assigned to roles. Assigning someone the "moderator" role is far easier than remembering the exact set of permissions a moderator needs, and if those permissions change, you update the role once instead of touching every user.</p>
+
+  <p>In principle anything you can do with RBAC you could do with groups &mdash; but in practice they're used quite differently, and the differences are what make RBAC powerful:</p>
+
+  <div class="grid c2">
+    <div class="mini"><h5>Groups organize <em>users</em></h5><p>They answer "who belongs together?" &mdash; usually defined centrally for the whole organization (in LDAP), and they often still permit per-user permission grants.</p></div>
+    <div class="mini"><h5>Roles organize <em>permissions</em></h5><p>They answer "what can this kind of actor do?" &mdash; usually specific to one API, and they forbid per-user grants entirely, so reviewing access is far simpler.</p></div>
+  </div>
+
+  <div class="callout real">
+    <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="#7a4ba3" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+    <span class="lab">Separation of duties &amp; sessions</span>
+    <p>RBAC's split between <em>defining</em> a role's permissions and <em>assigning</em> users to it is a valuable separation of duties &mdash; different people do each job, and it's much harder to slip in unauthorized access. Roles can also be dynamic (a "duty officer" role active only during a shift) and the NIST RBAC model adds <strong>sessions</strong>, where a user activates only a <em>subset</em> of their roles at a time &mdash; just like scoped tokens in OAuth, this honors least privilege by limiting the damage if a session is compromised.</p>
+  </div>
+</section>
+
+<hr class="rule">
+
+<!-- ===================== 5 ===================== -->
+<section id="mapping">
+  <div class="sec-head"><span class="sec-num">5</span><div><h2>Mapping roles to permissions</h2></div></div>
+  <p class="lead">There are two ways to connect roles to what they can actually do. You can <em>annotate</em> each API operation with the roles allowed to call it, or you can keep explicit lower-level permissions and define a <em>mapping</em> from roles to those permissions. Each suits a different situation.</p>
+
+  <div class="grid c2">
+    <div class="mini"><h5>Annotate operations with roles</h5><p>Java EE / JAX-RS does this with <code>@RolesAllowed("owner")</code> on each method. Clean and declarative, but the role-to-operation mapping lives in source code.</p></div>
+    <div class="mini"><h5>Map roles to permissions in data</h5><p>Keep a <code>role_permissions</code> table. Lets admins define new roles at runtime and review exactly what each role grants without reading code. This is the path Natter takes.</p></div>
+  </div>
+
+  <p>For Natter, we define four roles by mapping each to the existing <code>rwd</code> (read/write/delete) permissions &mdash; a clean, reviewable table:</p>
+
+  <div class="code">
+    <div class="bar"><span class="dot" style="background:#ff5f56"></span><span class="dot" style="background:#ffbd2e"></span><span class="dot" style="background:#27c93f"></span><span class="t">schema.sql &mdash; four Natter roles</span></div>
+<pre><span class="kw">INSERT INTO</span> role_permissions(role_id, perms) <span class="kw">VALUES</span>
+    (<span class="st">'owner'</span>,     <span class="st">'rwd'</span>),   <span class="cm">-- full control: read, write, delete</span>
+    (<span class="st">'moderator'</span>, <span class="st">'rd'</span>),    <span class="cm">-- read posts and delete offensive ones</span>
+    (<span class="st">'member'</span>,    <span class="st">'rw'</span>),    <span class="cm">-- read and write, but never delete</span>
+    (<span class="st">'observer'</span>,  <span class="st">'r'</span>);     <span class="cm">-- read-only</span></pre>
+  </div>
+
+  <p>Users are then mapped to roles in a <code>user_roles</code> table, scoped per social space &mdash; so the owner of one space has no power over another. (When users, roles, or groups are confined to one slice of an application like this, that slice is called a <em class="term">security domain</em> or <em>realm</em>.) At request time, a single <code>before</code> filter joins the two tables to resolve the user's permissions <em>once</em> and stashes them in a request attribute, so the existing <code>requirePermission</code> checks keep working unchanged:</p>
+
+  <div class="code">
+    <div class="bar"><span class="dot" style="background:#ff5f56"></span><span class="dot" style="background:#ffbd2e"></span><span class="dot" style="background:#27c93f"></span><span class="t">Resolving role → permissions in one query</span></div>
+<pre><span class="kw">var</span> perms = database.findOptional(String.class,
+    <span class="st">"SELECT rp.perms"</span> +
+    <span class="st">"  FROM role_permissions rp JOIN user_roles ur"</span> +   <span class="cm">// role → permission</span>
+    <span class="st">"    ON rp.role_id = ur.role_id"</span> +                    <span class="cm">// user → role</span>
+    <span class="st">" WHERE ur.space_id = ? AND ur.user_id = ?"</span>,
+    spaceId, username).orElse(<span class="st">""</span>);
+request.attribute(<span class="st">"perms"</span>, perms);   <span class="cm">// cache for the rest of the request</span></pre>
+  </div>
+  <p class="codecap">Because roles are usually API-specific (unlike groups), it's fine to resolve them in one query here &mdash; you wouldn't typically be told a user's roles during authentication.</p>
+</section>
+
+<hr class="rule">
+
+<!-- ===================== 6 ===================== -->
+<section id="dynamic">
+  <div class="sec-head"><span class="sec-num">6</span><div><h2>Static and dynamic roles</h2></div></div>
+  <p class="lead">Most role assignments are <strong>static</strong>: you decide a user has a role, and they keep it until you take it away. That's what the <code>user_roles</code> table above implements, and it's what most Java EE servers do via configuration files. But some situations call for roles that depend on <em>context</em>.</p>
+
+  <p>A <strong>dynamic role</strong> is granted only when certain conditions hold. The classic example is a call-center worker who gets the "customer support" role &mdash; with access to customer records &mdash; <em>only during their contracted shift hours</em>. Outside those hours the role simply isn't granted, and access is denied. There's no single standard for dynamic roles; implementations lean on database queries or rule languages like Prolog or OWL. Some RBAC systems also support <strong>constraints</strong>, such as making two roles mutually exclusive so one person can't hold both at once &mdash; a clean way to enforce separation of duties (you can't be both the system administrator and the auditor of that same system).</p>
+
+  <div class="callout tip">
+    <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="#2f4858" stroke-width="2"><path d="M12 2 4 6v6c0 5 3.5 8 8 10 4.5-2 8-5 8-10V6z"/></svg>
+    <span class="lab">Where RBAC runs out of road</span>
+    <p>Notice the strain in that call-center example. Restricting by shift hours already stretches static roles &mdash; but what we'd <em>really</em> like is to let the agent see <em>only the record of the customer they're currently on a call with</em>, and only for a few minutes afterward. That depends on live, per-request context that no fixed role assignment can capture. When access rules need to react to the specifics of <em>this</em> request, RBAC gives way to something more flexible: ABAC.</p>
+  </div>
+</section>
+
+<hr class="rule">
+
+<!-- ===================== 7 ===================== -->
+<section id="abac">
+  <div class="sec-head"><span class="sec-num">7</span><div><h2>Attribute-based access control</h2></div></div>
+  <p class="lead">When access decisions need to depend on the live details of a request &mdash; who, what, how, and under what circumstances &mdash; we reach for <strong>ABAC</strong>. Instead of a fixed role lookup, ABAC makes a fresh decision for <em>every</em> request by feeding a bundle of attributes into a policy engine that returns allow or deny.</p>
+
+  <p>ABAC organizes those attributes into four categories. Tap each below to see what it contributes &mdash; together they give the engine a rich, contextual picture of the request.</p>
+
+  <!-- INTERACTIVE DIAGRAM 3 : ABAC four-category engine -->
+  <div class="diagram" id="dg-abac">
+    <div class="dlabel">Interactive · Figure 8.3</div>
+    <div class="dtitle">The four attribute categories of an ABAC decision</div>
+    <p class="dhint"><b>Tap each attribute category</b> on the left to see what it feeds into the decision engine.</p>
+
+    <div class="abacflow">
+      <div class="attrs">
+        <div class="acat" onclick="abacPick('subject',this)"><div class="an"><span class="ai">&#128100;</span>Subject</div></div>
+        <div class="acat" onclick="abacPick('resource',this)"><div class="an"><span class="ai">&#128193;</span>Resource</div></div>
+        <div class="acat" onclick="abacPick('action',this)"><div class="an"><span class="ai">&#9889;</span>Action</div></div>
+        <div class="acat" onclick="abacPick('env',this)"><div class="an"><span class="ai">&#127757;</span>Environment</div></div>
+      </div>
+      <div class="engine"><div class="ei">&#9881;</div><h6>Policy<br>engine</h6></div>
+      <div class="verdictbox" id="abac-verdict"><div style="font-family:var(--mono);font-size:11px;color:var(--ink-soft)">allow / deny</div></div>
+    </div>
+    <div class="step-readout" id="abac-readout">Every request is described by four kinds of attributes &mdash; about the subject, the resource, the action, and the environment. The policy engine weighs them all and returns a single allow-or-deny verdict. Tap each category to see examples.</div>
+  </div>
+
+  <div class="dexplain">
+    <h4>Reading the diagram</h4>
+    <p>The power of ABAC is that <i>any</i> of these attributes can drive the decision, alone or in combination &mdash; which is exactly what lets it express rules RBAC can't.</p>
+    <ol>
+      <li><b>Subject</b> &mdash; everything about the user: username, groups, how and when they authenticated.</li>
+      <li><b>Resource</b> &mdash; what's being accessed: the URI, a security label like <code>TOP SECRET</code>, which space it belongs to.</li>
+      <li><b>Action</b> &mdash; what they're trying to do: the HTTP method, the operation name.</li>
+      <li><b>Environment</b> &mdash; the context the request arrives in: time of day, the caller's IP or location. Pulling these out explicitly also makes rules <i>easy to test</i>, since you can feed in a fake time.</li>
+    </ol>
+    <p style="margin-top:10px">Now the call-center rule becomes expressible: permit <i>if</i> subject=agent <b>and</b> resource=the-customer-on-this-call <b>and</b> environment.time within shift. That's four categories working together.</p>
+  </div>
+</section>
+
+<hr class="rule">
+
+<!-- ===================== 8 ===================== -->
+<section id="combining">
+  <div class="sec-head"><span class="sec-num">8</span><div><h2>Combining decisions safely</h2></div></div>
+  <p class="lead">Real ABAC policies are built from many independent rules, and sooner or later two of them will disagree about the same request. That raises two unavoidable design questions &mdash; and the safe answers to both lean the same way: toward caution.</p>
+
+  <div class="grid c2">
+    <div class="mini"><h5>What if no rule matches?</h5><p>Default to <strong>deny</strong>. Require at least one rule to actively permit the request; silence means refusal. (The exception, below, is when layering ABAC on top of an existing system.)</p></div>
+    <div class="mini"><h5>What if rules conflict?</h5><p>Let <strong>deny win</strong>. A single deny decision overrides any number of permits. It only takes one rule spotting a problem to stop a request.</p></div>
+  </div>
+
+  <p>Natter takes a pragmatic variant. Because we're <em>layering</em> ABAC on top of the RBAC system we already built &mdash; to add extra restrictions, not replace existing checks &mdash; we use <strong>default-permit with deny-overrides</strong>: if no ABAC rule objects, the request passes through to the RBAC checks underneath. The <code>Decision</code> class encodes exactly this: it starts permitted, <code>deny()</code> flips it off permanently, and <code>permit()</code> is a deliberate no-op (since permit is already the default and must never override a deny).</p>
+
+  <div class="code">
+    <div class="bar"><span class="dot" style="background:#ff5f56"></span><span class="dot" style="background:#ffbd2e"></span><span class="dot" style="background:#27c93f"></span><span class="t">Decision &mdash; default permit, deny always wins</span></div>
+<pre><span class="kw">public static class</span> <span class="fn">Decision</span> {
+  <span class="kw">private boolean</span> permit = <span class="kw">true</span>;   <span class="cm">// start permitted (we layer over RBAC)</span>
+  <span class="kw">public void</span> deny()   { permit = <span class="kw">false</span>; }   <span class="good">// any deny is final</span>
+  <span class="kw">public void</span> permit() { }                       <span class="cm">// no-op: never override a deny</span>
+  <span class="kw">boolean</span> isPermitted() { <span class="kw">return</span> permit; }
+}</pre>
+  </div>
+
+  <p>For the actual rule evaluation, Natter uses the <strong>Drools</strong> rules engine rather than hand-coded Java &mdash; a domain-specific rule language reads far more clearly for access policy. Here's the call-center-style rule that blocks moderation outside office hours, combining an <em>action</em> attribute with an <em>environment</em> attribute:</p>
+
+  <div class="code">
+    <div class="bar"><span class="dot" style="background:#ff5f56"></span><span class="dot" style="background:#ffbd2e"></span><span class="dot" style="background:#27c93f"></span><span class="t">accessrules.drl &mdash; a Drools ABAC rule</span></div>
+<pre><span class="kw">rule</span> <span class="st">"deny moderation outside office hours"</span>
+  <span class="kw">when</span>
+    Action( this[<span class="st">"method"</span>] == <span class="st">"DELETE"</span> )            <span class="cm">// the action: a delete</span>
+    Environment( this[<span class="st">"timeOfDay"</span>].hour &lt; <span class="nm">9</span>          <span class="cm">// the context: before 9am...</span>
+        || this[<span class="st">"timeOfDay"</span>].hour &gt; <span class="nm">17</span> )            <span class="cm">// ...or after 5pm</span>
+  <span class="kw">then</span>
+    decision.deny();                              <span class="bad">// → forbidden</span>
+<span class="kw">end</span></pre>
+  </div>
+  <p class="codecap">Wired in as a Spark <code>before("/*")</code> filter, this runs <em>ahead</em> of the RBAC checks &mdash; defense in depth, with each layer able to deny independently.</p>
+</section>
+
+<hr class="rule">
+
+<!-- ===================== 9 ===================== -->
+<section id="xacml">
+  <div class="sec-head"><span class="sec-num">9</span><div><h2>Policy engines and XACML</h2></div></div>
+  <p class="lead">As policies grow, you don't want every API hand-rolling its own rule evaluation. Two architectural ideas address this. A <strong>policy agent</strong> plugs into an existing server or reverse proxy to enforce rules; a standalone <strong>API gateway</strong> intercepts requests at the HTTP layer. And to keep rules consistent across <em>many</em> APIs, you can centralize the policy definitions in a dedicated server that agents consult &mdash; which is exactly what <strong>XACML</strong> formalized.</p>
+
+  <div class="callout def">
+    <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="#1d6b5a" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
+    <span class="lab">Definition · XACML</span>
+    <p><strong>XACML</strong> (eXtensible Access-Control Markup Language) is an OASIS standard defining a rich XML policy language <em>and</em> &mdash; more influentially &mdash; a <strong>reference architecture</strong> for distributed ABAC. The XML language has fallen out of fashion, but the architecture lives on, now folded into NIST's ABAC recommendations.</p>
+  </div>
+
+  <p>That architecture splits the job across four cooperating components, each with one clear responsibility. Tap each to see how a request flows through them.</p>
+
+  <!-- INTERACTIVE DIAGRAM 4 : XACML architecture -->
+  <div class="diagram" id="dg-xacml">
+    <div class="dlabel">Interactive · Figure 8.5</div>
+    <div class="dtitle">The XACML reference architecture</div>
+    <p class="dhint"><b>Tap each component</b> to see its role. Together they cleanly separate <em>enforcing</em>, <em>deciding</em>, <em>informing</em>, and <em>administering</em> policy.</p>
+
+    <div class="xacml">
+      <div class="xc pep" onclick="xacmlPick('pep',this)"><span class="xabbr">PEP</span><h6>Policy Enforcement Point</h6><p>Intercepts the request and enforces the verdict</p></div>
+      <div class="xc pdp" onclick="xacmlPick('pdp',this)"><span class="xabbr">PDP</span><h6>Policy Decision Point</h6><p>Runs the policy engine, returns allow/deny</p></div>
+      <div class="xc pip" onclick="xacmlPick('pip',this)"><span class="xabbr">PIP</span><h6>Policy Information Point</h6><p>Fetches &amp; caches attribute values</p></div>
+      <div class="xc pap" onclick="xacmlPick('pap',this)"><span class="xabbr">PAP</span><h6>Policy Administration Point</h6><p>Where admins define &amp; manage policies</p></div>
+    </div>
+    <div class="step-readout" id="xacml-readout">Four components, four jobs. The PEP enforces, the PDP decides, the PIP supplies the attributes a decision needs, and the PAP is where policies are authored. Tap each to follow a request through the architecture.</div>
+  </div>
+
+  <div class="dexplain">
+    <h4>Reading the diagram</h4>
+    <p>Trace a single request through the four and the division of labor becomes clear &mdash; this is the same separation Natter built by hand, just named and standardized.</p>
+    <ol>
+      <li><b>PEP</b> (Policy Enforcement Point) &mdash; sits in front of the API like a policy agent, intercepting each request and <i>enforcing</i> whatever the decision comes back as. Natter's Spark <code>before</code> filter is a PEP.</li>
+      <li><b>PDP</b> (Policy Decision Point) &mdash; the brain. It holds the policy engine and returns the allow/deny <i>decision</i>. Natter's Drools evaluation is a PDP.</li>
+      <li><b>PIP</b> (Policy Information Point) &mdash; <i>retrieves and caches</i> the attribute values a decision needs, from local databases or remote services like an OIDC UserInfo endpoint.</li>
+      <li><b>PAP</b> (Policy Administration Point) &mdash; the <i>admin interface</i> where policies are written and managed.</li>
+    </ol>
+    <p style="margin-top:10px">The payoff of separating them: the PDP and PAP can be <b>centralized</b> for a whole organization, so many APIs (each with its own PEP) share one consistent, reviewable set of policies &mdash; while open-source engines like the Open Policy Agent bring the same model to modern infrastructure.</p>
+  </div>
+</section>
+
+<hr class="rule">
+
+<!-- ===================== 10 ===================== -->
+<section id="bestpractice">
+  <div class="sec-head"><span class="sec-num">10</span><div><h2>ABAC best practices</h2></div></div>
+  <p class="lead">ABAC's flexibility is its strength and its trap. The same expressiveness that lets you write precise rules also lets you build a tangle of thousands of them where nobody can say for certain who has access to what. The author of this book recounts a real system where a tiny change to a document's structure silently broke many XPath-based rules &mdash; letting invalid requests through for weeks before anyone noticed. So treat ABAC's power with respect.</p>
+
+  <div class="callout danger">
+    <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="#b5471f" stroke-width="2"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4m0 4h.01"/></svg>
+    <span class="lab">The flexibility trap</span>
+    <p>Small changes to flexible rules can have outsized, hard-to-predict effects, and rich rule languages can make it <em>impossible</em> to automatically tell when a rule has silently stopped matching anything. A rule that no longer fires fails <em>open</em> &mdash; quietly allowing what it was meant to block. That's exactly why the practices below center on layering, testing, and review.</p>
+  </div>
+
+  <p>A handful of disciplines keep ABAC's power from becoming a liability:</p>
+
+  <div class="grid c2">
+    <div class="mini"><h5>Layer over something simpler</h5><p>Run ABAC <em>on top of</em> RBAC (as Natter does), so a mistake in an ABAC rule doesn't mean total loss of security &mdash; the RBAC layer underneath still holds. Defense in depth.</p></div>
+    <div class="mini"><h5>Test endpoints automatically</h5><p>Have automated tests that alert you the moment a policy change grants access to the wrong party &mdash; the only reliable defense against silently-broken rules.</p></div>
+    <div class="mini"><h5>Version-control policies</h5><p>Keep policies in source control so changes are reviewed and can be rolled back instantly. Treat a policy edit with the same care as a code change.</p></div>
+    <div class="mini"><h5>Centralize thoughtfully</h5><p>Centralizing <em>everything</em> adds bureaucracy that can itself violate least privilege &mdash; broad rules linger because changing them is painful. Centralize what benefits from consistency; leave the rest local. And measure performance early.</p></div>
+  </div>
+</section>
+
+<!-- ===================== takeaways ===================== -->
+<section id="takeaways">
+  <div class="takeaways">
+    <h3>Key takeaways</h3>
+    <ul>
+      <li>Direct user-to-permission <strong>ACLs don't scale</strong> &mdash; entries grow as users &times; objects, and stale permissions accumulate. Every model in this chapter inserts an <strong>intermediary layer</strong> to fix this.</li>
+      <li><strong>Groups</strong> collect related users so permissions attach to the group, not each user; LDAP has built-in static, dynamic, and virtual-static groups. Collect group membership during <em>authentication</em>, not at decision time.</li>
+      <li><strong>RBAC</strong> goes further: permissions attach <em>only</em> to roles, never to individuals. Roles organize permissions and are API-specific; groups organize users and are usually org-wide.</li>
+      <li>RBAC separates <strong>defining</strong> role permissions from <strong>assigning</strong> users to roles &mdash; a useful separation of duties &mdash; and NIST <strong>sessions</strong> let users activate a subset of roles for least privilege.</li>
+      <li>Roles can be <strong>static</strong> or <strong>dynamic</strong> (granted only in context, like during a shift), but when decisions must react to live per-request detail, RBAC gives way to ABAC.</li>
+      <li><strong>ABAC</strong> decides every request dynamically from four attribute categories &mdash; <strong>subject, resource, action, environment</strong> &mdash; fed into a policy engine.</li>
+      <li>Combine rule decisions safely: <strong>default deny</strong> and let <strong>deny override</strong> (or default-permit-with-deny-overrides when layering ABAC over an existing system).</li>
+      <li><strong>XACML</strong>'s reference architecture splits enforcement (PEP), decision (PDP), information (PIP), and administration (PAP), enabling centralized, consistent policy across many APIs.</li>
+      <li>Tame ABAC's flexibility by <strong>layering it over RBAC</strong>, testing endpoints automatically, version-controlling policies, and centralizing only what truly benefits.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ===================== quiz ===================== -->
+<section id="quiz">
+  <div class="sec-head"><span class="sec-num">&#9733;</span><div><h2>Test yourself</h2></div></div>
+  <div class="quiz">
+    <span class="lab">Pop quiz · tap to reveal</span>
+    <details><summary>True or false: in general, can groups contain other groups as members?</summary><div class="ans"><strong>True.</strong> Many group models allow groups to be members of other groups, creating hierarchies &mdash; e.g. "project managers" can be a member of "employees."</div></details>
+    <details><summary>Which three are common types of LDAP groups? (static · abelian · dynamic · virtual static · dynamic static · virtual dynamic)</summary><div class="ans"><strong>Static, dynamic, and virtual static groups.</strong> Static and dynamic are standard; virtual static is non-standard but widely implemented. (Abelian groups belong to mathematics, not LDAP!)</div></details>
+    <details><summary>In the filter <code>(&(objectClass=#A)(member=uid=alice,...))</code>, which object class searches for static groups? (group · groupOfURLs · groupOfNames · groupOfSubjects)</summary><div class="ans"><strong>groupOfNames</strong> (or <code>groupOfUniqueNames</code>). <code>groupOfURLs</code> defines <em>dynamic</em> groups.</div></details>
+    <details><summary>Which apply more to roles than groups? (all permissions assigned via roles · better separation of duties · application-specific · permissions assignable to individuals)</summary><div class="ans"><strong>All permissions assigned via roles, better separation of duties, and application-specific.</strong> RBAC never assigns permissions directly to individuals; defining role permissions and assigning users to roles are typically done by different people; and roles are usually per-API while groups are org-wide.</div></details>
+    <details><summary>What is a session used for in the NIST RBAC model?</summary><div class="ans"><strong>To let a user activate only a subset of their roles</strong> at a given time &mdash; supporting least privilege, much like scoped tokens in OAuth.</div></details>
+    <details><summary>What are the four attribute categories in ABAC, and which XACML component defines and manages policies?</summary><div class="ans">The four categories are <strong>subject, resource, action, and environment</strong>. Policies are defined and managed at the <strong>Policy Administration Point (PAP)</strong>.</div></details>
+  </div>
+</section>
+
+</div>
+
+<footer>
+  <div>API Security in Action</div>
+  <div>Chapter 08 &mdash; Identity-Based Access Control</div>
+  <div>End of the access-control arc &#9670;</div>
+</footer>
+
+<script>
+/* ---------- Diagram 1: ACL explosion slider ---------- */
+function explodeUpdate(v){
+  v = parseInt(v);
+  var entries = v * v;            // worst case ~ users x objects
+  var grid = document.getElementById('exp-grid');
+  var maxCells = 100;
+  var shown = Math.min(entries, maxCells);
+  var html = '';
+  for(var i=0;i<maxCells;i++){
+    html += '<div class="cell'+(i<shown?' on':'')+'"></div>';
+  }
+  grid.innerHTML = html;
+  var usersTxt = v <= 3 ? 'a handful of' : (v <= 6 ? 'dozens of' : 'thousands of');
+  var entriesTxt = entries > maxCells ? (entries + ' (and climbing off the grid)') : entries;
+  document.getElementById('exp-readout').innerHTML =
+    "With <b>"+usersTxt+"</b> users and a similar number of objects, the worst case is roughly <b>"+entriesTxt+"</b> permission entries to store and review. Double both and you don't <i>add</i> entries &mdash; you <i>multiply</i> them. That multiplicative growth is what makes raw ACLs collapse at scale.";
+}
+explodeUpdate(3);
+
+/* ---------- Diagram 2: model evolution ---------- */
+function modelMode(mode, btn){
+  document.querySelectorAll('#model-toggle button').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  var v = document.getElementById('model-view');
+  if(mode==='direct'){
+    v.innerHTML = '<div class="modelviz"><div class="layer2">'+
+      '<div class="col"><h6>Users</h6>'+
+        '<div class="nodebox u">Alice</div><div class="nodebox u">Bob</div><div class="nodebox u">Carol</div></div>'+
+      '<div class="col"><h6>Permissions</h6>'+
+        '<div class="nodebox p">read msg</div><div class="nodebox p">write msg</div><div class="nodebox p">delete msg</div></div>'+
+      '</div><div class="edgecount">every user wires directly to every permission &mdash; many links</div></div>';
+    document.getElementById('model-readout').innerHTML = "<b>Direct (ACLs):</b> users link straight to permissions. With 3 users and 3 permissions that's already up to 9 links &mdash; and it grows multiplicatively. Simple to understand, painful to scale.";
+  } else if(mode==='groups'){
+    v.innerHTML = '<div class="modelviz"><div class="layer3">'+
+      '<div class="col"><h6>Users</h6><div class="nodebox u">Alice</div><div class="nodebox u">Bob</div><div class="nodebox u">Carol</div></div>'+
+      '<div class="col"><h6>Groups</h6><div class="nodebox g">staff</div><div class="nodebox g">admins</div></div>'+
+      '<div class="col"><h6>Permissions</h6><div class="nodebox p">read</div><div class="nodebox p">write</div><div class="nodebox p">delete</div></div>'+
+      '</div><div class="edgecount">users &rarr; groups &rarr; permissions &mdash; fewer links, but per-user grants still allowed</div></div>';
+    document.getElementById('model-readout').innerHTML = "<b>Groups:</b> a group sits between users and permissions. Adding a user is now <i>one</i> link (join a group) instead of many. The catch: most group systems still permit per-user grants too, so you must check both paths.";
+  } else {
+    v.innerHTML = '<div class="modelviz"><div class="layer3">'+
+      '<div class="col"><h6>Users</h6><div class="nodebox u">Alice</div><div class="nodebox u">Bob</div><div class="nodebox u">Carol</div></div>'+
+      '<div class="col"><h6>Roles</h6><div class="nodebox r">owner</div><div class="nodebox r">moderator</div><div class="nodebox r">member</div></div>'+
+      '<div class="col"><h6>Permissions</h6><div class="nodebox p">read</div><div class="nodebox p">write</div><div class="nodebox p">delete</div></div>'+
+      '</div><div class="edgecount">permissions attach ONLY to roles &mdash; never to individuals &mdash; the cleanest separation</div></div>';
+    document.getElementById('model-readout').innerHTML = "<b>Roles (RBAC):</b> like groups, but with a strict rule &mdash; permissions attach <i>only</i> to roles, never directly to users. Reviewing access becomes simple: read the role, and you know exactly what its members can do.";
+  }
+}
+modelMode('direct', document.querySelector('#model-toggle button'));
+
+/* ---------- Diagram 3: ABAC four-category engine ---------- */
+const abacData = {
+  subject:{ex:"<b>Subject</b> &mdash; everything about the <i>user</i>: their username, the groups they belong to, how they authenticated, and how recently they logged in.", v:"&#128100; subject = agent_42"},
+  resource:{ex:"<b>Resource</b> &mdash; what's being <i>accessed</i>: the resource URI, which social space it lives in, or a security label such as <code>TOP SECRET</code>.", v:"&#128193; resource = customer #8801"},
+  action:{ex:"<b>Action</b> &mdash; what the user is trying to <i>do</i>: the HTTP method (GET, POST, DELETE) or the named operation being invoked.", v:"&#9889; action = DELETE"},
+  env:{ex:"<b>Environment</b> &mdash; the <i>context</i> the request arrives in: the time of day, the caller's IP address or location. Pulling these out explicitly also makes rules easy to test with fake values.", v:"&#127757; time = 23:00 &mdash; outside hours"}
+};
+function abacPick(k, el){
+  document.querySelectorAll('#dg-abac .acat').forEach(a=>a.classList.remove('on'));
+  el.classList.add('on');
+  document.getElementById('abac-readout').innerHTML = abacData[k].ex;
+  document.getElementById('abac-verdict').innerHTML = '<div style="font-family:var(--mono);font-size:11px;color:var(--ink-soft);margin-bottom:6px">feeds in:</div><div style="font-family:var(--mono);font-size:11.5px;color:var(--ink);font-weight:600">'+abacData[k].v+'</div>';
+}
+
+/* ---------- Diagram 4: XACML architecture ---------- */
+const xacmlData = {
+  pep:"<b>PEP &mdash; Policy Enforcement Point.</b> Sits in front of the API like a policy agent, intercepting each request and <i>enforcing</i> the verdict (reject if denied). Natter's Spark <code>before</code> filter plays this role.",
+  pdp:"<b>PDP &mdash; Policy Decision Point.</b> The brain of the system: it runs the policy engine and returns the allow/deny <i>decision</i>. Natter's Drools rule evaluation is a PDP. Can be centralized for the whole organization.",
+  pip:"<b>PIP &mdash; Policy Information Point.</b> <i>Retrieves and caches</i> the attribute values a decision needs &mdash; from local databases or remote services like an OIDC UserInfo endpoint. It feeds the PDP the facts it lacks.",
+  pap:"<b>PAP &mdash; Policy Administration Point.</b> The <i>admin interface</i> where security teams author and manage policies. Centralizing the PAP lets one consistent, reviewable policy set govern many APIs at once."
+};
+function xacmlPick(k, el){
+  document.querySelectorAll('#dg-xacml .xc').forEach(c=>c.classList.remove('on'));
+  el.classList.add('on');
+  document.getElementById('xacml-readout').innerHTML = xacmlData[k];
+}
+</script>
+
+</body>
+</html>

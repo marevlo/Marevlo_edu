@@ -1,0 +1,640 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Balanced Parentheses (Stack)</title>
+    <style>
+        :root {
+            --bg-page: #070b14;
+            --bg-surface: rgba(255, 255, 255, 0.045);
+            --bg-input: rgba(255, 255, 255, 0.04);
+            --border-main: rgba(255, 255, 255, 0.10);
+            --btn-bg: rgba(255, 255, 255, 0.05);
+            --btn-hover: rgba(255, 255, 255, 0.10);
+            --text-main: #e8eefb;
+            --text-dim: #8b98b3;
+            --accent-orange: #f5a524;   /* current char in motion / pushed */
+            --accent-blue:   #06b6d4;    /* TOP pointer / chrome           */
+            --accent-green:  #22c55e;    /* matched / balanced             */
+            --accent-red:    #f43f5e;    /* mismatch / unbalanced          */
+            --accent-purple: #a855f7;    /* peek / inspect                 */
+            --mono: ui-monospace, 'SF Mono', 'Cascadia Code', 'Courier New', monospace;
+            --sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+            --shell: 880px;
+        }
+
+        * { box-sizing: border-box; }
+        html, body { overflow-x: hidden; }
+        body {
+            background:
+                radial-gradient(1100px 600px at 15% -10%, rgba(6, 182, 212, 0.10), transparent 60%),
+                radial-gradient(900px 600px at 100% 10%, rgba(168, 85, 247, 0.10), transparent 55%),
+                linear-gradient(160deg, #070b14 0%, #0b1120 55%, #0a0f1c 100%);
+            background-attachment: fixed;
+            color: var(--text-main); font-family: var(--sans); margin: 0;
+            display: flex; flex-direction: column; align-items: center; min-height: 100vh;
+            padding-bottom: 48px; -webkit-font-smoothing: antialiased;
+        }
+        body::before, body::after { content: ''; position: fixed; border-radius: 50%; filter: blur(70px); pointer-events: none; z-index: 0; opacity: 0.45; }
+        body::before { width: 380px; height: 380px; top: 8%; left: -120px; background: radial-gradient(circle, rgba(6,182,212,0.30), transparent 70%); }
+        body::after  { width: 420px; height: 420px; bottom: 4%; right: -140px; background: radial-gradient(circle, rgba(168,85,247,0.22), transparent 70%); }
+        body > * { position: relative; z-index: 1; }
+
+        .input-bar {
+            width: 100%; background: rgba(10, 15, 28, 0.55);
+            backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+            padding: 14px 16px; display: flex; justify-content: center; align-items: center; gap: 10px;
+            border-bottom: 1px solid var(--border-main); flex-wrap: wrap; position: sticky; top: 0; z-index: 50;
+        }
+        label.ui-label, .ui-label { font-family: var(--mono); font-size: 13px; color: var(--text-dim); letter-spacing: 0.2px; }
+        input[type="text"] {
+            background: var(--bg-input); border: 1px solid var(--border-main); color: var(--text-main);
+            height: 34px; border-radius: 9px; padding: 0 12px; font-size: 14px; font-family: var(--mono); width: 200px;
+            letter-spacing: 1px; transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+        }
+        input:focus { outline: none; border-color: var(--accent-blue); box-shadow: 0 0 0 3px rgba(6,182,212,0.18); background: rgba(6,182,212,0.06); }
+
+        button {
+            height: 34px; border-radius: 9px; padding: 0 14px; background: var(--btn-bg);
+            border: 1px solid var(--border-main); color: var(--text-main); font-size: 13px; font-weight: 600; cursor: pointer;
+            transition: transform 0.15s ease, background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+        }
+        button:hover { background: var(--btn-hover); border-color: rgba(6, 182, 212, 0.5); box-shadow: 0 0 18px rgba(6, 182, 212, 0.18); transform: translateY(-1px); }
+        button:active { transform: translateY(0); }
+        #play-btn { background: linear-gradient(135deg, rgba(6,182,212,0.22), rgba(6,182,212,0.10)); border-color: rgba(6, 182, 212, 0.45); color: #a5f3fc; min-width: 80px; }
+        .ex-btn { font-family: var(--mono); }
+
+        .shell { width: var(--shell); max-width: 95%; margin: 24px auto 0; display: flex; flex-direction: column; gap: 16px; }
+
+        .title-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+        .title-row h1 { font-size: 18px; font-weight: 800; margin: 0; letter-spacing: 0.2px; }
+        .title-row .sub { color: var(--text-dim); font-weight: 500; font-size: 13px; }
+        .step-badge { font-family: var(--mono); font-size: 12px; font-weight: 700; color: #a5f3fc; background: rgba(6,182,212,0.12); border: 1px solid rgba(6,182,212,0.3); padding: 4px 10px; border-radius: 999px; white-space: nowrap; }
+        .progress-track { height: 4px; width: 100%; background: rgba(255,255,255,0.07); border-radius: 999px; overflow: hidden; margin-top: -6px; }
+        .progress-fill { height: 100%; width: 0%; border-radius: 999px; background: linear-gradient(90deg, var(--accent-blue), var(--accent-purple)); box-shadow: 0 0 12px rgba(6,182,212,0.5); transition: width 0.45s cubic-bezier(0.34,1.1,0.64,1); }
+
+        .op-feed { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+        .op-chip { font-family: var(--mono); font-size: 13px; font-weight: 700; padding: 3px 9px; border-radius: 8px; border: 1px solid var(--border-main); color: var(--text-dim); background: rgba(255,255,255,0.03); transition: all 0.3s; white-space: nowrap; min-width: 26px; text-align: center; }
+        .op-chip.done   { opacity: 0.45; }
+        .op-chip.match  { color: #d6ffe8; border-color: rgba(34,197,94,0.5); background: rgba(34,197,94,0.10); opacity: 0.85; }
+        .op-chip.bad    { color: #fecdd3; border-color: rgba(244,63,94,0.55); background: rgba(244,63,94,0.12); }
+        .op-chip.current { color: #fff; border-color: rgba(6,182,212,0.6); background: rgba(6,182,212,0.16); box-shadow: 0 0 12px rgba(6,182,212,0.3); transform: translateY(-2px); }
+
+        .narration { background: var(--bg-surface); border: 1px solid rgba(6,182,212,0.22); border-radius: 12px; padding: 12px 18px; font-family: var(--mono); font-size: 14px; line-height: 1.5; color: #cfe9f5; min-height: 48px; display: flex; align-items: center; gap: 10px; transition: border-color 0.3s, background 0.3s; }
+        .narration::before { content: '\25B8'; color: var(--accent-blue); font-size: 13px; }
+        .narration.done { border-color: rgba(34,197,94,0.4); background: rgba(34,197,94,0.06); }
+        .narration.done::before { content: '\2713'; color: var(--accent-green); }
+        .narration.miss { border-color: rgba(244,63,94,0.4); background: rgba(244,63,94,0.06); }
+        .narration.miss::before { content: '\2717'; color: var(--accent-red); }
+        .narration code { background: rgba(6,182,212,0.14); color: #7dd3fc; padding: 1px 6px; border-radius: 5px; font-size: 12.5px; }
+        .narration b { color: #fff; }
+
+        .stage-card { background: var(--bg-surface); border: 1px solid var(--border-main); border-radius: 18px; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); box-shadow: 0 12px 38px rgba(0,0,0,0.4); overflow: hidden; }
+        .stage-screen { position: relative; margin: 14px; border-radius: 14px; background: radial-gradient(700px 300px at 50% -10%, rgba(6,182,212,0.08), transparent 70%), #090d18; border: 1px solid rgba(255,255,255,0.06); padding: 22px 18px; }
+
+        /* horizontal input char-row scanned by a cursor */
+        .scan-wrap { display: flex; flex-direction: column; align-items: center; gap: 6px; margin-bottom: 22px; }
+        .scan-label { font-family: var(--mono); font-size: 11px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; color: var(--text-dim); }
+        .char-row { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; position: relative; padding-top: 30px; }
+        .char-cell { width: 42px; height: 48px; border-radius: 10px; display: flex; align-items: center; justify-content: center;
+            font-family: var(--mono); font-weight: 800; font-size: 24px; position: relative;
+            border: 2px solid var(--border-main); background: rgba(255,255,255,0.04); color: var(--text-dim);
+            transition: background 0.3s, border-color 0.3s, color 0.3s, box-shadow 0.3s, transform 0.3s; }
+        .char-cell.done    { color: #cfe9f5; border-color: rgba(255,255,255,0.16); }
+        .char-cell.matched { color: #d6ffe8; border-color: rgba(34,197,94,0.4); background: rgba(34,197,94,0.08); }
+        .char-cell.current { color: #ffd591; border-color: var(--accent-orange); background: rgba(245,165,36,0.16); box-shadow: 0 0 22px rgba(245,165,36,0.5); transform: translateY(-2px) scale(1.04); }
+        .char-cell.bad     { color: #fecdd3; border-color: var(--accent-red); background: rgba(244,63,94,0.18); box-shadow: 0 0 22px rgba(244,63,94,0.5); }
+        .char-cell .ci { position: absolute; bottom: -16px; font-size: 10px; color: #4b5772; font-weight: 700; }
+
+        /* gliding scan cursor pill above the char-row */
+        .scan-cursor { position: absolute; top: 0; left: 0; display: flex; flex-direction: column; align-items: center; opacity: 0; will-change: transform;
+            font-family: var(--mono); font-size: 11px; font-weight: 800; }
+        .scan-cursor .tag { background: var(--accent-orange); color: #2a1c02; padding: 2px 8px; border-radius: 7px; box-shadow: 0 0 14px rgba(245,165,36,0.6); }
+        .scan-cursor .arrow { color: var(--accent-orange); font-size: 14px; line-height: 1; }
+
+        /* the vertical stack (index 0 at the bottom; top grows up) */
+        .stack-wrap { display: flex; align-items: flex-end; justify-content: center; gap: 18px; min-height: 230px; }
+        .stack-col { display: flex; flex-direction: column-reverse; gap: 8px; position: relative; }
+        .slot { width: 132px; height: 44px; border-radius: 11px; display: flex; align-items: center; justify-content: center; gap: 10px;
+            font-family: var(--mono); font-weight: 800; font-size: 22px; position: relative; will-change: transform;
+            border: 2px solid var(--border-main); background: rgba(255,255,255,0.04); color: var(--text-main);
+            transition: background 0.35s, border-color 0.35s, color 0.35s, box-shadow 0.35s, transform 0.3s; }
+        .slot.empty   { border-style: dashed; color: var(--text-dim); background: rgba(255,255,255,0.015); font-size: 14px; }
+        .slot.filled  { border-color: rgba(34,197,94,0.45); background: rgba(34,197,94,0.10); color: #d6ffe8; }
+        .slot.toptile { border-color: var(--accent-blue); background: rgba(6,182,212,0.14); color: #a5f3fc; box-shadow: 0 0 20px rgba(6,182,212,0.45); }
+        .slot.pushing { border-color: var(--accent-orange); background: rgba(245,165,36,0.16); color: #ffd591; box-shadow: 0 0 22px rgba(245,165,36,0.55); }
+        .slot.popping { border-color: var(--accent-green); background: rgba(34,197,94,0.18); color: #d6ffe8; box-shadow: 0 0 22px rgba(34,197,94,0.5); }
+        .slot.badtop  { border-color: var(--accent-red); background: rgba(244,63,94,0.16); color: #fecdd3; box-shadow: 0 0 22px rgba(244,63,94,0.5); }
+        .slot .si { position: absolute; left: -28px; font-size: 11px; color: var(--text-dim); font-weight: 700; width: 20px; text-align: right; }
+        .base-line { width: 160px; height: 4px; border-radius: 3px; background: linear-gradient(90deg, transparent, rgba(255,255,255,0.18), transparent); margin-top: 2px; }
+
+        /* TOP pointer pill that glides vertically to the current top slot */
+        .top-ptr { position: absolute; right: -80px; display: flex; align-items: center; gap: 6px; opacity: 0; will-change: transform;
+            font-family: var(--mono); font-size: 12px; font-weight: 800; }
+        .top-ptr .arrow { color: var(--accent-blue); font-size: 16px; }
+        .top-ptr .tag { background: var(--accent-blue); color: #04222a; padding: 3px 10px; border-radius: 8px; box-shadow: 0 0 14px rgba(6,182,212,0.6); }
+
+        .action-stage { position: relative; min-height: 84px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; }
+        .float-tile { width: 50px; height: 48px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-family: var(--mono); font-size: 24px; font-weight: 800; border: 2px solid var(--accent-orange); background: rgba(245,165,36,0.16); color: #ffd591; box-shadow: 0 0 22px rgba(245,165,36,0.5); opacity: 0; transform: scale(.5); transition: opacity .25s, transform .4s cubic-bezier(.34,1.5,.64,1); }
+        .float-tile.show { opacity: 1; transform: scale(1); }
+        .action-word { font-family: var(--mono); font-weight: 800; font-size: 18px; letter-spacing: 0.4px; min-height: 22px; text-align: center; transition: color 0.3s; }
+        #confetti { position: absolute; inset: 0; overflow: visible; pointer-events: none; }
+        .confetti-piece { position: absolute; top: 0; left: 50%; width: 8px; height: 13px; border-radius: 2px; opacity: 0; animation: confettiFall ease-out forwards; }
+
+        .controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: center; }
+        .controls .kbd-hint { font-size: 11px; color: var(--text-dim); font-family: var(--mono); margin-left: 4px; }
+        .kbd { background: rgba(255,255,255,0.07); border: 1px solid var(--border-main); border-radius: 5px; padding: 1px 6px; font-size: 10px; }
+        input[type="range"] { accent-color: var(--accent-blue); width: 110px; cursor: pointer; }
+
+        .details-toggle { align-self: center; height: 32px; padding: 0 16px; border-radius: 999px; cursor: pointer; background: rgba(255,255,255,0.04); border: 1px solid var(--border-main); color: var(--text-dim); font-family: var(--mono); font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; gap: 8px; transition: color 0.2s, border-color 0.2s, background 0.2s; }
+        .details-toggle:hover { color: var(--text-main); border-color: rgba(6,182,212,0.4); background: rgba(6,182,212,0.06); }
+        .details-toggle .chev { transition: transform 0.3s ease; }
+        .details-wrap.open .details-toggle .chev { transform: rotate(180deg); }
+        .details-body { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.4s ease; }
+        .details-wrap.open .details-body { grid-template-rows: 1fr; }
+        .details-inner { overflow: hidden; min-height: 0; }
+        .details-grid { display: flex; flex-direction: column; gap: 14px; padding-top: 14px; }
+
+        .panel-card { background: var(--bg-surface); border: 1px solid var(--border-main); border-radius: 16px; backdrop-filter: blur(10px); box-shadow: 0 8px 30px rgba(0,0,0,0.35); }
+        .panel-head { display: flex; align-items: center; gap: 8px; padding: 11px 16px; border-bottom: 1px solid var(--border-main); font-size: 11px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; color: var(--text-dim); }
+        .panel-head .pip { width: 7px; height: 7px; border-radius: 50%; background: var(--accent-blue); box-shadow: 0 0 8px var(--accent-blue); }
+        .code-body { padding: 12px 6px 14px; font-family: var(--mono); font-size: 12.5px; line-height: 1.7; }
+        .code-line { display: flex; gap: 12px; padding: 1px 16px; border-left: 2px solid transparent; transition: background 0.3s, border-color 0.3s; white-space: pre; }
+        .code-line .lno { color: #4b5772; width: 16px; text-align: right; user-select: none; }
+        .code-line .src { color: #c4cee0; }
+        .code-line .kw { color: #c792ea; }
+        .code-line .fn { color: #82aaff; }
+        .code-line.active { background: rgba(6,182,212,0.12); border-left-color: var(--accent-blue); }
+        .code-line.active .src, .code-line.active .lno { color: #e8eefb; }
+
+        .state-strip { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 0 2px; }
+        .pill { display: inline-flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 12px; color: var(--text-dim); background: rgba(255,255,255,0.04); border: 1px solid var(--border-main); border-radius: 999px; padding: 4px 11px; }
+        .pill b { color: var(--text-main); font-weight: 800; }
+        .pill.t b { color: var(--accent-blue); } .pill.s b { color: var(--accent-green); }
+        .pill.r b { color: var(--accent-purple); }
+
+        .log-panel { border-radius: 14px; padding: 12px 16px; height: 110px; overflow-y: auto; font-family: var(--mono); font-size: 12.5px; line-height: 1.5; background: var(--bg-surface); border: 1px solid var(--border-main); }
+        .log-panel::-webkit-scrollbar { width: 8px; }
+        .log-panel::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 8px; }
+
+        @keyframes confettiFall { 0%{ opacity:1; transform: translate(-50%, 0) rotate(0deg); } 100%{ opacity:0; transform: translate(calc(-50% + var(--x)), 220px) rotate(var(--rot)); } }
+        @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; } }
+    </style>
+</head>
+<body>
+
+    <div class="input-bar">
+        <label class="ui-label">String =</label>
+        <input type="text" id="str-input" value="(()())" maxlength="20" spellcheck="false">
+        <button onclick="loadCustom()">Load</button>
+        <span class="ui-label" style="opacity:.5">|</span>
+        <button class="ex-btn" onclick="loadExample(0)">Ex 1: (()())</button>
+        <button class="ex-btn" onclick="loadExample(1)">Ex 2: (()</button>
+        <button class="ex-btn" onclick="loadExample(2)">Ex 3: ([)]</button>
+        <button onclick="resetSim()">&#8634; Reset</button>
+    </div>
+
+    <div class="shell">
+        <div class="title-row">
+            <h1>Balanced Parentheses <span class="sub">&middot; stack scan &middot; opener pushes &middot; closer must match the top &middot; valid iff stack ends empty</span></h1>
+            <span class="step-badge" id="step-badge">Step 1 / 1</span>
+        </div>
+        <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+
+        <div class="op-feed" id="op-feed"></div>
+
+        <div class="narration" id="main-panel">&mdash;</div>
+
+        <div class="stage-card">
+            <div class="stage-screen">
+                <div class="scan-wrap">
+                    <div class="scan-label">Input string</div>
+                    <div class="char-row" id="char-row"></div>
+                </div>
+                <div class="stack-wrap">
+                    <div>
+                        <div class="stack-col" id="stack-col"></div>
+                        <div class="base-line"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="action-stage">
+            <div id="confetti"></div>
+            <div class="float-tile" id="float-tile"></div>
+            <div class="action-word" id="action-word"></div>
+        </div>
+
+        <div class="controls">
+            <button onclick="resetSim()">&#8634; Reset</button>
+            <button onclick="prevStep()">&#8592; Back</button>
+            <button onclick="togglePlay()" id="play-btn">Play</button>
+            <button onclick="nextStep()">Next &#8594;</button>
+            <span class="ui-label" style="margin-left:6px; font-size:11px">Speed</span>
+            <input type="range" id="speed" min="0" max="2" value="1">
+            <span class="kbd-hint"><span class="kbd">&#8592;</span> <span class="kbd">&#8594;</span> step &middot; <span class="kbd">space</span> play</span>
+        </div>
+
+        <div class="details-wrap" id="details-wrap">
+            <button class="details-toggle" onclick="toggleDetails()" aria-expanded="false">
+                <span id="details-label">Show code, state &amp; log</span> <span class="chev">&#9662;</span>
+            </button>
+            <div class="details-body">
+                <div class="details-inner">
+                    <div class="details-grid">
+                        <div class="state-strip">
+                            <span class="pill r">i <b id="st-i">-1</b></span>
+                            <span class="pill t">top <b id="st-top">-1</b></span>
+                            <span class="pill s">size <b id="st-size">0</b></span>
+                            <span class="pill">balanced <b id="st-bal">?</b></span>
+                        </div>
+                        <div class="panel-card">
+                            <div class="panel-head"><span class="pip"></span> Algorithm</div>
+                            <div class="code-body" id="code-panel"></div>
+                        </div>
+                        <div class="log-panel" id="log"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        'use strict';
+
+        // ───────── Motion engine (spring, zero deps) ─────────
+        const REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        const FRAME = 1000 / 60;
+        function sampleSpring(stiffness, damping, mass) {
+            const dt = 1 / 60; let x = 1, v = 0; const out = [];
+            for (let i = 0; i < 240; i++) { const a = (-stiffness * x - damping * v) / mass; v += a * dt; x += v * dt; out.push(1 - x); if (Math.abs(x) < 0.0015 && Math.abs(v) < 0.0015) break; }
+            out.push(1); return out;
+        }
+        const SPRING_POS = sampleSpring(320, 30, 1);
+        const SPRING_POP = sampleSpring(520, 17, 1);
+        const durOf = (a) => a.length * FRAME;
+        const Motion = {
+            glide(el, x, y) {
+                const px = el._x, py = el._y; el.style.opacity = '1';
+                const commit = `translate(${x.toFixed(2)}px, ${y.toFixed(2)}px)`;
+                if (REDUCED || px == null || (Math.abs(x - px) < 0.5 && Math.abs(y - py) < 0.5)) { el._x = x; el._y = y; el.style.transform = commit; return; }
+                const dx = x - px, dy = y - py;
+                const kf = SPRING_POS.map(p => ({ transform: `translate(${(px + dx * p).toFixed(2)}px, ${(py + dy * p).toFixed(2)}px)` }));
+                el.animate(kf, { duration: durOf(SPRING_POS), easing: 'linear' });
+                el._x = x; el._y = y; el.style.transform = commit;
+            },
+            glideY(el, y) {
+                const prev = el._y; el.style.opacity = '1';
+                const commit = `translateY(${y.toFixed(2)}px)`;
+                if (REDUCED || prev == null || Math.abs(y - prev) < 0.5) { el._y = y; el.style.transform = commit; return; }
+                const dy = y - prev;
+                const kf = SPRING_POS.map(p => ({ transform: `translateY(${(prev + dy * p).toFixed(2)}px)` }));
+                el.animate(kf, { duration: durOf(SPRING_POS), easing: 'linear' });
+                el._y = y; el.style.transform = commit;
+            },
+            pop(el, fromY) {
+                if (REDUCED) { el.style.opacity = '1'; return; }
+                const kf = SPRING_POP.map(p => ({ opacity: Math.min(1, p * 2).toFixed(3), transform: `translateY(${((fromY || -16) * (1 - p)).toFixed(2)}px) scale(${(0.4 + 0.6 * p).toFixed(3)})` }));
+                el.animate(kf, { duration: durOf(SPRING_POP), easing: 'linear', fill: 'backwards' });
+            },
+        };
+
+        // ───────── State ─────────
+        let str = '(()())';
+        let steps = [];
+        let stepIdx = 0;
+        let timer = null;
+        let confettiArmed = true;
+        const delays = [1500, 800, 380];
+        const slotEls = {};     // index -> stack slot element
+        const charEls = [];     // index -> char-row cell element
+        const OPEN = { '(': ')', '[': ']', '{': '}' };
+        const CLOSE = { ')': '(', ']': '[', '}': '{' };
+
+        const CODE = [
+            [['kw','def '],['fn','isBalanced'],['src','(s):']],
+            [['src','  stack = []']],
+            [['kw','  for '],['src','ch '],['kw','in '],['src','s:']],
+            [['kw','    if '],['src','ch in "([{": stack.push(ch)']],
+            [['kw','    else'],['src',':                  # closer']],
+            [['kw','      if '],['src','not stack: return False']],
+            [['kw','      if '],['src','stack.pop() != match[ch]:']],
+            [['src','        return False']],
+            [['kw','  return '],['src','len(stack) == 0']],
+        ];
+        function buildCodePanel() {
+            const panel = document.getElementById('code-panel'); panel.innerHTML = '';
+            CODE.forEach((tokens, i) => {
+                const line = document.createElement('div'); line.className = 'code-line'; line.dataset.line = i;
+                const lno = document.createElement('span'); lno.className = 'lno'; lno.textContent = i + 1; line.appendChild(lno);
+                const src = document.createElement('span');
+                tokens.forEach(([cls, txt]) => { const s = document.createElement('span'); s.className = cls; s.textContent = txt; src.appendChild(s); });
+                line.appendChild(src); panel.appendChild(line);
+            });
+        }
+        function highlightCode(arr) { document.querySelectorAll('.code-line').forEach(el => el.classList.toggle('active', arr && arr.includes(+el.dataset.line))); }
+        function toggleDetails() {
+            const wrap = document.getElementById('details-wrap'); const open = wrap.classList.toggle('open');
+            wrap.querySelector('.details-toggle').setAttribute('aria-expanded', open ? 'true' : 'false');
+            document.getElementById('details-label').textContent = open ? 'Hide code, state & log' : 'Show code, state & log';
+        }
+
+        // ───────── step generation (immutable snapshots) ─────────
+        function generateSteps() {
+            steps = [];
+            const stack = [];   // [{ch, srcIdx}]
+            const snap = (extra) => Object.assign({
+                stack: stack.map(f => ({ ch: f.ch, srcIdx: f.srcIdx })),
+                top: stack.length - 1, i: -1, cursorIdx: null,
+                pushIdx: -1, popIdx: -1, badTopIdx: -1, badCharIdx: -1,
+                matchedChars: [], tile: null, tileColor: null,
+                opStatus: null, opResultIdx: null, balanced: null
+            }, extra);
+            // matchedChars accumulates source indices already resolved (opener+closer pairs)
+            const matched = [];
+
+            steps.push(snap({ code: [0, 1], action: 'SCAN START', actionColor: 'var(--accent-blue)',
+                panel: `Check whether <code>"${str}"</code> is <b>balanced</b>. Scan left&#8594;right with an empty <b>stack</b>: an <b>opener</b> pushes, a <b>closer</b> must match the top. Valid only if the stack ends empty.`,
+                log: `init  s = "${str}", stack = []` }));
+
+            let broke = false;
+            for (let i = 0; i < str.length; i++) {
+                const ch = str[i];
+                if (OPEN[ch]) {
+                    stack.push({ ch, srcIdx: i });
+                    steps.push(snap({ i, cursorIdx: i, code: [2, 3], action: 'PUSH ' + ch, actionColor: 'var(--accent-orange)',
+                        pushIdx: stack.length - 1, tile: ch, tileColor: 'var(--accent-orange)', matchedChars: [...matched], opStatus: 'push',
+                        panel: `<code>s[${i}] = '${ch}'</code> is an <b>opener</b> &#8594; <b>push</b> it. top becomes <b>${stack.length - 1}</b>, waiting for its <code>${OPEN[ch]}</code>.`,
+                        log: `s[${i}]='${ch}'  push -> top ${stack.length - 1}` }));
+                } else if (CLOSE[ch]) {
+                    if (stack.length === 0) {
+                        steps.push(snap({ i, cursorIdx: i, code: [4, 5], action: 'NO MATCH', actionColor: 'var(--accent-red)', miss: true,
+                            badCharIdx: i, tile: ch, tileColor: 'var(--accent-red)', matchedChars: [...matched], opStatus: 'bad', balanced: false,
+                            panel: `<code>s[${i}] = '${ch}'</code> is a <b>closer</b> but the stack is <span style="color:var(--accent-red)">empty</span> &#8594; nothing to match. <b>Unbalanced.</b>`,
+                            log: `s[${i}]='${ch}'  closer on empty stack -> FALSE` }));
+                        broke = true; break;
+                    }
+                    const topF = stack[stack.length - 1];
+                    if (topF.ch === CLOSE[ch]) {
+                        steps.push(snap({ i, cursorIdx: i, code: [4, 6], action: 'MATCH ' + topF.ch + ch, actionColor: 'var(--accent-green)',
+                            popIdx: stack.length - 1, tile: ch, tileColor: 'var(--accent-green)', matchedChars: [...matched], opStatus: 'match', opResultIdx: i,
+                            panel: `<code>s[${i}] = '${ch}'</code> matches the top <code>'${topF.ch}'</code> &#8594; <b>pop</b>. The pair <code>${topF.ch}${ch}</code> is resolved.`,
+                            log: `s[${i}]='${ch}'  matches '${topF.ch}'  pop` }));
+                        matched.push(topF.srcIdx, i);
+                        stack.pop();
+                    } else {
+                        steps.push(snap({ i, cursorIdx: i, code: [4, 6, 7], action: 'MISMATCH', actionColor: 'var(--accent-red)', miss: true,
+                            badTopIdx: stack.length - 1, badCharIdx: i, tile: ch, tileColor: 'var(--accent-red)', matchedChars: [...matched], opStatus: 'bad', balanced: false,
+                            panel: `<code>s[${i}] = '${ch}'</code> expects top <code>'${CLOSE[ch]}'</code> but the top is <code>'${topF.ch}'</code> &#8594; <span style="color:var(--accent-red)">mismatch</span>. <b>Unbalanced.</b>`,
+                            log: `s[${i}]='${ch}'  want '${CLOSE[ch]}' got '${topF.ch}' -> FALSE` }));
+                        broke = true; break;
+                    }
+                } else {
+                    // non-bracket char: ignore (skip)
+                    steps.push(snap({ i, cursorIdx: i, code: [2], action: 'SKIP', actionColor: 'var(--accent-purple)',
+                        matchedChars: [...matched], tile: ch, tileColor: 'var(--accent-purple)',
+                        panel: `<code>s[${i}] = '${ch}'</code> is not a bracket &#8594; ignore it and move on.`,
+                        log: `s[${i}]='${ch}'  skip (non-bracket)` }));
+                }
+            }
+
+            const isBalanced = !broke && stack.length === 0;
+            if (broke) {
+                steps.push(snap({ complete: true, code: [7], action: '✗ UNBALANCED', actionColor: 'var(--accent-red)', miss: true, balanced: false,
+                    matchedChars: [...matched],
+                    panel: `A closer failed to match &#8594; return <code>False</code>. The string <code>"${str}"</code> is <b style="color:var(--accent-red)">not balanced</b>.`,
+                    log: `result: UNBALANCED` }));
+            } else if (!isBalanced) {
+                // leftover openers
+                steps.push(snap({ complete: true, code: [8], action: '✗ UNBALANCED', actionColor: 'var(--accent-red)', miss: true, balanced: false,
+                    matchedChars: [...matched],
+                    badTopIdx: stack.length - 1,
+                    panel: `Scan finished but the stack still holds <b>${stack.length}</b> unmatched opener${stack.length === 1 ? '' : 's'} &#8594; <code>len(stack) != 0</code>. <b style="color:var(--accent-red)">Not balanced</b>.`,
+                    log: `result: UNBALANCED (stack not empty)` }));
+            } else {
+                steps.push(snap({ complete: true, confetti: true, code: [8], action: '✓ BALANCED', actionColor: 'var(--accent-green)', balanced: true,
+                    matchedChars: [...matched],
+                    panel: `Scan finished and the stack is <span style="color:var(--accent-green)">empty</span> &#8594; <code>len(stack) == 0</code>. <code>"${str}"</code> is <b style="color:var(--accent-green)">balanced</b>!`,
+                    log: `result: BALANCED` }));
+            }
+        }
+
+        // ───────── render ─────────
+        const SLOT_H = 44, SLOT_GAP = 8;
+        const CELL_W = 42, CELL_GAP = 8;
+
+        function buildCharRow() {
+            const row = document.getElementById('char-row'); row.innerHTML = ''; charEls.length = 0;
+            for (let i = 0; i < str.length; i++) {
+                const cell = document.createElement('div'); cell.className = 'char-cell';
+                cell.innerHTML = `<span class="cv">${str[i]}</span><span class="ci">${i}</span>`;
+                row.appendChild(cell); charEls[i] = cell;
+            }
+            // scan cursor pill
+            const cur = document.createElement('div'); cur.id = 'scan-cursor'; cur.className = 'scan-cursor';
+            cur.innerHTML = `<span class="tag">scan</span><span class="arrow">&#9660;</span>`;
+            row.appendChild(cur);
+        }
+
+        function renderStep(idx) {
+            stepIdx = idx; const step = steps[idx]; if (!step) return;
+            const col = document.getElementById('stack-col');
+
+            // ── char-row cells ──
+            const matchedSet = new Set(step.matchedChars);
+            for (let i = 0; i < charEls.length; i++) {
+                const cell = charEls[i]; if (!cell) continue;
+                let cls = 'char-cell';
+                if (i === step.badCharIdx) cls += ' bad';
+                else if (i === step.cursorIdx) cls += ' current';
+                else if (matchedSet.has(i)) cls += ' matched';
+                else if (step.cursorIdx != null && i < step.cursorIdx) cls += ' done';
+                else if (step.complete && step.i < 0) { /* init/complete with no cursor: leave neutral */ }
+                cell.className = cls;
+            }
+            // scan cursor pill glide
+            const cur = document.getElementById('scan-cursor');
+            if (cur) {
+                if (step.cursorIdx == null) { cur.style.opacity = '0'; cur._x = null; cur._y = null; }
+                else {
+                    const x = step.cursorIdx * (CELL_W + CELL_GAP) + CELL_W / 2 - 16;
+                    Motion.glide(cur, x, 0);
+                }
+            }
+
+            // ── vertical stack slots (keyed by index, persistent DOM) ──
+            const depth = Math.max(step.stack.length, 1);
+            const used = new Set();
+            for (let i = 0; i < depth; i++) {
+                used.add(String(i));
+                let el = slotEls[i];
+                if (!el) {
+                    el = document.createElement('div'); el.className = 'slot';
+                    el.innerHTML = `<span class="si"></span><span class="sv"></span>`;
+                    slotEls[i] = el; col.appendChild(el);
+                }
+                el.querySelector('.si').textContent = i;
+                const has = i < step.stack.length;
+                const isTop = i === step.top;
+                let cls = 'slot';
+                if (!has) cls += ' empty';
+                else if (i === step.pushIdx) cls += ' pushing';
+                else if (i === step.badTopIdx) cls += ' badtop';
+                else if (isTop) cls += ' toptile';
+                else cls += ' filled';
+                el.className = cls;
+                el.querySelector('.sv').textContent = has ? step.stack[i].ch : 'empty';
+                if (has && i === step.pushIdx) Motion.pop(el, -18);
+            }
+            // popping slot: briefly show the matched opener leaving (slot just above new top)
+            if (step.popIdx >= 0) {
+                let el = slotEls[step.popIdx];
+                if (!el) {
+                    el = document.createElement('div'); el.className = 'slot';
+                    el.innerHTML = `<span class="si"></span><span class="sv"></span>`;
+                    slotEls[step.popIdx] = el; col.appendChild(el);
+                }
+                used.add(String(step.popIdx));
+                el.className = 'slot popping';
+                el.querySelector('.si').textContent = step.popIdx;
+                el.querySelector('.sv').textContent = CLOSE[str[step.i]];
+                Motion.pop(el, -14);
+            }
+            Object.keys(slotEls).forEach(k => { if (!used.has(k)) { slotEls[k].remove(); delete slotEls[k]; } });
+
+            // TOP pointer pill
+            renderTopPtr(step, depth);
+
+            // floating tile (the current char in motion)
+            const ft = document.getElementById('float-tile');
+            if (step.tile != null) { ft.textContent = step.tile; ft.classList.add('show');
+                ft.style.borderColor = step.tileColor || 'var(--accent-orange)';
+                ft.style.color = step.opStatus === 'match' ? '#d6ffe8' : step.opStatus === 'bad' ? '#fecdd3' : step.opStatus === 'push' ? '#ffd591' : '#e9d5ff';
+                ft.style.background = step.opStatus === 'match' ? 'rgba(34,197,94,0.16)' : step.opStatus === 'bad' ? 'rgba(244,63,94,0.16)' : step.opStatus === 'push' ? 'rgba(245,165,36,0.16)' : 'rgba(168,85,247,0.16)';
+            } else ft.classList.remove('show');
+
+            // narration / action / chrome
+            const mp = document.getElementById('main-panel');
+            mp.innerHTML = step.panel || '&mdash;';
+            mp.classList.toggle('done', step.complete && step.balanced === true);
+            mp.classList.toggle('miss', !!step.miss);
+            const aw = document.getElementById('action-word'); aw.textContent = step.action || ''; aw.style.color = step.actionColor || 'var(--text-dim)';
+            highlightCode(step.code);
+
+            if (step.confetti) { if (confettiArmed) { fireConfetti(); confettiArmed = false; } } else confettiArmed = true;
+
+            renderOpFeed(step);
+            document.getElementById('st-i').textContent = step.i;
+            document.getElementById('st-top').textContent = step.top;
+            document.getElementById('st-size').textContent = step.stack.length;
+            const balEl = document.getElementById('st-bal');
+            balEl.textContent = step.balanced == null ? '?' : (step.balanced ? 'true' : 'false');
+            balEl.style.color = step.balanced == null ? 'var(--text-main)' : (step.balanced ? 'var(--accent-green)' : 'var(--accent-red)');
+            document.getElementById('step-badge').textContent = `Step ${idx + 1} / ${steps.length}`;
+            document.getElementById('progress-fill').style.width = `${(idx / Math.max(1, steps.length - 1)) * 100}%`;
+
+            const logEl = document.getElementById('log');
+            logEl.innerHTML = steps.slice(0, idx + 1).map(s => `<div style="margin:3px 0;white-space:pre-wrap;">${s.log}</div>`).join('');
+            logEl.scrollTop = logEl.scrollHeight;
+        }
+
+        function renderTopPtr(step, depth) {
+            const col = document.getElementById('stack-col');
+            let ptr = document.getElementById('top-ptr');
+            if (!ptr) { ptr = document.createElement('div'); ptr.id = 'top-ptr'; ptr.className = 'top-ptr'; ptr.innerHTML = `<span class="tag">top</span><span class="arrow">&#8592;</span>`; col.parentElement.appendChild(ptr); }
+            if (step.top < 0) { ptr.style.opacity = '0'; ptr._y = null; return; }
+            const fromBottom = step.top * (SLOT_H + SLOT_GAP) + SLOT_H / 2;
+            const colH = depth * SLOT_H + (depth - 1) * SLOT_GAP;
+            const y = colH - fromBottom - 11;
+            ptr.style.top = '0px';
+            ptr.style.right = '-80px';
+            Motion.glideY(ptr, y);
+        }
+
+        function renderOpFeed(step) {
+            const feed = document.getElementById('op-feed'); feed.innerHTML = '';
+            const matchedSet = new Set(step.matchedChars);
+            for (let i = 0; i < str.length; i++) {
+                const chip = document.createElement('div');
+                let cls = 'op-chip';
+                if (i === step.badCharIdx) cls += ' bad';
+                else if (i === step.cursorIdx) cls += ' current';
+                else if (matchedSet.has(i)) cls += ' match';
+                else if (step.cursorIdx != null && i < step.cursorIdx) cls += ' done';
+                chip.className = cls; chip.textContent = str[i]; feed.appendChild(chip);
+            }
+        }
+
+        function fireConfetti() {
+            const host = document.getElementById('confetti'); if (!host || REDUCED) return;
+            const colors = ['#22c55e', '#06b6d4', '#a855f7', '#f5a524', '#f43f5e'];
+            for (let i = 0; i < 38; i++) {
+                const p = document.createElement('div'); p.className = 'confetti-piece';
+                p.style.setProperty('--x', ((Math.random() * 2 - 1) * 220) + 'px');
+                p.style.setProperty('--rot', ((Math.random() * 720 - 360)) + 'deg');
+                p.style.background = colors[i % colors.length];
+                p.style.animationDuration = (0.9 + Math.random() * 0.8) + 's';
+                p.style.animationDelay = (Math.random() * 0.15) + 's';
+                host.appendChild(p); setTimeout(() => p.remove(), 1900);
+            }
+        }
+
+        // ───────── controls ─────────
+        function nextStep() { if (stepIdx < steps.length - 1) renderStep(stepIdx + 1); else pause(); }
+        function prevStep() { if (stepIdx > 0) renderStep(stepIdx - 1); }
+        function resetSim() { pause(); renderStep(0); }
+        function togglePlay() {
+            const btn = document.getElementById('play-btn');
+            if (timer) { pause(); return; }
+            btn.textContent = 'Pause';
+            if (stepIdx >= steps.length - 1) renderStep(0);
+            timer = setInterval(() => { if (stepIdx < steps.length - 1) nextStep(); else pause(); }, delays[document.getElementById('speed').value]);
+        }
+        function pause() { clearInterval(timer); timer = null; document.getElementById('play-btn').textContent = 'Play'; }
+
+        function clearDom() {
+            Object.keys(slotEls).forEach(k => { slotEls[k].remove(); delete slotEls[k]; });
+            const p = document.getElementById('top-ptr'); if (p) p.remove();
+            confettiArmed = true;
+        }
+
+        function loadString(newStr) {
+            pause();
+            str = newStr;
+            clearDom();
+            buildCharRow();
+            generateSteps();
+            renderStep(0);
+        }
+
+        function loadCustom() {
+            const raw = (document.getElementById('str-input').value || '').replace(/\s+/g, '');
+            if (raw.length === 0) { document.getElementById('str-input').focus(); return; }
+            const trimmed = raw.slice(0, 20);
+            document.getElementById('str-input').value = trimmed;
+            loadString(trimmed);
+        }
+
+        function loadExample(n) {
+            const exs = ['(()())', '(()', '([)]'];
+            const s = exs[n];
+            document.getElementById('str-input').value = s;
+            loadString(s);
+        }
+
+        document.addEventListener('keydown', (e) => {
+            const tag = (e.target.tagName || '').toLowerCase(); if (tag === 'input' || tag === 'textarea') return;
+            if (e.key === 'ArrowRight') { e.preventDefault(); pause(); nextStep(); }
+            else if (e.key === 'ArrowLeft') { e.preventDefault(); pause(); prevStep(); }
+            else if (e.key === ' ') { e.preventDefault(); togglePlay(); }
+        });
+        document.getElementById('str-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') loadCustom(); });
+        window.addEventListener('resize', () => renderStep(stepIdx));
+
+        buildCodePanel();
+        window.onload = () => loadExample(0);
+    </script>
+</body>
+</html>

@@ -1,0 +1,2498 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Module 1.0 — JSON-RPC 2.0 &amp; the Message Layer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Source+Serif+4:ital,opsz,wght@0,8..60,300;0,8..60,400;0,8..60,500;0,8..60,600;1,8..60,400&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:           #08090b;
+    --bg-2:         #0b0f1a;
+    --panel:        #0d1117;
+    --panel-2:      #111827;
+    --panel-3:      #111827;
+    --line:         #1e2330;
+    --line-strong:  #2a3142;
+    --text:         #e8eaed;
+    --text-dim:     #a8aeb8;
+    --text-mute:    #6b7280;
+
+    --teal:         #6366f1;
+    --purple:       #8b5cf6;
+    --pink:         #f7768e;
+    --amber:        #f59e0b;
+    --red:          #f7768e;
+    --blue:         #818cf8;
+    --green:        #10b981;
+
+    --mono: 'JetBrains Mono', ui-monospace, monospace;
+    --sans: 'Outfit', system-ui, -apple-system, sans-serif;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html { scroll-behavior: smooth; scroll-padding-top: 80px; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 16px;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    overflow-x: hidden;
+  }
+
+  body::before {
+    content: ""; position: fixed; inset: 0;
+    background-image:
+      linear-gradient(rgba(99, 102, 241, 0.035) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(99, 102, 241, 0.035) 1px, transparent 1px);
+    background-size: 48px 48px;
+    background-position: -1px -1px;
+    pointer-events: none; z-index: 0;
+    mask-image: radial-gradient(ellipse 80% 60% at 50% 30%, black 40%, transparent 100%);
+  }
+  body::after {
+    content: ""; position: fixed; inset: 0;
+    background:
+      radial-gradient(ellipse 50% 30% at 20% 10%, rgba(99, 102, 241,0.06), transparent 60%),
+      radial-gradient(ellipse 40% 25% at 90% 80%, rgba(139, 92, 246,0.05), transparent 60%);
+    pointer-events: none; z-index: 0;
+  }
+
+  /* ================= TOP BAR (course chrome) ================= */
+  .topbar {
+    position: sticky; top: 0;
+    z-index: 50;
+    backdrop-filter: blur(14px);
+    background: rgba(10, 14, 26, 0.85);
+    border-bottom: 1px solid var(--line);
+  }
+  .topbar-inner {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 14px 32px;
+    display: flex;
+    align-items: center;
+    gap: 24px;
+  }
+  .brand {
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--teal);
+    font-weight: 600;
+    display: flex; align-items: center; gap: 10px;
+    flex-shrink: 0;
+  }
+  .brand .dot {
+    width: 8px; height: 8px;
+    background: var(--teal);
+    border-radius: 50%;
+    box-shadow: 0 0 12px rgba(99, 102, 241,0.6);
+  }
+  .track-progress {
+    flex: 1;
+    display: flex; align-items: center;
+    gap: 6px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .track-progress::-webkit-scrollbar { display: none; }
+  .tp-item {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-mute);
+    padding: 4px 10px;
+    border-radius: 4px;
+    border: 1px solid var(--line);
+    white-space: nowrap;
+    transition: all 0.2s;
+  }
+  .tp-item.done { color: var(--text-dim); border-color: var(--line-strong); }
+  .tp-item.done::before { content: "✓ "; color: var(--teal); }
+  .tp-item.current {
+    color: var(--teal);
+    border-color: var(--teal);
+    background: rgba(99, 102, 241,0.06);
+  }
+  .progress-bar {
+    flex-shrink: 0;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text-dim);
+    display: flex; align-items: center; gap: 10px;
+  }
+  .progress-track {
+    width: 80px; height: 4px;
+    background: var(--line);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--teal), var(--purple));
+    width: 0%;
+    transition: width 0.3s ease;
+  }
+
+  /* ================= LAYOUT ================= */
+  .layout {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 56px 32px 120px;
+    display: grid;
+    grid-template-columns: 220px 1fr;
+    gap: 56px;
+    position: relative;
+    z-index: 1;
+  }
+
+  /* ================= SIDEBAR ================= */
+  .sidebar {
+    position: sticky;
+    top: 80px;
+    align-self: start;
+    max-height: calc(100vh - 96px);
+    overflow-y: auto;
+  }
+  .sb-label {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--text-mute);
+    margin-bottom: 18px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--line);
+  }
+  .sb-list { list-style: none; }
+  .sb-list li a {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 9px 0;
+    font-size: 13.5px;
+    color: var(--text-dim);
+    text-decoration: none;
+    border-left: 2px solid transparent;
+    padding-left: 12px;
+    transition: all 0.2s;
+    line-height: 1.4;
+  }
+  .sb-list li a:hover { color: var(--text); }
+  .sb-list li a.active {
+    color: var(--teal);
+    border-left-color: var(--teal);
+    background: linear-gradient(90deg, rgba(99, 102, 241,0.05), transparent);
+  }
+  .sb-list li a .num {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    color: var(--text-mute);
+    min-width: 22px;
+  }
+  .sb-list li a.active .num { color: var(--teal); }
+
+  /* ================= CONTENT ================= */
+  .content { min-width: 0; }
+
+  /* ----- breadcrumb / hero ----- */
+  .crumb {
+    display: flex; align-items: center; gap: 10px;
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--teal);
+    margin-bottom: 22px;
+  }
+  .crumb .bar { width: 24px; height: 1px; background: var(--teal); }
+  .crumb .sep { color: var(--text-mute); }
+  .crumb .dim { color: var(--text-dim); }
+
+  h1.module-title {
+    font-size: clamp(34px, 5vw, 54px);
+    font-weight: 800;
+    letter-spacing: -0.025em;
+    line-height: 1.05;
+    margin-bottom: 18px;
+  }
+  h1.module-title .accent { color: var(--teal); }
+  .lede {
+    font-size: 18px;
+    color: var(--text-dim);
+    max-width: 680px;
+  }
+
+  .hero-meta {
+    display: flex; flex-wrap: wrap; gap: 20px;
+    margin-top: 26px;
+    padding-top: 22px;
+    border-top: 1px solid var(--line);
+  }
+  .hero-meta .m {
+    display: flex; align-items: center; gap: 10px;
+  }
+  .hero-meta .m-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--text-mute);
+  }
+  .hero-meta .m-val {
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--text);
+    font-weight: 500;
+  }
+
+  /* ----- learning objectives ----- */
+  .objectives {
+    margin: 40px 0 64px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 26px 28px;
+    position: relative;
+    overflow: hidden;
+  }
+  .objectives::before {
+    content: "";
+    position: absolute; top: 0; left: 0; right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--teal) 30%, var(--purple) 70%, transparent);
+  }
+  .obj-header {
+    display: flex; align-items: center; gap: 12px;
+    margin-bottom: 16px;
+  }
+  .obj-icon {
+    width: 32px; height: 32px;
+    background: rgba(99, 102, 241,0.12);
+    border: 1px solid rgba(99, 102, 241,0.3);
+    border-radius: 8px;
+    display: grid; place-items: center;
+  }
+  .obj-icon svg { width: 16px; height: 16px; }
+  .obj-title {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--teal);
+    font-weight: 600;
+  }
+  .obj-list { list-style: none; display: grid; gap: 10px; }
+  .obj-list li {
+    display: grid; grid-template-columns: 22px 1fr;
+    gap: 12px; align-items: start;
+    color: #c2cad9; font-size: 14.5px;
+    line-height: 1.55;
+  }
+  .obj-list .check {
+    width: 18px; height: 18px;
+    border-radius: 4px;
+    border: 1.5px solid var(--line-strong);
+    margin-top: 2px;
+    display: grid; place-items: center;
+    color: var(--text-mute);
+    font-family: var(--mono);
+    font-size: 11px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .obj-list .check.done {
+    background: rgba(99, 102, 241,0.15);
+    border-color: var(--teal);
+    color: var(--teal);
+  }
+
+  /* ----- sections ----- */
+  .section-label {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--text-mute);
+    margin-bottom: 14px;
+    display: flex; align-items: center; gap: 12px;
+  }
+  .section-label .sn {
+    color: var(--teal);
+    font-weight: 600;
+  }
+  .section-label::before {
+    content: "";
+    width: 6px; height: 6px;
+    background: var(--teal);
+    border-radius: 1px;
+    transform: rotate(45deg);
+  }
+
+  h2 {
+    font-size: 28px;
+    font-weight: 700;
+    letter-spacing: -0.015em;
+    margin-bottom: 18px;
+    line-height: 1.2;
+  }
+  h3.sub {
+    font-size: 17px;
+    font-weight: 700;
+    margin: 30px 0 12px;
+    color: var(--text);
+    letter-spacing: -0.005em;
+  }
+  h3.sub .num {
+    font-family: var(--mono);
+    color: var(--teal);
+    font-size: 12px;
+    margin-right: 10px;
+  }
+
+  section.block { margin-bottom: 72px; scroll-margin-top: 80px; }
+
+  p { color: #c2cad9; margin-bottom: 16px; }
+  p strong { color: var(--text); font-weight: 600; }
+  p code, li code, td code {
+    font-family: var(--mono);
+    font-size: 0.88em;
+    background: rgba(99, 102, 241, 0.08);
+    color: var(--teal);
+    padding: 1px 6px;
+    border-radius: 4px;
+    border: 1px solid rgba(99, 102, 241,0.15);
+  }
+
+  ul.tight { list-style: none; padding: 0; margin: 14px 0 18px; }
+  ul.tight li {
+    color: #c2cad9; padding: 6px 0 6px 22px;
+    position: relative;
+  }
+  ul.tight li::before {
+    content: "›";
+    position: absolute; left: 4px; top: 6px;
+    color: var(--teal);
+    font-family: var(--mono);
+    font-weight: 600;
+  }
+
+  /* ----- exercise marker ----- */
+  .exercise-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    padding: 5px 12px;
+    border-radius: 999px;
+    background: rgba(139, 92, 246,0.1);
+    border: 1px solid rgba(139, 92, 246,0.35);
+    color: var(--purple);
+    margin-bottom: 12px;
+  }
+  .exercise-tag .pulse {
+    width: 6px; height: 6px;
+    background: var(--purple);
+    border-radius: 50%;
+    animation: pulse 2s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.4; transform: scale(1.3); }
+  }
+
+  /* =================================================== */
+  /* ===== WIDGET A: ANATOMY EXPLORER ================== */
+  /* =================================================== */
+  .anatomy-widget {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    overflow: hidden;
+    margin: 20px 0;
+  }
+  .aw-head {
+    padding: 14px 22px;
+    background: var(--panel-2);
+    border-bottom: 1px solid var(--line);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .aw-head .title {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+  }
+  .aw-head .hint {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    color: var(--text-mute);
+    letter-spacing: 0.06em;
+  }
+  .aw-body {
+    display: grid;
+    grid-template-columns: 1fr 280px;
+    min-height: 280px;
+  }
+  .aw-code {
+    padding: 22px 24px;
+    font-family: var(--mono);
+    font-size: 14px;
+    line-height: 2;
+    color: #c2cad9;
+    border-right: 1px solid var(--line);
+  }
+  .aw-code .field {
+    cursor: pointer;
+    padding: 2px 8px;
+    border-radius: 5px;
+    transition: all 0.2s;
+    border: 1px solid transparent;
+  }
+  .aw-code .field:hover {
+    background: rgba(99, 102, 241,0.08);
+  }
+  .aw-code .field.active {
+    background: rgba(99, 102, 241,0.18);
+    border-color: var(--teal);
+    box-shadow: 0 0 0 3px rgba(99, 102, 241,0.1);
+  }
+  .aw-code .punc { color: #e8eaed; }
+  .aw-code .str  { color: var(--teal); }
+  .aw-code .num  { color: var(--amber); }
+
+  .aw-info {
+    padding: 22px 24px;
+    background: var(--panel-2);
+  }
+  .aw-info .placeholder {
+    color: var(--text-mute);
+    font-size: 13px;
+    font-style: italic;
+    line-height: 1.55;
+  }
+  .aw-info .info-key {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--teal);
+    margin-bottom: 4px;
+  }
+  .aw-info .info-name {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 12px;
+    letter-spacing: -0.005em;
+    font-family: var(--mono);
+  }
+  .aw-info .info-desc {
+    color: #c2cad9;
+    font-size: 13.5px;
+    line-height: 1.6;
+    margin-bottom: 12px;
+  }
+  .aw-info .info-meta {
+    display: flex; gap: 6px; flex-wrap: wrap;
+    margin-top: 8px;
+  }
+  .aw-info .info-meta span {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 3px 8px;
+    border-radius: 4px;
+    background: rgba(255,255,255,0.04);
+    color: var(--text-dim);
+    border: 1px solid var(--line);
+  }
+  .aw-info .info-meta .req { color: var(--pink); border-color: rgba(247, 118, 142,0.3); }
+  .aw-info .info-meta .opt { color: var(--text-dim); }
+
+  /* =================================================== */
+  /* ===== WIDGET B: MESSAGE CLASSIFIER QUIZ =========== */
+  /* =================================================== */
+  .quiz-widget {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    overflow: hidden;
+    margin: 20px 0;
+  }
+  .qz-head {
+    padding: 14px 22px;
+    background: var(--panel-2);
+    border-bottom: 1px solid var(--line);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .qz-head .title {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+  }
+  .qz-head .counter {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text-mute);
+  }
+  .qz-head .counter b { color: var(--teal); font-weight: 600; }
+  .qz-body { padding: 24px; }
+  .qz-question {
+    font-size: 14px;
+    color: var(--text-dim);
+    margin-bottom: 12px;
+  }
+  .qz-json {
+    font-family: var(--mono);
+    font-size: 13px;
+    background: #06080f;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 16px 18px;
+    line-height: 1.65;
+    color: #c2cad9;
+    white-space: pre;
+    overflow-x: auto;
+    margin-bottom: 20px;
+  }
+  .qz-json .k { color: var(--blue); }
+  .qz-json .v { color: var(--teal); }
+  .qz-json .n { color: var(--amber); }
+  .qz-options {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+  }
+  .qz-opt {
+    padding: 14px 12px;
+    background: var(--panel-2);
+    border: 1px solid var(--line-strong);
+    border-radius: 8px;
+    color: var(--text-dim);
+    font-family: var(--mono);
+    font-size: 11.5px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: all 0.2s;
+    text-align: center;
+  }
+  .qz-opt:hover {
+    border-color: var(--teal);
+    color: var(--text);
+  }
+  .qz-opt.correct {
+    border-color: var(--teal);
+    background: rgba(99, 102, 241,0.15);
+    color: var(--teal);
+  }
+  .qz-opt.wrong {
+    border-color: var(--red);
+    background: rgba(247, 118, 142,0.12);
+    color: var(--red);
+  }
+  .qz-opt.disabled { cursor: not-allowed; opacity: 0.5; pointer-events: none; }
+  .qz-explain {
+    margin-top: 18px;
+    padding: 14px 16px;
+    border-radius: 8px;
+    background: rgba(99, 102, 241,0.06);
+    border-left: 2px solid var(--teal);
+    font-size: 13.5px;
+    color: #c2cad9;
+    line-height: 1.55;
+    display: none;
+  }
+  .qz-explain.show { display: block; }
+  .qz-explain strong { color: var(--teal); }
+  .qz-controls {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 18px;
+    align-items: center;
+  }
+  .qz-btn {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    padding: 9px 18px;
+    border-radius: 999px;
+    border: 1px solid var(--line-strong);
+    background: transparent;
+    color: var(--text);
+    cursor: pointer;
+    transition: all 0.18s;
+  }
+  .qz-btn:hover { border-color: var(--teal); color: var(--teal); }
+  .qz-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .qz-score {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text-mute);
+    letter-spacing: 0.1em;
+  }
+  .qz-score b { color: var(--teal); }
+
+  /* =================================================== */
+  /* ===== WIDGET C: WIRE TRACE STEPPER ================ */
+  /* =================================================== */
+  .stepper {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    overflow: hidden;
+    margin: 20px 0;
+  }
+  .st-head {
+    padding: 14px 22px;
+    background: var(--panel-2);
+    border-bottom: 1px solid var(--line);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .st-head .title {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+  }
+  .st-controls { display: flex; gap: 8px; align-items: center; }
+  .st-btn {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    background: transparent;
+    border: 1px solid var(--line-strong);
+    color: var(--text-dim);
+    padding: 6px 14px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .st-btn:hover { border-color: var(--teal); color: var(--teal); }
+  .st-btn.play { color: var(--teal); border-color: var(--teal); }
+  .st-counter {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    color: var(--text-dim);
+    margin: 0 8px;
+  }
+
+  .st-body {
+    display: grid;
+    grid-template-columns: 1fr 280px;
+    min-height: 380px;
+  }
+  .st-canvas {
+    padding: 22px 24px;
+    border-right: 1px solid var(--line);
+    position: relative;
+    overflow: hidden;
+    min-height: 380px;
+  }
+  .st-actors {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 18px;
+    padding-bottom: 14px;
+    border-bottom: 1px dashed var(--line);
+  }
+  .st-actor {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--text-mute);
+    font-weight: 600;
+  }
+  .st-actor.client { color: var(--purple); }
+  .st-actor.server { color: var(--teal); }
+
+  .st-frames {
+    position: relative;
+    min-height: 280px;
+  }
+  .st-frame {
+    margin-bottom: 12px;
+    opacity: 0;
+    transform: translateY(8px);
+    transition: opacity 0.3s, transform 0.3s;
+    display: none;
+  }
+  .st-frame.visible { opacity: 1; transform: translateY(0); display: block; }
+  .st-frame.fading  { opacity: 0.35; }
+  .st-frame .arrow {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: 0.1em;
+    color: var(--text-mute);
+    display: flex; align-items: center; gap: 8px;
+    margin-bottom: 4px;
+  }
+  .st-frame .arrow .l { flex: 1; height: 1px; background: linear-gradient(90deg, var(--purple), transparent); }
+  .st-frame .arrow.s2c .l { background: linear-gradient(90deg, transparent, var(--teal)); }
+  .st-frame .arrow.notif .l { background: linear-gradient(90deg, var(--text-mute), transparent); }
+  .st-frame .arrow .dir { color: var(--purple); }
+  .st-frame .arrow.s2c { justify-content: flex-end; }
+  .st-frame .arrow.s2c .dir { color: var(--teal); }
+  .st-frame .arrow.notif .dir { color: var(--text-mute); }
+  .st-frame pre {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    background: #06080f;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 12px 14px;
+    line-height: 1.55;
+    color: #c2cad9;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .st-frame pre .k { color: var(--blue); }
+  .st-frame pre .v { color: var(--teal); }
+  .st-frame pre .n { color: var(--amber); }
+  .st-frame.c2s pre { border-left: 2px solid var(--purple); margin-right: 30px; }
+  .st-frame.s2c pre { border-left: 2px solid var(--teal); margin-left: 30px; }
+  .st-frame.notif pre { border-left: 2px solid var(--text-mute); margin-right: 30px; opacity: 0.85; }
+
+  .st-side {
+    padding: 22px 22px;
+    background: var(--panel-2);
+  }
+  .st-side .lbl {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--text-mute);
+    margin-bottom: 6px;
+  }
+  .st-side .heading {
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 12px;
+    line-height: 1.3;
+  }
+  .st-side .body {
+    color: #c2cad9;
+    font-size: 13px;
+    line-height: 1.6;
+  }
+  .st-side .body code {
+    font-family: var(--mono);
+    font-size: 0.88em;
+    background: rgba(255,255,255,0.04);
+    color: var(--text);
+    padding: 1px 5px;
+    border-radius: 3px;
+    border: none;
+  }
+
+  /* =================================================== */
+  /* ===== WIDGET D: ERROR CODE ACCORDION ============== */
+  /* =================================================== */
+  .err-acc { margin: 20px 0; display: grid; gap: 8px; }
+  .err-row {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+  .err-row.open { border-color: var(--line-strong); }
+  .err-summary {
+    padding: 14px 20px;
+    display: grid;
+    grid-template-columns: 120px 1fr 24px;
+    gap: 18px;
+    align-items: center;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  .err-summary:hover { background: rgba(255,255,255,0.02); }
+  .err-code {
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--red);
+    font-weight: 600;
+  }
+  .err-row.server .err-code { color: var(--amber); }
+  .err-name {
+    font-size: 14.5px;
+    color: var(--text);
+    font-weight: 600;
+  }
+  .err-name .when {
+    display: block;
+    font-size: 12.5px;
+    color: var(--text-dim);
+    font-weight: 400;
+    margin-top: 2px;
+  }
+  .err-toggle {
+    color: var(--text-mute);
+    font-family: var(--mono);
+    transition: transform 0.2s;
+  }
+  .err-row.open .err-toggle { transform: rotate(45deg); color: var(--teal); }
+  .err-detail {
+    padding: 0 20px 18px 20px;
+    display: none;
+    color: #c2cad9;
+    font-size: 13.5px;
+    line-height: 1.6;
+  }
+  .err-row.open .err-detail { display: block; }
+  .err-detail pre {
+    font-family: var(--mono);
+    font-size: 12px;
+    background: #06080f;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 12px 14px;
+    line-height: 1.6;
+    color: #c2cad9;
+    margin-top: 10px;
+    overflow-x: auto;
+    white-space: pre;
+  }
+  .err-detail pre .k { color: var(--blue); }
+  .err-detail pre .v { color: var(--teal); }
+  .err-detail pre .n { color: var(--amber); }
+  .err-detail pre .c { color: var(--text-mute); font-style: italic; }
+  .err-detail .cause {
+    margin-top: 12px;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text-mute);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+  .err-detail .cause b { color: var(--text); font-weight: 500; }
+
+  /* =================================================== */
+  /* ===== WIDGET E: ID CORRELATION ==================== */
+  /* =================================================== */
+  .corr {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    overflow: hidden;
+    margin: 20px 0;
+  }
+  .corr-head {
+    padding: 14px 22px;
+    background: var(--panel-2);
+    border-bottom: 1px solid var(--line);
+    display: flex; justify-content: space-between; align-items: center;
+    flex-wrap: wrap; gap: 10px;
+  }
+  .corr-title {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+  }
+  .corr-toggle {
+    display: flex; gap: 4px;
+    background: var(--panel-3);
+    border-radius: 8px;
+    padding: 3px;
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  .corr-toggle button {
+    background: transparent;
+    border: none;
+    color: var(--text-mute);
+    padding: 6px 14px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.18s;
+    font-family: inherit;
+    font-size: inherit;
+    letter-spacing: inherit;
+    text-transform: inherit;
+  }
+  .corr-toggle button.active {
+    background: var(--teal);
+    color: var(--bg);
+    font-weight: 600;
+  }
+  .corr-toggle button.danger.active {
+    background: var(--red);
+    color: var(--bg);
+  }
+  .corr-svg-wrap {
+    padding: 28px 24px;
+    background:
+      radial-gradient(ellipse at center, rgba(99, 102, 241,0.04), transparent 70%);
+  }
+  .corr-svg { width: 100%; max-width: 700px; margin: 0 auto; display: block; }
+  .corr-caption {
+    padding: 14px 22px;
+    border-top: 1px solid var(--line);
+    color: #c2cad9;
+    font-size: 13.5px;
+    line-height: 1.55;
+    background: var(--panel-2);
+  }
+  .corr-caption .with { color: var(--teal); display: block; }
+  .corr-caption .without { color: var(--red); display: none; }
+  .corr.broken .with { display: none; }
+  .corr.broken .without { display: block; }
+  .corr-replay {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--teal);
+    cursor: pointer;
+    background: transparent;
+    border: 1px solid var(--line-strong);
+    border-radius: 999px;
+    padding: 5px 12px;
+    margin-left: 8px;
+    transition: all 0.18s;
+  }
+  .corr-replay:hover { border-color: var(--teal); }
+
+  /* =================================================== */
+  /* ===== WIDGET F: BATCH TOGGLE ====================== */
+  /* =================================================== */
+  .batch {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    overflow: hidden;
+    margin: 20px 0;
+  }
+  .batch-head {
+    padding: 14px 22px;
+    background: var(--panel-2);
+    border-bottom: 1px solid var(--line);
+    display: flex; justify-content: space-between; align-items: center;
+    flex-wrap: wrap; gap: 12px;
+  }
+  .batch-title {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+  }
+  .batch-toggle {
+    display: flex; gap: 4px;
+    background: var(--panel-3);
+    border-radius: 8px;
+    padding: 3px;
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  .batch-toggle button {
+    background: transparent;
+    border: none;
+    color: var(--text-mute);
+    padding: 6px 14px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.18s;
+    font-family: inherit;
+    font-size: inherit;
+    letter-spacing: inherit;
+    text-transform: inherit;
+  }
+  .batch-toggle button.active {
+    background: var(--teal);
+    color: var(--bg);
+    font-weight: 600;
+  }
+  .batch-body { padding: 24px; }
+  .batch-stats {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+    margin-bottom: 22px;
+  }
+  .batch-stat {
+    background: var(--panel-2);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 14px 16px;
+  }
+  .batch-stat .v {
+    font-family: var(--mono);
+    font-size: 26px;
+    color: var(--teal);
+    font-weight: 600;
+    line-height: 1;
+    margin-bottom: 6px;
+  }
+  .batch-stat .k {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--text-mute);
+  }
+  .batch-pre {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    background: #06080f;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 16px 18px;
+    line-height: 1.65;
+    color: #c2cad9;
+    white-space: pre;
+    overflow-x: auto;
+  }
+  .batch-pre .k { color: var(--blue); }
+  .batch-pre .v { color: var(--teal); }
+  .batch-pre .n { color: var(--amber); }
+  .batch-pre .c { color: var(--text-mute); font-style: italic; }
+  .batch-warn {
+    margin-top: 16px;
+    padding: 12px 16px;
+    border-radius: 8px;
+    background: rgba(245, 158, 11,0.06);
+    border-left: 2px solid var(--amber);
+    font-size: 13px;
+    color: #c2cad9;
+    line-height: 1.55;
+  }
+  .batch-warn strong { color: var(--amber); }
+
+  /* ----- callout ----- */
+  .callout {
+    border-left: 2px solid var(--teal);
+    background: linear-gradient(90deg, rgba(99, 102, 241,0.06) 0%, rgba(99, 102, 241,0) 100%);
+    padding: 18px 22px;
+    margin: 22px 0;
+    border-radius: 0 6px 6px 0;
+  }
+  .callout.purple {
+    border-left-color: var(--purple);
+    background: linear-gradient(90deg, rgba(139, 92, 246,0.06) 0%, rgba(139, 92, 246,0) 100%);
+  }
+  .callout .tag {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--teal);
+    margin-bottom: 6px;
+  }
+  .callout.purple .tag { color: var(--purple); }
+  .callout p { margin-bottom: 0; }
+
+  /* ----- knowledge check ----- */
+  .kc {
+    margin: 56px 0 24px;
+    background:
+      linear-gradient(180deg, rgba(139, 92, 246,0.04), rgba(139, 92, 246,0) 50%),
+      var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 28px;
+    position: relative;
+    overflow: hidden;
+  }
+  .kc::before {
+    content: "";
+    position: absolute; top: 0; left: 0; right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--purple), transparent);
+  }
+  .kc-head {
+    display: flex; align-items: center; gap: 14px;
+    margin-bottom: 18px;
+  }
+  .kc-icon {
+    width: 36px; height: 36px;
+    background: rgba(139, 92, 246,0.12);
+    border: 1px solid rgba(139, 92, 246,0.3);
+    border-radius: 8px;
+    display: grid; place-items: center;
+  }
+  .kc-icon svg { width: 17px; height: 17px; }
+  .kc-label {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--purple);
+    font-weight: 600;
+  }
+  .kc-title {
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    margin: 4px 0 0;
+  }
+  .kc-q {
+    margin-top: 22px;
+    padding-top: 22px;
+    border-top: 1px solid var(--line);
+  }
+  .kc-q:first-of-type { border-top: none; padding-top: 0; margin-top: 0; }
+  .kc-prompt {
+    font-size: 15px;
+    color: var(--text);
+    font-weight: 600;
+    margin-bottom: 14px;
+    line-height: 1.45;
+  }
+  .kc-prompt .qn {
+    display: inline-block;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--purple);
+    margin-right: 8px;
+    letter-spacing: 0.1em;
+  }
+  .kc-opts { display: grid; gap: 8px; }
+  .kc-opt {
+    padding: 12px 16px;
+    background: var(--panel-2);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    color: #c2cad9;
+    font-size: 14px;
+    cursor: pointer;
+    transition: all 0.18s;
+    text-align: left;
+    display: grid;
+    grid-template-columns: 20px 1fr;
+    gap: 12px;
+    align-items: start;
+    font-family: inherit;
+    line-height: 1.5;
+  }
+  .kc-opt .marker {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text-mute);
+    margin-top: 2px;
+  }
+  .kc-opt:hover { border-color: var(--purple); color: var(--text); }
+  .kc-opt.correct {
+    border-color: var(--teal);
+    background: rgba(99, 102, 241,0.08);
+    color: var(--teal);
+  }
+  .kc-opt.correct .marker { color: var(--teal); }
+  .kc-opt.wrong {
+    border-color: var(--red);
+    background: rgba(247, 118, 142,0.08);
+    color: var(--red);
+  }
+  .kc-opt.wrong .marker { color: var(--red); }
+  .kc-feedback {
+    margin-top: 12px;
+    padding: 10px 14px;
+    border-radius: 6px;
+    font-size: 13px;
+    background: rgba(99, 102, 241,0.06);
+    border-left: 2px solid var(--teal);
+    color: #c2cad9;
+    display: none;
+    line-height: 1.55;
+  }
+  .kc-feedback.show { display: block; }
+  .kc-feedback strong { color: var(--teal); }
+
+  /* ----- RESOURCES ----- */
+  .resources {
+    margin-top: 96px;
+    padding-top: 56px;
+    border-top: 1px solid var(--line);
+  }
+  .resources-header { margin-bottom: 36px; }
+  .resources-header .label {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--text-mute);
+    display: flex; align-items: center; gap: 12px;
+    margin-bottom: 18px;
+  }
+  .resources-header .label::before { content: ""; width: 28px; height: 1px; background: var(--text-mute); }
+  .resources-header h2.r-h {
+    font-size: clamp(28px, 4vw, 40px);
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    margin-bottom: 14px;
+    line-height: 1.1;
+  }
+  .resources-header h2.r-h .accent { color: var(--teal); }
+  .resources-header .r-sub { color: var(--text-dim); font-size: 15px; max-width: 620px; }
+
+  .r-card {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 26px 28px;
+    margin-bottom: 16px;
+    position: relative;
+    transition: border-color 0.2s, transform 0.2s;
+  }
+  .r-card:hover { border-color: var(--line-strong); transform: translateY(-1px); }
+  .r-card::before {
+    content: ""; position: absolute;
+    left: -1px; top: 18px; bottom: 18px;
+    width: 3px; border-radius: 3px;
+    background: var(--accent, var(--teal));
+  }
+  .r-card.teal   { --accent: var(--teal); }
+  .r-card.purple { --accent: var(--purple); }
+  .r-card.pink   { --accent: var(--pink); }
+  .r-top { display: flex; align-items: flex-start; gap: 14px; margin-bottom: 16px; }
+  .r-icon {
+    width: 38px; height: 38px;
+    border-radius: 8px;
+    display: grid; place-items: center;
+    flex-shrink: 0;
+    background: rgba(99, 102, 241,0.12);
+    border: 1px solid rgba(99, 102, 241,0.3);
+  }
+  .r-card.purple .r-icon { background: rgba(139, 92, 246,0.12); border-color: rgba(139, 92, 246,0.3); }
+  .r-card.pink   .r-icon { background: rgba(247, 118, 142,0.12); border-color: rgba(247, 118, 142,0.3); }
+  .r-icon svg { width: 18px; height: 18px; }
+  .r-titles .kind { font-size: 14px; font-weight: 700; color: var(--text); margin-bottom: 2px; }
+  .r-titles .tagline { font-family: var(--mono); font-size: 11.5px; color: var(--text-mute); }
+  .r-card h3.r-title { font-size: 18px; font-weight: 700; margin-bottom: 10px; letter-spacing: -0.005em; }
+  .r-card.teal   h3.r-title { color: var(--teal); }
+  .r-card.purple h3.r-title { color: var(--purple); }
+  .r-card.pink   h3.r-title { color: var(--pink); }
+  .r-card p.r-desc { color: #b9c1d2; font-size: 14.5px; line-height: 1.6; margin-bottom: 18px; }
+  .r-card p.r-desc code {
+    font-family: var(--mono); font-size: 0.9em;
+    background: rgba(255,255,255,0.04);
+    color: var(--text); padding: 1px 5px;
+    border-radius: 3px; border: none;
+  }
+  .r-btn {
+    display: inline-flex; align-items: center; gap: 10px;
+    font-family: var(--mono); font-size: 11.5px;
+    letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--text); text-decoration: none;
+    padding: 9px 18px;
+    border: 1px solid var(--line-strong);
+    border-radius: 999px;
+    background: transparent; transition: all 0.18s;
+  }
+  .r-card.teal   .r-btn:hover { border-color: var(--teal);   color: var(--teal);   box-shadow: 0 0 0 4px rgba(99, 102, 241,0.08); }
+  .r-card.purple .r-btn:hover { border-color: var(--purple); color: var(--purple); box-shadow: 0 0 0 4px rgba(139, 92, 246,0.08); }
+  .r-card.pink   .r-btn:hover { border-color: var(--pink);   color: var(--pink);   box-shadow: 0 0 0 4px rgba(247, 118, 142,0.08); }
+
+  /* nav foot */
+  .nav-foot {
+    margin-top: 80px;
+    padding-top: 32px;
+    border-top: 1px solid var(--line);
+    display: flex; justify-content: space-between; align-items: center;
+    font-family: var(--mono); font-size: 11.5px;
+    letter-spacing: 0.1em; text-transform: uppercase;
+    color: var(--text-mute);
+  }
+  .nav-foot a {
+    color: var(--teal); text-decoration: none;
+    display: inline-flex; align-items: center; gap: 8px;
+  }
+  .nav-foot a:hover { color: var(--text); }
+
+  /* responsive */
+  @media (max-width: 980px) {
+    .layout { grid-template-columns: 1fr; gap: 0; padding: 40px 24px 80px; }
+    .sidebar { display: none; }
+    .aw-body, .st-body { grid-template-columns: 1fr; }
+    .aw-info, .st-side { border-top: 1px solid var(--line); }
+    .qz-options { grid-template-columns: repeat(2, 1fr); }
+    .topbar-inner { padding: 12px 20px; }
+    .track-progress { display: none; }
+    .batch-stats { grid-template-columns: 1fr; }
+  }
+  /* ===== M0 indigo / serif theme overlay ===== */
+  :root { --serif: 'Source Serif 4', Georgia, serif; }
+  h1.module-title { font-family: var(--serif); font-weight: 400; letter-spacing: -0.022em; }
+  h1.module-title .accent { font-style: italic; font-weight: 300; }
+  .lede { font-family: var(--serif); font-weight: 300; }
+  h2 { font-family: var(--serif); font-weight: 400; letter-spacing: -0.01em; }
+  p { font-family: var(--serif); font-weight: 300; }
+  ul.tight li { font-family: var(--serif); font-weight: 300; }
+  p em { font-style: italic; }
+</style>
+</head>
+<body>
+
+<!-- ================= TOP COURSE BAR ================= -->
+<div class="topbar">
+  <div class="topbar-inner">
+    <div class="brand">
+      <span class="dot"></span>
+      <span>MCP / Masterclass</span>
+    </div>
+    <div class="track-progress">
+      <div class="tp-item done">Track 0 · Foundations</div>
+      <div class="tp-item current">Track 1 · Protocol</div>
+      <div class="tp-item">Track 2 · Servers</div>
+      <div class="tp-item">Track 3 · Clients</div>
+      <div class="tp-item">Track 4 · Security</div>
+      <div class="tp-item">Track 5 · Production</div>
+      <div class="tp-item">Track 6 · Capstone</div>
+    </div>
+    <div class="progress-bar">
+      <span id="progressLabel">0%</span>
+      <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+    </div>
+  </div>
+</div>
+
+<div class="layout">
+
+  <!-- ================= SIDEBAR ================= -->
+  <aside class="sidebar">
+    <div class="sb-label">Module 1.0 · Contents</div>
+    <ul class="sb-list" id="sbList">
+      <li><a href="#s1" data-target="s1"><span class="num">01</span><span>Why JSON-RPC</span></a></li>
+      <li><a href="#s2" data-target="s2"><span class="num">02</span><span>Anatomy of a message</span></a></li>
+      <li><a href="#s3" data-target="s3"><span class="num">03</span><span>Four message types</span></a></li>
+      <li><a href="#s4" data-target="s4"><span class="num">04</span><span>End-to-end trace</span></a></li>
+      <li><a href="#s5" data-target="s5"><span class="num">05</span><span>Error objects</span></a></li>
+      <li><a href="#s6" data-target="s6"><span class="num">06</span><span>ID correlation</span></a></li>
+      <li><a href="#s7" data-target="s7"><span class="num">07</span><span>Batching (and its death)</span></a></li>
+      <li><a href="#kc" data-target="kc"><span class="num">✓</span><span>Knowledge check</span></a></li>
+      <li><a href="#res" data-target="res"><span class="num">⌘</span><span>Resources</span></a></li>
+    </ul>
+  </aside>
+
+  <!-- ================= CONTENT ================= -->
+  <div class="content">
+
+    <div class="crumb">
+      <span class="bar"></span>
+      <span>Track 01 — The Protocol</span>
+      <span class="sep">/</span>
+      <span class="dim">Module 1.0</span>
+    </div>
+
+    <h1 class="module-title">JSON-RPC 2.0 &amp; the <span class="accent">message layer</span>.</h1>
+    <p class="lede">
+      Every MCP message is a JSON-RPC frame. Once you can read the wire, every later module — tools,
+      resources, sampling, transports — becomes a thin layer of meaning on top of a format you
+      already understand. This module is where the protocol stops being magic.
+    </p>
+
+    <div class="hero-meta">
+      <div class="m">
+        <span class="m-label">Time</span><span class="m-val">42 min</span>
+      </div>
+      <div class="m">
+        <span class="m-label">Format</span><span class="m-val">Interactive</span>
+      </div>
+      <div class="m">
+        <span class="m-label">Widgets</span><span class="m-val">6 hands-on</span>
+      </div>
+      <div class="m">
+        <span class="m-label">Prereq</span><span class="m-val">Modules 0.0–0.2</span>
+      </div>
+    </div>
+
+    <!-- LEARNING OBJECTIVES -->
+    <div class="objectives">
+      <div class="obj-header">
+        <div class="obj-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
+          </svg>
+        </div>
+        <div>
+          <div class="obj-title">What you'll master</div>
+        </div>
+      </div>
+      <ul class="obj-list" id="objList">
+        <li><div class="check" data-i="0">01</div><span>Identify every JSON-RPC message type on sight: <code>request</code>, <code>notification</code>, <code>success</code>, <code>error</code>.</span></li>
+        <li><div class="check" data-i="1">02</div><span>Read a full MCP wire trace and predict what comes next.</span></li>
+        <li><div class="check" data-i="2">03</div><span>Decode every standard error code (-32700 through -32603) and the MCP-reserved range.</span></li>
+        <li><div class="check" data-i="3">04</div><span>Explain why ID correlation matters and what breaks without it.</span></li>
+        <li><div class="check" data-i="4">05</div><span>Know exactly what MCP 2025-06-18 removed from JSON-RPC, and why.</span></li>
+      </ul>
+    </div>
+
+    <!-- ================= SECTION 1 ================= -->
+    <section class="block" id="s1">
+      <div class="section-label"><span class="sn">01</span> &nbsp;Why JSON-RPC at all</div>
+      <h2>Five constraints. One format that hits them.</h2>
+
+      <p>
+        Anthropic could have picked anything: gRPC, REST, GraphQL, a bespoke binary protocol. The
+        choice of JSON-RPC 2.0 wasn't aesthetic — it was a response to five hard constraints, and
+        no other mainstream format clears all five.
+      </p>
+
+      <ul class="tight">
+        <li><strong>Bidirectional from day one.</strong> Servers must be able to initiate calls toward the client (for <em>sampling</em>, <em>elicitation</em>, <em>roots</em>). REST is request/response only. JSON-RPC treats both directions symmetrically.</li>
+        <li><strong>Transport-agnostic.</strong> The spec needs to ride on stdio, HTTP, SSE, WebSocket, and whatever comes next. JSON-RPC is just an envelope — the transport is a separate layer.</li>
+        <li><strong>Multiple concurrent in-flight requests.</strong> Async tool calls demand that <em>any</em> response can arrive at <em>any</em> time. JSON-RPC's <code>id</code> field exists exactly for this.</li>
+        <li><strong>Battle-tested at scale.</strong> The Language Server Protocol — Microsoft's editor↔compiler bridge powering VS Code, Neovim, JetBrains — has used JSON-RPC over stdio since 2016. MCP is downstream of LSP's design.</li>
+        <li><strong>Trivial to debug.</strong> Both sides talk plain JSON. You can <code>tail</code> a log and read it. No <code>.proto</code> files, no Wireshark plugins.</li>
+      </ul>
+
+      <div class="callout">
+        <div class="tag">The LSP lineage</div>
+        <p>If a piece of MCP feels familiar, that's because it probably is. Initialize handshake, capability negotiation, notifications as first-class messages, request/cancel pairs — all lifted from LSP. The MCP team has been explicit about the inheritance.</p>
+      </div>
+    </section>
+
+    <!-- ================= SECTION 2 ================= -->
+    <section class="block" id="s2">
+      <div class="section-label"><span class="sn">02</span> &nbsp;Anatomy of a message</div>
+      <h2>Five fields. That's the whole envelope.</h2>
+
+      <p>
+        Every JSON-RPC frame has at most five top-level fields. Two are always present
+        (<code>jsonrpc</code> and one of method/result/error), the rest depend on the message
+        type. Click each field to see what it does and where it can trip you up.
+      </p>
+
+      <span class="exercise-tag"><span class="pulse"></span>Try it · click a field</span>
+
+      <div class="anatomy-widget">
+        <div class="aw-head">
+          <span class="title">JSON-RPC Request · Anatomy</span>
+          <span class="hint">Hover or tap a field →</span>
+        </div>
+        <div class="aw-body">
+          <div class="aw-code" id="awCode">
+<span class="punc">{</span>
+  <span class="field" data-f="jsonrpc">"jsonrpc": <span class="str">"2.0"</span></span><span class="punc">,</span>
+  <span class="field" data-f="id">"id": <span class="num">42</span></span><span class="punc">,</span>
+  <span class="field" data-f="method">"method": <span class="str">"tools/call"</span></span><span class="punc">,</span>
+  <span class="field" data-f="params">"params": <span class="punc">{</span> <span class="str">"name"</span><span class="punc">:</span> <span class="str">"say_hello"</span> <span class="punc">}</span></span>
+<span class="punc">}</span>
+          </div>
+          <div class="aw-info" id="awInfo">
+            <div class="placeholder">Click any field on the left to see what role it plays in the JSON-RPC envelope, what types are legal, and the most common ways it gets misused.</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= SECTION 3 ================= -->
+    <section class="block" id="s3">
+      <div class="section-label"><span class="sn">03</span> &nbsp;Four message types</div>
+      <h2>One discriminator: is there an <code>id</code>?</h2>
+
+      <p>
+        JSON-RPC defines four message shapes. The single rule that distinguishes them on the wire:
+        <strong>presence and position of <code>id</code></strong>. Memorise this before moving on —
+        every debug session you'll ever have on MCP traffic starts here.
+      </p>
+
+      <ul class="tight">
+        <li><strong>Request</strong> — has <code>id</code>, has <code>method</code>. Expects a response.</li>
+        <li><strong>Success response</strong> — has <code>id</code> (echoing the request's), has <code>result</code>.</li>
+        <li><strong>Error response</strong> — has <code>id</code>, has <code>error</code> (object, never a string).</li>
+        <li><strong>Notification</strong> — has <code>method</code> but <em>no</em> <code>id</code>. No response. Fire and forget.</li>
+      </ul>
+
+      <p>Time to test it. Four messages below — what type is each?</p>
+
+      <span class="exercise-tag"><span class="pulse"></span>Exercise · classify each message</span>
+
+      <div class="quiz-widget" id="quizWidget">
+        <div class="qz-head">
+          <span class="title">Message Classifier</span>
+          <span class="counter">Question <b id="qzCur">1</b> of <span id="qzTotal">4</span></span>
+        </div>
+        <div class="qz-body">
+          <div class="qz-question" id="qzQuestion">What kind of JSON-RPC message is this?</div>
+          <pre class="qz-json" id="qzJson"></pre>
+          <div class="qz-options" id="qzOptions"></div>
+          <div class="qz-explain" id="qzExplain"></div>
+          <div class="qz-controls">
+            <span class="qz-score">Score: <b id="qzScore">0</b> / <span id="qzMax">4</span></span>
+            <button class="qz-btn" id="qzNext" disabled>Next →</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= SECTION 4 ================= -->
+    <section class="block" id="s4">
+      <div class="section-label"><span class="sn">04</span> &nbsp;End-to-end trace</div>
+      <h2>Step through a real MCP session.</h2>
+
+      <p>
+        Here's a complete eight-frame exchange between a host and an MCP server — from handshake
+        to a tool call returning a result. Step through it, watch each message land, and read the
+        side panel for what's happening at the protocol layer.
+      </p>
+
+      <span class="exercise-tag"><span class="pulse"></span>Walkthrough · step or auto-play</span>
+
+      <div class="stepper" id="stepper">
+        <div class="st-head">
+          <span class="title">Wire Trace · Initialize → Tool Call</span>
+          <div class="st-controls">
+            <button class="st-btn" id="stReset">↺ Reset</button>
+            <button class="st-btn" id="stPrev">← Prev</button>
+            <span class="st-counter">Frame <b id="stCur">0</b> / <b id="stMax">8</b></span>
+            <button class="st-btn" id="stNext">Next →</button>
+            <button class="st-btn play" id="stPlay">▶ Play</button>
+          </div>
+        </div>
+        <div class="st-body">
+          <div class="st-canvas">
+            <div class="st-actors">
+              <div class="st-actor client">▣ Client (host)</div>
+              <div class="st-actor server">Server ▣</div>
+            </div>
+            <div class="st-frames" id="stFrames"></div>
+          </div>
+          <div class="st-side">
+            <div class="lbl" id="stLbl">Press play</div>
+            <div class="heading" id="stHeading">Ready when you are</div>
+            <div class="body" id="stBody">Hit ▶ Play to watch the handshake unfold automatically, or step through with → to control the pace. Each frame's annotation explains the protocol-level meaning.</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= SECTION 5 ================= -->
+    <section class="block" id="s5">
+      <div class="section-label"><span class="sn">05</span> &nbsp;Error objects</div>
+      <h2>The codes you'll see — and what they mean.</h2>
+
+      <p>
+        Errors in JSON-RPC are never bare strings. They are objects with a required <code>code</code>
+        (integer) and <code>message</code> (string), plus an optional <code>data</code> for
+        context. The codes fall into two ranges: standard JSON-RPC codes (negative four-digit
+        numbers prefixed with <code>-326xx</code>) and a server-reserved range
+        (<code>-32000</code> to <code>-32099</code>) where MCP defines its own.
+      </p>
+
+      <span class="exercise-tag"><span class="pulse"></span>Reference · click any code</span>
+
+      <div class="err-acc" id="errAcc">
+        <div class="err-row" data-i="0">
+          <div class="err-summary">
+            <span class="err-code">-32700</span>
+            <span class="err-name">Parse error<span class="when">The frame wasn't even valid JSON</span></span>
+            <span class="err-toggle">+</span>
+          </div>
+          <div class="err-detail">
+            <p>The server couldn't parse the incoming bytes as JSON at all. Almost always a transport-level bug: a writer not flushing, a stdio framer corrupting newlines, a proxy stripping bytes. If you're emitting this, something downstream is broken — the request never made it intact.</p>
+<pre><span class="k">"error"</span>: {
+  <span class="k">"code"</span>: <span class="n">-32700</span>,
+  <span class="k">"message"</span>: <span class="v">"Parse error"</span>,
+  <span class="k">"data"</span>: <span class="v">"Unexpected token at position 47"</span>
+}</pre>
+            <div class="cause"><b>Most common cause:</b> writing logs to <code>stdout</code> instead of <code>stderr</code> in a stdio server.</div>
+          </div>
+        </div>
+
+        <div class="err-row" data-i="1">
+          <div class="err-summary">
+            <span class="err-code">-32600</span>
+            <span class="err-name">Invalid Request<span class="when">Parsed fine, but isn't a valid JSON-RPC object</span></span>
+            <span class="err-toggle">+</span>
+          </div>
+          <div class="err-detail">
+            <p>The JSON parsed, but the envelope is malformed: missing <code>jsonrpc: "2.0"</code>, wrong field types, both <code>result</code> and <code>error</code> present, neither present. Schema-level violation of JSON-RPC itself.</p>
+<pre><span class="k">"error"</span>: {
+  <span class="k">"code"</span>: <span class="n">-32600</span>,
+  <span class="k">"message"</span>: <span class="v">"Invalid Request"</span>,
+  <span class="k">"data"</span>: { <span class="k">"reason"</span>: <span class="v">"missing 'method'"</span> }
+}</pre>
+            <div class="cause"><b>Most common cause:</b> handcrafted client code that forgets <code>"jsonrpc": "2.0"</code>.</div>
+          </div>
+        </div>
+
+        <div class="err-row" data-i="2">
+          <div class="err-summary">
+            <span class="err-code">-32601</span>
+            <span class="err-name">Method not found<span class="when">No handler registered for that name</span></span>
+            <span class="err-toggle">+</span>
+          </div>
+          <div class="err-detail">
+            <p>The method name in the request doesn't correspond to anything the server exposes. In MCP, this is what you see when a client tries to call a tool that has since been removed, or when a version mismatch means the client is calling a method the server doesn't implement.</p>
+<pre><span class="k">"error"</span>: {
+  <span class="k">"code"</span>: <span class="n">-32601</span>,
+  <span class="k">"message"</span>: <span class="v">"Method not found"</span>,
+  <span class="k">"data"</span>: { <span class="k">"method"</span>: <span class="v">"tools/list_changed"</span> }
+}</pre>
+            <div class="cause"><b>Most common cause:</b> client speaks a newer spec version than the server.</div>
+          </div>
+        </div>
+
+        <div class="err-row" data-i="3">
+          <div class="err-summary">
+            <span class="err-code">-32602</span>
+            <span class="err-name">Invalid params<span class="when">Method exists, but the arguments are wrong</span></span>
+            <span class="err-toggle">+</span>
+          </div>
+          <div class="err-detail">
+            <p>JSON Schema validation failed on <code>params</code>. The most frequent error you'll see in production MCP because LLMs sometimes hallucinate argument names or types. Good servers put the validation failure detail in <code>data</code>.</p>
+<pre><span class="k">"error"</span>: {
+  <span class="k">"code"</span>: <span class="n">-32602</span>,
+  <span class="k">"message"</span>: <span class="v">"Invalid params"</span>,
+  <span class="k">"data"</span>: {
+    <span class="k">"errors"</span>: [
+      { <span class="k">"path"</span>: <span class="v">"/name"</span>, <span class="k">"msg"</span>: <span class="v">"required"</span> }
+    ]
+  }
+}</pre>
+            <div class="cause"><b>Most common cause:</b> LLM omitting a required argument or passing a string where a number was expected.</div>
+          </div>
+        </div>
+
+        <div class="err-row" data-i="4">
+          <div class="err-summary">
+            <span class="err-code">-32603</span>
+            <span class="err-name">Internal error<span class="when">The handler itself blew up</span></span>
+            <span class="err-toggle">+</span>
+          </div>
+          <div class="err-detail">
+            <p>An unhandled exception inside your tool implementation. The protocol layer was fine; your business logic threw. Most frameworks (FastMCP included) catch tool exceptions and convert them to this code. Surface the exception class and message in <code>data</code> when safe — but never stack traces for remote servers.</p>
+<pre><span class="k">"error"</span>: {
+  <span class="k">"code"</span>: <span class="n">-32603</span>,
+  <span class="k">"message"</span>: <span class="v">"Internal error"</span>,
+  <span class="k">"data"</span>: { <span class="k">"exception"</span>: <span class="v">"ConnectionRefusedError"</span> }
+}</pre>
+            <div class="cause"><b>Most common cause:</b> downstream service the tool calls is down.</div>
+          </div>
+        </div>
+
+        <div class="err-row server" data-i="5">
+          <div class="err-summary">
+            <span class="err-code">-32000 → -32099</span>
+            <span class="err-name">Server-defined range<span class="when">MCP-specific codes live here</span></span>
+            <span class="err-toggle">+</span>
+          </div>
+          <div class="err-detail">
+            <p>JSON-RPC reserves <code>-32000</code> to <code>-32099</code> for the application to define. MCP uses this range for protocol-specific failures — e.g. resource-not-found, invalid cursor, capability not advertised. Check the spec for current assignments; treat anything in this range as MCP-meaningful, not generic.</p>
+<pre><span class="c">// Example MCP-specific error</span>
+<span class="k">"error"</span>: {
+  <span class="k">"code"</span>: <span class="n">-32002</span>,
+  <span class="k">"message"</span>: <span class="v">"Resource not found"</span>,
+  <span class="k">"data"</span>: { <span class="k">"uri"</span>: <span class="v">"file:///etc/missing.conf"</span> }
+}</pre>
+            <div class="cause"><b>Rule:</b> never invent codes outside this range for application errors.</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= SECTION 6 ================= -->
+    <section class="block" id="s6">
+      <div class="section-label"><span class="sn">06</span> &nbsp;ID correlation</div>
+      <h2>How three requests in flight don't collide.</h2>
+
+      <p>
+        The <code>id</code> field is doing more work than it looks. Both sides of an MCP connection
+        can have multiple requests in flight simultaneously — a client might ask the server for
+        tool A, tool B, and resource C in parallel, and responses can arrive in <em>any</em> order.
+        The <code>id</code> is what lets the client match each response to the right pending
+        request. Toggle the switch below and watch what happens when IDs disappear.
+      </p>
+
+      <span class="exercise-tag"><span class="pulse"></span>Visualise · toggle correlation</span>
+
+      <div class="corr" id="corrWidget">
+        <div class="corr-head">
+          <span class="corr-title">Correlation Visualizer · 3 concurrent requests</span>
+          <div class="corr-toggle">
+            <button class="active" id="corrOn">With IDs</button>
+            <button class="danger" id="corrOff">Without IDs</button>
+            <button class="corr-replay" id="corrReplay">↻ Replay</button>
+          </div>
+        </div>
+        <div class="corr-svg-wrap">
+          <svg class="corr-svg" viewBox="0 0 700 280" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <marker id="arrR" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+                <path d="M0,0 L10,5 L0,10 Z" fill="#8b5cf6"/>
+              </marker>
+              <marker id="arrL" viewBox="0 0 10 10" refX="2" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+                <path d="M10,0 L0,5 L10,10 Z" fill="#6366f1"/>
+              </marker>
+            </defs>
+            <!-- Client side -->
+            <rect x="20" y="20" width="120" height="240" rx="10" fill="#0d1117" stroke="#1e2330"/>
+            <text x="80" y="48" text-anchor="middle" font-family="JetBrains Mono" font-size="11" font-weight="600" fill="#8b5cf6" letter-spacing="2">CLIENT</text>
+            <!-- pending requests on client -->
+            <g id="cReq1">
+              <rect x="32" y="80" width="96" height="32" rx="6" fill="#1a223e" stroke="#8b5cf6" stroke-width="1.5"/>
+              <text x="80" y="100" text-anchor="middle" font-family="JetBrains Mono" font-size="11" fill="#8b5cf6">id: 1 · ⏳</text>
+            </g>
+            <g id="cReq2">
+              <rect x="32" y="120" width="96" height="32" rx="6" fill="#1a223e" stroke="#8b5cf6" stroke-width="1.5"/>
+              <text x="80" y="140" text-anchor="middle" font-family="JetBrains Mono" font-size="11" fill="#8b5cf6">id: 2 · ⏳</text>
+            </g>
+            <g id="cReq3">
+              <rect x="32" y="160" width="96" height="32" rx="6" fill="#1a223e" stroke="#8b5cf6" stroke-width="1.5"/>
+              <text x="80" y="180" text-anchor="middle" font-family="JetBrains Mono" font-size="11" fill="#8b5cf6">id: 3 · ⏳</text>
+            </g>
+
+            <!-- Server side -->
+            <rect x="560" y="20" width="120" height="240" rx="10" fill="#0d1117" stroke="#1e2330"/>
+            <text x="620" y="48" text-anchor="middle" font-family="JetBrains Mono" font-size="11" font-weight="600" fill="#6366f1" letter-spacing="2">SERVER</text>
+
+            <!-- arrows out -->
+            <line x1="140" y1="96"  x2="555" y2="96"  stroke="#8b5cf6" stroke-width="1.5" stroke-opacity="0.4" marker-end="url(#arrR)"/>
+            <line x1="140" y1="136" x2="555" y2="136" stroke="#8b5cf6" stroke-width="1.5" stroke-opacity="0.4" marker-end="url(#arrR)"/>
+            <line x1="140" y1="176" x2="555" y2="176" stroke="#8b5cf6" stroke-width="1.5" stroke-opacity="0.4" marker-end="url(#arrR)"/>
+
+            <!-- moving response packets -->
+            <g id="resp1">
+              <rect x="540" y="160" width="84" height="26" rx="6" fill="#1e1b4b" stroke="#6366f1" stroke-width="1.5"/>
+              <text id="resp1Lbl" x="582" y="178" text-anchor="middle" font-family="JetBrains Mono" font-size="11" fill="#6366f1">res id: 3</text>
+            </g>
+            <g id="resp2">
+              <rect x="540" y="120" width="84" height="26" rx="6" fill="#1e1b4b" stroke="#6366f1" stroke-width="1.5"/>
+              <text id="resp2Lbl" x="582" y="138" text-anchor="middle" font-family="JetBrains Mono" font-size="11" fill="#6366f1">res id: 1</text>
+            </g>
+            <g id="resp3">
+              <rect x="540" y="80" width="84" height="26" rx="6" fill="#1e1b4b" stroke="#6366f1" stroke-width="1.5"/>
+              <text id="resp3Lbl" x="582" y="98" text-anchor="middle" font-family="JetBrains Mono" font-size="11" fill="#6366f1">res id: 2</text>
+            </g>
+
+            <!-- labels -->
+            <text x="350" y="240" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#6b7280" letter-spacing="1">Responses arrive out of order — client matches by id</text>
+          </svg>
+        </div>
+        <div class="corr-caption">
+          <span class="with">✓ <strong>With IDs:</strong> each response carries the <code>id</code> of the request it answers. The client looks up its pending-requests table by id, routes the result to the right callback, and the three calls complete independently — even though they came back as 3 → 1 → 2.</span>
+          <span class="without">⚠ <strong>Without IDs:</strong> the client gets three responses back but has no way to know which one belongs to which pending request. It either has to (a) serialise everything to one request at a time, killing concurrency, or (b) guess from response shape, which is fragile and breaks the moment two tools return similar JSON.</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= SECTION 7 ================= -->
+    <section class="block" id="s7">
+      <div class="section-label"><span class="sn">07</span> &nbsp;Batching</div>
+      <h2>JSON-RPC allows it. MCP killed it.</h2>
+
+      <p>
+        JSON-RPC 2.0 lets you send an array of messages in a single frame. The server processes
+        them and returns an array of responses. For a long time, MCP supported this. Then, in the
+        2025-06-18 spec revision, it was explicitly forbidden. Toggle below to see why batching
+        looks appealing — and then read why the spec walked away from it.
+      </p>
+
+      <span class="exercise-tag"><span class="pulse"></span>Compare · toggle batch mode</span>
+
+      <div class="batch" id="batchWidget">
+        <div class="batch-head">
+          <span class="batch-title">Batching · 3 tool calls</span>
+          <div class="batch-toggle">
+            <button id="batchOff" class="active">Sequential</button>
+            <button id="batchOn">Batched (legacy)</button>
+          </div>
+        </div>
+        <div class="batch-body">
+          <div class="batch-stats">
+            <div class="batch-stat"><div class="v" id="bsRound">3</div><div class="k">Round trips</div></div>
+            <div class="batch-stat"><div class="v" id="bsFrames">6</div><div class="k">Frames on wire</div></div>
+            <div class="batch-stat"><div class="v" id="bsOrder">independent</div><div class="k">Result ordering</div></div>
+          </div>
+          <pre class="batch-pre" id="batchPre"></pre>
+          <div class="batch-warn">
+            <strong>MCP 2025-06-18:</strong> <em>"JSON-RPC batching MUST NOT be used."</em>
+            The spec removed batching because it complicated streaming responses (some tools stream
+            progress notifications mid-call), made partial-failure semantics ambiguous, and
+            interacted badly with cancellation. The replacement: send N parallel frames and
+            correlate responses by <code>id</code> — exactly the mechanism we just visualised.
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= KNOWLEDGE CHECK ================= -->
+    <section class="kc" id="kc">
+      <div class="kc-head">
+        <div class="kc-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
+          </svg>
+        </div>
+        <div>
+          <div class="kc-label">Knowledge Check · End of Module 1.0</div>
+          <div class="kc-title">Five quick checks before Module 1.1.</div>
+        </div>
+      </div>
+
+      <div class="kc-q">
+        <div class="kc-prompt"><span class="qn">Q1.</span>A message has <code>"method": "ping"</code> and <code>"jsonrpc": "2.0"</code>, but no <code>"id"</code>. What is it?</div>
+        <div class="kc-opts" data-q="0" data-correct="2">
+          <button class="kc-opt"><span class="marker">A</span><span>A malformed request — every request needs an id</span></button>
+          <button class="kc-opt"><span class="marker">B</span><span>A success response with the id implicitly 0</span></button>
+          <button class="kc-opt"><span class="marker">C</span><span>A notification — fire-and-forget, no response expected</span></button>
+          <button class="kc-opt"><span class="marker">D</span><span>An error frame using a default id</span></button>
+        </div>
+        <div class="kc-feedback"><strong>Correct.</strong> Absence of <code>id</code> is exactly what makes it a notification. The server won't respond to it, and that's the point.</div>
+      </div>
+
+      <div class="kc-q">
+        <div class="kc-prompt"><span class="qn">Q2.</span>You receive an error with <code>code: -32601</code>. What's the most likely cause?</div>
+        <div class="kc-opts" data-q="1" data-correct="1">
+          <button class="kc-opt"><span class="marker">A</span><span>The server's tool implementation threw an exception</span></button>
+          <button class="kc-opt"><span class="marker">B</span><span>The client called a method the server doesn't know — probably a version mismatch</span></button>
+          <button class="kc-opt"><span class="marker">C</span><span>The JSON envelope was malformed</span></button>
+          <button class="kc-opt"><span class="marker">D</span><span>The bytes weren't valid JSON at all</span></button>
+        </div>
+        <div class="kc-feedback"><strong>Right.</strong> -32601 is "Method not found". The handler simply isn't registered, which most often happens when the client is on a newer spec than the server.</div>
+      </div>
+
+      <div class="kc-q">
+        <div class="kc-prompt"><span class="qn">Q3.</span>Why does MCP need the <code>id</code> field even though most exchanges look like simple request-then-response?</div>
+        <div class="kc-opts" data-q="2" data-correct="0">
+          <button class="kc-opt"><span class="marker">A</span><span>So multiple in-flight requests can be matched to their responses regardless of arrival order</span></button>
+          <button class="kc-opt"><span class="marker">B</span><span>For audit logging and analytics</span></button>
+          <button class="kc-opt"><span class="marker">C</span><span>To enforce rate limits per request</span></button>
+          <button class="kc-opt"><span class="marker">D</span><span>It isn't necessary — it's a holdover from XML-RPC</span></button>
+        </div>
+        <div class="kc-feedback"><strong>Exactly.</strong> Concurrency is the whole point. Without ids, the only safe pattern is one-at-a-time, which kills throughput.</div>
+      </div>
+
+      <div class="kc-q">
+        <div class="kc-prompt"><span class="qn">Q4.</span>Did MCP keep JSON-RPC's batching feature in the 2025-06-18 spec?</div>
+        <div class="kc-opts" data-q="3" data-correct="2">
+          <button class="kc-opt"><span class="marker">A</span><span>Yes — it's mandatory for all servers</span></button>
+          <button class="kc-opt"><span class="marker">B</span><span>Yes — optional, behind a capability flag</span></button>
+          <button class="kc-opt"><span class="marker">C</span><span>No — batching is explicitly forbidden ("MUST NOT be used")</span></button>
+          <button class="kc-opt"><span class="marker">D</span><span>Only over the stdio transport</span></button>
+        </div>
+        <div class="kc-feedback"><strong>Correct.</strong> The spec dropped batching because of conflicts with streaming responses and cancellation. Use parallel frames + id correlation instead.</div>
+      </div>
+
+      <div class="kc-q">
+        <div class="kc-prompt"><span class="qn">Q5.</span>An MCP error has <code>code: -32030</code>. Where does that come from?</div>
+        <div class="kc-opts" data-q="4" data-correct="3">
+          <button class="kc-opt"><span class="marker">A</span><span>It's an invalid code — JSON-RPC only allows -32700 through -32603</span></button>
+          <button class="kc-opt"><span class="marker">B</span><span>HTTP transport's reserved range</span></button>
+          <button class="kc-opt"><span class="marker">C</span><span>A vendor-specific code outside the spec</span></button>
+          <button class="kc-opt"><span class="marker">D</span><span>The server-defined range (-32000 to -32099) reserved for application-specific errors</span></button>
+        </div>
+        <div class="kc-feedback"><strong>That's it.</strong> -32000 → -32099 is JSON-RPC's officially-reserved range for applications. MCP uses it for protocol-specific error semantics.</div>
+      </div>
+    </section>
+
+    <!-- ================= RESOURCES ================= -->
+    <section class="resources" id="res">
+      <div class="resources-header">
+        <div class="label">Learn &amp; Practice</div>
+        <h2 class="r-h">Resources for going <span class="accent">deeper</span></h2>
+        <p class="r-sub">
+          The two specs every later module quotes from (JSON-RPC 2.0 and MCP's base protocol page),
+          plus the original LSP whose design DNA MCP inherited.
+        </p>
+      </div>
+
+      <div class="r-card teal">
+        <div class="r-top">
+          <div class="r-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+              <path d="M14 2v6h6"/>
+            </svg>
+          </div>
+          <div class="r-titles">
+            <div class="kind">The wire format</div>
+            <div class="tagline">Tiny, complete, fifteen-minute read</div>
+          </div>
+        </div>
+        <h3 class="r-title">JSON-RPC 2.0 Specification</h3>
+        <p class="r-desc">
+          The original 2010 spec, hosted at <code>jsonrpc.org</code>. Five short sections, no
+          ambiguity. Read it once cover-to-cover; every later debate about MCP wire format
+          ("can <code>id</code> be a string?", "is <code>null</code> a valid id?") gets settled
+          here, not in the MCP spec.
+        </p>
+        <a class="r-btn" href="https://www.jsonrpc.org/specification" target="_blank" rel="noopener">
+          <span class="arr">↗</span> Read spec
+        </a>
+      </div>
+
+      <div class="r-card purple">
+        <div class="r-top">
+          <div class="r-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+            </svg>
+          </div>
+          <div class="r-titles">
+            <div class="kind">MCP base protocol</div>
+            <div class="tagline">How MCP layers on top of JSON-RPC</div>
+          </div>
+        </div>
+        <h3 class="r-title">MCP Specification — Base Protocol</h3>
+        <p class="r-desc">
+          The exact section of the MCP spec that defines lifecycle, message framing, batching's
+          removal, and the MCP-specific error codes. Pin this tab while reading later modules:
+          every primitive (tools, resources, prompts) reuses the rules this page lays down.
+        </p>
+        <a class="r-btn" href="https://modelcontextprotocol.io/specification/basic" target="_blank" rel="noopener">
+          <span class="arr">↗</span> Read spec
+        </a>
+      </div>
+
+      <div class="r-card pink">
+        <div class="r-top">
+          <div class="r-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#f7768e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>
+            </svg>
+          </div>
+          <div class="r-titles">
+            <div class="kind">The design ancestor</div>
+            <div class="tagline">Where MCP's patterns came from</div>
+          </div>
+        </div>
+        <h3 class="r-title">Language Server Protocol (LSP) Specification</h3>
+        <p class="r-desc">
+          Microsoft's editor/compiler bridge, in production since 2016. Initialize handshake,
+          capability negotiation, notification semantics, cancel requests — read the
+          <em>"Base Protocol"</em> chapter and you'll see MCP's blueprint laid out a decade
+          earlier. Recognising the lineage makes both protocols easier to remember.
+        </p>
+        <a class="r-btn" href="https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/" target="_blank" rel="noopener">
+          <span class="arr">↗</span> Read LSP
+        </a>
+      </div>
+    </section>
+
+    <div class="nav-foot">
+      <span>← <a href="#">0.2 Your First MCP Server</a></span>
+      <span>Next → <a href="#">1.1 Lifecycle &amp; Capability Negotiation</a></span>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// ==================== ANATOMY EXPLORER ====================
+const anatomyData = {
+  jsonrpc: {
+    name: 'jsonrpc',
+    title: 'The version tag',
+    desc: 'Always the literal string "2.0". Required on every single frame, in both directions. Servers reject anything else with -32600 Invalid Request. There is no other valid value — JSON-RPC is dead between 1.0 and 2.0, and there is no 3.0.',
+    type: 'string (literal)',
+    required: true
+  },
+  id: {
+    name: 'id',
+    title: 'The correlation token',
+    desc: 'Unique within the session. String or number. If present, the message is a request and demands a response carrying the same id. If absent, the message is a notification — fire and forget. null is technically allowed but actively discouraged; it makes correlation undefined behaviour.',
+    type: 'string | number',
+    required: 'conditional'
+  },
+  method: {
+    name: 'method',
+    title: 'The operation name',
+    desc: 'Names what the receiver should do. In MCP, these are dotted paths like "tools/call", "resources/list", "notifications/initialized". Method names starting with "rpc." are reserved by the JSON-RPC spec itself — don\'t use that prefix.',
+    type: 'string',
+    required: true
+  },
+  params: {
+    name: 'params',
+    title: 'The arguments',
+    desc: 'Optional. Must be a JSON object (positional arrays are legal in raw JSON-RPC but MCP only uses objects). Validated against the method\'s JSON Schema on the receiver — failed validation produces -32602 Invalid params.',
+    type: 'object',
+    required: false
+  }
+};
+const awCode = document.getElementById('awCode');
+const awInfo = document.getElementById('awInfo');
+awCode.querySelectorAll('.field').forEach(el => {
+  el.addEventListener('click', () => {
+    awCode.querySelectorAll('.field').forEach(e => e.classList.remove('active'));
+    el.classList.add('active');
+    const data = anatomyData[el.dataset.f];
+    const reqLabel = data.required === true ? '<span class="req">Required</span>' :
+                     data.required === false ? '<span class="opt">Optional</span>' :
+                     '<span class="opt">Conditional</span>';
+    awInfo.innerHTML = `
+      <div class="info-key">Field</div>
+      <div class="info-name">"${data.name}"</div>
+      <div class="info-desc">${data.desc}</div>
+      <div class="info-meta">
+        <span>${data.type}</span>
+        ${reqLabel}
+      </div>
+    `;
+  });
+});
+
+// ==================== QUIZ WIDGET ====================
+const quizData = [
+  {
+    json: `{
+  "jsonrpc": "2.0",
+  "id": 7,
+  "method": "tools/list"
+}`,
+    correct: 0,
+    explain: 'It has both <code>id</code> and <code>method</code> — that\'s a <strong>Request</strong>. The server will reply with an <code>id: 7</code> response carrying either <code>result</code> or <code>error</code>.'
+  },
+  {
+    json: `{
+  "jsonrpc": "2.0",
+  "method": "notifications/tools/list_changed"
+}`,
+    correct: 1,
+    explain: 'No <code>id</code>, but it has a <code>method</code>. That\'s a <strong>Notification</strong>. The server is informing the client that its tool list changed; no reply is expected.'
+  },
+  {
+    json: `{
+  "jsonrpc": "2.0",
+  "id": 7,
+  "result": { "tools": [ ] }
+}`,
+    correct: 2,
+    explain: 'Has <code>id</code> and <code>result</code>. That\'s a <strong>Success response</strong> to request id 7. (If <code>error</code> were present instead, it\'d be an error response.)'
+  },
+  {
+    json: `{
+  "jsonrpc": "2.0",
+  "id": 12,
+  "error": {
+    "code": -32602,
+    "message": "Invalid params"
+  }
+}`,
+    correct: 3,
+    explain: 'Has <code>id</code> and an <code>error</code> object — that\'s an <strong>Error response</strong> to request id 12. The code -32602 means the arguments failed schema validation.'
+  }
+];
+const qzOptions = ['Request', 'Notification', 'Success response', 'Error response'];
+let qzIdx = 0, qzScore = 0, qzAnswered = false;
+const qzJson = document.getElementById('qzJson');
+const qzOpts = document.getElementById('qzOptions');
+const qzCur = document.getElementById('qzCur');
+const qzTotal = document.getElementById('qzTotal');
+const qzMax = document.getElementById('qzMax');
+const qzScoreEl = document.getElementById('qzScore');
+const qzExpl = document.getElementById('qzExplain');
+const qzNext = document.getElementById('qzNext');
+qzTotal.textContent = quizData.length;
+qzMax.textContent = quizData.length;
+
+function highlightJson(s) {
+  return s
+    .replace(/"([^"]+)":/g, '<span class="k">"$1"</span>:')
+    .replace(/: "([^"]+)"/g, ': <span class="v">"$1"</span>')
+    .replace(/: (-?\d+)/g, ': <span class="n">$1</span>');
+}
+
+function renderQuiz() {
+  const q = quizData[qzIdx];
+  qzCur.textContent = qzIdx + 1;
+  qzJson.innerHTML = highlightJson(q.json);
+  qzOpts.innerHTML = '';
+  qzOptions.forEach((label, i) => {
+    const btn = document.createElement('div');
+    btn.className = 'qz-opt';
+    btn.textContent = label;
+    btn.onclick = () => {
+      if (qzAnswered) return;
+      qzAnswered = true;
+      qzOpts.querySelectorAll('.qz-opt').forEach(o => o.classList.add('disabled'));
+      if (i === q.correct) {
+        btn.classList.add('correct');
+        qzScore++;
+        qzScoreEl.textContent = qzScore;
+      } else {
+        btn.classList.add('wrong');
+        qzOpts.children[q.correct].classList.add('correct');
+      }
+      qzExpl.innerHTML = q.explain;
+      qzExpl.classList.add('show');
+      qzNext.disabled = false;
+    };
+    qzOpts.appendChild(btn);
+  });
+  qzExpl.classList.remove('show');
+  qzNext.disabled = true;
+  qzAnswered = false;
+}
+qzNext.onclick = () => {
+  qzIdx = (qzIdx + 1) % quizData.length;
+  if (qzIdx === 0) qzScore = 0;
+  qzScoreEl.textContent = qzScore;
+  renderQuiz();
+};
+renderQuiz();
+
+// ==================== WIRE STEPPER ====================
+const traceFrames = [
+  {
+    dir: 'c2s', arrow: 'Client → Server',
+    label: 'Step 0', heading: 'Handshake — propose',
+    body: 'Client opens with <code>initialize</code>. It declares its protocol version and which capabilities it supports (here: <code>sampling</code> means "you can ask me to call an LLM").',
+    json: `{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "initialize",
+  "params": {
+    "protocolVersion": "2025-06-18",
+    "capabilities": { "sampling": {} },
+    "clientInfo": { "name": "cursor", "version": "0.5" }
+  }
+}`
+  },
+  {
+    dir: 's2c', arrow: 'Server → Client',
+    label: 'Step 1', heading: 'Handshake — agree',
+    body: 'Server echoes the agreed protocol version and declares its own capabilities. From this moment, both sides know exactly what the other can do.',
+    json: `{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "protocolVersion": "2025-06-18",
+    "capabilities": { "tools": { "listChanged": true } },
+    "serverInfo": { "name": "hello-server", "version": "0.1" }
+  }
+}`
+  },
+  {
+    dir: 'notif', arrow: 'Client → Server (notification)',
+    label: 'Step 2', heading: 'Handshake complete',
+    body: '<code>notifications/initialized</code> is a fire-and-forget signal: "I\'ve processed your capabilities, we\'re live." No <code>id</code>, no reply.',
+    json: `{
+  "jsonrpc": "2.0",
+  "method": "notifications/initialized"
+}`
+  },
+  {
+    dir: 'c2s', arrow: 'Client → Server',
+    label: 'Step 3', heading: 'Discover tools',
+    body: 'Client asks what tools the server exposes. Tools are not pre-shared — they are discovered at runtime, which is what makes MCP servers hot-swappable.',
+    json: `{ "jsonrpc": "2.0", "id": 2, "method": "tools/list" }`
+  },
+  {
+    dir: 's2c', arrow: 'Server → Client',
+    label: 'Step 4', heading: 'Tool catalogue',
+    body: 'Server returns the catalogue — name, description, and JSON Schema for arguments. This is exactly what the host will forward to its LLM as function definitions.',
+    json: `{
+  "jsonrpc": "2.0",
+  "id": 2,
+  "result": {
+    "tools": [{
+      "name": "say_hello",
+      "description": "Greet someone by name.",
+      "inputSchema": {
+        "type": "object",
+        "properties": { "name": { "type": "string" } },
+        "required": ["name"]
+      }
+    }]
+  }
+}`
+  },
+  {
+    dir: 'c2s', arrow: 'Client → Server',
+    label: 'Step 5', heading: 'Invoke',
+    body: 'LLM picked the tool. Host wraps the chosen arguments in a <code>tools/call</code> and sends. Note id <code>3</code> — this is what the response will echo.',
+    json: `{
+  "jsonrpc": "2.0",
+  "id": 3,
+  "method": "tools/call",
+  "params": {
+    "name": "say_hello",
+    "arguments": { "name": "world" }
+  }
+}`
+  },
+  {
+    dir: 's2c', arrow: 'Server → Client',
+    label: 'Step 6', heading: 'Result',
+    body: 'Result returned as a <code>content</code> array. Text is one block type — images, resource references, and structured data are others (covered in Module 2.1).',
+    json: `{
+  "jsonrpc": "2.0",
+  "id": 3,
+  "result": {
+    "content": [{ "type": "text", "text": "Hello, world!" }],
+    "isError": false
+  }
+}`
+  },
+  {
+    dir: 'notif', arrow: 'Server → Client (notification)',
+    label: 'Step 7', heading: 'Optional follow-up',
+    body: 'At any time, server may push notifications — list changes, progress updates, log messages. They flow freely once the handshake completes.',
+    json: `{
+  "jsonrpc": "2.0",
+  "method": "notifications/message",
+  "params": { "level": "info", "data": "Tool call completed in 12ms" }
+}`
+  }
+];
+
+const stFrames = document.getElementById('stFrames');
+const stCur = document.getElementById('stCur');
+const stMax = document.getElementById('stMax');
+const stLbl = document.getElementById('stLbl');
+const stHeading = document.getElementById('stHeading');
+const stBody = document.getElementById('stBody');
+const stNext = document.getElementById('stNext');
+const stPrev = document.getElementById('stPrev');
+const stReset = document.getElementById('stReset');
+const stPlay = document.getElementById('stPlay');
+let stIdx = -1;
+let stTimer = null;
+stMax.textContent = traceFrames.length;
+
+function renderStepper() {
+  stFrames.innerHTML = '';
+  for (let i = 0; i <= stIdx; i++) {
+    const f = traceFrames[i];
+    const div = document.createElement('div');
+    div.className = 'st-frame visible ' + f.dir + (i < stIdx ? ' fading' : '');
+    div.innerHTML = `
+      <div class="arrow ${f.dir}">
+        ${f.dir === 's2c' ? '<span class="dir">' + f.arrow + '</span><span class="l"></span>' :
+          '<span class="dir">' + f.arrow + '</span><span class="l"></span>'}
+      </div>
+      <pre>${highlightJson(f.json)}</pre>
+    `;
+    stFrames.appendChild(div);
+  }
+  // scroll into view
+  const last = stFrames.lastElementChild;
+  if (last) last.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+  stCur.textContent = Math.max(0, stIdx + 1);
+  if (stIdx >= 0) {
+    const cur = traceFrames[stIdx];
+    stLbl.textContent = cur.label;
+    stHeading.textContent = cur.heading;
+    stBody.innerHTML = cur.body;
+  } else {
+    stLbl.textContent = 'Press play';
+    stHeading.textContent = 'Ready when you are';
+    stBody.innerHTML = 'Hit ▶ Play to watch the handshake unfold automatically, or step through with → to control the pace. Each frame\'s annotation explains the protocol-level meaning.';
+  }
+}
+stNext.onclick = () => {
+  if (stIdx < traceFrames.length - 1) { stIdx++; renderStepper(); }
+};
+stPrev.onclick = () => {
+  if (stIdx > -1) { stIdx--; renderStepper(); }
+};
+stReset.onclick = () => {
+  stIdx = -1;
+  if (stTimer) { clearInterval(stTimer); stTimer = null; stPlay.textContent = '▶ Play'; }
+  renderStepper();
+};
+stPlay.onclick = () => {
+  if (stTimer) {
+    clearInterval(stTimer); stTimer = null;
+    stPlay.textContent = '▶ Play';
+  } else {
+    stPlay.textContent = '⏸ Pause';
+    stTimer = setInterval(() => {
+      if (stIdx < traceFrames.length - 1) { stIdx++; renderStepper(); }
+      else { clearInterval(stTimer); stTimer = null; stPlay.textContent = '▶ Play'; }
+    }, 1500);
+  }
+};
+renderStepper();
+
+// ==================== ERROR ACCORDION ====================
+document.querySelectorAll('.err-row').forEach(row => {
+  row.querySelector('.err-summary').onclick = () => row.classList.toggle('open');
+});
+
+// ==================== CORRELATION TOGGLE ====================
+const corrW = document.getElementById('corrWidget');
+const corrOn = document.getElementById('corrOn');
+const corrOff = document.getElementById('corrOff');
+const corrReplay = document.getElementById('corrReplay');
+const r1L = document.getElementById('resp1Lbl');
+const r2L = document.getElementById('resp2Lbl');
+const r3L = document.getElementById('resp3Lbl');
+
+function setCorr(broken) {
+  corrW.classList.toggle('broken', broken);
+  corrOn.classList.toggle('active', !broken);
+  corrOff.classList.toggle('active', broken);
+  if (broken) {
+    r1L.textContent = 'res: ?';
+    r2L.textContent = 'res: ?';
+    r3L.textContent = 'res: ?';
+  } else {
+    r1L.textContent = 'res id: 3';
+    r2L.textContent = 'res id: 1';
+    r3L.textContent = 'res id: 2';
+  }
+}
+corrOn.onclick = () => setCorr(false);
+corrOff.onclick = () => setCorr(true);
+
+function animateResponses() {
+  const resps = ['resp1', 'resp2', 'resp3'];
+  resps.forEach(id => {
+    const el = document.getElementById(id);
+    el.style.transition = 'none';
+    el.style.transform = 'translateX(0)';
+  });
+  setTimeout(() => {
+    resps.forEach((id, i) => {
+      const el = document.getElementById(id);
+      el.style.transition = 'transform 1.6s cubic-bezier(.5,.05,.3,1)';
+      el.style.transitionDelay = (i * 0.35) + 's';
+      el.style.transform = 'translateX(-410px)';
+    });
+  }, 60);
+}
+corrReplay.onclick = animateResponses;
+// start the animation on first load
+setTimeout(animateResponses, 600);
+
+// ==================== BATCH TOGGLE ====================
+const batchOn = document.getElementById('batchOn');
+const batchOff = document.getElementById('batchOff');
+const batchPre = document.getElementById('batchPre');
+const bsRound = document.getElementById('bsRound');
+const bsFrames = document.getElementById('bsFrames');
+const bsOrder = document.getElementById('bsOrder');
+
+const seqContent = `<span class="c">// Frame 1 — client → server</span>
+{ <span class="k">"jsonrpc"</span>: <span class="v">"2.0"</span>, <span class="k">"id"</span>: <span class="n">1</span>, <span class="k">"method"</span>: <span class="v">"tools/call"</span>, <span class="k">"params"</span>: {…} }
+
+<span class="c">// Frame 2 — server → client (response 1)</span>
+{ <span class="k">"jsonrpc"</span>: <span class="v">"2.0"</span>, <span class="k">"id"</span>: <span class="n">1</span>, <span class="k">"result"</span>: {…} }
+
+<span class="c">// Frame 3 — client → server</span>
+{ <span class="k">"jsonrpc"</span>: <span class="v">"2.0"</span>, <span class="k">"id"</span>: <span class="n">2</span>, <span class="k">"method"</span>: <span class="v">"tools/call"</span>, <span class="k">"params"</span>: {…} }
+
+<span class="c">// Frame 4 — server → client (response 2)</span>
+{ <span class="k">"jsonrpc"</span>: <span class="v">"2.0"</span>, <span class="k">"id"</span>: <span class="n">2</span>, <span class="k">"result"</span>: {…} }
+
+<span class="c">// Frame 5 — client → server</span>
+{ <span class="k">"jsonrpc"</span>: <span class="v">"2.0"</span>, <span class="k">"id"</span>: <span class="n">3</span>, <span class="k">"method"</span>: <span class="v">"tools/call"</span>, <span class="k">"params"</span>: {…} }
+
+<span class="c">// Frame 6 — server → client (response 3)</span>
+{ <span class="k">"jsonrpc"</span>: <span class="v">"2.0"</span>, <span class="k">"id"</span>: <span class="n">3</span>, <span class="k">"result"</span>: {…} }`;
+
+const batchContent = `<span class="c">// Frame 1 — client → server (single array)</span>
+[
+  { <span class="k">"jsonrpc"</span>: <span class="v">"2.0"</span>, <span class="k">"id"</span>: <span class="n">1</span>, <span class="k">"method"</span>: <span class="v">"tools/call"</span>, <span class="k">"params"</span>: {…} },
+  { <span class="k">"jsonrpc"</span>: <span class="v">"2.0"</span>, <span class="k">"id"</span>: <span class="n">2</span>, <span class="k">"method"</span>: <span class="v">"tools/call"</span>, <span class="k">"params"</span>: {…} },
+  { <span class="k">"jsonrpc"</span>: <span class="v">"2.0"</span>, <span class="k">"id"</span>: <span class="n">3</span>, <span class="k">"method"</span>: <span class="v">"tools/call"</span>, <span class="k">"params"</span>: {…} }
+]
+
+<span class="c">// Frame 2 — server → client (array of responses)</span>
+[
+  { <span class="k">"jsonrpc"</span>: <span class="v">"2.0"</span>, <span class="k">"id"</span>: <span class="n">1</span>, <span class="k">"result"</span>: {…} },
+  { <span class="k">"jsonrpc"</span>: <span class="v">"2.0"</span>, <span class="k">"id"</span>: <span class="n">2</span>, <span class="k">"result"</span>: {…} },
+  { <span class="k">"jsonrpc"</span>: <span class="v">"2.0"</span>, <span class="k">"id"</span>: <span class="n">3</span>, <span class="k">"result"</span>: {…} }
+]`;
+
+function setBatch(on) {
+  batchOn.classList.toggle('active', on);
+  batchOff.classList.toggle('active', !on);
+  batchPre.innerHTML = on ? batchContent : seqContent;
+  bsRound.textContent = on ? '1' : '3';
+  bsFrames.textContent = on ? '2' : '6';
+  bsOrder.textContent = on ? 'positional' : 'independent';
+}
+batchOn.onclick = () => setBatch(true);
+batchOff.onclick = () => setBatch(false);
+setBatch(false);
+
+// ==================== KNOWLEDGE CHECK ====================
+document.querySelectorAll('.kc-opts').forEach(group => {
+  const correct = parseInt(group.dataset.correct);
+  const feedback = group.parentElement.querySelector('.kc-feedback');
+  Array.from(group.children).forEach((opt, i) => {
+    opt.onclick = () => {
+      Array.from(group.children).forEach(o => { o.classList.remove('correct', 'wrong'); });
+      if (i === correct) {
+        opt.classList.add('correct');
+        feedback.classList.add('show');
+      } else {
+        opt.classList.add('wrong');
+        group.children[correct].classList.add('correct');
+        feedback.classList.add('show');
+      }
+    };
+  });
+});
+
+// ==================== OBJECTIVES CHECKBOXES ====================
+document.querySelectorAll('#objList .check').forEach(c => {
+  c.onclick = () => c.classList.toggle('done');
+});
+
+// ==================== SCROLL SPY + PROGRESS BAR ====================
+const sections = ['s1','s2','s3','s4','s5','s6','s7','kc','res'].map(id => document.getElementById(id));
+const sbLinks = document.querySelectorAll('#sbList a');
+const progFill = document.getElementById('progressFill');
+const progLbl = document.getElementById('progressLabel');
+
+function onScroll() {
+  // progress bar
+  const docH = document.body.scrollHeight - window.innerHeight;
+  const sc = window.scrollY;
+  const pct = Math.min(100, Math.max(0, (sc / docH) * 100));
+  progFill.style.width = pct + '%';
+  progLbl.textContent = Math.round(pct) + '%';
+
+  // scrollspy
+  const triggerY = window.scrollY + 140;
+  let activeId = null;
+  for (const s of sections) {
+    if (!s) continue;
+    if (s.offsetTop <= triggerY) activeId = s.id;
+  }
+  sbLinks.forEach(a => {
+    a.classList.toggle('active', a.dataset.target === activeId);
+  });
+}
+window.addEventListener('scroll', onScroll, { passive: true });
+onScroll();
+</script>
+</body>
+</html>

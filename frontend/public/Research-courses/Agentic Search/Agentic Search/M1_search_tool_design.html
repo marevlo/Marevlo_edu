@@ -1,0 +1,1399 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>M1 · Search Tool Design — Marevlo Research</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Source+Serif+4:ital,opsz,wght@0,8..60,300;0,8..60,400;0,8..60,500;0,8..60,600;1,8..60,400&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#08090b;
+  --bg-2:#0b0f1a;
+  --bg-3:#111827;
+  --panel:#0d1117;
+  --panel-2:#111827;
+  --line:#1e2330;
+  --line-2:#2a3142;
+  --ink:#e8eaed;
+  --ink-2:#a8aeb8;
+  --ink-3:#6b7280;
+  --ink-4:#454b58;
+  --accent:#6366f1;       /* indigo — primary accent */
+  --accent-2:#818cf8;
+  --accent-glow:rgba(99,102,241,0.18);
+  --plan:#f59e0b;        /* planning / cognition */
+  --tool:#10b981;        /* tool execution */
+  --observe:#8b5cf6;     /* observation */
+  --fail:#f7768e;
+  --success:#10b981;
+  --serif:'Source Serif 4', Georgia, serif;
+  --sans:'Outfit', -apple-system, sans-serif;
+  --mono:'JetBrains Mono', monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{
+  background:var(--bg);
+  color:var(--ink);
+  font-family:var(--sans);
+  font-weight:400;
+  line-height:1.6;
+  -webkit-font-smoothing:antialiased;
+  overflow-x:hidden;
+}
+body::before{
+  content:'';position:fixed;inset:0;
+  background:
+    radial-gradient(ellipse 80% 50% at 42% -15%, rgba(99,102,241,0.1), transparent 60%),
+    radial-gradient(ellipse 60% 40% at 100% 100%, rgba(99,102,241,0.04), transparent 60%);
+  pointer-events:none;z-index:0;
+}
+body::after{
+  content:'';position:fixed;inset:0;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='300' height='300' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E");
+  background-size:300px 300px;
+  opacity:0.025;
+  pointer-events:none;z-index:0;
+}
+
+/* ============== LAYOUT ============== */
+.shell{position:relative;z-index:1;display:grid;grid-template-columns:280px 1fr;min-height:100vh}
+.sidebar{
+  position:sticky;top:0;height:100vh;
+  border-right:1px solid transparent;
+  background:linear-gradient(180deg, rgba(13,17,23,0.92) 0%, rgba(8,9,11,0.96) 100%);
+  backdrop-filter:blur(20px) saturate(1.4);
+  -webkit-backdrop-filter:blur(20px) saturate(1.4);
+  padding:36px 22px 28px;
+  overflow-y:auto;
+  box-shadow:inset -1px 0 0 rgba(255,255,255,0.04), 1px 0 32px rgba(0,0,0,0.5);
+  display:flex;flex-direction:column;
+}
+/* Left accent spine as pseudo */
+.sidebar::before{
+  content:'';
+  position:absolute;left:0;top:0;bottom:0;width:2px;
+  background:linear-gradient(180deg,
+    transparent 0%,
+    rgba(99,102,241,0.5) 20%,
+    rgba(99,102,241,0.3) 60%,
+    transparent 100%);
+  pointer-events:none;z-index:2;
+}
+.sidebar::-webkit-scrollbar{width:3px}
+.sidebar::-webkit-scrollbar-track{background:transparent}
+.sidebar::-webkit-scrollbar-thumb{background:linear-gradient(180deg, var(--accent), transparent);border-radius:3px;opacity:0.5}
+.brand{
+  display:flex;align-items:center;gap:10px;margin-bottom:8px;
+  position:relative;
+}
+/* #3 — top glow arc behind brand */
+.brand::before{
+  content:'';
+  position:absolute;top:-28px;left:-22px;right:-22px;height:90px;
+  background:radial-gradient(ellipse 70% 60% at 40% 0%, rgba(99,102,241,0.18), transparent 70%);
+  pointer-events:none;z-index:0;
+  border-radius:50%;
+}
+.brand > *{position:relative;z-index:1}
+.brand-mark{
+  width:36px;height:36px;border-radius:8px;
+  background:transparent;
+  display:grid;place-items:center;
+  overflow:hidden;
+  flex-shrink:0;
+}
+.brand-mark img{
+  width:36px;height:36px;
+  object-fit:contain;
+  mix-blend-mode:screen;
+  display:block;
+}
+.brand-mark::after{
+  display:none;
+}
+.brand-name{font-size:13px;font-weight:600;letter-spacing:0.02em}
+.brand-sub{font-size:11px;color:var(--ink-3);margin-top:2px;letter-spacing:0.04em}
+/* #6 — brand divider hairline */
+.brand-divider{
+  height:1px;
+  margin:18px 0 4px;
+  background:linear-gradient(90deg, transparent 0%, rgba(99,102,241,0.25) 40%, rgba(99,102,241,0.25) 60%, transparent 100%);
+}
+.module-tag{
+  margin-top:24px;padding:13px 15px;
+  background:linear-gradient(135deg, rgba(99,102,241,0.06) 0%, rgba(13,17,23,0.9) 100%);
+  border:1px solid rgba(99,102,241,0.18);
+  border-radius:9px;
+  box-shadow:0 1px 12px rgba(0,0,0,0.25);
+}
+.module-tag-label{font-size:10px;color:var(--ink-3);letter-spacing:0.04em;margin-bottom:4px}
+.module-tag-title{font-family:var(--serif);font-size:13px;color:var(--ink);font-weight:400}
+.toc{margin-top:24px}
+.toc-label{font-size:10px;color:var(--ink-3);letter-spacing:0.05em;margin-bottom:12px;padding-left:10px}
+.toc a{
+  display:flex;align-items:center;gap:10px;
+  padding:9px 11px;color:var(--ink-2);text-decoration:none;font-size:13px;
+  border-radius:6px;border-left:2px solid transparent;
+  transition:background 0.18s ease, color 0.18s ease, border-color 0.18s ease;
+  position:relative;
+}
+.toc a:hover{
+  background:rgba(255,255,255,0.03);
+  color:var(--ink);
+}
+.toc a.active{
+  background:linear-gradient(90deg, rgba(99,102,241,0.12) 0%, transparent 100%);
+  color:var(--accent);
+  border-left-color:var(--accent);
+  box-shadow:inset 0 0 0 1px rgba(99,102,241,0.08);
+}
+/* #7 — past TOC items fade */
+.toc a.past{
+  opacity:0.38;
+  color:var(--ink-4);
+}
+.toc a.past .toc-num{color:var(--ink-4)}
+.toc-num{font-family:var(--mono);font-size:11px;color:var(--ink-4);width:24px;transition:color 0.18s}
+.toc a.active .toc-num{color:var(--accent-2)}
+.progress-rail{
+  margin-top:28px;padding:15px 16px;
+  background:linear-gradient(135deg, rgba(99,102,241,0.05) 0%, rgba(13,17,23,0.8) 100%);
+  border:1px solid rgba(99,102,241,0.14);
+  border-radius:9px;
+  box-shadow:0 1px 10px rgba(0,0,0,0.2);
+}
+.progress-bar{
+  height:3px;background:rgba(255,255,255,0.05);border-radius:2px;overflow:hidden;margin-top:10px;
+  box-shadow:inset 0 1px 2px rgba(0,0,0,0.4);
+}
+.progress-fill{
+  height:100%;width:0%;
+  background:linear-gradient(90deg, var(--accent), var(--accent-2));
+  transition:width 0.5s cubic-bezier(0.4,0,0.2,1);
+  box-shadow:0 0 8px rgba(99,102,241,0.5);
+}
+.progress-text{font-size:11px;color:var(--ink-3);font-family:var(--serif)}
+
+.main{padding:80px 80px 200px;max-width:980px;margin-left:auto;margin-right:auto}
+@media (max-width: 1100px){
+  .shell{grid-template-columns:1fr}
+  .sidebar{position:relative;height:auto;border-right:none;border-bottom:1px solid var(--line)}
+  .main{padding:48px 32px 120px}
+}
+
+/* ============== HERO ============== */
+.hero{margin-bottom:80px;position:relative}
+.hero-meta{
+  display:inline-flex;align-items:center;gap:0;
+  margin-bottom:36px;
+  font-family:var(--mono);font-size:11px;color:var(--ink-3);letter-spacing:0.05em;
+  background:linear-gradient(135deg, rgba(99,102,241,0.07) 0%, rgba(13,17,23,0.6) 100%);
+  border:1px solid rgba(99,102,241,0.2);
+  border-radius:100px;
+  padding:7px 16px;
+  backdrop-filter:blur(8px);
+  box-shadow:0 0 0 1px rgba(255,255,255,0.03), 0 4px 24px rgba(0,0,0,0.3), 0 0 32px rgba(99,102,241,0.06);
+}
+.hero-meta span{white-space:nowrap;padding:0 2px}
+.hero-meta .dot{
+  width:5px;height:5px;border-radius:50%;
+  background:var(--accent);
+  box-shadow:0 0 6px rgba(99,102,241,0.8), 0 0 12px rgba(99,102,241,0.4);
+  flex-shrink:0;margin:0 10px;
+}
+.hero-meta .sep{
+  width:1px;height:10px;
+  background:rgba(255,255,255,0.08);
+  flex-shrink:0;margin:0 12px;
+}
+.hero-meta .track-label{color:var(--accent-2);font-weight:500}
+.hero-meta .level-badge{
+  padding:2px 9px;
+  background:rgba(99,102,241,0.12);
+  border:1px solid rgba(99,102,241,0.25);
+  border-radius:100px;
+  color:var(--accent-2);
+  font-weight:600;
+  font-size:10px;
+  letter-spacing:0.08em;
+  margin-left:4px;
+}
+.hero h1{
+  font-family:var(--serif);font-weight:400;font-size:clamp(40px, 5.5vw, 68px);
+  line-height:1.05;letter-spacing:-0.022em;margin-bottom:24px;
+}
+.hero h1 em{font-style:italic;color:var(--accent);font-weight:300}
+.hero-lede{
+  font-family:var(--serif);font-size:21px;line-height:1.55;color:var(--ink-2);
+  max-width:680px;font-weight:300;
+}
+.hero-stats{
+  display:grid;grid-template-columns:repeat(4,1fr);gap:2px;
+  margin-top:48px;background:var(--line);border:1px solid var(--line);border-radius:9px;overflow:hidden;
+}
+.hero-stat{background:var(--panel);padding:20px 22px}
+.hero-stat-num{font-family:var(--serif);font-size:28px;font-weight:500;color:var(--accent);line-height:1}
+.hero-stat-label{font-size:11px;color:var(--ink-3);margin-top:6px;letter-spacing:0.03em}
+@media (max-width:700px){.hero-stats{grid-template-columns:repeat(2,1fr)}}
+
+/* ============== SECTIONS ============== */
+section{margin-bottom:88px;scroll-margin-top:32px}
+section:nth-child(3n){margin-bottom:104px}
+section:nth-child(2n){margin-bottom:96px}
+.section-head{margin-bottom:28px;padding-bottom:18px;border-bottom:1px solid var(--line)}
+.section-num{font-family:var(--mono);font-size:11px;color:var(--accent);letter-spacing:0.15em}
+.section-title{
+  font-family:var(--serif);font-size:36px;font-weight:400;line-height:1.15;
+  letter-spacing:-0.01em;margin-top:8px;
+}
+.section-sub{font-size:15px;color:var(--ink-3);margin-top:12px;max-width:680px}
+
+p{font-family:var(--serif);font-size:17px;line-height:1.73;color:var(--ink-2);margin-bottom:20px;font-weight:300}
+p strong{color:var(--ink);font-weight:500}
+p em{color:var(--accent);font-style:italic}
+.callout{
+  margin:32px 0;padding:22px 28px;
+  background:linear-gradient(135deg, rgba(99,102,241,0.06), rgba(99,102,241,0.02));
+  border-left:2px solid var(--accent);border-radius:0 7px 7px 0;
+}
+.callout-label{font-family:var(--mono);font-size:10px;color:var(--accent);letter-spacing:0.15em;text-transform:uppercase;margin-bottom:8px}
+.callout p{margin:0;font-size:16px;color:var(--ink)}
+
+h3{font-family:var(--sans);font-size:20px;font-weight:600;margin:48px 0 16px;letter-spacing:-0.005em;color:var(--ink)}
+h4{font-family:var(--sans);font-size:15px;font-weight:600;margin:24px 0 12px;color:var(--ink);text-transform:uppercase;letter-spacing:0.06em}
+
+ul,ol{margin:16px 0 20px 0;padding-left:24px}
+li{font-family:var(--serif);font-size:17px;line-height:1.68;color:var(--ink-2);margin-bottom:10px;font-weight:300}
+li strong{color:var(--ink);font-weight:500}
+
+/* ============== INTERACTIVE WIDGETS ============== */
+.widget{
+  margin:40px 0;background:var(--panel);
+  border:1px solid var(--line);border-radius:11px;overflow:hidden;
+  position:relative;
+}
+.widget-header{
+  padding:16px 22px;border-bottom:1px solid var(--line);
+  display:flex;align-items:center;justify-content:space-between;
+  background:linear-gradient(180deg, var(--panel-2), var(--panel));
+}
+.widget-title{font-size:13px;font-weight:600;letter-spacing:0.02em;display:flex;align-items:center;gap:10px}
+.widget-title::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--accent);box-shadow:0 0 8px var(--accent-glow)}
+.widget-tag{font-family:var(--mono);font-size:10px;color:var(--ink-3);padding:3px 8px;background:var(--bg-2);border-radius:4px;letter-spacing:0.06em;text-transform:uppercase}
+.widget-body{padding:28px}
+
+/* === Comparison: Static vs Agentic === */
+.compare-grid{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--line);border-radius:8px;overflow:hidden}
+@media(max-width:720px){.compare-grid{grid-template-columns:1fr}}
+.compare-col{background:var(--bg-2);padding:24px}
+.compare-col h4{margin-top:0}
+.compare-tag{display:inline-block;font-family:var(--mono);font-size:10px;padding:3px 8px;border-radius:4px;margin-bottom:12px;letter-spacing:0.06em;text-transform:uppercase}
+.compare-static{color:var(--ink-3);background:var(--bg-3)}
+.compare-agentic{color:var(--accent);background:rgba(99,102,241,0.1)}
+.flow-static, .flow-agentic{margin-top:20px;font-family:var(--mono);font-size:12px;color:var(--ink-2)}
+.flow-step{padding:10px 14px;margin:6px 0;border:1px solid var(--line-2);border-radius:6px;background:var(--bg-3);position:relative}
+.flow-arrow{text-align:center;color:var(--ink-4);font-size:14px;margin:2px 0}
+.flow-loop{
+  margin:8px 0;padding:14px;border:1px dashed var(--accent);border-radius:8px;
+  background:rgba(99,102,241,0.04);
+}
+
+/* === Architecture Diagram === */
+.arch-diagram{background:var(--bg-2);border-radius:10px;padding:32px;position:relative;min-height:480px}
+.arch-controls{display:flex;gap:8px;margin-top:20px;flex-wrap:wrap}
+.btn{
+  font-family:var(--mono);font-size:12px;padding:8px 14px;
+  background:var(--bg-3);color:var(--ink-2);border:1px solid var(--line-2);
+  border-radius:6px;cursor:pointer;transition:all 0.15s;letter-spacing:0.02em;
+}
+.btn:hover{background:var(--panel-2);color:var(--ink);border-color:var(--accent)}
+.btn.primary{background:var(--accent);color:#ffffff;border-color:var(--accent);font-weight:600}
+.btn.primary:hover{background:var(--accent-2);color:#ffffff}
+.btn:disabled{opacity:0.4;cursor:not-allowed}
+
+/* === Code Block === */
+.code{
+  font-family:var(--mono);font-size:13px;line-height:1.65;
+  background:#06070a;border:1px solid var(--line);border-radius:8px;
+  padding:20px 24px;overflow-x:auto;color:#c8d3e0;margin:20px 0;
+}
+.code .kw{color:#8b5cf6}
+.code .str{color:#10b981}
+.code .num{color:#f59e0b}
+.code .com{color:#6b7280;font-style:italic}
+.code .fn{color:#818cf8}
+.code .var{color:#f59e0b}
+.code .op{color:#67e8f9}
+
+/* === Tabs === */
+.tabs{display:flex;gap:0;border-bottom:1px solid var(--line);margin-bottom:0}
+.tab{
+  padding:12px 18px;font-size:13px;color:var(--ink-3);cursor:pointer;
+  border-bottom:2px solid transparent;font-weight:500;
+  transition:all 0.15s;
+}
+.tab:hover{color:var(--ink-2)}
+.tab.active{color:var(--accent);border-bottom-color:var(--accent)}
+.tab-panel{display:none;padding-top:24px}
+.tab-panel.active{display:block}
+
+/* === Decision Tree === */
+.tree{display:grid;gap:12px;margin:24px 0}
+.tree-node{
+  padding:16px 20px;background:var(--bg-2);border:1px solid var(--line);
+  border-radius:8px;cursor:pointer;transition:all 0.2s;
+}
+.tree-node:hover{border-color:var(--accent);transform:translateX(4px)}
+.tree-node.selected{border-color:var(--accent);background:rgba(99,102,241,0.05)}
+.tree-q{font-size:14px;font-weight:600;color:var(--ink);margin-bottom:6px}
+.tree-options{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+.tree-opt{
+  padding:6px 12px;background:var(--bg-3);border:1px solid var(--line-2);
+  border-radius:5px;font-size:12px;color:var(--ink-2);cursor:pointer;
+  font-family:var(--mono);
+}
+.tree-opt:hover{background:var(--panel-2);color:var(--ink)}
+.tree-opt.selected{background:var(--accent);color:#ffffff;border-color:var(--accent);font-weight:600}
+.tree-result{
+  margin-top:24px;padding:20px;border-radius:10px;
+  background:linear-gradient(135deg, rgba(99,102,241,0.08), transparent);
+  border:1px solid var(--accent);min-height:80px;
+}
+.tree-result-empty{color:var(--ink-3);font-style:italic;font-family:var(--serif)}
+
+/* === ReAct Trace === */
+.trace{display:flex;flex-direction:column;gap:12px;margin:20px 0}
+.trace-step{
+  padding:14px 18px;border-radius:8px;border:1px solid var(--line);
+  display:grid;grid-template-columns:90px 1fr;gap:16px;align-items:start;
+  background:var(--bg-2);opacity:0;transform:translateY(8px);
+  transition:all 0.4s ease;
+}
+.trace-step.show{opacity:1;transform:translateY(0)}
+.trace-label{
+  font-family:var(--mono);font-size:10px;letter-spacing:0.1em;
+  text-transform:uppercase;padding:4px 8px;border-radius:4px;text-align:center;
+  font-weight:600;
+}
+.trace-label.thought{background:rgba(245,158,11,0.12);color:var(--plan)}
+.trace-label.action{background:rgba(16,185,129,0.12);color:var(--tool)}
+.trace-label.observation{background:rgba(139,92,246,0.12);color:var(--observe)}
+.trace-label.final{background:rgba(16,185,129,0.15);color:var(--success)}
+.trace-content{font-family:var(--serif);font-size:14px;color:var(--ink-2);line-height:1.55}
+.trace-content code{font-family:var(--mono);font-size:12px;background:var(--bg-3);padding:2px 6px;border-radius:3px;color:var(--accent)}
+
+/* === Cost Calculator === */
+.calc-grid{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin:20px 0}
+@media(max-width:720px){.calc-grid{grid-template-columns:1fr}}
+.calc-input{display:flex;flex-direction:column;gap:6px;margin-bottom:18px}
+.calc-input label{font-size:12px;color:var(--ink-3);letter-spacing:0.04em;text-transform:uppercase;font-weight:500}
+.calc-input input[type=range]{
+  -webkit-appearance:none;appearance:none;width:100%;height:4px;
+  background:var(--line-2);border-radius:2px;outline:none;
+}
+.calc-input input[type=range]::-webkit-slider-thumb{
+  -webkit-appearance:none;appearance:none;width:16px;height:16px;border-radius:50%;
+  background:var(--accent);cursor:pointer;border:2px solid var(--bg);
+}
+.calc-input input[type=range]::-moz-range-thumb{
+  width:16px;height:16px;border-radius:50%;background:var(--accent);cursor:pointer;border:2px solid var(--bg);
+}
+.calc-value{font-family:var(--mono);font-size:13px;color:var(--accent);font-weight:600}
+.calc-output{
+  background:var(--bg-2);padding:24px;border-radius:10px;border:1px solid var(--line);
+}
+.calc-output-label{font-size:11px;color:var(--ink-3);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:6px}
+.calc-output-value{font-family:var(--serif);font-size:36px;color:var(--accent);font-weight:500;line-height:1}
+.calc-row{display:flex;justify-content:space-between;align-items:baseline;padding:10px 0;border-bottom:1px solid var(--line);font-size:13px}
+.calc-row:last-child{border-bottom:none}
+.calc-row .lbl{color:var(--ink-3)}
+.calc-row .val{font-family:var(--mono);color:var(--ink)}
+
+/* === Quiz === */
+.quiz{padding:24px;background:var(--bg-2);border-radius:10px;border:1px solid var(--line);margin:20px 0}
+.quiz-q{font-family:var(--serif);font-size:18px;color:var(--ink);margin-bottom:18px;font-weight:400}
+.quiz-options{display:flex;flex-direction:column;gap:10px}
+.quiz-opt{
+  padding:14px 18px;background:var(--bg-3);border:1px solid var(--line-2);
+  border-radius:8px;cursor:pointer;transition:all 0.15s;font-size:14px;color:var(--ink-2);
+  display:flex;justify-content:space-between;align-items:center;
+}
+.quiz-opt:hover{border-color:var(--accent);color:var(--ink)}
+.quiz-opt.correct{border-color:var(--success);background:rgba(16,185,129,0.08);color:var(--ink)}
+.quiz-opt.wrong{border-color:var(--fail);background:rgba(247,118,142,0.06);color:var(--ink)}
+.quiz-opt .feedback{font-size:11px;font-family:var(--mono);text-transform:uppercase;letter-spacing:0.06em;opacity:0;transition:opacity 0.2s}
+.quiz-opt.correct .feedback,.quiz-opt.wrong .feedback{opacity:1}
+.quiz-opt.correct .feedback{color:var(--success)}
+.quiz-opt.wrong .feedback{color:var(--fail)}
+.quiz-explain{
+  margin-top:16px;padding:14px 18px;background:var(--bg-3);border-radius:6px;
+  font-family:var(--serif);font-size:14px;color:var(--ink-2);line-height:1.6;
+  display:none;border-left:2px solid var(--accent);
+}
+.quiz-explain.show{display:block}
+
+/* === Failure cards === */
+.fail-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px;margin:24px 0}
+.fail-card{
+  padding:20px;background:var(--bg-2);border:1px solid var(--line);border-radius:10px;
+  border-top:2px solid var(--fail);
+}
+.fail-card-name{font-size:13px;font-weight:600;color:var(--fail);margin-bottom:8px;font-family:var(--mono);letter-spacing:0.02em}
+.fail-card-desc{font-family:var(--serif);font-size:14px;color:var(--ink-2);line-height:1.55}
+
+/* === Footer / next === */
+.module-nav{
+  margin-top:120px;padding:32px;
+  background:linear-gradient(135deg, var(--panel), var(--panel-2));
+  border:1px solid var(--line);border-radius:14px;
+  display:flex;justify-content:space-between;align-items:center;gap:24px;
+}
+.module-nav-label{font-family:var(--mono);font-size:10px;color:var(--ink-3);letter-spacing:0.15em;text-transform:uppercase}
+.module-nav-title{font-family:var(--serif);font-size:24px;font-weight:400;margin-top:6px}
+.module-nav-cta{
+  padding:12px 22px;background:var(--accent);color:#ffffff;
+  border-radius:8px;text-decoration:none;font-weight:600;font-size:13px;
+  white-space:nowrap;transition:all 0.15s;
+}
+.module-nav-cta:hover{background:var(--accent-2);transform:translateX(2px)}
+
+/* === SVG diagram styles === */
+.svg-node-bg{fill:var(--bg-3);stroke:var(--line-2);stroke-width:1.5}
+.svg-node-text{fill:var(--ink);font-family:var(--sans);font-size:13px;font-weight:500}
+.svg-node-sub{fill:var(--ink-3);font-family:var(--mono);font-size:10px}
+.svg-edge{stroke:var(--line-2);stroke-width:1.5;fill:none}
+.svg-edge-active{stroke:var(--accent);stroke-width:2;fill:none}
+.svg-label{fill:var(--ink-2);font-family:var(--mono);font-size:11px}
+
+/* === Scenario sim === */
+.scenario{display:grid;grid-template-columns:1fr;gap:16px;margin:20px 0}
+.scenario-input{
+  padding:14px 18px;background:var(--bg-2);border:1px solid var(--line);
+  border-radius:8px;font-family:var(--serif);font-size:15px;color:var(--ink);
+  width:100%;
+}
+.scenario-input:focus{outline:none;border-color:var(--accent)}
+.scenario-output{min-height:200px;padding:20px;background:var(--bg-2);border:1px solid var(--line);border-radius:8px}
+.scenario-empty{color:var(--ink-3);font-family:var(--serif);font-style:italic;text-align:center;padding:40px 0}
+
+/* === Sticky badge — moved to sidebar footer === */
+.sidebar-footer{
+  margin-top:auto;
+  padding-top:24px;
+  border-top:1px solid rgba(255,255,255,0.04);
+}
+.depth-badge{
+  display:flex;align-items:center;gap:9px;
+  padding:11px 13px;
+  background:linear-gradient(135deg, rgba(99,102,241,0.06) 0%, rgba(13,17,23,0.8) 100%);
+  border:1px solid rgba(99,102,241,0.14);
+  border-radius:9px;
+  font-size:11px;font-family:var(--mono);
+  color:var(--ink-3);letter-spacing:0.03em;
+  box-shadow:0 1px 10px rgba(0,0,0,0.2);
+}
+.depth-badge .pulse{
+  width:5px;height:5px;flex-shrink:0;border-radius:50%;background:var(--accent);
+  box-shadow:0 0 6px rgba(99,102,241,0.7);
+  animation:pulse 2s infinite;
+}
+.depth-badge .badge-text{color:var(--ink-3);line-height:1.4}
+.depth-badge .badge-text strong{display:block;color:var(--ink-2);font-weight:500;font-size:11px;margin-bottom:1px}
+@keyframes pulse{0%,100%{opacity:0.5;transform:scale(1)}50%{opacity:1;transform:scale(1.3)}}
+
+/* Selection */
+::selection{background:var(--accent);color:#1a1a1a}
+
+/* Animation utilities */
+@keyframes fadeIn{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
+.fade-in{animation:fadeIn 0.6s ease forwards}
+
+/* Responsive type */
+@media(max-width:680px){
+  .hero h1{font-size:36px}
+  .hero-lede{font-size:17px}
+  .section-title{font-size:26px}
+  p,li{font-size:16px}
+  .main{padding:40px 20px 80px}
+}
+
+
+.tool-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px;margin:24px 0}
+.tool-card{padding:22px;background:var(--bg-2);border:1px solid var(--line);border-radius:10px;border-top:2px solid var(--accent);transition:all 0.2s}
+.tool-card:hover{transform:translateY(-2px);border-color:var(--line-2)}
+.tool-card-icon{font-family:var(--mono);font-size:20px;color:var(--accent);margin-bottom:10px;font-weight:700}
+.tool-card-name{font-size:14px;font-weight:600;margin-bottom:6px;color:var(--ink)}
+.tool-card-desc{font-family:var(--serif);font-size:14px;color:var(--ink-2);line-height:1.55;margin-bottom:14px}
+.tool-card-row{display:flex;justify-content:space-between;font-family:var(--mono);font-size:11px;padding:4px 0;border-top:1px solid var(--line)}
+.tool-card-row .lbl{color:var(--ink-3)}
+.tool-card-row .val{color:var(--ink-2)}
+.schema-builder{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--line);border-radius:10px;overflow:hidden}
+@media(max-width:820px){.schema-builder{grid-template-columns:1fr}}
+.schema-input-side,.schema-preview-side{background:var(--bg-2);padding:24px}
+.schema-input-side h4{margin-top:0}
+.schema-field{margin-bottom:14px}
+.schema-field label{display:block;font-size:11px;color:var(--ink-3);margin-bottom:4px;letter-spacing:0.04em;text-transform:uppercase;font-weight:500}
+.schema-field input,.schema-field textarea,.schema-field select{width:100%;padding:8px 12px;background:var(--bg-3);border:1px solid var(--line-2);border-radius:6px;color:var(--ink);font-family:var(--mono);font-size:12px;outline:none;transition:border 0.15s}
+.schema-field input:focus,.schema-field textarea:focus,.schema-field select:focus{border-color:var(--accent)}
+.schema-field textarea{min-height:60px;resize:vertical;line-height:1.5}
+.schema-quality{margin-top:18px;padding:14px;background:var(--bg-3);border-radius:8px;border:1px solid var(--line)}
+.schema-quality-label{font-size:11px;color:var(--ink-3);font-family:var(--mono);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:8px}
+.schema-score{font-family:var(--serif);font-size:32px;font-weight:500;line-height:1}
+.schema-score.bad{color:var(--fail)}.schema-score.ok{color:var(--warn)}.schema-score.good{color:var(--success)}
+.schema-feedback{margin-top:10px;font-family:var(--serif);font-size:13px;color:var(--ink-2);line-height:1.5}
+.schema-feedback li{font-size:13px;margin-bottom:4px;color:var(--ink-3)}
+.schema-feedback li.pass{color:var(--success)}
+.schema-feedback li.fail{color:var(--fail)}
+.composer-tools{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px;padding:14px;background:var(--bg-3);border-radius:8px;min-height:60px;border:1px dashed var(--line-2)}
+.composer-tool{padding:8px 14px;background:var(--bg-2);border:1px solid var(--line-2);border-radius:6px;font-family:var(--mono);font-size:12px;color:var(--ink-2);cursor:pointer;transition:all 0.15s;display:flex;align-items:center;gap:8px}
+.composer-tool:hover{border-color:var(--accent);color:var(--ink)}
+.composer-tool.added{background:rgba(99,102,241,0.1);border-color:var(--accent);color:var(--accent)}
+.composer-tool .x{color:var(--fail);font-weight:600;display:none}
+.composer-tool.added .x{display:inline}
+.composer-result{padding:18px;background:var(--bg-2);border:1px solid var(--line);border-radius:8px;min-height:120px}
+.composer-empty{color:var(--ink-3);font-family:var(--serif);font-style:italic}
+.antipattern-card{padding:18px 22px;background:var(--bg-2);border:1px solid var(--line);border-left:3px solid var(--fail);border-radius:8px;margin:14px 0}
+.antipattern-name{font-family:var(--mono);font-size:12px;color:var(--fail);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px;font-weight:600}
+.antipattern-bad{margin-top:10px;padding:10px 14px;background:rgba(247,118,142,0.05);border-radius:6px;font-family:var(--mono);font-size:12px;color:var(--ink-2);border-left:2px solid var(--fail)}
+.antipattern-good{margin-top:8px;padding:10px 14px;background:rgba(16,185,129,0.05);border-radius:6px;font-family:var(--mono);font-size:12px;color:var(--ink-2);border-left:2px solid var(--success)}
+.antipattern-label{font-family:var(--mono);font-size:10px;letter-spacing:0.06em;text-transform:uppercase;font-weight:600;margin-bottom:4px;display:block}
+.antipattern-bad .antipattern-label{color:var(--fail)}
+.antipattern-good .antipattern-label{color:var(--success)}
+@media(max-width:680px){.hero h1{font-size:36px}.hero-lede{font-size:17px}.section-title{font-size:26px}p,li{font-size:16px}.main{padding:40px 20px 80px}}
+/* ===== Back button ===== */
+.back-btn{
+  display:inline-flex;align-items:center;gap:8px;
+  margin-bottom:36px;
+  font-family:var(--mono);font-size:12px;color:var(--ink-3);
+  text-decoration:none;padding:7px 14px;
+  border:1px solid rgba(255,255,255,0.06);border-radius:100px;
+  transition:all 0.2s ease;background:rgba(255,255,255,0.02);
+  letter-spacing:0.04em;cursor:pointer;
+}
+.back-btn:hover{color:var(--ink);border-color:rgba(99,102,241,0.35);background:rgba(99,102,241,0.07);transform:translateX(-2px)}
+.back-btn svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2;flex-shrink:0}
+
+/* ===== Scroll reveal ===== */
+.reveal{opacity:0;transform:translateY(26px);transition:opacity 0.7s cubic-bezier(0.16,1,0.3,1),transform 0.7s cubic-bezier(0.16,1,0.3,1)}
+.reveal.visible{opacity:1;transform:translateY(0)}
+
+/* ===== Ghost section numbers ===== */
+.section-num,.section-title,.section-sub{position:relative;z-index:1}
+.section-ghost{
+  position:absolute;right:-8px;top:-16px;
+  font-family:var(--sans);font-size:116px;font-weight:800;
+  color:rgba(99,102,241,0.038);line-height:1;
+  pointer-events:none;user-select:none;
+  letter-spacing:-0.04em;z-index:0;
+}
+
+/* ===== Code copy button ===== */
+.code-wrap{position:relative;display:block}
+.copy-btn{
+  position:absolute;top:10px;right:10px;
+  padding:4px 10px;font-family:var(--mono);font-size:10px;
+  color:var(--ink-4);background:rgba(13,17,23,0.95);
+  border:1px solid var(--line);border-radius:4px;
+  cursor:pointer;opacity:0;
+  transition:opacity 0.15s,color 0.15s,border-color 0.15s;
+  letter-spacing:0.06em;text-transform:uppercase;
+}
+.code-wrap:hover .copy-btn{opacity:1}
+.copy-btn.copied{color:var(--success);border-color:var(--success);opacity:1}
+
+/* ── Marevlo UI Upgrade v2 ── */
+#readingBar{position:fixed;top:0;left:0;width:0%;height:2px;z-index:9999;pointer-events:none;background:linear-gradient(90deg,var(--accent),var(--accent-2));box-shadow:0 0 8px var(--accent-glow);transition:width 0.12s linear}
+@keyframes ui-shimmer{0%{background-position:0% 50%}100%{background-position:200% 50%}}
+.hero h1 em{background:linear-gradient(90deg,var(--accent),var(--accent-2),var(--accent));background-size:200% 100%;-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;animation:ui-shimmer 4s linear infinite;font-style:italic;font-weight:300}
+.hero-stat-num{text-shadow:0 0 30px var(--accent-glow)}
+.hero-stat{transition:background 0.2s}
+.hero-stat:hover{background:linear-gradient(135deg,var(--panel-2),var(--panel))}
+.hero-stat:hover .hero-stat-num{text-shadow:0 0 50px var(--accent-glow)}
+.hero-meta{box-shadow:0 0 0 1px rgba(255,255,255,0.03),0 4px 24px rgba(0,0,0,0.3),0 0 32px var(--accent-glow)}
+@keyframes ui-dot-pulse{0%,100%{box-shadow:none}50%{box-shadow:0 0 6px 2px var(--accent-glow)}}
+.hero-meta .dot{animation:ui-dot-pulse 2.5s ease infinite}
+h3{padding-left:18px;position:relative}
+h3::before{content:'';position:absolute;left:0;top:4px;width:3px;height:calc(100% - 8px);background:linear-gradient(180deg,var(--accent),var(--accent-2));border-radius:2px;opacity:0.7}
+.widget{transition:transform 0.2s ease,box-shadow 0.2s ease}
+.widget:hover{transform:translateY(-2px);box-shadow:0 8px 32px rgba(0,0,0,0.35),0 0 0 1px rgba(255,255,255,0.04),0 0 24px var(--accent-glow)}
+.module-nav{position:relative}
+.module-nav::before{content:'';position:absolute;top:0;left:10%;right:10%;height:1px;background:linear-gradient(90deg,transparent,var(--accent),var(--accent-2),transparent);opacity:0.5}
+.code{box-shadow:0 4px 24px rgba(0,0,0,0.4),inset 0 1px 0 rgba(255,255,255,0.03)}
+p em{text-shadow:0 0 20px var(--accent-glow)}
+.quiz-opt{transition:all 0.18s}
+.quiz-opt:hover{transform:translateX(4px)}
+html::-webkit-scrollbar{width:5px}
+html::-webkit-scrollbar-track{background:var(--bg)}
+html::-webkit-scrollbar-thumb{background:linear-gradient(180deg,var(--accent),var(--accent-2));border-radius:3px}
+html::-webkit-scrollbar-thumb:hover{background:var(--accent-2)}
+</style>
+</head>
+<body>
+<div id="readingBar"></div>
+<div class="shell">
+<aside class="sidebar">
+  <div class="brand"><div class="brand-mark"><img src="../../../logo/Logo_Marevlo.png" alt="Marevlo" /></div><div><div class="brand-name">Marevlo Research</div><div class="brand-sub">Premium Track</div></div></div>
+  <div class="brand-divider"></div>
+  <div class="module-tag"><div class="module-tag-label">Track 1 · Module 1</div><div class="module-tag-title">Search Tool Design</div></div>
+  <nav class="toc">
+    <div class="toc-label">In this module</div>
+    <a href="#s1" class="toc-link"><span class="toc-num">01</span>Tools as Prompts</a>
+    <a href="#s2" class="toc-link"><span class="toc-num">02</span>The Six Search Tool Types</a>
+    <a href="#s3" class="toc-link"><span class="toc-num">03</span>Designing Tool Signatures</a>
+    <a href="#s4" class="toc-link"><span class="toc-num">04</span>Input Validation Layer</a>
+    <a href="#s5" class="toc-link"><span class="toc-num">05</span>Result Schemas</a>
+    <a href="#s6" class="toc-link"><span class="toc-num">06</span>Composing Multiple Tools</a>
+    <a href="#s7" class="toc-link"><span class="toc-num">07</span>Anti-Patterns</a>
+    <a href="#s8" class="toc-link"><span class="toc-num">08</span>Mastery Check</a>
+  </nav>
+  <div class="progress-rail"><div class="progress-text">Reading progress</div><div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div></div>
+  <div class="sidebar-footer">
+    <div class="depth-badge">
+      <span class="pulse"></span>
+      <div class="badge-text">
+        <strong>Marevlo &middot; Premium Track</strong>
+        Module 1 of 7
+      </div>
+    </div>
+  </div>
+</aside>
+
+<main class="main">
+
+<a href="javascript:history.back()" class="back-btn">
+  <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"></polyline></svg>
+  Back to modules
+</a>
+<header class="hero">
+  <div class="hero-meta"><span>Track 01 · Agentic Search</span><span class="dot"></span><span>Module 01</span><span class="dot"></span><span>~2h 30m</span><span class="dot"></span><span>Core</span></div>
+  <h1>The tool description<br><em>is the prompt.</em></h1>
+  <p class="hero-lede">Most agent failures aren't model failures — they're tool-design failures. A vague description sends the agent down the wrong path before it ever emits a token. A bloated input schema forces the model to guess. A noisy result schema poisons the next ten turns. This module gives you the engineering discipline of designing tools that agents actually use correctly.</p>
+  <div class="hero-stats">
+    <div class="hero-stat"><div class="hero-stat-num">8</div><div class="hero-stat-label">Deep Sections</div></div>
+    <div class="hero-stat"><div class="hero-stat-num">14</div><div class="hero-stat-label">Interactive Demos</div></div>
+    <div class="hero-stat"><div class="hero-stat-num">6</div><div class="hero-stat-label">Tool Archetypes</div></div>
+    <div class="hero-stat"><div class="hero-stat-num">11</div><div class="hero-stat-label">Anti-Patterns</div></div>
+  </div>
+</header>
+
+<section id="s1">
+  <div class="section-head">
+    <div class="section-num">01 / Foundation</div>
+    <div class="section-title">Tools are prompts wearing JSON costumes</div>
+    <div class="section-sub">Reframe tool design as the highest-leverage prompt engineering surface in any agent system.</div>
+  </div>
+  <p>When you register a tool with an LLM, you are not "giving it a function." You are <strong>injecting structured prompt content into every turn the agent runs</strong>. The tool name, the description, the parameter list, the parameter descriptions, even the order of properties in the schema — all of these are tokens the model attends to before it decides whether to call the tool, and what to pass as inputs.</p>
+  <p>This reframing has a hard consequence: <em>you must engineer tool descriptions with the same care you engineer your system prompt</em>. A sloppy description doesn't just make a tool harder to use — it changes the agent's behavior on every query, including queries where the tool isn't relevant. The model is constantly asking "is this the right tool?" and bad descriptions make that question harder to answer.</p>
+  <div class="callout">
+    <div class="callout-label">The prompt-engineering frame</div>
+    <p>If you wouldn't ship a system prompt that says <em>"do something useful with the user's input"</em>, you shouldn't ship a tool description that says <em>"searches the database"</em>. Same principle — be specific about <strong>when to use it</strong>, <strong>when not to use it</strong>, and <strong>what good inputs look like</strong>.</p>
+  </div>
+  <h3>The four jobs a tool description must do</h3>
+  <p>Every well-designed tool description simultaneously accomplishes four things. Miss any one and you create a class of failures that no amount of model upgrading will fix.</p>
+  <ul>
+    <li><strong>Capability framing.</strong> What can this tool do? Not "searches" — <em>"searches our internal Confluence pages, returning the top 5 most relevant pages with titles, URLs, and 200-token excerpts."</em></li>
+    <li><strong>Boundary framing.</strong> What this tool <em>cannot</em> do, and what nearby capabilities it does not replace. This is the most-skipped, highest-leverage line in any tool description.</li>
+    <li><strong>Selection guidance.</strong> When should the agent prefer this tool over alternatives? Concrete trigger conditions, not vague suitability.</li>
+    <li><strong>Input shape priors.</strong> What good inputs look like. Examples are gold. <em>"Use 3-7 word queries; avoid full sentences"</em> is worth a thousand parameter descriptions.</li>
+  </ul>
+  <div class="widget">
+    <div class="widget-header"><div class="widget-title">Anatomy of a tool description — bad vs good</div><div class="widget-tag">Compare</div></div>
+    <div class="widget-body">
+      <div class="tabs">
+        <div class="tab active" data-tab="bad">❌ Bad description</div>
+        <div class="tab" data-tab="good">✓ Good description</div>
+      </div>
+      <div class="tab-panel active" id="tab-bad">
+<pre class="code">{
+  <span class="str">"name"</span>: <span class="str">"search"</span>,
+  <span class="str">"description"</span>: <span class="str">"Searches the knowledge base."</span>,
+  <span class="str">"input_schema"</span>: {
+    <span class="str">"properties"</span>: {
+      <span class="str">"q"</span>: {<span class="str">"type"</span>: <span class="str">"string"</span>}
+    }
+  }
+}</pre>
+        <p style="font-size:14px"><strong>What goes wrong:</strong> The model has no idea which knowledge base, no idea what good queries look like, no boundary against using this when it shouldn't, and a parameter named "q" with no description. The agent will use it for everything, with full-sentence queries, and underperform mysteriously.</p>
+      </div>
+      <div class="tab-panel" id="tab-good">
+<pre class="code">{
+  <span class="str">"name"</span>: <span class="str">"search_engineering_docs"</span>,
+  <span class="str">"description"</span>: <span class="str">"""Searches our internal engineering documentation
+    (Confluence + RFC archive). Returns top 5 pages with title,
+    URL, and 200-token excerpt.
+
+    USE FOR: questions about our internal systems, architecture
+    decisions, runbooks, post-mortems.
+
+    DO NOT USE FOR: external information, code lookup (use
+    search_codebase), customer data (use search_zendesk).
+
+    Best query format: 3-7 keywords. Examples:
+      ✓ 'auth service rate limit'
+      ✓ 'postgres failover runbook'
+      ✗ 'how do I figure out why auth is slow'"""</span>,
+  <span class="str">"input_schema"</span>: {
+    <span class="str">"properties"</span>: {
+      <span class="str">"query"</span>: {
+        <span class="str">"type"</span>: <span class="str">"string"</span>,
+        <span class="str">"description"</span>: <span class="str">"3-7 keywords; avoid full sentences"</span>
+      }
+    },
+    <span class="str">"required"</span>: [<span class="str">"query"</span>]
+  }
+}</pre>
+        <p style="font-size:14px"><strong>What this earns you:</strong> The model selects this tool only for the right queries, formats inputs correctly the first time, and stops conflating it with adjacent tools. In production this typically reduces tool-selection errors by 60–80%.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="s2">
+  <div class="section-head">
+    <div class="section-num">02 / Taxonomy</div>
+    <div class="section-title">The six search tool archetypes</div>
+    <div class="section-sub">Every search tool you'll ever build is a variation on one of six archetypes. Knowing them shortcuts most design decisions.</div>
+  </div>
+  <p>There is no single "search tool." Production agent systems compose 3–8 different search tools, each specialized for a substrate that requires different query semantics. Treating them as one is the most common architectural mistake. Here are the six archetypes, with the design constraints that distinguish each.</p>
+  <div class="tool-grid">
+    <div class="tool-card"><div class="tool-card-icon">⊙</div><div class="tool-card-name">Web search</div><div class="tool-card-desc">External web via Tavily, Brave, Exa, SerpAPI. Best for current events, public data, anything published recently.</div><div class="tool-card-row"><span class="lbl">query type</span><span class="val">keyword + recency</span></div><div class="tool-card-row"><span class="lbl">latency</span><span class="val">300–1500ms</span></div><div class="tool-card-row"><span class="lbl">cost / call</span><span class="val">$0.005–0.03</span></div></div>
+    <div class="tool-card"><div class="tool-card-icon">≈</div><div class="tool-card-name">Vector search</div><div class="tool-card-desc">Semantic similarity over an embedded corpus. Best for fuzzy concept matching against your own content.</div><div class="tool-card-row"><span class="lbl">query type</span><span class="val">natural language</span></div><div class="tool-card-row"><span class="lbl">latency</span><span class="val">20–80ms</span></div><div class="tool-card-row"><span class="lbl">cost / call</span><span class="val">~$0.0001</span></div></div>
+    <div class="tool-card"><div class="tool-card-icon">⊟</div><div class="tool-card-name">SQL search</div><div class="tool-card-desc">Structured queries over a database. Model emits SQL or fills in templates. Highest precision when query maps to schema.</div><div class="tool-card-row"><span class="lbl">query type</span><span class="val">SQL or constrained</span></div><div class="tool-card-row"><span class="lbl">latency</span><span class="val">10–500ms</span></div><div class="tool-card-row"><span class="lbl">cost / call</span><span class="val">~$0 (your infra)</span></div></div>
+    <div class="tool-card"><div class="tool-card-icon">{ }</div><div class="tool-card-name">Code search</div><div class="tool-card-desc">AST-aware or grep-based. GitHub API, ripgrep wrappers, language-server queries. Returns symbols and definitions.</div><div class="tool-card-row"><span class="lbl">query type</span><span class="val">symbol / regex</span></div><div class="tool-card-row"><span class="lbl">latency</span><span class="val">50–500ms</span></div><div class="tool-card-row"><span class="lbl">cost / call</span><span class="val">~$0–$0.001</span></div></div>
+    <div class="tool-card"><div class="tool-card-icon">⬡</div><div class="tool-card-name">Knowledge graph</div><div class="tool-card-desc">Cypher / SPARQL over entity-relationship graphs. Strongest for traversal queries — paths, neighborhoods, multi-hop facts.</div><div class="tool-card-row"><span class="lbl">query type</span><span class="val">entity + traversal</span></div><div class="tool-card-row"><span class="lbl">latency</span><span class="val">30–300ms</span></div><div class="tool-card-row"><span class="lbl">cost / call</span><span class="val">~$0 (your infra)</span></div></div>
+    <div class="tool-card"><div class="tool-card-icon">⌖</div><div class="tool-card-name">Hybrid search</div><div class="tool-card-desc">Vector + BM25 fused. The default for most production text retrieval. Catches both semantic and keyword matches.</div><div class="tool-card-row"><span class="lbl">query type</span><span class="val">natural language</span></div><div class="tool-card-row"><span class="lbl">latency</span><span class="val">40–150ms</span></div><div class="tool-card-row"><span class="lbl">cost / call</span><span class="val">~$0.0002</span></div></div>
+  </div>
+  <h3>How to choose the right archetype</h3>
+  <p>The archetype is dictated by the <em>shape of the question</em> matched against the <em>shape of the data</em>. Two heuristics:</p>
+  <ul>
+    <li><strong>Structured data → structured search.</strong> If the answer lives in a database row, vector search is malpractice. SQL or graph traversal will be faster, cheaper, and exact.</li>
+    <li><strong>Unstructured data → hybrid first, vector second.</strong> Pure vector search misses exact-match queries (product codes, error strings, names). Hybrid catches both classes with one tool.</li>
+  </ul>
+</section>
+
+<section id="s3">
+  <div class="section-head">
+    <div class="section-num">03 / Signatures</div>
+    <div class="section-title">Designing tool signatures</div>
+    <div class="section-sub">Build a tool description with the live scorer below. The model will use what you write — make it count.</div>
+  </div>
+  <p>A tool signature has three engineered surfaces: the <strong>name</strong>, the <strong>description</strong>, and the <strong>parameter set</strong>. Each one is a token-level lever. Below you can compose your own and watch a heuristic-based scorer evaluate it against the patterns we just covered.</p>
+  <div class="widget">
+    <div class="widget-header"><div class="widget-title">Build a tool signature — live quality scorer</div><div class="widget-tag">Interactive</div></div>
+    <div class="widget-body">
+      <div class="schema-builder">
+        <div class="schema-input-side">
+          <h4>Your tool definition</h4>
+          <div class="schema-field"><label>Tool name</label><input type="text" id="schName" value="search" /></div>
+          <div class="schema-field"><label>Description</label><textarea id="schDesc">Searches the knowledge base.</textarea></div>
+          <div class="schema-field"><label>Parameter name</label><input type="text" id="schParam" value="q" /></div>
+          <div class="schema-field"><label>Parameter description</label><textarea id="schParamDesc"></textarea></div>
+          <button class="btn primary" id="schScore">Score this signature →</button>
+          <button class="btn" id="schExample">Load good example</button>
+        </div>
+        <div class="schema-preview-side">
+          <h4>Quality assessment</h4>
+          <div class="schema-quality">
+            <div class="schema-quality-label">Composite score</div>
+            <div class="schema-score" id="schScoreVal">—</div>
+            <ul class="schema-feedback" id="schFeedback" style="margin-top:14px;list-style:none;padding:0">
+              <li style="color:var(--ink-3);font-style:italic">Edit fields and click Score for feedback.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <h3>Naming conventions that pay off</h3>
+  <ul>
+    <li><strong>Verb_object_qualifier.</strong> <code style="font-family:var(--mono);color:var(--accent);font-size:13px">search_codebase_python</code> beats <code style="font-family:var(--mono);color:var(--accent);font-size:13px">codeSearch</code>. Three slots: action, target, scope.</li>
+    <li><strong>Snake_case in tool names.</strong> Models trained on Python predict snake_case more reliably. Camel works but is fractionally worse in benchmarks.</li>
+    <li><strong>Avoid generic verbs like "get", "do", "process".</strong> They convey nothing. Use <code style="font-family:var(--mono);color:var(--accent);font-size:13px">search</code>, <code style="font-family:var(--mono);color:var(--accent);font-size:13px">fetch</code>, <code style="font-family:var(--mono);color:var(--accent);font-size:13px">list</code>, <code style="font-family:var(--mono);color:var(--accent);font-size:13px">find</code>, <code style="font-family:var(--mono);color:var(--accent);font-size:13px">lookup</code> — each carries different semantics the model has internalized.</li>
+    <li><strong>Differentiate near-neighbors with the qualifier slot.</strong> If you have <code style="font-family:var(--mono);color:var(--accent);font-size:13px">search_docs</code> and a code search, make them <code style="font-family:var(--mono);color:var(--accent);font-size:13px">search_engineering_docs</code> and <code style="font-family:var(--mono);color:var(--accent);font-size:13px">search_codebase</code>. The qualifier carries the discrimination.</li>
+  </ul>
+</section>
+
+<section id="s4">
+  <div class="section-head">
+    <div class="section-num">04 / Validation</div>
+    <div class="section-title">The input validation layer</div>
+    <div class="section-sub">Models hallucinate inputs. The validation layer is where you stop garbage from reaching your search infrastructure.</div>
+  </div>
+  <p>Even with perfect tool descriptions, models will occasionally emit invalid inputs — wrong types, out-of-range values, malformed regexes, queries that bypass intended scopes. The input validation layer is your last line of defense before a bad input becomes a bad search becomes a bad answer. Crucially, it is also a <strong>feedback channel back to the agent</strong>: a well-crafted validation error teaches the model how to retry correctly.</p>
+  <div class="widget">
+    <div class="widget-header"><div class="widget-title">Validation layer pattern — production-grade</div><div class="widget-tag">Code</div></div>
+    <div class="widget-body">
+<pre class="code"><span class="kw">from</span> pydantic <span class="kw">import</span> BaseModel, Field, field_validator
+<span class="kw">from</span> typing <span class="kw">import</span> Optional, Literal
+
+<span class="kw">class</span> <span class="fn">SearchDocsInput</span>(BaseModel):
+    query: str = <span class="fn">Field</span>(..., min_length=<span class="num">2</span>, max_length=<span class="num">200</span>,
+                       description=<span class="str">"3-7 keywords; avoid full sentences"</span>)
+    top_k: <span class="kw">int</span> = <span class="fn">Field</span>(<span class="num">5</span>, ge=<span class="num">1</span>, le=<span class="num">20</span>)
+    space: Optional[Literal[<span class="str">"engineering"</span>, <span class="str">"product"</span>, <span class="str">"ops"</span>]] = <span class="kw">None</span>
+
+    @<span class="fn">field_validator</span>(<span class="str">"query"</span>)
+    @<span class="fn">classmethod</span>
+    <span class="kw">def</span> <span class="fn">no_full_sentences</span>(cls, v: str) -> str:
+        word_count = <span class="fn">len</span>(v.<span class="fn">split</span>())
+        <span class="kw">if</span> word_count > <span class="num">12</span>:
+            <span class="kw">raise</span> <span class="fn">ValueError</span>(
+                <span class="str">f"Query has {word_count} words; this tool works best "</span>
+                <span class="str">"with 3-7 keywords. Try extracting key terms only."</span>
+            )
+        <span class="kw">return</span> v.<span class="fn">strip</span>()
+
+<span class="kw">async def</span> <span class="fn">execute_search_docs</span>(raw_input: <span class="kw">dict</span>) -> <span class="kw">dict</span>:
+    <span class="kw">try</span>:
+        validated = <span class="fn">SearchDocsInput</span>(**raw_input)
+    <span class="kw">except</span> ValidationError <span class="kw">as</span> e:
+        <span class="com"># Surface validation errors as TOOL OUTPUT, not exceptions.</span>
+        <span class="com"># This lets the agent self-correct on next turn.</span>
+        <span class="kw">return</span> {<span class="str">"error"</span>: <span class="str">"validation_failed"</span>, <span class="str">"detail"</span>: <span class="fn">str</span>(e)}
+    <span class="kw">return</span> <span class="kw">await</span> <span class="fn">do_search</span>(validated)</pre>
+    </div>
+  </div>
+  <div class="callout">
+    <div class="callout-label">Critical pattern</div>
+    <p><strong>Return validation errors as tool results, not as exceptions.</strong> An exception kills the turn; a tool result lets the agent see the error in its next context window and self-correct. The error message <em>is</em> a teaching signal — write it for the model, not for a human debugger.</p>
+  </div>
+  <h3>The five validation surfaces</h3>
+  <ol>
+    <li><strong>Type and shape.</strong> Pydantic / zod / json-schema. The cheapest layer, catches the loudest failures.</li>
+    <li><strong>Range and length.</strong> top_k caps, query length caps, recency window caps. Stops cost-blowup queries before they fire.</li>
+    <li><strong>Enum and scope.</strong> Constrain spaces, indices, namespaces to known values. Prevents the agent from inventing scope names.</li>
+    <li><strong>Semantic shape.</strong> Custom validators — query word count, regex validity, SQL safety. Catches what type checkers miss.</li>
+    <li><strong>Authorization.</strong> Does this user / agent role have access to this scope? Inject auth context, enforce at the boundary.</li>
+  </ol>
+</section>
+
+<section id="s5">
+  <div class="section-head">
+    <div class="section-num">05 / Result Schemas</div>
+    <div class="section-title">What you return shapes the next turn</div>
+    <div class="section-sub">Every result becomes context. Every field becomes attention budget. Design the output schema with the model's next decision in mind.</div>
+  </div>
+  <p>Search tool outputs are not "data returned to a function caller." They are <strong>tokens injected into the next attention pass of a multi-billion-parameter model</strong>. Every field you include costs context budget and competes for attention. Every field you omit forces the model to guess or call again. The discipline is finding the minimum schema that supports the agent's <em>next decision</em>.</p>
+  <div class="widget">
+    <div class="widget-header"><div class="widget-title">Result schema evolution — three iterations</div><div class="widget-tag">Pattern</div></div>
+    <div class="widget-body">
+      <div class="tabs">
+        <div class="tab active" data-tab="v1">v1 — Raw dump</div>
+        <div class="tab" data-tab="v2">v2 — Trimmed</div>
+        <div class="tab" data-tab="v3">v3 — Decision-ready</div>
+      </div>
+      <div class="tab-panel active" id="tab-v1">
+        <p style="font-size:14px;margin-bottom:14px"><strong>What teams ship first.</strong> Dumps the full search response. Wastes 60–80% of context on metadata the agent will never use.</p>
+<pre class="code">{
+  <span class="str">"results"</span>: [
+    {
+      <span class="str">"id"</span>: <span class="str">"doc_8273"</span>,
+      <span class="str">"score"</span>: <span class="num">0.8472</span>,
+      <span class="str">"vector"</span>: [<span class="num">0.012</span>, <span class="num">-0.034</span>, <span class="com">/* 1534 more dims */</span>],
+      <span class="str">"metadata"</span>: {
+        <span class="str">"source"</span>: <span class="str">"confluence"</span>,
+        <span class="str">"created_at"</span>: <span class="str">"2024-03-12T08:14:22.000Z"</span>,
+        <span class="str">"updated_at"</span>: <span class="str">"2024-08-30T11:02:11.000Z"</span>,
+        <span class="str">"author_id"</span>: <span class="str">"u_44182"</span>,
+        <span class="str">"space_id"</span>: <span class="str">"sp_eng"</span>,
+        <span class="str">"page_id"</span>: <span class="str">"p_8273"</span>,
+        <span class="str">"version"</span>: <span class="num">12</span>,
+        <span class="str">"raw_html"</span>: <span class="str">"&lt;div class='wiki-content'&gt;...&lt;/div&gt;"</span>
+      },
+      <span class="str">"content"</span>: <span class="str">"... full 8KB page content ..."</span>
+    }
+    <span class="com">// × 20 results</span>
+  ],
+  <span class="str">"facets"</span>: { <span class="com">/* aggregations */</span> },
+  <span class="str">"debug"</span>: { <span class="com">/* timings, query plan, etc */</span> }
+}</pre>
+      </div>
+      <div class="tab-panel" id="tab-v2">
+        <p style="font-size:14px;margin-bottom:14px"><strong>The trimmed pass.</strong> Strip metadata the model can't use. Cap result count. Truncate content. Better — but still missing the affordances the agent needs to <em>decide</em>.</p>
+<pre class="code">{
+  <span class="str">"results"</span>: [
+    {
+      <span class="str">"title"</span>: <span class="str">"Auth Service Rate Limit Configuration"</span>,
+      <span class="str">"url"</span>: <span class="str">"https://wiki.co/eng/auth-rate-limit"</span>,
+      <span class="str">"excerpt"</span>: <span class="str">"... 200-token snippet ..."</span>,
+      <span class="str">"updated"</span>: <span class="str">"2024-08-30"</span>
+    }
+    <span class="com">// × 5 results</span>
+  ]
+}</pre>
+      </div>
+      <div class="tab-panel" id="tab-v3">
+        <p style="font-size:14px;margin-bottom:14px"><strong>Decision-ready.</strong> Adds the affordances the agent needs to choose between <em>"answer now"</em> and <em>"call again."</em> Total result count, freshness signal, and a stable <strong>chunk_id</strong> the agent can reference for follow-up fetches.</p>
+<pre class="code">{
+  <span class="str">"results"</span>: [
+    {
+      <span class="str">"chunk_id"</span>: <span class="str">"doc_8273:c4"</span>,           <span class="com"># for follow-up fetch</span>
+      <span class="str">"title"</span>: <span class="str">"Auth Service Rate Limit Configuration"</span>,
+      <span class="str">"url"</span>: <span class="str">"https://wiki.co/eng/auth-rate-limit"</span>,
+      <span class="str">"excerpt"</span>: <span class="str">"... 200-token snippet ..."</span>,
+      <span class="str">"updated"</span>: <span class="str">"2024-08-30"</span>,
+      <span class="str">"freshness"</span>: <span class="str">"current"</span>,            <span class="com"># enum, not raw date diff</span>
+      <span class="str">"score"</span>: <span class="num">0.85</span>                          <span class="com"># normalized 0-1</span>
+    }
+  ],
+  <span class="str">"total_matches"</span>: <span class="num">47</span>,                   <span class="com"># tells agent if it should refine</span>
+  <span class="str">"query_used"</span>: <span class="str">"auth service rate limit"</span>,  <span class="com"># echo for logs + agent reflection</span>
+  <span class="str">"suggested_followup"</span>: <span class="kw">null</span>              <span class="com"># or a query hint if appropriate</span>
+}</pre>
+      </div>
+    </div>
+  </div>
+  <h3>Six rules for result schemas</h3>
+  <ol>
+    <li><strong>Stable shape across calls.</strong> Same keys, same nesting. Optional fields are fine; mutating shapes are not. The model learns the schema implicitly across turns and breaks if it shifts.</li>
+    <li><strong>Token economy.</strong> Every byte costs context. Strip everything the model can't or won't use to make decisions.</li>
+    <li><strong>Decision affordances.</strong> Include signals the agent needs to choose what to do next: result count, freshness, confidence.</li>
+    <li><strong>Stable IDs for follow-up.</strong> Always include a <code style="font-family:var(--mono);color:var(--accent);font-size:13px">chunk_id</code> or equivalent so the agent can ask for "more of this" without re-issuing the search.</li>
+    <li><strong>Echo the query used.</strong> Especially after server-side rewriting. The agent reflects on what it actually searched, not what it intended to search.</li>
+    <li><strong>Empty is information.</strong> Return <code style="font-family:var(--mono);color:var(--accent);font-size:13px">{"results": [], "total_matches": 0, "hint": "..."}</code> with optional refinement hints. Never throw on no results.</li>
+  </ol>
+</section>
+
+<section id="s6">
+  <div class="section-head">
+    <div class="section-num">06 / Composition</div>
+    <div class="section-title">Composing multiple search tools in one agent</div>
+    <div class="section-sub">Toggle tools into the canvas and watch how the model's selection accuracy degrades as you add more.</div>
+  </div>
+  <p>A common production milestone is the day you give your agent its fourth, fifth, sixth search tool. This is also the day tool-selection accuracy starts to drop. The model has more options to weigh, more descriptions to attend to, more chances to pick wrong. Composition is not "add tools until you cover all cases" — it is an architectural choice with measurable cost.</p>
+  <div class="widget">
+    <div class="widget-header"><div class="widget-title">Multi-tool composition simulator</div><div class="widget-tag">Interactive</div></div>
+    <div class="widget-body">
+      <p style="font-size:14px;margin-bottom:14px">Toggle search tools to add them to your agent's toolkit. Watch the predicted tool-selection accuracy and a sample query routing decision.</p>
+      <div class="composer-tools" id="composerPool">
+        <div class="composer-tool" data-tool="docs" data-overlap="0">search_docs <span class="x">×</span></div>
+        <div class="composer-tool" data-tool="code" data-overlap="0">search_codebase <span class="x">×</span></div>
+        <div class="composer-tool" data-tool="db" data-overlap="0">search_orders_db <span class="x">×</span></div>
+        <div class="composer-tool" data-tool="zendesk" data-overlap="0">search_zendesk <span class="x">×</span></div>
+        <div class="composer-tool" data-tool="web" data-overlap="0">web_search <span class="x">×</span></div>
+        <div class="composer-tool" data-tool="vector" data-overlap="2">search_kb_vector <span class="x">×</span></div>
+        <div class="composer-tool" data-tool="hybrid" data-overlap="2">search_kb_hybrid <span class="x">×</span></div>
+        <div class="composer-tool" data-tool="universal" data-overlap="3">universal_search <span class="x">×</span></div>
+      </div>
+      <div class="composer-result" id="composerResult">
+        <div class="composer-empty">Toggle some tools above to see selection-accuracy modeling.</div>
+      </div>
+    </div>
+  </div>
+  <h3>The composition principles</h3>
+  <ul>
+    <li><strong>Orthogonality first.</strong> Tools should partition the search space cleanly. <code style="font-family:var(--mono);color:var(--accent);font-size:13px">search_docs</code> + <code style="font-family:var(--mono);color:var(--accent);font-size:13px">search_codebase</code> + <code style="font-family:var(--mono);color:var(--accent);font-size:13px">search_orders_db</code> have near-zero overlap and selection accuracy stays high.</li>
+    <li><strong>Avoid redundant variants.</strong> Don't expose <code style="font-family:var(--mono);color:var(--accent);font-size:13px">search_kb_vector</code> AND <code style="font-family:var(--mono);color:var(--accent);font-size:13px">search_kb_hybrid</code> AND <code style="font-family:var(--mono);color:var(--accent);font-size:13px">search_kb_bm25</code>. Pick one, hide the rest behind it.</li>
+    <li><strong>Never ship a "universal" tool alongside specialized ones.</strong> The universal tool absorbs queries that should have routed to the specialists. Either pure universal, or pure specialists.</li>
+    <li><strong>Cap at 7±2.</strong> Past 7 specialized tools, consider a router pattern: a meta-tool that picks the right specialist based on a classification step.</li>
+  </ul>
+  <div class="widget">
+    <div class="widget-header"><div class="widget-title">Router pattern — when you have too many tools</div><div class="widget-tag">Architecture</div></div>
+    <div class="widget-body">
+      <div style="background:var(--bg-2);border-radius:10px;padding:24px">
+        <svg viewBox="0 0 720 320" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto">
+          <rect x="20" y="130" width="160" height="60" rx="8" class="svg-node-bg" stroke="#6366f1" stroke-width="2" fill="rgba(99,102,241,0.05)" />
+          <text x="100" y="158" text-anchor="middle" class="svg-node-text">Main Agent</text>
+          <text x="100" y="176" text-anchor="middle" class="svg-node-sub">sees 1 tool</text>
+          <rect x="240" y="130" width="160" height="60" rx="8" class="svg-node-bg" />
+          <text x="320" y="158" text-anchor="middle" class="svg-node-text">search_router</text>
+          <text x="320" y="176" text-anchor="middle" class="svg-node-sub">classifier</text>
+          <rect x="460" y="20" width="240" height="38" rx="6" class="svg-node-bg" />
+          <text x="580" y="44" text-anchor="middle" class="svg-node-text" font-size="12">search_engineering_docs</text>
+          <rect x="460" y="78" width="240" height="38" rx="6" class="svg-node-bg" />
+          <text x="580" y="102" text-anchor="middle" class="svg-node-text" font-size="12">search_codebase</text>
+          <rect x="460" y="136" width="240" height="38" rx="6" class="svg-node-bg" />
+          <text x="580" y="160" text-anchor="middle" class="svg-node-text" font-size="12">search_orders_db</text>
+          <rect x="460" y="194" width="240" height="38" rx="6" class="svg-node-bg" />
+          <text x="580" y="218" text-anchor="middle" class="svg-node-text" font-size="12">search_zendesk</text>
+          <rect x="460" y="252" width="240" height="38" rx="6" class="svg-node-bg" />
+          <text x="580" y="276" text-anchor="middle" class="svg-node-text" font-size="12">web_search</text>
+          <line x1="180" y1="160" x2="240" y2="160" class="svg-edge" marker-end="url(#arr)" />
+          <line x1="400" y1="160" x2="460" y2="40" class="svg-edge" marker-end="url(#arr)" />
+          <line x1="400" y1="160" x2="460" y2="98" class="svg-edge" marker-end="url(#arr)" />
+          <line x1="400" y1="160" x2="460" y2="156" class="svg-edge" marker-end="url(#arr)" />
+          <line x1="400" y1="160" x2="460" y2="214" class="svg-edge" marker-end="url(#arr)" />
+          <line x1="400" y1="160" x2="460" y2="272" class="svg-edge" marker-end="url(#arr)" />
+          <text x="100" y="220" text-anchor="middle" class="svg-label">simpler context</text>
+          <text x="320" y="220" text-anchor="middle" class="svg-label">picks specialist</text>
+          <defs>
+            <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+              <path d="M0,0 L10,5 L0,10 Z" fill="#2a3142" />
+            </marker>
+          </defs>
+        </svg>
+      </div>
+      <p style="font-size:14px;margin-top:16px">The router pattern keeps the main agent's tool-selection problem trivial (one search-shaped tool) and pushes the actual selection into a focused classifier that only thinks about routing. Used when you have 8+ specialized search tools.</p>
+    </div>
+  </div>
+</section>
+
+<section id="s7">
+  <div class="section-head">
+    <div class="section-num">07 / Anti-Patterns</div>
+    <div class="section-title">Anti-patterns to recognize and refactor</div>
+    <div class="section-sub">Eleven specific tool-design mistakes that show up across production agent codebases. Each with the bad form, the fix, and the symptom that exposes it.</div>
+  </div>
+
+  <div class="antipattern-card"><div class="antipattern-name">01 · The God Tool</div><p style="font-size:14px;margin:0">A single tool with a flag parameter that switches between fundamentally different behaviors. The model has to choose both the tool AND the mode.</p><div class="antipattern-bad"><span class="antipattern-label">Bad</span>search(query, mode="vector"|"sql"|"web"|"code")</div><div class="antipattern-good"><span class="antipattern-label">Fix</span>Split into search_kb, search_orders_db, web_search, search_codebase. Each with its own description.</div></div>
+  <div class="antipattern-card"><div class="antipattern-name">02 · The Empty Description</div><p style="font-size:14px;margin:0">Tool description that describes <em>what the tool is</em> rather than <em>when and how to use it</em>.</p><div class="antipattern-bad"><span class="antipattern-label">Bad</span>"description": "A search function that uses BM25 ranking."</div><div class="antipattern-good"><span class="antipattern-label">Fix</span>"description": "Use this when the user asks about... Do not use for... Best with 3-7 keyword queries..."</div></div>
+  <div class="antipattern-card"><div class="antipattern-name">03 · The Anonymous Parameter</div><p style="font-size:14px;margin:0">Parameters with no description, leaving format and intent ambiguous.</p><div class="antipattern-bad"><span class="antipattern-label">Bad</span>"q": {"type": "string"}</div><div class="antipattern-good"><span class="antipattern-label">Fix</span>"query": {"type": "string", "description": "3-7 keywords; avoid full sentences"}</div></div>
+  <div class="antipattern-card"><div class="antipattern-name">04 · The Mutable Schema</div><p style="font-size:14px;margin:0">Output schema that changes shape based on result type — sometimes a list, sometimes an object, sometimes a single value.</p><div class="antipattern-bad"><span class="antipattern-label">Bad</span>Returns {"result": "..."} for one result, {"results": [...]} for many.</div><div class="antipattern-good"><span class="antipattern-label">Fix</span>Always return {"results": [...]} even when the list has 0 or 1 entries.</div></div>
+  <div class="antipattern-card"><div class="antipattern-name">05 · The Exception Bomb</div><p style="font-size:14px;margin:0">Tool throws on bad inputs or empty results, killing the agent's turn.</p><div class="antipattern-bad"><span class="antipattern-label">Bad</span>raise NoResultsError("nothing found")</div><div class="antipattern-good"><span class="antipattern-label">Fix</span>return {"results": [], "hint": "try broader keywords or different scope"}</div></div>
+  <div class="antipattern-card"><div class="antipattern-name">06 · The Vector Dump</div><p style="font-size:14px;margin:0">Returning raw embedding vectors, scores in 8 decimal places, internal IDs, and other metadata the model cannot use.</p><div class="antipattern-bad"><span class="antipattern-label">Bad</span>Returns full embedding arrays + every metadata field from the index</div><div class="antipattern-good"><span class="antipattern-label">Fix</span>Return only: title, url, excerpt, normalized score, freshness, chunk_id</div></div>
+  <div class="antipattern-card"><div class="antipattern-name">07 · The Synonym Stack</div><p style="font-size:14px;margin:0">Multiple tools that do near-identical things: search_docs, find_docs, lookup_docs, query_docs.</p><div class="antipattern-bad"><span class="antipattern-label">Bad</span>4 tools with overlapping descriptions and no clear discriminator</div><div class="antipattern-good"><span class="antipattern-label">Fix</span>One tool. If you need variants, expose them as parameters with clear enums.</div></div>
+  <div class="antipattern-card"><div class="antipattern-name">08 · The Truncation Surprise</div><p style="font-size:14px;margin:0">Tool silently truncates long content without telling the agent. The agent thinks it has the full document and answers wrong.</p><div class="antipattern-bad"><span class="antipattern-label">Bad</span>{"content": "first 500 chars..."} (no signal it's truncated)</div><div class="antipattern-good"><span class="antipattern-label">Fix</span>{"content": "...", "truncated": true, "full_size": 8200, "fetch_url": "..."}</div></div>
+  <div class="antipattern-card"><div class="antipattern-name">09 · The Hidden Side Effect</div><p style="font-size:14px;margin:0">A "search" tool that also writes — logs the query as a support ticket, increments a counter, sends a notification. The model can't see what it's triggering.</p><div class="antipattern-bad"><span class="antipattern-label">Bad</span>def search_tickets(q): log_ticket(q); return tickets</div><div class="antipattern-good"><span class="antipattern-label">Fix</span>Search is read-only. Side effects belong in separately-named tools.</div></div>
+  <div class="antipattern-card"><div class="antipattern-name">10 · The Stringly-Typed Filter</div><p style="font-size:14px;margin:0">Filter parameters that take freeform strings instead of constrained enums. The model invents values that don't exist.</p><div class="antipattern-bad"><span class="antipattern-label">Bad</span>"category": {"type": "string"} → model passes "engineerin" (typo)</div><div class="antipattern-good"><span class="antipattern-label">Fix</span>"category": {"enum": ["engineering", "product", "ops"]}</div></div>
+  <div class="antipattern-card"><div class="antipattern-name">11 · The Unbounded Result Set</div><p style="font-size:14px;margin:0">No top_k cap on results. A broad query returns 200 hits, blows out the context window, degrades synthesis.</p><div class="antipattern-bad"><span class="antipattern-label">Bad</span>Returns all matches by default</div><div class="antipattern-good"><span class="antipattern-label">Fix</span>Default top_k=5, max top_k=20, always include total_matches</div></div>
+</section>
+
+<section id="s8">
+  <div class="section-head">
+    <div class="section-num">08 / Mastery</div>
+    <div class="section-title">Mastery check</div>
+    <div class="section-sub">Six questions on the patterns that distinguish production tool design from prototype tool design.</div>
+  </div>
+
+  <div class="quiz">
+    <div class="quiz-q">Q1. Your team has search_docs and search_codebase tools. The agent occasionally calls search_docs for code questions. The HIGHEST-leverage fix is:</div>
+    <div class="quiz-options">
+      <div class="quiz-opt" data-correct="false">Add a router LLM that pre-classifies the query type <span class="feedback"></span></div>
+      <div class="quiz-opt" data-correct="true">Add explicit "DO NOT use for code; use search_codebase instead" to search_docs description <span class="feedback"></span></div>
+      <div class="quiz-opt" data-correct="false">Merge them into a single search tool with a "type" parameter <span class="feedback"></span></div>
+      <div class="quiz-opt" data-correct="false">Switch to a larger model <span class="feedback"></span></div>
+    </div>
+    <div class="quiz-explain">Boundary framing in tool descriptions is consistently the highest-ROI fix for tool-selection errors. It's a one-line change that addresses the root cause — the model didn't know there was a better option. Routers and merging are heavier interventions to try only after the boundary fix isn't enough.</div>
+  </div>
+
+  <div class="quiz">
+    <div class="quiz-q">Q2. You're designing a result schema for a vector search tool. You're debating whether to include the raw similarity score (0.8472) or a normalized confidence enum (high/medium/low). Which is better and why?</div>
+    <div class="quiz-options">
+      <div class="quiz-opt" data-correct="false">Raw score — more information for the model to reason with <span class="feedback"></span></div>
+      <div class="quiz-opt" data-correct="true">Normalized enum — model uses categorical signals more reliably than calibrated floats <span class="feedback"></span></div>
+      <div class="quiz-opt" data-correct="false">Both — let the model pick which to use <span class="feedback"></span></div>
+      <div class="quiz-opt" data-correct="false">Neither — score is internal, never expose it <span class="feedback"></span></div>
+    </div>
+    <div class="quiz-explain">LLMs reason much more reliably about discrete categorical signals than about uncalibrated floats. A score of 0.84 means nothing without context — high for cosine similarity on text, terrible for face recognition. An enum like "high" carries the calibrated meaning. Bonus: enums save context tokens.</div>
+  </div>
+
+  <div class="quiz">
+    <div class="quiz-q">Q3. Your search tool currently throws ValidationError when the agent passes an out-of-range top_k. You're seeing the agent crash mid-task. The right fix is:</div>
+    <div class="quiz-options">
+      <div class="quiz-opt" data-correct="false">Catch the exception and silently clamp the value to the valid range <span class="feedback"></span></div>
+      <div class="quiz-opt" data-correct="true">Return the validation error as a tool_result so the agent can self-correct on the next turn <span class="feedback"></span></div>
+      <div class="quiz-opt" data-correct="false">Remove the validation — let the search infrastructure handle it <span class="feedback"></span></div>
+      <div class="quiz-opt" data-correct="false">Add the constraint to the tool description and remove the runtime check <span class="feedback"></span></div>
+    </div>
+    <div class="quiz-explain">Validation errors are teaching signals, not failures. Returning them as tool results gives the agent visibility into what went wrong and a chance to fix it. Silent clamping hides the issue and erodes the agent's understanding of the tool. Description-only constraints don't survive contact with hallucinated inputs.</div>
+  </div>
+
+  <div class="quiz">
+    <div class="quiz-q">Q4. Your agent has 8 search tools. You're considering switching to a router pattern. The single strongest signal that the router is justified:</div>
+    <div class="quiz-options">
+      <div class="quiz-opt" data-correct="false">Tool count exceeded 7 <span class="feedback"></span></div>
+      <div class="quiz-opt" data-correct="false">Latency is too high <span class="feedback"></span></div>
+      <div class="quiz-opt" data-correct="true">Tool-selection accuracy on your eval set is degrading as tools are added <span class="feedback"></span></div>
+      <div class="quiz-opt" data-correct="false">The system prompt is too long <span class="feedback"></span></div>
+    </div>
+    <div class="quiz-explain">Tool count alone isn't the signal — well-designed orthogonal tools can scale further than redundant overlapping ones. The actionable signal is measured selection accuracy on representative queries. If accuracy holds at 8 tools, no router needed; if it drops at 5, the router is overdue.</div>
+  </div>
+
+  <div class="quiz">
+    <div class="quiz-q">Q5. You ship a search tool that returns full embedding vectors in its results. Within a week, your latency is up 30% and synthesis quality is down. Most likely root cause:</div>
+    <div class="quiz-options">
+      <div class="quiz-opt" data-correct="false">The embedding model is slow <span class="feedback"></span></div>
+      <div class="quiz-opt" data-correct="true">Vector arrays bloat the context, costing tokens and degrading attention quality <span class="feedback"></span></div>
+      <div class="quiz-opt" data-correct="false">The agent is trying to interpret the vectors and getting confused <span class="feedback"></span></div>
+      <div class="quiz-opt" data-correct="false">JSON serialization is the bottleneck <span class="feedback"></span></div>
+    </div>
+    <div class="quiz-explain">A 1536-dim vector is ~3000 tokens of useless context. Across 5 results × multiple turns, you've burned tens of thousands of tokens on data the model cannot use. Both latency (more tokens to process) and quality (attention diluted across noise) suffer. The Vector Dump anti-pattern.</div>
+  </div>
+
+  <div class="quiz">
+    <div class="quiz-q">Q6. You need to expose both vector search and BM25 keyword search over the same corpus to your agent. The strongest design choice:</div>
+    <div class="quiz-options">
+      <div class="quiz-opt" data-correct="false">Two tools — let the agent choose per query <span class="feedback"></span></div>
+      <div class="quiz-opt" data-correct="true">One hybrid_search tool that fuses both internally; expose only the unified result <span class="feedback"></span></div>
+      <div class="quiz-opt" data-correct="false">A universal search tool with a method parameter <span class="feedback"></span></div>
+      <div class="quiz-opt" data-correct="false">Two tools, but make BM25 the default <span class="feedback"></span></div>
+    </div>
+    <div class="quiz-explain">Vector vs BM25 is an implementation detail the agent shouldn't have to reason about. Hybrid retrieval (fusion of both) catches both semantic and exact-match queries with a single call. Exposing both forces an unnecessary decision the agent will get wrong some percentage of the time. The Synonym Stack anti-pattern.</div>
+  </div>
+</section>
+
+<div class="module-nav">
+  <div>
+    <div class="module-nav-label">Next up · Module 02</div>
+    <div class="module-nav-title">Multi-step retrieval planning — query decomposition, iterative search, search trees</div>
+  </div>
+  <a class="module-nav-cta" href="/research/course/as-m2" target="_top">Continue →</a>
+</div>
+
+</main>
+</div>
+
+<script>
+const sections = document.querySelectorAll('section');
+const tocLinks = document.querySelectorAll('.toc-link');
+const progressFill = document.getElementById('progressFill');
+function updateActiveSection(){
+  let current = '';
+  sections.forEach(s=>{ if(s.getBoundingClientRect().top < 200) current = s.id; });
+  tocLinks.forEach(l=>l.classList.toggle('active', l.getAttribute('href') === '#'+current));
+  const docHeight = document.documentElement.scrollHeight - window.innerHeight;
+  progressFill.style.width = Math.min(100, window.scrollY / docHeight * 100) + '%';
+}
+window.addEventListener('scroll', updateActiveSection);
+updateActiveSection();
+
+document.querySelectorAll('.tabs').forEach(tabs=>{
+  const ts = tabs.querySelectorAll('.tab');
+  ts.forEach(t=>{
+    t.addEventListener('click', ()=>{
+      ts.forEach(x=>x.classList.remove('active'));
+      t.classList.add('active');
+      const target = t.dataset.tab;
+      tabs.parentElement.querySelectorAll('.tab-panel').forEach(p=>{
+        p.classList.toggle('active', p.id === 'tab-'+target);
+      });
+    });
+  });
+});
+
+const goodExample = {
+  name: "search_engineering_docs",
+  desc: "Searches our internal engineering documentation (Confluence + RFC archive). Returns top 5 pages with title, URL, and 200-token excerpt.\n\nUSE FOR: questions about our internal systems, architecture decisions, runbooks.\nDO NOT USE FOR: external info, code (use search_codebase), customer data (use search_zendesk).\n\nBest with 3-7 keyword queries. Examples:\n  ✓ 'auth service rate limit'\n  ✗ 'how do I figure out why auth is slow'",
+  param: "query",
+  paramDesc: "3-7 keywords; avoid full sentences"
+};
+
+document.getElementById('schExample').addEventListener('click', ()=>{
+  document.getElementById('schName').value = goodExample.name;
+  document.getElementById('schDesc').value = goodExample.desc;
+  document.getElementById('schParam').value = goodExample.param;
+  document.getElementById('schParamDesc').value = goodExample.paramDesc;
+});
+
+document.getElementById('schScore').addEventListener('click', ()=>{
+  const name = document.getElementById('schName').value.trim();
+  const desc = document.getElementById('schDesc').value.trim();
+  const param = document.getElementById('schParam').value.trim();
+  const pdesc = document.getElementById('schParamDesc').value.trim();
+  const checks = [];
+  checks.push({pass: name.length >= 8, label: "Tool name is descriptive (≥8 chars)"});
+  checks.push({pass: /_/.test(name), label: "Uses snake_case with verb_object structure"});
+  checks.push({pass: !/^(get|do|process|handle)/.test(name.toLowerCase()), label: "Avoids generic verbs (get/do/process)"});
+  checks.push({pass: desc.length >= 100, label: "Description is substantive (≥100 chars)"});
+  checks.push({pass: /USE FOR|use for|use this/i.test(desc), label: "Includes selection guidance (when to use)"});
+  checks.push({pass: /DO NOT|don't use|not for/i.test(desc), label: "Includes boundary framing (when NOT to use)"});
+  checks.push({pass: /example|✓|✗|e\.g\./i.test(desc), label: "Includes input examples or format hints"});
+  checks.push({pass: /return/i.test(desc), label: "Describes what the tool returns"});
+  checks.push({pass: param !== "q" && param.length >= 3, label: "Parameter has descriptive name (not 'q')"});
+  checks.push({pass: pdesc.length >= 15, label: "Parameter has format guidance"});
+  const passed = checks.filter(c => c.pass).length;
+  const total = checks.length;
+  const score = Math.round(passed/total * 100);
+  let cls = 'bad', verdict = 'Will cause selection errors';
+  if(score >= 80){cls='good'; verdict='Production-ready';}
+  else if(score >= 50){cls='ok'; verdict='Acceptable but improvable';}
+  document.getElementById('schScoreVal').className = 'schema-score ' + cls;
+  document.getElementById('schScoreVal').textContent = score + '/100';
+  let html = `<div style="font-family:var(--mono);font-size:11px;color:var(--ink-3);margin-bottom:10px">${verdict}</div>`;
+  checks.forEach(c=>{
+    html += `<li class="${c.pass ? 'pass' : 'fail'}" style="font-family:var(--sans);font-size:13px;padding:4px 0">${c.pass?'✓':'✗'} ${c.label}</li>`;
+  });
+  document.getElementById('schFeedback').innerHTML = html;
+});
+
+const composerState = new Set();
+function detectBest(tools, candidates){
+  if(tools.includes('universal')) return 'universal_search (likely wrong choice)';
+  for(const c of candidates){
+    if(tools.includes(c)){
+      const map = {docs:'search_docs', code:'search_codebase', db:'search_orders_db', zendesk:'search_zendesk', web:'web_search', vector:'search_kb_vector', hybrid:'search_kb_hybrid'};
+      return map[c];
+    }
+  }
+  return null;
+}
+function updateComposer(){
+  const result = document.getElementById('composerResult');
+  if(composerState.size === 0){
+    result.innerHTML = '<div class="composer-empty">Toggle some tools above to see selection-accuracy modeling.</div>';
+    return;
+  }
+  const tools = Array.from(composerState);
+  let accuracy = 0.97;
+  const n = tools.length;
+  if(n > 3) accuracy -= (n - 3) * 0.025;
+  const totalOverlap = tools.reduce((sum, t) => {
+    const el = document.querySelector(`[data-tool="${t}"]`);
+    return sum + parseInt(el.dataset.overlap || 0);
+  }, 0);
+  accuracy -= totalOverlap * 0.04;
+  accuracy = Math.max(0.4, Math.min(0.99, accuracy));
+  const queryRouting = {
+    "What's our refund policy?": detectBest(tools, ['docs', 'zendesk']),
+    "How does the auth service rate-limit work?": detectBest(tools, ['docs', 'code']),
+    "Show me orders from customer X in Q3": detectBest(tools, ['db']),
+    "Find the function that handles password resets": detectBest(tools, ['code']),
+    "What's the latest news on the OpenAI API?": detectBest(tools, ['web'])
+  };
+  let html = '';
+  const accColor = accuracy > 0.85 ? 'var(--success)' : accuracy > 0.7 ? 'var(--warn)' : 'var(--fail)';
+  html += `<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:18px;padding-bottom:14px;border-bottom:1px solid var(--line)">`;
+  html += `<div><div style="font-family:var(--mono);font-size:11px;color:var(--ink-3);text-transform:uppercase;letter-spacing:0.06em">Predicted tool-selection accuracy</div>`;
+  html += `<div style="font-family:var(--serif);font-size:32px;color:${accColor};font-weight:500;margin-top:4px">${(accuracy*100).toFixed(1)}%</div></div>`;
+  html += `<div style="text-align:right"><div style="font-family:var(--mono);font-size:11px;color:var(--ink-3);text-transform:uppercase">Tools active</div>`;
+  html += `<div style="font-family:var(--mono);font-size:24px;color:var(--accent);font-weight:600">${n}</div></div></div>`;
+  html += `<div style="font-family:var(--mono);font-size:11px;color:var(--ink-3);margin-bottom:10px">SAMPLE QUERY ROUTING</div>`;
+  Object.entries(queryRouting).forEach(([q, t])=>{
+    const tool = t || '⚠ no good match';
+    const ok = !!t;
+    html += `<div style="display:grid;grid-template-columns:1fr auto;gap:14px;padding:8px 0;border-bottom:1px solid var(--line);align-items:center">`;
+    html += `<div style="font-family:var(--serif);font-size:14px;color:var(--ink-2)">"${q}"</div>`;
+    html += `<div style="font-family:var(--mono);font-size:11px;color:${ok?'var(--accent)':'var(--fail)'}">→ ${tool}</div></div>`;
+  });
+  if(totalOverlap > 0){
+    html += `<div style="margin-top:14px;padding:10px 14px;background:rgba(247,118,142,0.06);border-radius:6px;border-left:2px solid var(--fail);font-family:var(--serif);font-size:13px;color:var(--ink-2)">Warning: overlapping/universal tools detected. The model will inconsistently choose between similar options, dropping accuracy.</div>`;
+  }
+  if(n > 7){
+    html += `<div style="margin-top:10px;padding:10px 14px;background:rgba(99,102,241,0.06);border-radius:6px;border-left:2px solid var(--accent);font-family:var(--serif);font-size:13px;color:var(--ink-2)">You've crossed 7 tools — consider the router pattern (see diagram below).</div>`;
+  }
+  result.innerHTML = html;
+}
+document.querySelectorAll('.composer-tool').forEach(t=>{
+  t.addEventListener('click', ()=>{
+    const tool = t.dataset.tool;
+    if(composerState.has(tool)){
+      composerState.delete(tool);
+      t.classList.remove('added');
+    } else {
+      composerState.add(tool);
+      t.classList.add('added');
+    }
+    updateComposer();
+  });
+});
+
+document.querySelectorAll('.quiz').forEach(q=>{
+  const opts = q.querySelectorAll('.quiz-opt');
+  const explain = q.querySelector('.quiz-explain');
+  opts.forEach(o=>{
+    o.addEventListener('click', ()=>{
+      if(q.dataset.answered) return;
+      q.dataset.answered = 'true';
+      const correct = o.dataset.correct === 'true';
+      o.classList.add(correct ? 'correct' : 'wrong');
+      o.querySelector('.feedback').textContent = correct ? '✓ Correct' : '✗ Incorrect';
+      if(!correct){
+        opts.forEach(x=>{
+          if(x.dataset.correct === 'true'){
+            x.classList.add('correct');
+            x.querySelector('.feedback').textContent = '✓ This was correct';
+          }
+        });
+      }
+      explain.classList.add('show');
+    });
+  });
+});
+</script>
+<script>
+(function() {
+
+  // ===== Ghost section numbers =====
+  document.querySelectorAll('.section-head').forEach(function(head) {
+    var numEl = head.querySelector('.section-num');
+    if (!numEl) return;
+    var numText = numEl.textContent.split('/')[0].trim();
+    var ghost = document.createElement('span');
+    ghost.className = 'section-ghost';
+    ghost.textContent = numText;
+    head.style.position = 'relative';
+    head.style.overflow = 'visible';
+    head.appendChild(ghost);
+  });
+
+  // ===== Hero stat counter animation (fires when stats come into view) =====
+  var statsDone = false;
+  var statsObs = new IntersectionObserver(function(entries) {
+    if (statsDone) return;
+    entries.forEach(function(entry) {
+      if (!entry.isIntersecting) return;
+      statsDone = true;
+      statsObs.disconnect();
+      document.querySelectorAll('.hero-stat-num').forEach(function(el) {
+        var target = parseInt(el.textContent, 10);
+        if (isNaN(target)) return;
+        var orig = el.textContent;
+        el.textContent = '0';
+        var start = 0, step = target / (880 / 16);
+        var t = setInterval(function() {
+          start += step;
+          if (start >= target) { el.textContent = orig; clearInterval(t); }
+          else el.textContent = Math.floor(start);
+        }, 16);
+      });
+    });
+  }, { threshold: 0.4 });
+  var statsEl = document.querySelector('.hero-stats');
+  if (statsEl) statsObs.observe(statsEl);
+
+  // ===== Scroll reveal (only applies to elements below 90% of viewport on load) =====
+  var revObs = new IntersectionObserver(function(entries) {
+    entries.forEach(function(entry) {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('visible');
+        revObs.unobserve(entry.target);
+      }
+    });
+  }, { threshold: 0.07, rootMargin: '0px 0px -50px 0px' });
+
+  var vh = window.innerHeight;
+  document.querySelectorAll('section, .widget, .callout, .module-nav').forEach(function(el) {
+    if (el.getBoundingClientRect().top > vh * 0.88) {
+      el.classList.add('reveal');
+      revObs.observe(el);
+    }
+  });
+
+  // ===== Code copy buttons =====
+  document.querySelectorAll('pre.code, .code').forEach(function(codeEl) {
+    if (codeEl.closest('.code-wrap')) return;
+    var wrap = document.createElement('div');
+    wrap.className = 'code-wrap';
+    codeEl.parentNode.insertBefore(wrap, codeEl);
+    wrap.appendChild(codeEl);
+    var btn = document.createElement('button');
+    btn.className = 'copy-btn';
+    btn.textContent = 'Copy';
+    btn.onclick = function() {
+      var text = codeEl.innerText;
+      if (navigator.clipboard) {
+        navigator.clipboard.writeText(text).then(function() {
+          btn.textContent = 'Copied!'; btn.classList.add('copied');
+          setTimeout(function() { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 2000);
+        });
+      } else {
+        var r = document.createRange(); r.selectNodeContents(codeEl);
+        window.getSelection().removeAllRanges(); window.getSelection().addRange(r);
+        btn.textContent = 'Selected!';
+        setTimeout(function() { btn.textContent = 'Copy'; window.getSelection().removeAllRanges(); }, 2000);
+      }
+    };
+    wrap.appendChild(btn);
+  });
+
+})();
+</script>
+
+<script>
+(function(){var b=document.getElementById('readingBar');if(!b)return;function u(){var h=document.documentElement.scrollHeight-window.innerHeight;b.style.width=(h>0?Math.min(100,window.scrollY/h*100):0)+'%'}window.addEventListener('scroll',u,{passive:true});u();})();
+</script>
+</body>
+</html>

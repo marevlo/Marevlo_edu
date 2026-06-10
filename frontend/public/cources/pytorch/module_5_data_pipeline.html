@@ -1,0 +1,2330 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PyTorch Academy • Module 5 — Data Pipelines</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Source+Serif+4:ital,opsz,wght@0,8..60,300;0,8..60,400;0,8..60,500;0,8..60,600;1,8..60,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.47.0/tabler-icons.min.css">
+<style>
+:root{
+  --bg:#08090b;
+  --bg-2:#0b0f1a;
+  --bg-3:#111827;
+  --panel:#0d1117;
+  --panel-2:#111827;
+  --line:#1e2330;
+  --line-2:#2a3142;
+  --ink:#e8eaed;
+  --ink-2:#a8aeb8;
+  --ink-3:#6b7280;
+  --ink-4:#454b58;
+  --accent:#6366f1;       /* indigo — primary accent */
+  --accent-2:#818cf8;
+  --accent-glow:rgba(99,102,241,0.18);
+  --plan:#f59e0b;        /* planning / cognition */
+  --tool:#10b981;        /* tool execution */
+  --observe:#8b5cf6;     /* observation */
+  --fail:#f7768e;
+  --success:#10b981;
+  --serif:'Source Serif 4', Georgia, serif;
+  --sans:'Outfit', -apple-system, sans-serif;
+  --mono:'JetBrains Mono', monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{
+  background:var(--bg);
+  color:var(--ink);
+  font-family:var(--sans);
+  font-weight:400;
+  line-height:1.6;
+  -webkit-font-smoothing:antialiased;
+  overflow-x:hidden;
+  min-height:100vh;
+  position:relative;
+}
+body::before{
+  content:'';position:fixed;inset:0;
+  background:
+    radial-gradient(ellipse 80% 50% at 42% -15%, rgba(99,102,241,0.1), transparent 60%),
+    radial-gradient(ellipse 60% 40% at 100% 100%, rgba(99,102,241,0.04), transparent 60%);
+  pointer-events:none;z-index:0;
+}
+body::after{
+  content:'';position:fixed;inset:0;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='300' height='300' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E");
+  background-size:300px 300px;
+  opacity:0.025;
+  pointer-events:none;z-index:0;
+}
+
+/* ============ STARFIELD ============ */
+.starfield {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  pointer-events: none;
+  z-index: -2;
+}
+.stars {
+  position: fixed;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  z-index: -1;
+  pointer-events: none;
+}
+.star {
+  position: absolute;
+  background: #fff;
+  border-radius: 50%;
+  opacity: 0.3;
+  animation: twinkle var(--dur, 4s) ease-in-out infinite;
+}
+@keyframes twinkle {
+  0%, 100% { opacity: 0.1; }
+  50% { opacity: 0.6; }
+}
+
+/* ============== LAYOUT ============== */
+.shell{position:relative;z-index:1;display:grid;grid-template-columns:280px 1fr;min-height:100vh}
+.sidebar{
+  position:sticky;top:0;height:100vh;
+  border-right:1px solid transparent;
+  background:linear-gradient(180deg, rgba(13,17,23,0.92) 0%, rgba(8,9,11,0.96) 100%);
+  backdrop-filter:blur(20px) saturate(1.4);
+  -webkit-backdrop-filter:blur(20px) saturate(1.4);
+  padding:36px 22px 28px;
+  overflow-y:auto;
+  box-shadow:inset -1px 0 0 rgba(255,255,255,0.04), 1px 0 32px rgba(0,0,0,0.5);
+  display:flex;flex-direction:column;
+}
+/* Left accent spine as pseudo */
+.sidebar::before{
+  position:absolute;left:0;top:0;bottom:0;width:2px;
+  background:linear-gradient(180deg,
+    transparent 0%,
+    rgba(99,102,241,0.5) 20%,
+    rgba(99,102,241,0.3) 60%,
+    transparent 100%);
+  pointer-events:none;z-index:2;
+}
+.sidebar::-webkit-scrollbar{width:3px}
+.sidebar::-webkit-scrollbar-track{background:transparent}
+.sidebar::-webkit-scrollbar-thumb{background:linear-gradient(180deg, var(--accent), transparent);border-radius:3px;opacity:0.5}
+.brand{
+  display:flex;align-items:center;gap:10px;margin-bottom:8px;
+  position:relative;
+}
+/* #3 — top glow arc behind brand */
+.brand::before{
+  content:'';
+  position:absolute;top:-28px;left:-22px;right:-22px;height:90px;
+  background:radial-gradient(ellipse 70% 60% at 40% 0%, rgba(99,102,241,0.18), transparent 70%);
+  pointer-events:none;z-index:0;
+  border-radius:50%;
+}
+.brand > *{position:relative;z-index:1}
+.brand-mark{
+  width:36px;height:36px;border-radius:8px;
+  background:transparent;
+  display:grid;place-items:center;
+  overflow:hidden;
+  flex-shrink:0;
+}
+.brand-mark img, .brand-mark i{
+  font-size:24px;
+  color:var(--accent-2);
+  display:block;
+}
+.brand-name{font-size:13px;font-weight:600;letter-spacing:0.02em}
+.brand-sub{font-size:11px;color:var(--ink-3);margin-top:2px;letter-spacing:0.04em}
+/* #6 — brand divider hairline */
+.brand-divider{
+  height:1px;
+  margin:18px 0 4px;
+  background:linear-gradient(90deg, transparent 0%, rgba(99,102,241,0.25) 40%, rgba(99,102,241,0.25) 60%, transparent 100%);
+}
+.module-tag{
+  margin-top:24px;padding:13px 15px;
+  background:linear-gradient(135deg, rgba(99,102,241,0.06) 0%, rgba(13,17,23,0.9) 100%);
+  border:1px solid rgba(99,102,241,0.18);
+  border-radius:9px;
+  box-shadow:0 1px 12px rgba(0,0,0,0.25);
+}
+.module-tag-label{font-size:10px;color:var(--ink-3);letter-spacing:0.04em;margin-bottom:4px}
+.module-tag-title{font-family:var(--serif);font-size:13px;color:var(--ink);font-weight:400}
+.toc{margin-top:24px}
+.toc-label{font-size:10px;color:var(--ink-3);letter-spacing:0.05em;margin-bottom:12px;padding-left:10px}
+.toc a{
+  display:flex;align-items:center;gap:10px;
+  padding:9px 11px;color:var(--ink-2);text-decoration:none;font-size:13px;
+  border-radius:6px;border-left:2px solid transparent;
+  transition:background 0.18s ease, color 0.18s ease, border-color 0.18s ease;
+  position:relative;
+}
+.toc a:hover{
+  background:rgba(255,255,255,0.03);
+  color:var(--ink);
+}
+.toc a.active{
+  background:linear-gradient(90deg, rgba(99,102,241,0.12) 0%, transparent 100%);
+  color:var(--accent);
+  border-left-color:var(--accent);
+  box-shadow:inset 0 0 0 1px rgba(99,102,241,0.08);
+}
+/* #7 — past TOC items fade */
+.toc a.past{
+  opacity:0.38;
+  color:var(--ink-4);
+}
+.toc a.past .toc-num{color:var(--ink-4)}
+.toc-num{font-family:var(--mono);font-size:11px;color:var(--ink-4);width:24px;transition:color 0.18s}
+.toc a.active .toc-num{color:var(--accent-2)}
+.progress-rail{
+  margin-top:28px;padding:15px 16px;
+  background:linear-gradient(135deg, rgba(99,102,241,0.05) 0%, rgba(13,17,23,0.8) 100%);
+  border:1px solid rgba(99,102,241,0.14);
+  border-radius:9px;
+  box-shadow:0 1px 10px rgba(0,0,0,0.2);
+}
+.progress-bar{
+  height:3px;background:rgba(255,255,255,0.05);border-radius:2px;overflow:hidden;margin-top:10px;
+  box-shadow:inset 0 1px 2px rgba(0,0,0,0.4);
+}
+.progress-fill{
+  height:100%;width:0%;
+  background:linear-gradient(90deg, var(--accent), var(--accent-2));
+  transition:width 0.5s cubic-bezier(0.4,0,0.2,1);
+  box-shadow:0 0 8px rgba(99,102,241,0.5);
+}
+.progress-text{font-size:11px;color:var(--ink-3);font-family:var(--serif)}
+
+.main{padding:80px 80px 200px;max-width:980px}
+@media (max-width: 1100px){
+  .shell{grid-template-columns:1fr}
+  .sidebar{position:relative;height:auto;border-right:none;border-bottom:1px solid var(--line)}
+  .main{padding:48px 32px 120px}
+}
+
+/* ============== HERO ============== */
+.hero{margin-bottom:80px;position:relative;text-align:left;padding:0;max-width:100%}
+.hero-meta{
+  display:inline-flex;align-items:center;gap:0;
+  margin-bottom:36px;
+  font-family:var(--mono);font-size:11px;color:var(--ink-3);letter-spacing:0.05em;
+  background:linear-gradient(135deg, rgba(99,102,241,0.07) 0%, rgba(13,17,23,0.6) 100%);
+  border:1px solid rgba(99,102,241,0.2);
+  border-radius:100px;
+  padding:7px 16px;
+  backdrop-filter:blur(8px);
+  box-shadow:0 0 0 1px rgba(255,255,255,0.03), 0 4px 24px rgba(0,0,0,0.3), 0 0 32px rgba(99,102,241,0.06);
+}
+.hero-meta span{white-space:nowrap;padding:0 2px}
+.hero-meta .dot{
+  width:5px;height:5px;border-radius:50%;
+  background:var(--accent);
+  box-shadow:0 0 6px rgba(99,102,241,0.8), 0 0 12px rgba(99,102,241,0.4);
+  flex-shrink:0;margin:0 10px;
+}
+.hero-meta .sep{
+  width:1px;height:10px;
+  background:rgba(255,255,255,0.08);
+  flex-shrink:0;margin:0 12px;
+}
+.hero-meta .track-label{color:var(--accent-2);font-weight:500}
+.hero-meta .level-badge{
+  padding:2px 9px;
+  background:rgba(99,102,241,0.12);
+  border:1px solid rgba(99,102,241,0.25);
+  border-radius:100px;
+  color:var(--accent-2);
+  font-weight:600;
+  font-size:10px;
+  letter-spacing:0.08em;
+  margin-left:4px;
+}
+.hero h1{
+  font-family:var(--serif);font-weight:400;font-size:clamp(40px, 5.5vw, 68px);
+  line-height:1.05;letter-spacing:-0.022em;margin-bottom:24px;
+}
+.hero h1 em, .hero h1 .accent{font-style:italic;color:var(--accent);font-weight:300;background:none;-webkit-text-fill-color:initial;text-fill-color:initial}
+.hero-lede, .hero .subtitle{
+  font-family:var(--serif);font-size:21px;line-height:1.55;color:var(--ink-2);
+  max-width:680px;font-weight:300;margin: 0;
+}
+.hero-stats{
+  display:grid;grid-template-columns:repeat(4,1fr);gap:2px;
+  margin-top:48px;background:var(--line);border:1px solid var(--line);border-radius:9px;overflow:hidden;
+}
+.hero-stat{background:var(--panel);padding:20px 22px;text-align:left}
+.hero-stat-num{font-family:var(--serif);font-size:28px;font-weight:500;color:var(--accent);line-height:1}
+.hero-stat-label{font-size:11px;color:var(--ink-3);margin-top:6px;letter-spacing:0.03em}
+@media (max-width:700px){.hero-stats{grid-template-columns:repeat(2,1fr)}}
+
+/* ============== SECTIONS ============== */
+.section{margin-bottom:88px;scroll-margin-top:100px}
+section:nth-child(3n){margin-bottom:104px}
+section:nth-child(2n){margin-bottom:96px}
+.section-head{margin-bottom:28px;padding-bottom:18px;border-bottom:1px solid var(--line)}
+.section-num{font-family:var(--mono);font-size:11px;color:var(--accent);letter-spacing:0.15em}
+.section-title, .section h2{
+  font-family:var(--serif);font-size:36px;font-weight:400;line-height:1.15;
+  letter-spacing:-0.01em;margin-top:8px;margin-bottom:8px;
+  display:flex;align-items:center;gap:14px;color:var(--ink);
+}
+.section h2::before{
+  content:'';
+  width:4px;
+  height:28px;
+  background:linear-gradient(180deg, var(--accent), var(--accent-2));
+  border-radius:2px;
+}
+.section-sub{font-size:15px;color:var(--ink-3);margin-top:12px;max-width:680px}
+
+p{font-family:var(--serif);font-size:17px;line-height:1.73;color:var(--ink-2);margin-bottom:20px;font-weight:300}
+p strong{color:var(--ink);font-weight:500}
+p em{color:var(--accent);font-style:italic}
+
+/* Goal Callout matches Marevlo callout standard */
+.goal-callout {
+  max-width: 980px;
+  margin: 20px 0 60px;
+  padding: 22px 28px;
+  background: linear-gradient(135deg, rgba(99,102,241,0.06), rgba(99,102,241,0.02));
+  border-left: 2px solid var(--accent);
+  border-radius: 0 7px 7px 0;
+  position: relative;
+}
+.goal-callout::before {
+  display:none;
+}
+.goal-callout h3 {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+  font-weight:600;
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.goal-callout p {
+  margin: 0;
+  font-size: 16px;
+  color: var(--ink);
+}
+
+.callout{
+  margin:32px 0;padding:22px 28px;
+  background:linear-gradient(135deg, rgba(99,102,241,0.06), rgba(99,102,241,0.02));
+  border-left:2px solid var(--accent);border-radius:0 7px 7px 0;
+  display:flex;
+  gap:16px;
+  align-items:flex-start;
+}
+.callout i{
+  font-size:20px;
+  margin-top:2px;
+  flex-shrink:0;
+}
+.callout-content{flex:1}
+.callout-title{
+  font-family:var(--mono);font-size:11px;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:8px;
+  font-weight:600;
+}
+.callout p{margin:0;font-size:16px;color:var(--ink)}
+
+/* Callout variants */
+.callout-tip{
+  background:linear-gradient(135deg, rgba(16,185,129,0.06), rgba(16,185,129,0.02));
+  border-left-color:var(--success);
+}
+.callout-tip i, .callout-tip .callout-title{color:var(--success)}
+
+.callout-warn{
+  background:linear-gradient(135deg, rgba(245,158,11,0.06), rgba(245,158,11,0.02));
+  border-left-color:var(--plan);
+}
+.callout-warn i, .callout-warn .callout-title{color:var(--plan)}
+
+.callout-info{
+  background:linear-gradient(135deg, rgba(99,102,241,0.06), rgba(99,102,241,0.02));
+  border-left-color:var(--accent);
+}
+.callout-info i, .callout-info .callout-title{color:var(--accent)}
+
+.callout-danger{
+  background:linear-gradient(135deg, rgba(247,118,142,0.06), rgba(247,118,142,0.02));
+  border-left-color:var(--fail);
+}
+.callout-danger i, .callout-danger .callout-title{color:var(--fail)}
+
+h3{font-family:var(--sans);font-size:20px;font-weight:600;margin:48px 0 16px;letter-spacing:-0.005em;color:var(--ink)}
+h4{font-family:var(--sans);font-size:15px;font-weight:600;margin:24px 0 12px;color:var(--ink);text-transform:uppercase;letter-spacing:0.06em}
+
+ul,ol{margin:16px 0 20px 0;padding-left:24px}
+li{font-family:var(--serif);font-size:17px;line-height:1.68;color:var(--ink-2);margin-bottom:10px;font-weight:300}
+li strong{color:var(--ink);font-weight:500}
+
+/* ============== CODE BLOCKS ============== */
+.code-block {
+  background:#06070a;
+  border:1px solid var(--line);
+  border-radius:8px;
+  margin:20px 0;
+  overflow:hidden;
+  position:relative;
+}
+.code-header {
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  padding:10px 18px;
+  background:rgba(255,255,255,0.02);
+  border-bottom:1px solid var(--line);
+}
+.code-lang {
+  font-size:11px;
+  color:var(--accent-2);
+  font-family:var(--mono);
+  letter-spacing:1px;
+  text-transform:uppercase;
+  font-weight:600;
+}
+.code-copy {
+  background:transparent;
+  border:1px solid var(--line-2);
+  color:var(--ink-2);
+  padding:4px 10px;
+  border-radius:5px;
+  font-size:11px;
+  cursor:pointer;
+  display:flex;
+  align-items:center;
+  gap:4px;
+  transition:all 0.15s;
+}
+.code-copy:hover {
+  background:rgba(255,255,255,0.04);
+  color:var(--ink);
+  border-color:var(--accent);
+}
+.code-block pre {
+  padding:18px 20px;
+  overflow-x:auto;
+  font-family:var(--mono);
+  font-size:13px;
+  line-height:1.65;
+}
+.code-block pre code {
+  color:#c8d3e0;
+  background:none;
+  padding:0;
+  border:none;
+}
+.section code:not(pre code) {
+  background: rgba(99, 102, 241, 0.08);
+  color: var(--accent-2);
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-family: var(--mono);
+  font-size: 13px;
+  border: 1px solid rgba(99, 102, 241, 0.18);
+}
+.kw{color:#8b5cf6}
+.fn{color:#818cf8}
+.st{color:#10b981}
+.co{color:#6b7280;font-style:italic}
+.cls{color:#f59e0b}
+.op{color:#67e8f9}
+
+/* === Output Blocks === */
+.output {
+  background:rgba(0,0,0,0.4);
+  border-left:3px solid var(--accent);
+  padding:14px 18px;
+  margin:8px 0 20px;
+  font-family:var(--mono);
+  font-size:12.5px;
+  color:var(--ink-2);
+  border-radius:0 8px 8px 0;
+  white-space:pre-wrap;
+  overflow-x:auto;
+}
+.output::before {
+  content:'output';
+  display:block;
+  font-size:10px;
+  color:var(--accent-2);
+  letter-spacing:1.5px;
+  margin-bottom:6px;
+  text-transform:uppercase;
+  font-weight:600;
+}
+
+/* === Tables === */
+.table-wrap{overflow-x:auto;margin:24px 0}
+table{
+  width:100%;
+  border-collapse:collapse;
+  background:var(--bg-2);
+  border:1px solid var(--line);
+  border-radius:9px;
+  overflow:hidden;
+  font-size:14px;
+}
+thead{
+  background:rgba(99,102,241,0.06);
+}
+th{
+  text-align:left;
+  padding:12px 14px;
+  color:var(--accent-2);
+  font-weight:600;
+  letter-spacing:0.02em;
+  border-bottom:1px solid var(--line-2);
+  font-size:13px;
+  font-family:var(--sans);
+}
+td{
+  padding:11px 14px;
+  border-bottom:1px solid var(--line);
+  color:var(--ink-2);
+  vertical-align:top;
+  font-family:var(--serif);
+  font-weight:300;
+}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:rgba(99,102,241,0.02)}
+td code{font-size:12px}
+
+/* ============== INTERACTIVE WIDGETS ============== */
+.widget {
+  margin:40px 0;
+  background:var(--panel);
+  border:1px solid var(--line);
+  border-radius:11px;
+  padding:28px;
+  position:relative;
+}
+.widget::before {
+  content: 'INTERACTIVE';
+  position: absolute;
+  top: -10px;
+  left: 20px;
+  background: var(--bg);
+  padding: 2px 10px;
+  font-size: 10px;
+  letter-spacing: 2px;
+  color: var(--accent-2);
+  border: 1px solid var(--accent);
+  border-radius: 10px;
+  font-weight: 600;
+  font-family:var(--mono);
+}
+.widget-title {
+  font-family:var(--sans);
+  font-size:16px;
+  font-weight:600;
+  color:var(--ink);
+  margin-bottom:6px;
+  letter-spacing:0.02em;
+  display:flex;
+  align-items:center;
+  gap:10px;
+}
+.widget-title::before {
+  content:'';
+  width:6px;
+  height:6px;
+  border-radius:50%;
+  background:var(--accent);
+  box-shadow:0 0 8px var(--accent-glow);
+}
+.widget-subtitle {
+  font-size:13px;
+  color:var(--ink-3);
+  margin-bottom:18px;
+}
+.controls {
+  display:flex;
+  flex-direction:column;
+  gap:14px;
+  margin-bottom:18px;
+}
+.ctrl-row {
+  display:flex;
+  align-items:center;
+  gap:14px;
+  flex-wrap:wrap;
+}
+.ctrl-label {
+  font-family:var(--sans);
+  font-size:12px;
+  color:var(--ink-2);
+  min-width:130px;
+  letter-spacing:0.02em;
+  text-transform:uppercase;
+  font-weight:500;
+}
+.ctrl-value {
+  font-size:13px;
+  color:var(--accent-2);
+  font-family:var(--mono);
+  min-width:70px;
+  text-align:right;
+  font-weight:600;
+}
+input[type="range"] {
+  flex:1;
+  accent-color:var(--accent);
+  height:4px;
+  background:var(--line-2);
+  border-radius:2px;
+  appearance:none;
+  outline:none;
+}
+input[type="range"]::-webkit-slider-thumb {
+  appearance:none;
+  width:16px;
+  height:16px;
+  border-radius:50%;
+  background:var(--accent-2);
+  cursor:pointer;
+  box-shadow:0 0 12px var(--accent-glow);
+}
+input[type="range"]::-moz-range-thumb {
+  width:16px;
+  height:16px;
+  border-radius:50%;
+  background:var(--accent-2);
+  cursor:pointer;
+  border:none;
+}
+.btn-row { display:flex; gap:8px; flex-wrap:wrap; }
+.pill-btn {
+  background:var(--bg-3);
+  color:var(--ink-2);
+  border:1px solid var(--line-2);
+  padding:7px 16px;
+  border-radius:8px;
+  font-size:12px;
+  cursor:pointer;
+  font-family:var(--mono);
+  font-weight:500;
+  transition:all 0.15s;
+}
+.pill-btn:hover {
+  background:var(--panel-2);
+  color:var(--ink);
+  border-color:var(--accent);
+}
+.pill-btn.active {
+  background:var(--accent);
+  color:#ffffff;
+  border-color:var(--accent);
+  box-shadow:0 0 15px var(--accent-glow);
+  font-weight:600;
+}
+.tensor-grid {
+  display:inline-grid;
+  gap:4px;
+  padding:16px;
+  background:rgba(0,0,0,0.3);
+  border-radius:10px;
+  border:1px solid var(--line);
+}
+.tcell {
+  width:36px;
+  height:36px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-size:10px;
+  font-family:var(--mono);
+  border-radius:4px;
+  font-weight:500;
+  transition:all 0.3s;
+}
+.viz-out {
+  margin-top:16px;
+  font-family:var(--mono);
+  font-size:13px;
+  color:var(--ink-2);
+  padding:14px 18px;
+  background:var(--bg-3);
+  border-radius:6px;
+  border-left:2px solid var(--accent);
+  white-space:pre-wrap;
+}
+.chart-box {
+  position:relative;
+  height:260px;
+  margin:16px 0 8px;
+  background:rgba(0,0,0,0.2);
+  border-radius:8px;
+  padding:8px;
+  border:1px solid var(--line);
+}
+.legend {
+  display:flex;
+  gap:18px;
+  font-size:11px;
+  color:var(--ink-3);
+  margin-top:10px;
+  flex-wrap:wrap;
+  font-family:var(--mono);
+}
+.legend-dot {
+  display:inline-block;
+  width:10px;
+  height:10px;
+  border-radius:50%;
+  margin-right:6px;
+  vertical-align:middle;
+}
+.graph-svg-wrap {
+  background:rgba(0,0,0,0.3);
+  border-radius:10px;
+  padding:16px;
+  margin:12px 0;
+  border:1px solid var(--line);
+}
+.metric-grid {
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(110px,1fr));
+  gap:10px;
+  margin:14px 0;
+}
+.metric {
+  background:rgba(0,0,0,0.3);
+  border:1px solid var(--line);
+  border-radius:8px;
+  padding:12px;
+}
+.metric-label {
+  font-family:var(--mono);
+  font-size:10px;
+  color:var(--ink-3);
+  text-transform:uppercase;
+  letter-spacing:1px;
+}
+.metric-value {
+  font-family:var(--mono);
+  font-size:18px;
+  color:var(--accent-2);
+  margin-top:4px;
+  font-weight:600;
+}
+
+/* ============ REFERENCES SECTION ============ */
+.references {
+  max-width:980px;
+  margin:80px auto 60px;
+  padding:0;
+}
+.refs-header {
+  text-align:center;
+  margin-bottom:40px;
+}
+.refs-header h2 {
+  font-family:var(--serif);
+  font-size:48px;
+  font-weight:400;
+  margin-bottom:12px;
+}
+.refs-header h2 .cyan-text { color:var(--ink) }
+.refs-header h2 .accent {
+  color:var(--accent);
+}
+.refs-header p {
+  color:var(--ink-3);
+  font-size:15px;
+  font-family:var(--serif);
+}
+.ref-card {
+  background:var(--panel);
+  border:1px solid var(--line);
+  border-radius:12px;
+  padding:24px 28px;
+  margin-bottom:22px;
+  display:flex;
+  gap:24px;
+  align-items:flex-start;
+  transition:all 0.2s;
+}
+.ref-card:hover {
+  border-color:var(--accent);
+  box-shadow:0 4px 24px var(--accent-glow);
+}
+.ref-card.pink-card { border-color:var(--line); }
+.ref-card.pink-card:hover {
+  border-color:var(--observe);
+  box-shadow:0 4px 24px rgba(139,92,246,0.12);
+}
+.ref-icon {
+  width:56px;
+  height:56px;
+  border-radius:12px;
+  background:rgba(99,102,241,0.08);
+  border:1px solid rgba(99,102,241,0.2);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-size:24px;
+  color:var(--accent-2);
+  flex-shrink:0;
+}
+.ref-card.pink-card .ref-icon {
+  background:rgba(139,92,246,0.08);
+  border-color:rgba(139,92,246,0.2);
+  color:var(--observe);
+}
+.ref-body { flex:1 }
+.ref-type {
+  font-family:var(--mono);
+  font-size:10px;
+  color:var(--ink-3);
+  font-weight:600;
+  letter-spacing:0.1em;
+  text-transform:uppercase;
+  margin-bottom:6px;
+}
+.ref-tagline {
+  font-size:14px;
+  color:var(--ink-2);
+  margin-bottom:12px;
+  font-family:var(--serif);
+  font-weight:300;
+}
+.ref-title {
+  font-family:var(--sans);
+  font-size:17px;
+  color:var(--ink);
+  font-weight:600;
+  margin-bottom:16px;
+}
+.ref-btn {
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  padding:8px 18px;
+  background:var(--bg-3);
+  border:1px solid var(--line-2);
+  color:var(--ink-2);
+  border-radius:6px;
+  font-size:12px;
+  font-weight:600;
+  letter-spacing:0.02em;
+  text-decoration:none;
+  transition:all 0.15s;
+  text-transform:uppercase;
+  font-family:var(--mono);
+}
+.ref-btn:hover {
+  background:var(--panel-2);
+  color:var(--ink);
+  border-color:var(--accent);
+}
+.ref-card.pink-card .ref-btn:hover {
+  border-color:var(--observe);
+}
+
+/* ============ SUMMARY TABLE ============ */
+.summary-box {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  padding: 24px;
+  margin: 20px 0;
+}
+
+/* ============ NEXT MODULE ============ */
+.module-nav{
+  margin-top:80px;padding:32px;
+  background:linear-gradient(135deg, var(--panel), var(--panel-2));
+  border:1px solid var(--line);border-radius:14px;
+  display:flex;justify-content:space-between;align-items:center;gap:24px;
+}
+.module-nav-label{font-family:var(--mono);font-size:10px;color:var(--ink-3);letter-spacing:0.15em;text-transform:uppercase}
+.module-nav-title{font-family:var(--serif);font-size:24px;font-weight:400;margin-top:6px}
+.module-nav-cta{
+  padding:12px 22px;background:var(--accent);color:#ffffff;
+  border-radius:8px;text-decoration:none;font-weight:600;font-size:13px;
+  white-space:nowrap;transition:all 0.15s;
+}
+.module-nav-cta:hover{background:var(--accent-2);transform:translateX(2px)}
+
+
+
+/* Sticky badge — moved to sidebar footer */
+.sidebar-footer{
+  margin-top:auto;
+  padding-top:24px;
+  border-top:1px solid rgba(255,255,255,0.04);
+}
+.depth-badge{
+  display:flex;align-items:center;gap:9px;
+  padding:11px 13px;
+  background:linear-gradient(135deg, rgba(99,102,241,0.06) 0%, rgba(13,17,23,0.8) 100%);
+  border:1px solid rgba(99,102,241,0.14);
+  border-radius:9px;
+  font-size:11px;font-family:var(--mono);
+  color:var(--ink-3);letter-spacing:0.03em;
+  box-shadow:0 1px 10px rgba(0,0,0,0.2);
+}
+.depth-badge .pulse{
+  width:5px;height:5px;flex-shrink:0;border-radius:50%;background:var(--accent);
+  box-shadow:0 0 6px rgba(99,102,241,0.7);
+  animation:pulse 2s infinite;
+}
+.depth-badge .badge-text{color:var(--ink-3);line-height:1.4}
+.depth-badge .badge-text strong{display:block;color:var(--ink-2);font-weight:500;font-size:11px;margin-bottom:1px}
+@keyframes pulse{0%,100%{opacity:0.5;transform:scale(1)}50%{opacity:1;transform:scale(1.3)}}
+
+/* Selection */
+::selection{background:var(--accent);color:#1a1a1a}
+
+/* Animation utilities */
+@keyframes fadeIn{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
+.fade-in{animation:fadeIn 0.6s ease forwards}
+
+/* Responsive type */
+@media(max-width:680px){
+  .hero h1{font-size:36px}
+  .hero-lede, .hero .subtitle{font-size:17px}
+  .section-title{font-size:26px}
+  p,li{font-size:16px}
+  .main{padding:40px 20px 80px}
+}
+</style>
+</head>
+<body>
+
+<div class="starfield"></div>
+<div class="stars" id="stars"></div>
+
+<div class="shell">
+<!-- ============ SIDEBAR ============ -->
+<aside class="sidebar">
+  <div class="brand">
+    <div class="brand-mark"><i class="ti ti-atom-2"></i></div>
+    <div>
+      <div class="brand-name">PyTorch Academy</div>
+      <div class="brand-sub">Data Science Track</div>
+    </div>
+  </div>
+  <div class="brand-divider"></div>
+  <div class="module-tag">
+    <div class="module-tag-label">Track 1 · Module 5.0</div>
+    <div class="module-tag-title">Data Pipelines</div>
+  </div>
+  <nav class="toc">
+    <div class="toc-label">In this module</div>
+    <a href="#sec-1" class="toc-link active"><span class="toc-num">01</span>Dataset</a>
+    <a href="#sec-2" class="toc-link"><span class="toc-num">02</span>Collate</a>
+    <a href="#sec-3" class="toc-link"><span class="toc-num">03</span>Performance</a>
+    <a href="#sec-4" class="toc-link"><span class="toc-num">04</span>Streaming</a>
+    <a href="#sec-5" class="toc-link"><span class="toc-num">05</span>Splits</a>
+    <a href="#sec-lab" class="toc-link"><span class="toc-num">06</span>Lab</a>
+  </nav>
+  <div class="progress-rail">
+    <div class="progress-text">Reading progress</div>
+    <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+  </div>
+  <div class="sidebar-footer">
+    <div class="depth-badge">
+      <span class="pulse"></span>
+      <div class="badge-text">
+        <strong>Marevlo &middot; Premium Track</strong>
+        Track 1 · Module 5.0
+      </div>
+    </div>
+  </div>
+</aside>
+
+<!-- ============ MAIN CONTENT AREA ============ -->
+<main class="main">
+
+<!-- HERO -->
+<header class="hero">
+  <div class="hero-meta">
+    <span class="track-label">Track 1 · Data Science</span>
+    <span class="sep"></span>
+    <span>Module 5.0</span>
+    <span class="sep"></span>
+    <span>Course 01</span>
+    <span class="sep"></span>
+    <span class="level-badge">Core Bedrock</span>
+  </div>
+  <h1>Data <em>Pipelines.</em></h1>
+  <p class="subtitle">Build pipelines that are never the bottleneck — Dataset, DataLoader, performance tuning, and production-grade streaming.</p>
+  <div class="hero-stats">
+    <div class="hero-stat"><div class="hero-stat-num">6</div><div class="hero-stat-label">Module sections</div></div>
+    <div class="hero-stat"><div class="hero-stat-num">6</div><div class="hero-stat-label">Interactive widgets</div></div>
+    <div class="hero-stat"><div class="hero-stat-num">1</div><div class="hero-stat-label">Mini projects</div></div>
+    <div class="hero-stat"><div class="hero-stat-num">100%</div><div class="hero-stat-label">Vectorised code</div></div>
+  </div>
+</header>
+
+<div class="goal-callout">
+  <h3><i class="ti ti-target"></i> MODULE GOAL</h3>
+  <p>Build efficient, production-grade data pipelines in PyTorch. Understand when to use <code>Dataset</code> vs <code>IterableDataset</code>, write smart collate functions for variable-length sequences, and tune your <code>DataLoader</code> so it's never the training bottleneck. End with a log dataset loader built for AIOps.</p>
+</div>
+
+<div class="content">
+
+  <!-- ============ SECTION 1 ============ -->
+  <section class="section" id="sec-1">
+    <div class="section-num">SECTION 01</div>
+    <h2>Dataset vs IterableDataset</h2>
+
+    <h3>The Two Modes of Data Loading</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th></th><th>Dataset</th><th>IterableDataset</th></tr></thead>
+        <tbody>
+          <tr><td>Access pattern</td><td>Random access via <code>__getitem__(i)</code></td><td>Sequential stream</td></tr>
+          <tr><td>Must know length?</td><td>Yes (<code>__len__</code> required)</td><td>No</td></tr>
+          <tr><td>Shuffling</td><td>Free — DataLoader handles it</td><td>Must implement manually</td></tr>
+          <tr><td>Best for</td><td>Files on disk, databases, in-memory data</td><td>Streaming logs, large files, network data</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h4>Real-World Analogy</h4>
+    <p><code>Dataset</code> is like a library — you can walk to any shelf and grab book number 247.<br/><code>IterableDataset</code> is like a conveyor belt — items come to you in order, and you process them as they arrive.</p>
+
+    <!-- INTERACTIVE WIDGET 1: Dataset vs IterableDataset Decider -->
+    <div class="widget">
+      <div class="widget-title">Which Dataset Type Should You Use?</div>
+      <div class="widget-subtitle">Pick a data scenario and see which Dataset subclass fits, with the reasoning.</div>
+      <div class="btn-row" style="margin-bottom:14px;">
+        <button class="pill-btn active" data-scenario="csv">10k-row CSV in memory</button>
+        <button class="pill-btn" data-scenario="images">50k images on disk</button>
+        <button class="pill-btn" data-scenario="logs">100GB log stream</button>
+        <button class="pill-btn" data-scenario="kafka">Kafka topic (live)</button>
+        <button class="pill-btn" data-scenario="parquet">100M-row Parquet</button>
+      </div>
+      <div class="compare-grid">
+        <div class="compare-card" id="card-map">
+          <div class="compare-title"><i class="ti ti-book"></i> Dataset (map-style)</div>
+          <ul class="compare-list">
+            <li><i class="ti ti-check"></i> Random access via index</li>
+            <li><i class="ti ti-check"></i> Free shuffling by DataLoader</li>
+            <li><i class="ti ti-check"></i> Easy train / val / test split</li>
+            <li><i class="ti ti-check"></i> Requires <code>__len__</code></li>
+          </ul>
+        </div>
+        <div class="compare-card" id="card-iter">
+          <div class="compare-title"><i class="ti ti-arrows-shuffle"></i> IterableDataset (stream)</div>
+          <ul class="compare-list">
+            <li><i class="ti ti-check"></i> Lazy, line-by-line iteration</li>
+            <li><i class="ti ti-check"></i> No memory cost for unread items</li>
+            <li><i class="ti ti-check"></i> Manual worker sharding</li>
+            <li><i class="ti ti-check"></i> No built-in shuffling</li>
+          </ul>
+        </div>
+      </div>
+      <div class="viz-out" id="scenario-out"></div>
+    </div>
+
+    <h3>Map-Style Dataset</h3>
+    <div class="code-block">
+      <div class="code-header"><span class="code-lang">python</span><button class="code-copy"><i class="ti ti-copy"></i> Copy</button></div>
+<pre><code><span class="kw">import</span> torch
+<span class="kw">from</span> torch.utils.data <span class="kw">import</span> Dataset, DataLoader
+<span class="kw">import</span> numpy <span class="kw">as</span> np
+
+<span class="kw">class</span> <span class="cls">TabularDataset</span>(Dataset):
+    <span class="st">"""
+    A reusable Dataset for tabular data stored as tensors or numpy arrays.
+    Applies optional per-feature normalisation.
+    """</span>
+
+    <span class="kw">def</span> <span class="fn">__init__</span>(self, X: torch.Tensor, y: torch.Tensor, transform=<span class="kw">None</span>):
+        <span class="kw">assert</span> <span class="fn">len</span>(X) == <span class="fn">len</span>(y), <span class="st">"X and y must have the same number of samples"</span>
+        self.X         = X.<span class="fn">float</span>()
+        self.y         = y
+        self.transform = transform
+
+    <span class="kw">def</span> <span class="fn">__len__</span>(self) -&gt; <span class="cls">int</span>:
+        <span class="kw">return</span> <span class="fn">len</span>(self.X)
+
+    <span class="kw">def</span> <span class="fn">__getitem__</span>(self, idx: <span class="cls">int</span>):
+        x = self.X[idx]
+        <span class="kw">if</span> self.transform:
+            x = self.<span class="fn">transform</span>(x)
+        <span class="kw">return</span> x, self.y[idx]
+
+
+<span class="co"># Usage</span>
+torch.<span class="fn">manual_seed</span>(<span class="st">42</span>)
+X_raw = torch.<span class="fn">randn</span>(<span class="st">1000</span>, <span class="st">8</span>)
+y_raw = (X_raw[:, <span class="st">0</span>] + X_raw[:, <span class="st">1</span>] &gt; <span class="st">0</span>).<span class="fn">long</span>()
+
+dataset = <span class="fn">TabularDataset</span>(X_raw, y_raw)
+<span class="fn">print</span>(<span class="st">f"Dataset length: {len(dataset)}"</span>)
+<span class="fn">print</span>(<span class="st">f"Sample 0: X shape={dataset[0][0].shape}, y={dataset[0][1].item()}"</span>)</code></pre>
+    </div>
+    <div class="output">Dataset length: 1000
+Sample 0: X shape=torch.Size([8]), y=1</div>
+
+    <h3>Iterable Dataset — For Large Log Files</h3>
+    <div class="code-block">
+      <div class="code-header"><span class="code-lang">python</span><button class="code-copy"><i class="ti ti-copy"></i> Copy</button></div>
+<pre><code><span class="kw">from</span> torch.utils.data <span class="kw">import</span> IterableDataset
+<span class="kw">import</span> itertools
+
+<span class="kw">class</span> <span class="cls">LogFileDataset</span>(IterableDataset):
+    <span class="st">"""
+    Streams log lines from one or more files without loading everything into RAM.
+    Yields (token_ids, label) tuples.
+    Each line is a space-separated sequence of token IDs followed by a label.
+    """</span>
+
+    <span class="kw">def</span> <span class="fn">__init__</span>(self, filepaths: <span class="cls">list</span>, max_seq_len: <span class="cls">int</span> = <span class="st">64</span>):
+        self.filepaths   = filepaths
+        self.max_seq_len = max_seq_len
+
+    <span class="kw">def</span> <span class="fn">_parse_line</span>(self, line: <span class="cls">str</span>):
+        tokens = <span class="fn">list</span>(<span class="fn">map</span>(<span class="cls">int</span>, line.<span class="fn">strip</span>().<span class="fn">split</span>()))
+        label  = tokens[-<span class="st">1</span>]
+        seq    = tokens[:-<span class="st">1</span>][:self.max_seq_len]         <span class="co"># Truncate to max_seq_len</span>
+        <span class="kw">return</span> torch.<span class="fn">tensor</span>(seq, dtype=torch.long), label
+
+    <span class="kw">def</span> <span class="fn">__iter__</span>(self):
+        worker_info = torch.utils.data.<span class="fn">get_worker_info</span>()
+        files = self.filepaths
+
+        <span class="co"># Distribute files across workers if multi-worker loading</span>
+        <span class="kw">if</span> worker_info <span class="kw">is</span> <span class="kw">not</span> <span class="kw">None</span>:
+            files = [f <span class="kw">for</span> i, f <span class="kw">in</span> <span class="fn">enumerate</span>(files)
+                     <span class="kw">if</span> i % worker_info.num_workers == worker_info.id]
+
+        <span class="kw">for</span> filepath <span class="kw">in</span> files:
+            <span class="kw">with</span> <span class="fn">open</span>(filepath, <span class="st">'r'</span>) <span class="kw">as</span> f:
+                <span class="kw">for</span> line <span class="kw">in</span> f:
+                    <span class="kw">if</span> line.<span class="fn">strip</span>():
+                        <span class="kw">yield</span> self.<span class="fn">_parse_line</span>(line)
+
+
+<span class="co"># Simulate writing a fake log file for demonstration</span>
+<span class="kw">import</span> tempfile, os
+
+fake_log = tempfile.<span class="fn">NamedTemporaryFile</span>(mode=<span class="st">'w'</span>, suffix=<span class="st">'.txt'</span>, delete=<span class="kw">False</span>)
+<span class="kw">for</span> i <span class="kw">in</span> <span class="fn">range</span>(<span class="st">200</span>):
+    seq   = <span class="st">' '</span>.<span class="fn">join</span>([<span class="fn">str</span>(np.random.<span class="fn">randint</span>(<span class="st">1</span>, <span class="st">50</span>)) <span class="kw">for</span> _ <span class="kw">in</span> <span class="fn">range</span>(np.random.<span class="fn">randint</span>(<span class="st">5</span>, <span class="st">20</span>))])
+    label = np.random.<span class="fn">randint</span>(<span class="st">0</span>, <span class="st">2</span>)
+    fake_log.<span class="fn">write</span>(<span class="st">f"{seq} {label}\n"</span>)
+fake_log.<span class="fn">close</span>()
+
+log_ds = <span class="fn">LogFileDataset</span>([fake_log.name], max_seq_len=<span class="st">16</span>)
+<span class="co"># Can't use shuffle=True with IterableDataset</span>
+log_dl = <span class="fn">DataLoader</span>(log_ds, batch_size=<span class="st">8</span>, collate_fn=<span class="kw">None</span>)
+
+sample_seq, sample_label = <span class="fn">next</span>(<span class="fn">iter</span>(log_ds))
+<span class="fn">print</span>(<span class="st">f"Sample sequence: {sample_seq}"</span>)
+<span class="fn">print</span>(<span class="st">f"Sample label:    {sample_label}"</span>)
+<span class="fn">print</span>(<span class="st">f"Seq length:      {len(sample_seq)}"</span>)
+
+os.<span class="fn">unlink</span>(fake_log.name)</code></pre>
+    </div>
+    <div class="output">Sample sequence: tensor([ 7, 35, 22, 45,  1, 34, 34,  2, 49, 32, 15, 38])
+Sample label:    0
+Seq length:      12</div>
+  </section>
+
+  <!-- ============ SECTION 2 ============ -->
+  <section class="section" id="sec-2">
+    <div class="section-num">SECTION 02</div>
+    <h2>Collate Functions — Handling Variable-Length Sequences</h2>
+
+    <h3>The Problem</h3>
+    <p>By default, DataLoader tries to stack samples into a single tensor. This works when all samples have the same shape. But log sequences, text, or time-series windows often have variable length — stacking fails.</p>
+
+    <div class="code-block">
+      <div class="code-header"><span class="code-lang">python</span><button class="code-copy"><i class="ti ti-copy"></i> Copy</button></div>
+<pre><code><span class="co"># This FAILS because sequences have different lengths</span>
+sequences = [
+    torch.<span class="fn">tensor</span>([<span class="st">1</span>, <span class="st">2</span>, <span class="st">3</span>]),
+    torch.<span class="fn">tensor</span>([<span class="st">4</span>, <span class="st">5</span>]),
+    torch.<span class="fn">tensor</span>([<span class="st">6</span>, <span class="st">7</span>, <span class="st">8</span>, <span class="st">9</span>])
+]
+
+<span class="kw">try</span>:
+    torch.<span class="fn">stack</span>(sequences)
+<span class="kw">except</span> RuntimeError <span class="kw">as</span> e:
+    <span class="fn">print</span>(<span class="st">"Error:"</span>, e)</code></pre>
+    </div>
+    <div class="output">Error: stack expects each tensor to be equal size, but got [3] at entry 0 and [2] at entry 1</div>
+
+    <!-- INTERACTIVE WIDGET 2: Padding / Truncating Visualizer -->
+    <div class="widget">
+      <div class="widget-title">Collate: Pad &amp; Truncate Visualiser</div>
+      <div class="widget-subtitle">Six raw sequences of different lengths. Toggle <code style="background:rgba(0,229,255,0.1);color:var(--cyan-soft);padding:1px 5px;border-radius:3px;font-size:11px;">max_len</code> to see truncation and padding combine into a fixed-size batch.</div>
+      <div class="controls">
+        <div class="ctrl-row">
+          <span class="ctrl-label">max_len</span>
+          <input type="range" id="max-len" min="2" max="12" value="8" step="1">
+          <span class="ctrl-value" id="max-len-v">8</span>
+        </div>
+        <div class="ctrl-row">
+          <span class="ctrl-label">Strategy</span>
+          <div class="btn-row">
+            <button class="pill-btn active" data-strat="pad">Pad only</button>
+            <button class="pill-btn" data-strat="trunc">Pad + Truncate</button>
+          </div>
+        </div>
+      </div>
+      <div id="seq-viz" style="background:rgba(0,0,0,0.3);border-radius:10px;padding:14px 16px;"></div>
+      <div class="metric-grid">
+        <div class="metric"><div class="metric-label">Batch shape</div><div class="metric-value" id="bs-shape">(6, 8)</div></div>
+        <div class="metric"><div class="metric-label">Padding tokens</div><div class="metric-value" id="bs-pad" style="color:var(--warn);">12</div></div>
+        <div class="metric"><div class="metric-label">% padding</div><div class="metric-value" id="bs-pad-pct">25%</div></div>
+      </div>
+    </div>
+
+    <h3>Padding Collate Function</h3>
+    <div class="code-block">
+      <div class="code-header"><span class="code-lang">python</span><button class="code-copy"><i class="ti ti-copy"></i> Copy</button></div>
+<pre><code><span class="kw">from</span> torch.nn.utils.rnn <span class="kw">import</span> pad_sequence
+
+<span class="kw">def</span> <span class="fn">collate_variable_length</span>(batch):
+    <span class="st">"""
+    Collate a batch of (sequence, label) tuples with variable-length sequences.
+    Pads sequences to the longest in the batch.
+
+    Returns:
+        sequences: (B, T_max) padded tensor
+        lengths:   (B,)       original lengths (needed by LSTM)
+        labels:    (B,)       labels
+    """</span>
+    sequences, labels = <span class="fn">zip</span>(*batch)
+
+    lengths = torch.<span class="fn">tensor</span>([<span class="fn">len</span>(s) <span class="kw">for</span> s <span class="kw">in</span> sequences])
+    padded  = <span class="fn">pad_sequence</span>(sequences, batch_first=<span class="kw">True</span>, padding_value=<span class="st">0</span>)
+    labels  = torch.<span class="fn">tensor</span>(labels)
+
+    <span class="kw">return</span> padded, lengths, labels
+
+
+<span class="co"># Test it</span>
+batch = [
+    (torch.<span class="fn">tensor</span>([<span class="st">1</span>, <span class="st">2</span>, <span class="st">3</span>]),     <span class="st">0</span>),
+    (torch.<span class="fn">tensor</span>([<span class="st">4</span>, <span class="st">5</span>]),        <span class="st">1</span>),
+    (torch.<span class="fn">tensor</span>([<span class="st">6</span>, <span class="st">7</span>, <span class="st">8</span>, <span class="st">9</span>]), <span class="st">0</span>),
+]
+
+padded, lengths, labels = <span class="fn">collate_variable_length</span>(batch)
+<span class="fn">print</span>(<span class="st">"Padded sequences:\n"</span>, padded)
+<span class="fn">print</span>(<span class="st">"Original lengths:"</span>, lengths)
+<span class="fn">print</span>(<span class="st">"Labels:          "</span>, labels)</code></pre>
+    </div>
+    <div class="output">Padded sequences:
+ tensor([[1, 2, 3, 0],
+        [4, 5, 0, 0],
+        [6, 7, 8, 9]])
+Original lengths: tensor([3, 2, 4])
+Labels:           tensor([0, 1, 0])</div>
+
+    <h3>Truncate + Pad Collate for Fixed Bucket Size</h3>
+    <div class="code-block">
+      <div class="code-header"><span class="code-lang">python</span><button class="code-copy"><i class="ti ti-copy"></i> Copy</button></div>
+<pre><code><span class="kw">def</span> <span class="fn">make_collate_fn</span>(max_len: <span class="cls">int</span> = <span class="st">32</span>, pad_value: <span class="cls">int</span> = <span class="st">0</span>):
+    <span class="st">"""Returns a collate_fn that truncates to max_len then pads."""</span>
+
+    <span class="kw">def</span> <span class="fn">collate</span>(batch):
+        sequences, labels = <span class="fn">zip</span>(*batch)
+        truncated = [s[:max_len] <span class="kw">for</span> s <span class="kw">in</span> sequences]
+        lengths   = torch.<span class="fn">tensor</span>([<span class="fn">len</span>(s) <span class="kw">for</span> s <span class="kw">in</span> truncated])
+        padded    = <span class="fn">pad_sequence</span>(truncated, batch_first=<span class="kw">True</span>, padding_value=pad_value)
+        <span class="kw">return</span> padded, lengths, torch.<span class="fn">tensor</span>(labels)
+
+    <span class="kw">return</span> collate
+
+
+<span class="co"># Use in DataLoader</span>
+collate_fn = <span class="fn">make_collate_fn</span>(max_len=<span class="st">16</span>)</code></pre>
+    </div>
+  </section>
+
+  <!-- ============ SECTION 3 ============ -->
+  <section class="section" id="sec-3">
+    <div class="section-num">SECTION 03</div>
+    <h2>DataLoader Performance</h2>
+
+    <h3>Key Parameters</h3>
+    <div class="code-block">
+      <div class="code-header"><span class="code-lang">python</span><button class="code-copy"><i class="ti ti-copy"></i> Copy</button></div>
+<pre><code><span class="co"># Build a dataset for performance testing</span>
+dataset = <span class="fn">TabularDataset</span>(torch.<span class="fn">randn</span>(<span class="st">50000</span>, <span class="st">128</span>), torch.<span class="fn">randint</span>(<span class="st">0</span>, <span class="st">10</span>, (<span class="st">50000</span>,)))
+
+<span class="co"># Default — slow (single process, no prefetch)</span>
+slow_dl = <span class="fn">DataLoader</span>(dataset, batch_size=<span class="st">256</span>)
+
+<span class="co"># Optimised</span>
+<span class="co"># NOTE: On Windows, num_workers > 0 requires a __main__ guard (doesn't work in notebooks).</span>
+<span class="co"># Use num_workers=0 on Windows; set to 4+ on Linux/Mac servers for real speedups.</span>
+<span class="kw">import</span> platform
+n_workers = <span class="st">0</span> <span class="kw">if</span> platform.<span class="fn">system</span>() == <span class="st">"Windows"</span> <span class="kw">else</span> <span class="st">4</span>
+
+fast_dl = <span class="fn">DataLoader</span>(
+    dataset,
+    batch_size=<span class="st">256</span>,
+    num_workers=n_workers,     <span class="co"># 0 on Windows notebooks; 4+ on Linux/Mac</span>
+    pin_memory=<span class="kw">False</span>,          <span class="co"># True only when a GPU is available</span>
+    shuffle=<span class="kw">True</span>
+)
+
+<span class="fn">print</span>(<span class="st">"Fast DataLoader configured."</span>)
+<span class="fn">print</span>(<span class="st">f"Estimated batches per epoch: {len(fast_dl)}"</span>)</code></pre>
+    </div>
+    <div class="output">Fast DataLoader configured.
+Estimated batches per epoch: 196</div>
+
+    <h3>Timing Comparison</h3>
+    <div class="code-block">
+      <div class="code-header"><span class="code-lang">python</span><button class="code-copy"><i class="ti ti-copy"></i> Copy</button></div>
+<pre><code><span class="kw">import</span> time
+
+<span class="kw">def</span> <span class="fn">time_dataloader</span>(dl, n_batches=<span class="st">50</span>):
+    start = time.<span class="fn">time</span>()
+    <span class="kw">for</span> i, (X, y) <span class="kw">in</span> <span class="fn">enumerate</span>(dl):
+        _ = X.shape        <span class="co"># Simulate minimal processing</span>
+        <span class="kw">if</span> i &gt;= n_batches:
+            <span class="kw">break</span>
+    <span class="kw">return</span> time.<span class="fn">time</span>() - start
+
+
+slow_time = <span class="fn">time_dataloader</span>(slow_dl)
+fast_time = <span class="fn">time_dataloader</span>(fast_dl)
+
+<span class="fn">print</span>(<span class="st">f"Single-worker time (50 batches): {slow_time:.3f}s"</span>)
+<span class="fn">print</span>(<span class="st">f"Multi-worker time  (50 batches): {fast_time:.3f}s"</span>)
+<span class="fn">print</span>(<span class="st">f"Speedup: {slow_time/fast_time:.1f}x"</span>)</code></pre>
+    </div>
+    <div class="output">Single-worker time (50 batches): 0.098s
+Multi-worker time  (50 batches): 0.089s
+Speedup: 1.1x</div>
+
+    <!-- INTERACTIVE WIDGET 3: DataLoader Performance Tuner -->
+    <div class="widget">
+      <div class="widget-title">DataLoader Performance Tuner</div>
+      <div class="widget-subtitle">Simulate the effect of <code style="background:rgba(0,229,255,0.1);color:var(--cyan-soft);padding:1px 5px;border-radius:3px;font-size:11px;">num_workers</code>, <code style="background:rgba(0,229,255,0.1);color:var(--cyan-soft);padding:1px 5px;border-radius:3px;font-size:11px;">pin_memory</code>, batch size, and per-sample CPU cost on overall training throughput.</div>
+      <div class="controls">
+        <div class="ctrl-row">
+          <span class="ctrl-label">num_workers</span>
+          <input type="range" id="nw" min="0" max="16" value="4" step="1">
+          <span class="ctrl-value" id="nw-v">4</span>
+        </div>
+        <div class="ctrl-row">
+          <span class="ctrl-label">batch_size</span>
+          <input type="range" id="bs" min="16" max="512" value="128" step="16">
+          <span class="ctrl-value" id="bs-v">128</span>
+        </div>
+        <div class="ctrl-row">
+          <span class="ctrl-label">CPU work / sample (ms)</span>
+          <input type="range" id="cw" min="0.05" max="5" value="1.0" step="0.05">
+          <span class="ctrl-value" id="cw-v">1.0</span>
+        </div>
+        <div class="ctrl-row">
+          <span class="ctrl-label">Training on GPU?</span>
+          <div class="btn-row">
+            <button class="pill-btn" data-gpu="no">No (CPU only)</button>
+            <button class="pill-btn active" data-gpu="yes">Yes (CUDA)</button>
+          </div>
+        </div>
+        <div class="ctrl-row">
+          <span class="ctrl-label">pin_memory</span>
+          <div class="btn-row">
+            <button class="pill-btn" data-pin="false">False</button>
+            <button class="pill-btn active" data-pin="true">True</button>
+          </div>
+        </div>
+      </div>
+      <div class="chart-box" style="height:200px;"><canvas id="perf-chart"></canvas></div>
+      <div class="metric-grid">
+        <div class="metric"><div class="metric-label">Batches/sec</div><div class="metric-value" id="m-bps">—</div></div>
+        <div class="metric"><div class="metric-label">Samples/sec</div><div class="metric-value" id="m-sps">—</div></div>
+        <div class="metric"><div class="metric-label">GPU utilisation</div><div class="metric-value" id="m-gpu">—</div></div>
+      </div>
+      <div class="viz-out" id="perf-advice"></div>
+    </div>
+
+    <h3>Tuning Guidelines</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Parameter</th><th>Recommendation</th></tr></thead>
+        <tbody>
+          <tr><td><code>num_workers</code></td><td>Start with 4; tune up to <code>cpu_count() // 2</code></td></tr>
+          <tr><td><code>pin_memory</code></td><td><code>True</code> if training on GPU, <code>False</code> for CPU</td></tr>
+          <tr><td><code>prefetch_factor</code></td><td>2 (default); increase if GPU utilisation dips between batches</td></tr>
+          <tr><td><code>persistent_workers</code></td><td><code>True</code> for large datasets to avoid worker respawn overhead</td></tr>
+          <tr><td><code>batch_size</code></td><td>Largest size that fits in GPU memory; powers of 2 (64, 128, 256)</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="callout callout-warn">
+      <i class="ti ti-alert-triangle"></i>
+      <div class="callout-content">
+        <div class="callout-title">WARNING</div>
+        <code>pin_memory=True</code> with CPU-only training will slightly slow things down. Only enable it when you are moving tensors to a GPU.
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ SECTION 4 ============ -->
+  <section class="section" id="sec-4">
+    <div class="section-num">SECTION 04</div>
+    <h2>Streaming Large Datasets</h2>
+
+    <h3>The Memory Problem</h3>
+    <p>A large log file (100GB+) cannot be loaded into RAM. Solutions:</p>
+    <ol>
+      <li><strong style="color:var(--cyan-soft);">IterableDataset</strong> — stream line by line.</li>
+      <li><strong style="color:var(--cyan-soft);">Memory-mapped files</strong> — <code>np.memmap</code> or <code>torch.frombuffer</code> for binary data.</li>
+      <li><strong style="color:var(--cyan-soft);">Chunked HDF5/Parquet</strong> — load one shard at a time.</li>
+    </ol>
+
+    <!-- INTERACTIVE WIDGET 4: Memory Strategy Visualizer -->
+    <div class="widget">
+      <div class="widget-title">Memory Strategy Visualiser</div>
+      <div class="widget-subtitle">For a given file size and available RAM, see which loading strategy is safe — and which would OOM.</div>
+      <div class="controls">
+        <div class="ctrl-row">
+          <span class="ctrl-label">File size</span>
+          <input type="range" id="fsize" min="0.01" max="500" value="50" step="0.01">
+          <span class="ctrl-value" id="fsize-v">50 GB</span>
+        </div>
+        <div class="ctrl-row">
+          <span class="ctrl-label">Available RAM</span>
+          <input type="range" id="ram" min="2" max="128" value="16" step="2">
+          <span class="ctrl-value" id="ram-v">16 GB</span>
+        </div>
+      </div>
+      <div id="mem-strategies"></div>
+    </div>
+
+    <div class="code-block">
+      <div class="code-header"><span class="code-lang">python</span><button class="code-copy"><i class="ti ti-copy"></i> Copy</button></div>
+<pre><code><span class="kw">import</span> struct
+
+<span class="co"># Memory-mapped binary dataset</span>
+<span class="kw">class</span> <span class="cls">BinarySequenceDataset</span>(Dataset):
+    <span class="st">"""
+    Reads fixed-length sequences from a binary file using memory mapping.
+    Format: each record = [n_tokens int32][tokens int32 * seq_len][label int32]
+    """</span>
+
+    <span class="kw">def</span> <span class="fn">__init__</span>(self, filepath: <span class="cls">str</span>, seq_len: <span class="cls">int</span>, dtype=np.float32):
+        self.seq_len   = seq_len
+        self.data      = np.<span class="fn">memmap</span>(filepath, dtype=dtype, mode=<span class="st">'r'</span>)
+        self.n_samples = <span class="fn">len</span>(self.data) // (seq_len + <span class="st">1</span>)
+
+    <span class="kw">def</span> <span class="fn">__len__</span>(self):
+        <span class="kw">return</span> self.n_samples
+
+    <span class="kw">def</span> <span class="fn">__getitem__</span>(self, idx):
+        start = idx * (self.seq_len + <span class="st">1</span>)
+        row   = self.data[start : start + self.seq_len + <span class="st">1</span>]
+        x     = torch.<span class="fn">tensor</span>(row[:-<span class="st">1</span>], dtype=torch.float32)
+        y     = <span class="fn">int</span>(row[-<span class="st">1</span>])
+        <span class="kw">return</span> x, y
+
+
+<span class="co"># Write a fake binary file — tempfile works on all platforms (Windows, Linux, Mac)</span>
+<span class="kw">import</span> tempfile, os
+n, seq = <span class="st">5000</span>, <span class="st">16</span>
+arr    = np.random.<span class="fn">randn</span>(n * (seq + <span class="st">1</span>)).<span class="fn">astype</span>(np.float32)
+arr[seq::seq+<span class="st">1</span>] = np.random.<span class="fn">randint</span>(<span class="st">0</span>, <span class="st">2</span>, n).<span class="fn">astype</span>(np.float32)   <span class="co"># Labels</span>
+
+<span class="kw">with</span> tempfile.<span class="fn">NamedTemporaryFile</span>(suffix=<span class="st">'.dat'</span>, delete=<span class="kw">False</span>) <span class="kw">as</span> f:
+    fake_path = f.name
+    arr.<span class="fn">tofile</span>(f)
+
+bin_ds = <span class="fn">BinarySequenceDataset</span>(fake_path, seq_len=seq)
+bin_dl = <span class="fn">DataLoader</span>(bin_ds, batch_size=<span class="st">128</span>, num_workers=<span class="st">0</span>)
+X_b, y_b = <span class="fn">next</span>(<span class="fn">iter</span>(bin_dl))
+<span class="fn">print</span>(<span class="st">f"Memory-mapped dataset: {len(bin_ds)} samples"</span>)
+<span class="fn">print</span>(<span class="st">f"Batch shapes: X={X_b.shape}, y shape={len(y_b)}"</span>)
+
+<span class="co"># Windows requires closing the memmap before deleting the file</span>
+<span class="kw">del</span> bin_ds, bin_dl   <span class="co"># Release memmap handle</span>
+os.<span class="fn">unlink</span>(fake_path)</code></pre>
+    </div>
+    <div class="output">Memory-mapped dataset: 5000 samples
+Batch shapes: X=torch.Size([128, 16]), y shape=128</div>
+  </section>
+
+  <!-- ============ SECTION 5 ============ -->
+  <section class="section" id="sec-5">
+    <div class="section-num">SECTION 05</div>
+    <h2>Data Leakage and Split Strategies</h2>
+
+    <div class="callout callout-danger">
+      <i class="ti ti-alert-circle"></i>
+      <div class="callout-content">
+        <div class="callout-title">THE GOLDEN RULE</div>
+        Fit nothing on test data. Not the scaler, not the encoder, not the imputer.
+      </div>
+    </div>
+
+    <!-- INTERACTIVE WIDGET 5: Train/Val/Test Splitter -->
+    <div class="widget">
+      <div class="widget-title">Train / Val / Test Splitter</div>
+      <div class="widget-subtitle">Drag the split sliders to see how chronological vs. random splits divide a 1000-sample dataset. The bar shows visual proportions; the code below shows exact PyTorch usage.</div>
+      <div class="controls">
+        <div class="ctrl-row">
+          <span class="ctrl-label">Train %</span>
+          <input type="range" id="sp-train" min="40" max="90" value="70" step="5">
+          <span class="ctrl-value" id="sp-train-v">70%</span>
+        </div>
+        <div class="ctrl-row">
+          <span class="ctrl-label">Val %</span>
+          <input type="range" id="sp-val" min="5" max="30" value="15" step="5">
+          <span class="ctrl-value" id="sp-val-v">15%</span>
+        </div>
+        <div class="ctrl-row">
+          <span class="ctrl-label">Strategy</span>
+          <div class="btn-row">
+            <button class="pill-btn active" data-split="random">Random (i.i.d.)</button>
+            <button class="pill-btn" data-split="temporal">Temporal (time series)</button>
+          </div>
+        </div>
+      </div>
+      <div class="split-bar" id="split-bar"></div>
+      <div class="metric-grid">
+        <div class="metric"><div class="metric-label">Train</div><div class="metric-value" id="sp-tr">700</div></div>
+        <div class="metric"><div class="metric-label">Val</div><div class="metric-value" id="sp-vl" style="color:var(--warn);">150</div></div>
+        <div class="metric"><div class="metric-label">Test</div><div class="metric-value" id="sp-te" style="color:var(--pink);">150</div></div>
+      </div>
+      <div class="viz-out" id="split-code"></div>
+    </div>
+
+    <div class="code-block">
+      <div class="code-header"><span class="code-lang">python</span><button class="code-copy"><i class="ti ti-copy"></i> Copy</button></div>
+<pre><code><span class="kw">from</span> torch.utils.data <span class="kw">import</span> random_split, Subset
+
+<span class="co"># Strategy 1: Random split (tabular, i.i.d. data)</span>
+dataset = <span class="fn">TabularDataset</span>(torch.<span class="fn">randn</span>(<span class="st">1000</span>, <span class="st">8</span>), torch.<span class="fn">randint</span>(<span class="st">0</span>, <span class="st">2</span>, (<span class="st">1000</span>,)))
+n       = <span class="fn">len</span>(dataset)
+train_ds, val_ds, test_ds = <span class="fn">random_split</span>(
+    dataset,
+    [<span class="fn">int</span>(<span class="st">0.7</span>*n), <span class="fn">int</span>(<span class="st">0.15</span>*n), n - <span class="fn">int</span>(<span class="st">0.7</span>*n) - <span class="fn">int</span>(<span class="st">0.15</span>*n)],
+    generator=torch.<span class="fn">Generator</span>().<span class="fn">manual_seed</span>(<span class="st">42</span>)
+)
+<span class="fn">print</span>(<span class="st">f"Random split — Train: {len(train_ds)}, Val: {len(val_ds)}, Test: {len(test_ds)}"</span>)
+
+<span class="co"># Strategy 2: Temporal split (time series — NEVER shuffle!)</span>
+n_ts    = <span class="st">1000</span>
+indices = <span class="fn">list</span>(<span class="fn">range</span>(n_ts))
+train_idx = indices[:<span class="st">700</span>]
+val_idx   = indices[<span class="st">700</span>:<span class="st">850</span>]
+test_idx  = indices[<span class="st">850</span>:]
+
+train_ts = <span class="fn">Subset</span>(dataset, train_idx)
+val_ts   = <span class="fn">Subset</span>(dataset, val_idx)
+test_ts  = <span class="fn">Subset</span>(dataset, test_idx)
+<span class="fn">print</span>(<span class="st">f"Temporal split — Train: {len(train_ts)}, Val: {len(val_ts)}, Test: {len(test_ts)}"</span>)</code></pre>
+    </div>
+    <div class="output">Random split — Train: 700, Val: 150, Test: 150
+Temporal split — Train: 700, Val: 150, Test: 150</div>
+
+    <div class="code-block">
+      <div class="code-header"><span class="code-lang">python</span><button class="code-copy"><i class="ti ti-copy"></i> Copy</button></div>
+<pre><code><span class="co"># Correct normalisation — fit ONLY on train, apply to all</span>
+X_full = torch.<span class="fn">randn</span>(<span class="st">1000</span>, <span class="st">8</span>)
+train_X = X_full[:<span class="st">700</span>]
+val_X   = X_full[<span class="st">700</span>:<span class="st">850</span>]
+test_X  = X_full[<span class="st">850</span>:]
+
+<span class="co"># Fit stats on TRAIN only</span>
+mean = train_X.<span class="fn">mean</span>(dim=<span class="st">0</span>)
+std  = train_X.<span class="fn">std</span>(dim=<span class="st">0</span>)
+std[std &lt; <span class="st">1e-6</span>] = <span class="st">1.0</span>
+
+<span class="co"># Apply to all splits</span>
+train_X_norm = (train_X - mean) / std
+val_X_norm   = (val_X   - mean) / std               <span class="co"># ← use train stats, not val stats</span>
+test_X_norm  = (test_X  - mean) / std               <span class="co"># ← use train stats, not test stats</span>
+
+<span class="fn">print</span>(<span class="st">"Normalisation applied using train-set statistics only."</span>)
+<span class="fn">print</span>(<span class="st">f"Val mean (~0 not 0, that's fine): {val_X_norm.mean(0)[:3].round(decimals=3)}"</span>)</code></pre>
+    </div>
+    <div class="output">Normalisation applied using train-set statistics only.
+Val mean (~0 not 0, that's fine): tensor([-0.0200, -0.0360,  0.0920])</div>
+
+    <div class="callout callout-danger">
+      <i class="ti ti-alert-circle"></i>
+      <div class="callout-content">
+        <div class="callout-title">IMPORTANT — Data leakage checklist</div>
+        Never compute mean/std/quantiles on the full dataset before splitting. Never include future information in time-series features. Never let validation samples influence training augmentation parameters.
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ LAB ============ -->
+  <section class="section" id="sec-lab">
+    <div class="section-num">HANDS-ON LAB</div>
+    <h2>Log Dataset Loader for AIOps</h2>
+
+    <h3>Build a complete log sequence loader with windowing and anomaly labels</h3>
+
+    <div class="code-block">
+      <div class="code-header"><span class="code-lang">python</span><button class="code-copy"><i class="ti ti-copy"></i> Copy</button></div>
+<pre><code><span class="kw">import</span> hashlib
+
+<span class="co"># Simulate raw log data</span>
+<span class="co"># In real AIOps, this would be parsed from syslog/ELK/Splunk</span>
+<span class="co"># Here: each "event" is a log template ID (0-99), with timestamps</span>
+
+torch.<span class="fn">manual_seed</span>(<span class="st">99</span>)
+np.random.<span class="fn">seed</span>(<span class="st">99</span>)
+
+<span class="kw">def</span> <span class="fn">generate_log_stream</span>(n_events: <span class="cls">int</span> = <span class="st">5000</span>, vocab_size: <span class="cls">int</span> = <span class="st">50</span>,
+                        anomaly_rate: <span class="cls">float</span> = <span class="st">0.05</span>):
+    <span class="st">"""
+    Simulate a log stream.
+    Normal: Markov-ish transitions between common templates.
+    Anomaly: random rare templates injected.
+    """</span>
+    events    = []
+    labels    = []   <span class="co"># 1 = anomaly window, 0 = normal window</span>
+    templates = np.<span class="fn">arange</span>(vocab_size)
+
+    <span class="co"># Build a transition matrix (normal behaviour)</span>
+    trans = np.random.<span class="fn">dirichlet</span>(np.<span class="fn">ones</span>(vocab_size) * <span class="st">0.3</span>, size=vocab_size)
+
+    current = <span class="st">0</span>
+    <span class="kw">for</span> i <span class="kw">in</span> <span class="fn">range</span>(n_events):
+        is_anomaly = np.random.<span class="fn">rand</span>() &lt; anomaly_rate
+        <span class="kw">if</span> is_anomaly:
+            <span class="co"># Rare template — high ID</span>
+            event = np.random.<span class="fn">randint</span>(<span class="st">40</span>, vocab_size)
+        <span class="kw">else</span>:
+            event = np.random.<span class="fn">choice</span>(templates, p=trans[current])
+        events.<span class="fn">append</span>(event)
+        labels.<span class="fn">append</span>(<span class="fn">int</span>(is_anomaly))
+        current = event
+
+    <span class="kw">return</span> np.<span class="fn">array</span>(events), np.<span class="fn">array</span>(labels)
+
+
+log_events, event_labels = <span class="fn">generate_log_stream</span>(<span class="st">5000</span>)
+<span class="fn">print</span>(<span class="st">f"Log stream: {len(log_events)} events"</span>)
+<span class="fn">print</span>(<span class="st">f"Anomaly rate: {event_labels.mean():.3f}"</span>)</code></pre>
+    </div>
+    <div class="output">Log stream: 5000 events
+Anomaly rate: 0.052</div>
+
+    <h4>Sliding-Window Dataset</h4>
+    <div class="code-block">
+      <div class="code-header"><span class="code-lang">python</span><button class="code-copy"><i class="ti ti-copy"></i> Copy</button></div>
+<pre><code><span class="kw">class</span> <span class="cls">LogWindowDataset</span>(Dataset):
+    <span class="st">"""
+    Sliding-window dataset from a log event stream.
+    Each sample = window of `window_size` events → label = 1 if any anomaly in window.
+    """</span>
+
+    <span class="kw">def</span> <span class="fn">__init__</span>(self, events: np.ndarray, labels: np.ndarray,
+                 window_size: <span class="cls">int</span> = <span class="st">20</span>, stride: <span class="cls">int</span> = <span class="st">1</span>):
+        self.window_size = window_size
+        self.stride      = stride
+
+        windows    = []
+        win_labels = []
+
+        <span class="kw">for</span> start <span class="kw">in</span> <span class="fn">range</span>(<span class="st">0</span>, <span class="fn">len</span>(events) - window_size, stride):
+            end = start + window_size
+            windows.<span class="fn">append</span>(events[start:end])
+            win_labels.<span class="fn">append</span>(<span class="fn">int</span>(labels[start:end].<span class="fn">any</span>()))   <span class="co"># 1 if ANY anomaly</span>
+
+        self.X = torch.<span class="fn">tensor</span>(np.<span class="fn">array</span>(windows), dtype=torch.long)
+        self.y = torch.<span class="fn">tensor</span>(win_labels, dtype=torch.long)
+
+    <span class="kw">def</span> <span class="fn">__len__</span>(self):
+        <span class="kw">return</span> <span class="fn">len</span>(self.X)
+
+    <span class="kw">def</span> <span class="fn">__getitem__</span>(self, idx):
+        <span class="kw">return</span> self.X[idx], self.y[idx]
+
+
+log_dataset = <span class="fn">LogWindowDataset</span>(log_events, event_labels, window_size=<span class="st">20</span>, stride=<span class="st">5</span>)
+
+<span class="fn">print</span>(<span class="st">f"Window dataset: {len(log_dataset)} windows"</span>)
+<span class="fn">print</span>(<span class="st">f"X shape: {log_dataset.X.shape}"</span>)
+<span class="fn">print</span>(<span class="st">f"Anomaly window rate: {log_dataset.y.float().mean():.3f}"</span>)
+
+<span class="co"># Check class imbalance</span>
+pos = log_dataset.y.<span class="fn">sum</span>().<span class="fn">item</span>()
+neg = <span class="fn">len</span>(log_dataset) - pos
+<span class="fn">print</span>(<span class="st">f"Normal windows: {neg}, Anomaly windows: {pos}"</span>)</code></pre>
+    </div>
+    <div class="output">Window dataset: 996 windows
+X shape: torch.Size([996, 20])
+Anomaly window rate: 0.634
+Normal windows: 365, Anomaly windows: 631</div>
+
+    <h4>Weighted Sampler for Class Imbalance</h4>
+    <div class="code-block">
+      <div class="code-header"><span class="code-lang">python</span><button class="code-copy"><i class="ti ti-copy"></i> Copy</button></div>
+<pre><code><span class="co"># Temporal split (no shuffle for sequence data)</span>
+n      = <span class="fn">len</span>(log_dataset)
+split1 = <span class="fn">int</span>(<span class="st">0.7</span> * n)
+split2 = <span class="fn">int</span>(<span class="st">0.85</span> * n)
+
+train_ids = <span class="fn">list</span>(<span class="fn">range</span>(<span class="st">0</span>, split1))
+val_ids   = <span class="fn">list</span>(<span class="fn">range</span>(split1, split2))
+test_ids  = <span class="fn">list</span>(<span class="fn">range</span>(split2, n))
+
+<span class="kw">from</span> torch.utils.data <span class="kw">import</span> Subset
+
+train_log = <span class="fn">Subset</span>(log_dataset, train_ids)
+val_log   = <span class="fn">Subset</span>(log_dataset, val_ids)
+test_log  = <span class="fn">Subset</span>(log_dataset, test_ids)
+
+<span class="co"># Weighted sampler to handle class imbalance</span>
+<span class="kw">from</span> torch.utils.data <span class="kw">import</span> WeightedRandomSampler
+
+train_labels = log_dataset.y[train_ids]
+class_counts = torch.<span class="fn">bincount</span>(train_labels)
+weights      = <span class="st">1.0</span> / class_counts.<span class="fn">float</span>()
+sample_weights = weights[train_labels]
+
+sampler = <span class="fn">WeightedRandomSampler</span>(
+    weights=sample_weights,
+    num_samples=<span class="fn">len</span>(train_log),
+    replacement=<span class="kw">True</span>
+)
+
+train_dl_log = <span class="fn">DataLoader</span>(train_log, batch_size=<span class="st">64</span>, sampler=sampler)
+val_dl_log   = <span class="fn">DataLoader</span>(val_log,   batch_size=<span class="st">256</span>, shuffle=<span class="kw">False</span>)
+
+X_b, y_b = <span class="fn">next</span>(<span class="fn">iter</span>(train_dl_log))
+<span class="fn">print</span>(<span class="st">f"\nBatch from log DataLoader:"</span>)
+<span class="fn">print</span>(<span class="st">f"  X shape: {X_b.shape}"</span>)
+<span class="fn">print</span>(<span class="st">f"  y distribution in batch: {y_b.bincount()}"</span>)</code></pre>
+    </div>
+    <div class="output">Batch from log DataLoader:
+  X shape: torch.Size([64, 20])
+  y distribution in batch: tensor([37, 27])</div>
+
+    <!-- INTERACTIVE WIDGET 6: WeightedRandomSampler Demo -->
+    <div class="widget">
+      <div class="widget-title">WeightedRandomSampler Demo</div>
+      <div class="widget-subtitle">An imbalanced dataset (95% normal / 5% anomaly). Compare batches drawn with default uniform sampling vs WeightedRandomSampler.</div>
+      <div class="controls">
+        <div class="ctrl-row">
+          <span class="ctrl-label">Anomaly rate</span>
+          <input type="range" id="anom-rate" min="0.01" max="0.5" value="0.05" step="0.01">
+          <span class="ctrl-value" id="anom-rate-v">5%</span>
+        </div>
+        <div class="ctrl-row">
+          <span class="ctrl-label">Batch size</span>
+          <input type="range" id="ws-bs" min="16" max="128" value="64" step="8">
+          <span class="ctrl-value" id="ws-bs-v">64</span>
+        </div>
+        <div class="btn-row" style="justify-content:flex-end;">
+          <button class="pill-btn" id="ws-resample"><i class="ti ti-refresh"></i> Resample batch</button>
+        </div>
+      </div>
+      <div class="chart-box" style="height:180px;"><canvas id="ws-chart"></canvas></div>
+      <div class="metric-grid">
+        <div class="metric"><div class="metric-label">Uniform: normal</div><div class="metric-value" id="ws-u-n">—</div></div>
+        <div class="metric"><div class="metric-label">Uniform: anomaly</div><div class="metric-value" id="ws-u-a" style="color:var(--pink);">—</div></div>
+        <div class="metric"><div class="metric-label">Weighted: normal</div><div class="metric-value" id="ws-w-n">—</div></div>
+        <div class="metric"><div class="metric-label">Weighted: anomaly</div><div class="metric-value" id="ws-w-a" style="color:var(--success);">—</div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ SUMMARY ============ -->
+  <section class="section" id="sec-summary">
+    <div class="section-num">RECAP</div>
+    <h2>Module Summary</h2>
+    <div class="summary-box">
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Concept</th><th>Key Takeaway</th></tr></thead>
+          <tbody>
+            <tr><td>Dataset</td><td>Implement <code>__len__</code> and <code>__getitem__</code>. Use for random-access data.</td></tr>
+            <tr><td>IterableDataset</td><td>Implement <code>__iter__</code>. Use for streaming/large files. Handle multi-worker manually.</td></tr>
+            <tr><td><code>collate_fn</code></td><td>Write custom collate for variable-length sequences. Use <code>pad_sequence</code>.</td></tr>
+            <tr><td><code>num_workers</code></td><td>Start at 4; tune to <code>cpu_count()//2</code>. Single-process = training bottleneck.</td></tr>
+            <tr><td><code>pin_memory</code></td><td>Enable only when moving batches to GPU.</td></tr>
+            <tr><td>Temporal split</td><td>Never shuffle time-series. Split chronologically.</td></tr>
+            <tr><td>Data leakage</td><td>Fit normalisation stats on train only. Apply same stats to val/test.</td></tr>
+            <tr><td>WeightedRandomSampler</td><td>Combat class imbalance at the data loading level.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <h3>What's Next</h3>
+    <p>Module 6 — Evaluation &amp; Experiment Discipline covers the right way to evaluate models once they're trained. Proper eval loops, calibration, PR/ROC curves for imbalanced tasks, cross-validation, and the error analysis workflow you use when results are bad.</p>
+  </section>
+</div>
+
+<!-- ============ REFERENCES ============ -->
+<section class="references">
+  <div class="refs-header">
+    <h2><span class="cyan-text">Learn &amp;</span> <span class="accent">Practice</span></h2>
+    <p>Explore curated resources and practice with real code</p>
+  </div>
+
+  <div class="ref-card">
+    <div class="ref-icon"><i class="ti ti-bulb"></i></div>
+    <div class="ref-body">
+      <div class="ref-type">Progressive Article</div>
+      <div class="ref-tagline">Stuck? Start here — beginner-friendly explanation</div>
+      <div class="ref-title">Datasets &amp; DataLoaders — PyTorch Basics Tutorial</div>
+      <a href="https://docs.pytorch.org/tutorials/beginner/basics/data_tutorial.html" target="_blank" rel="noopener" class="ref-btn"><i class="ti ti-external-link"></i> Read Article</a>
+    </div>
+  </div>
+
+  <div class="ref-card">
+    <div class="ref-icon"><i class="ti ti-file-text"></i></div>
+    <div class="ref-body">
+      <div class="ref-type">Canonical Article</div>
+      <div class="ref-tagline">Authoritative source — official docs and tutorials</div>
+      <div class="ref-title">torch.utils.data — Official API Reference</div>
+      <a href="https://docs.pytorch.org/docs/stable/data.html" target="_blank" rel="noopener" class="ref-btn"><i class="ti ti-external-link"></i> Read Canonical</a>
+    </div>
+  </div>
+
+  <div class="ref-card pink-card">
+    <div class="ref-icon"><i class="ti ti-brand-github"></i></div>
+    <div class="ref-body">
+      <div class="ref-type">GitHub Repository</div>
+      <div class="ref-tagline">Hands-on — reference implementation &amp; examples</div>
+      <div class="ref-title">pytorch / data (TorchData) — streaming &amp; DataPipes</div>
+      <a href="https://github.com/pytorch/data" target="_blank" rel="noopener" class="ref-btn"><i class="ti ti-external-link"></i> Explore Repo</a>
+    </div>
+  </div>
+
+  <div class="ref-card">
+    <div class="ref-icon"><i class="ti ti-book-2"></i></div>
+    <div class="ref-body">
+      <div class="ref-type">API Reference</div>
+      <div class="ref-tagline">Custom DataLoader best practices — official tutorial</div>
+      <div class="ref-title">Writing Custom Datasets, DataLoaders &amp; Transforms</div>
+      <a href="https://docs.pytorch.org/tutorials/beginner/data_loading_tutorial.html" target="_blank" rel="noopener" class="ref-btn"><i class="ti ti-external-link"></i> Open Docs</a>
+    </div>
+  </div>
+</section>
+
+<!-- =================== NEXT MODULE =================== -->
+<div class="module-nav">
+  <div>
+    <div class="module-nav-label">Next up · Module 6.0</div>
+    <div class="module-nav-title">Module 6.0 — Model Evaluation Metrics &amp; Validation</div>
+    <p style="font-size:14px;color:var(--ink-3);margin:10px 0 0;max-width:520px">Design solid validation schemes, compute classification/regression metrics, and prevent overfitting.</p>
+    <div style="display:flex;flex-wrap:wrap;gap:18px;margin-top:14px;font-family:var(--mono);font-size:11px;color:var(--ink-3)">
+      <span>ESTIMATED · <span style="color:var(--ink-2)">~60 min</span></span>
+      <span>TYPE · <span style="color:var(--ink-2)">Hands-on</span></span>
+      <span>CODE · <span style="color:var(--ink-2)">Python</span></span>
+      <span>DIFFICULTY · <span style="color:var(--accent)">★★★</span>☆☆</span>
+    </div>
+  </div>
+  <a class="module-nav-cta" href="module_6_evaluation.html">Begin Module 6.0 →</a>
+</div>
+
+<div style="margin-top:32px;text-align:center;font-family:var(--mono);font-size:10px;color:var(--ink-4);letter-spacing:0.15em">
+  AGENTIC AI ACADEMY // COURSE 02 — AUTONOMOUS SYSTEMS // MODULE 5.0 — END OF TRANSMISSION
+</div>
+</main>
+</div>
+
+<div class="scroll-dots" id="scroll-dots">
+  <div class="scroll-dot active" data-target="sec-1" data-label="Dataset"></div>
+  <div class="scroll-dot" data-target="sec-2" data-label="Collate"></div>
+  <div class="scroll-dot" data-target="sec-3" data-label="Performance"></div>
+  <div class="scroll-dot" data-target="sec-4" data-label="Streaming"></div>
+  <div class="scroll-dot" data-target="sec-5" data-label="Splits"></div>
+  <div class="scroll-dot" data-target="sec-lab" data-label="Lab"></div>
+  <div class="scroll-dot" data-target="sec-summary" data-label="Summary"></div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+/* Starfield */
+(function(){
+  const sf = document.getElementById('stars');
+  for (let i = 0; i < 120; i++) {
+    const s = document.createElement('div');
+    s.className = 'star';
+    const sz = Math.random() * 2 + 0.5;
+    s.style.width = sz + 'px'; s.style.height = sz + 'px';
+    s.style.left = Math.random() * 100 + '%';
+    s.style.top = Math.random() * 100 + '%';
+    s.style.setProperty('--dur', (2 + Math.random() * 4) + 's');
+    s.style.animationDelay = Math.random() * 4 + 's';
+    sf.appendChild(s);
+  }
+})();
+
+/* Scroll dots + nav */
+/* ============ SCROLL DOTS + TOC NAV ACTIVE + PROGRESS ============ */
+(function(){
+  const dots = document.querySelectorAll('.scroll-dot');
+  const tocLinks = document.querySelectorAll('.toc-link');
+  const sections = document.querySelectorAll('.section');
+  const progressFill = document.getElementById('progressFill');
+
+  dots.forEach(d => {
+    d.addEventListener('click', () => {
+      const target = document.getElementById(d.dataset.target);
+      if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  });
+
+  tocLinks.forEach(a => {
+    a.addEventListener('click', (e) => {
+      e.preventDefault();
+      const id = a.getAttribute('href').slice(1);
+      const t = document.getElementById(id);
+      if (t) t.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  });
+
+  function updateActive() {
+    let current = sections[0].id;
+    let currentIndex = -1;
+    sections.forEach((s, i) => {
+      const rect = s.getBoundingClientRect();
+      if (rect.top < window.innerHeight * 0.35) {
+        current = s.id;
+        currentIndex = i;
+      }
+    });
+
+    dots.forEach(d => d.classList.toggle('active', d.dataset.target === current));
+    tocLinks.forEach((l, i) => {
+      const isActive = l.getAttribute('href') === '#' + current;
+      const isPast = currentIndex > -1 && i < currentIndex;
+      l.classList.toggle('active', isActive);
+      l.classList.toggle('past', isPast && !isActive);
+    });
+
+    const docHeight = document.documentElement.scrollHeight - window.innerHeight;
+    const scrolled = window.scrollY / docHeight * 100;
+    if (progressFill) progressFill.style.width = Math.min(100, scrolled) + '%';
+  }
+
+  window.addEventListener('scroll', updateActive, { passive: true });
+  updateActive();
+})();
+
+/* Copy buttons */
+document.querySelectorAll('.code-copy').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const code = btn.closest('.code-block').querySelector('pre').innerText;
+    navigator.clipboard.writeText(code).then(() => {
+      const orig = btn.innerHTML;
+      btn.innerHTML = '<i class="ti ti-check"></i> Copied';
+      setTimeout(() => btn.innerHTML = orig, 1200);
+    });
+  });
+});
+
+/* WIDGET 1: Dataset vs IterableDataset Decider */
+(function(){
+  const recommendations = {
+    csv:     { type: 'map',  reason: 'Small enough to fit in memory. Random access enables free shuffling for i.i.d. training. Use Dataset.' },
+    images:  { type: 'map',  reason: 'Random access by index (read file on __getitem__). Lazy file loading per sample. Use Dataset.' },
+    logs:    { type: 'iter', reason: '100 GB is far too large for RAM. Stream line by line with IterableDataset. Manually shard across workers.' },
+    kafka:   { type: 'iter', reason: 'Data arrives sequentially — there is no "index 247". Use IterableDataset with the consumer in __iter__.' },
+    parquet: { type: 'iter', reason: '100 million rows — load one shard at a time with IterableDataset wrapping a PyArrow reader.' }
+  };
+  const mapEl = document.getElementById('card-map');
+  const iterEl = document.getElementById('card-iter');
+  const out = document.getElementById('scenario-out');
+  document.querySelectorAll('[data-scenario]').forEach(b => {
+    b.addEventListener('click', () => {
+      document.querySelectorAll('[data-scenario]').forEach(x => x.classList.remove('active'));
+      b.classList.add('active');
+      const r = recommendations[b.dataset.scenario];
+      mapEl.classList.toggle('active', r.type === 'map');
+      iterEl.classList.toggle('active', r.type === 'iter');
+      const label = r.type === 'map' ? 'Dataset (map-style)' : 'IterableDataset (stream)';
+      out.textContent = '>>> Recommendation: ' + label + '\n\n' + r.reason;
+    });
+  });
+  // initialize
+  mapEl.classList.add('active');
+  out.textContent = '>>> Recommendation: Dataset (map-style)\n\n' + recommendations.csv.reason;
+})();
+
+/* WIDGET 2: Pad/Truncate Visualizer */
+(function(){
+  const sequences = [
+    [1, 2, 3],
+    [4, 5],
+    [6, 7, 8, 9, 10, 11],
+    [12, 13, 14, 15, 16, 17, 18, 19, 20, 21],
+    [22, 23],
+    [24, 25, 26, 27]
+  ];
+  const viz = document.getElementById('seq-viz');
+  const maxEl = document.getElementById('max-len');
+  const maxV = document.getElementById('max-len-v');
+  const shapeM = document.getElementById('bs-shape');
+  const padM = document.getElementById('bs-pad');
+  const pctM = document.getElementById('bs-pad-pct');
+  let strat = 'pad';
+
+  function render() {
+    const maxLen = +maxEl.value;
+    maxV.textContent = maxLen;
+    // determine batch width
+    let batchT;
+    if (strat === 'trunc') {
+      batchT = Math.min(maxLen, Math.max(...sequences.map(s => s.length)));
+    } else {
+      // pad only: use longest sequence
+      batchT = Math.max(...sequences.map(s => s.length));
+    }
+    viz.innerHTML = '';
+    let totalPad = 0;
+    const totalCells = sequences.length * batchT;
+    sequences.forEach((s, i) => {
+      const row = document.createElement('div');
+      row.className = 'seq-row';
+      const lbl = document.createElement('span');
+      lbl.className = 'seq-label';
+      lbl.textContent = 'seq[' + i + ']:';
+      row.appendChild(lbl);
+      const effective = strat === 'trunc' ? s.slice(0, maxLen) : s;
+      for (let j = 0; j < batchT; j++) {
+        const cell = document.createElement('div');
+        cell.className = 'seq-cell';
+        if (j < effective.length) {
+          cell.classList.add('real');
+          cell.textContent = effective[j];
+        } else {
+          cell.classList.add('pad');
+          cell.textContent = '0';
+          totalPad++;
+        }
+        row.appendChild(cell);
+      }
+      // truncated cells visible only when strat=trunc and original was longer
+      if (strat === 'trunc' && s.length > maxLen) {
+        for (let j = maxLen; j < s.length; j++) {
+          const cell = document.createElement('div');
+          cell.className = 'seq-cell trunc';
+          cell.textContent = s[j];
+          cell.style.opacity = '0.55';
+          row.appendChild(cell);
+        }
+      }
+      viz.appendChild(row);
+    });
+    shapeM.textContent = '(' + sequences.length + ', ' + batchT + ')';
+    padM.textContent = totalPad;
+    pctM.textContent = ((totalPad / totalCells) * 100).toFixed(0) + '%';
+  }
+  maxEl.addEventListener('input', render);
+  document.querySelectorAll('[data-strat]').forEach(b => b.addEventListener('click', () => {
+    document.querySelectorAll('[data-strat]').forEach(x => x.classList.remove('active'));
+    b.classList.add('active');
+    strat = b.dataset.strat;
+    render();
+  }));
+  render();
+})();
+
+/* WIDGET 3: DataLoader Performance */
+(function(){
+  const nwEl = document.getElementById('nw');
+  const bsEl = document.getElementById('bs');
+  const cwEl = document.getElementById('cw');
+  const nwV = document.getElementById('nw-v');
+  const bsV = document.getElementById('bs-v');
+  const cwV = document.getElementById('cw-v');
+  let onGpu = true;
+  let pinMem = true;
+
+  const ctx = document.getElementById('perf-chart').getContext('2d');
+  const chart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: ['Per-sample CPU', 'CPU→GPU copy', 'GPU compute', 'Wait / idle'],
+      datasets: [{ data: [], backgroundColor: ['rgba(0,229,255,0.5)', 'rgba(255,181,71,0.5)', 'rgba(255,92,192,0.5)', 'rgba(107,255,157,0.4)'], borderColor: ['#00e5ff', '#ffb547', '#ff5cc0', '#6bff9d'], borderWidth: 1, borderRadius: 4 }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      indexAxis: 'y',
+      animation: { duration: 200 },
+      plugins: { legend: { display: false }, title: { display: true, text: 'Time per batch (ms)', color: '#9aa8c4', font: { size: 11 } } },
+      scales: {
+        x: { grid: { color: 'rgba(0,229,255,0.07)' }, ticks: { color: '#6b7896' } },
+        y: { grid: { display: false }, ticks: { color: '#9aa8c4', font: { size: 11 } } }
+      }
+    }
+  });
+
+  function update() {
+    const nw = +nwEl.value;
+    const bs = +bsEl.value;
+    const cw = +cwEl.value;
+    nwV.textContent = nw;
+    bsV.textContent = bs;
+    cwV.textContent = cw.toFixed(2);
+
+    // CPU time per batch with parallelism
+    const cpuTotal = bs * cw;
+    const cpuTime = nw === 0 ? cpuTotal : Math.max(cpuTotal / nw, 0.5);
+    // Copy CPU→GPU: pin_memory makes it ~2x faster, but only matters if GPU
+    let copyTime = onGpu ? bs * 0.005 : 0;
+    if (onGpu && pinMem) copyTime *= 0.5;
+    if (!onGpu && pinMem) copyTime = 0.3; // tiny penalty
+    // GPU compute scales with batch size; assume fast
+    const computeTime = onGpu ? bs * 0.02 : bs * 0.1;
+    // Wait = if CPU is slower than compute, GPU sits idle
+    const waitTime = Math.max(0, cpuTime + copyTime - computeTime);
+    const totalTime = Math.max(cpuTime + copyTime, computeTime);
+
+    chart.data.datasets[0].data = [cpuTime, copyTime, computeTime, waitTime];
+    chart.update('none');
+
+    const bps = 1000 / totalTime;
+    const sps = bps * bs;
+    document.getElementById('m-bps').textContent = bps.toFixed(1);
+    document.getElementById('m-sps').textContent = sps < 1000 ? sps.toFixed(0) : (sps / 1000).toFixed(1) + 'k';
+    const gpuU = onGpu ? Math.min(100, (computeTime / totalTime) * 100) : 0;
+    const gpuEl = document.getElementById('m-gpu');
+    gpuEl.textContent = onGpu ? gpuU.toFixed(0) + '%' : 'N/A';
+    gpuEl.style.color = gpuU > 80 ? 'var(--success)' : gpuU > 50 ? 'var(--warn)' : 'var(--danger)';
+
+    // advice
+    const advice = [];
+    if (onGpu && gpuU < 70 && nw < 8) advice.push('GPU is starving. Increase num_workers.');
+    if (!onGpu && pinMem) advice.push('pin_memory=True on CPU-only adds overhead. Set False.');
+    if (onGpu && !pinMem) advice.push('Set pin_memory=True for faster CPU→GPU transfer.');
+    if (bs < 64 && onGpu) advice.push('Batch size is small. Try 128 or 256 to use GPU better.');
+    if (nw > 8 && cw < 0.2) advice.push('Per-sample work is cheap. 4 workers is usually enough.');
+    if (gpuU > 90) advice.push('GPU is fully utilised. Pipeline is well-tuned.');
+    document.getElementById('perf-advice').textContent = '>>> Advice:\n' + (advice.length ? advice.map(a => '  • ' + a).join('\n') : '  Pipeline is balanced.');
+  }
+  nwEl.addEventListener('input', update);
+  bsEl.addEventListener('input', update);
+  cwEl.addEventListener('input', update);
+  document.querySelectorAll('[data-gpu]').forEach(b => b.addEventListener('click', () => {
+    document.querySelectorAll('[data-gpu]').forEach(x => x.classList.remove('active'));
+    b.classList.add('active');
+    onGpu = b.dataset.gpu === 'yes';
+    update();
+  }));
+  document.querySelectorAll('[data-pin]').forEach(b => b.addEventListener('click', () => {
+    document.querySelectorAll('[data-pin]').forEach(x => x.classList.remove('active'));
+    b.classList.add('active');
+    pinMem = b.dataset.pin === 'true';
+    update();
+  }));
+  update();
+})();
+
+/* WIDGET 4: Memory Strategy Visualizer */
+(function(){
+  const fEl = document.getElementById('fsize');
+  const rEl = document.getElementById('ram');
+  const fV = document.getElementById('fsize-v');
+  const rV = document.getElementById('ram-v');
+  const out = document.getElementById('mem-strategies');
+
+  function fmt(g) {
+    if (g < 0.001) return (g * 1024 * 1024).toFixed(0) + ' KB';
+    if (g < 1) return (g * 1024).toFixed(1) + ' MB';
+    return g.toFixed(1) + ' GB';
+  }
+
+  function update() {
+    const f = +fEl.value;
+    const r = +rEl.value;
+    fV.textContent = fmt(f);
+    rV.textContent = r + ' GB';
+    const usableRam = r * 0.7; // leave headroom
+
+    const strategies = [
+      {
+        name: 'Load entire file into RAM',
+        ok: f < usableRam,
+        peak: f * 1.3,
+        note: f < usableRam ? 'Fits comfortably with headroom for tensors and overhead.' : 'Would OOM. Peak usage exceeds available RAM.',
+        code: 'X = torch.load("data.pt").to(device)'
+      },
+      {
+        name: 'np.memmap (memory-mapped)',
+        ok: f < 1000,
+        peak: Math.min(f, usableRam) * 0.3,
+        note: 'OS maps file into virtual address space. Only touched pages are loaded into RAM.',
+        code: 'self.data = np.memmap(path, dtype=np.float32, mode="r")'
+      },
+      {
+        name: 'IterableDataset (streaming)',
+        ok: true,
+        peak: 0.05,
+        note: 'Reads line by line. Memory cost is just the current buffer, not file size.',
+        code: 'class StreamDS(IterableDataset):\n    def __iter__(self):\n        with open(path) as f:\n            for line in f: yield parse(line)'
+      },
+      {
+        name: 'Chunked HDF5 / Parquet',
+        ok: true,
+        peak: 0.5,
+        note: 'Load one shard at a time. Good for column-oriented data and parallel reading.',
+        code: 'ds = pq.ParquetDataset(path)\nfor batch in ds.iter_batches(...): ...'
+      }
+    ];
+
+    out.innerHTML = '';
+    strategies.forEach(s => {
+      const card = document.createElement('div');
+      card.style.cssText = 'background:rgba(0,0,0,0.3);border-radius:10px;padding:14px 18px;margin-bottom:10px;border-left:4px solid ' + (s.ok ? 'var(--success)' : 'var(--danger)') + ';';
+      const titleColor = s.ok ? 'var(--success)' : 'var(--danger)';
+      const iconName = s.ok ? 'ti-check' : 'ti-x';
+      card.innerHTML =
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">' +
+          '<div style="font-weight:600;color:' + titleColor + ';font-size:14px;">' +
+            '<i class="ti ' + iconName + '" style="margin-right:6px;"></i>' + s.name +
+          '</div>' +
+          '<div style="font-family:JetBrains Mono,monospace;font-size:11px;color:var(--text-secondary);">peak RAM: ' + fmt(s.peak) + '</div>' +
+        '</div>' +
+        '<div style="font-size:12.5px;color:var(--text-primary);margin-bottom:6px;">' + s.note + '</div>' +
+        '<div style="font-family:JetBrains Mono,monospace;font-size:11px;color:var(--cyan-soft);background:rgba(0,0,0,0.3);padding:6px 10px;border-radius:4px;white-space:pre-wrap;">' + s.code + '</div>';
+      out.appendChild(card);
+    });
+  }
+  fEl.addEventListener('input', update);
+  rEl.addEventListener('input', update);
+  update();
+})();
+
+/* WIDGET 5: Train/Val/Test Splitter */
+(function(){
+  const trEl = document.getElementById('sp-train');
+  const vlEl = document.getElementById('sp-val');
+  const trV = document.getElementById('sp-train-v');
+  const vlV = document.getElementById('sp-val-v');
+  const bar = document.getElementById('split-bar');
+  const code = document.getElementById('split-code');
+  let strat = 'random';
+
+  function update() {
+    let tr = +trEl.value;
+    let vl = +vlEl.value;
+    if (tr + vl > 95) {
+      if (vl > 5) vl = 95 - tr;
+      else tr = 95 - vl;
+      trEl.value = tr;
+      vlEl.value = vl;
+    }
+    const te = 100 - tr - vl;
+    trV.textContent = tr + '%';
+    vlV.textContent = vl + '%';
+    bar.innerHTML = '';
+    [['train', tr], ['val', vl], ['test', te]].forEach(([cls, w]) => {
+      if (w <= 0) return;
+      const seg = document.createElement('div');
+      seg.className = 'split-seg ' + cls;
+      seg.style.width = w + '%';
+      seg.textContent = cls + ' ' + w + '%';
+      bar.appendChild(seg);
+    });
+    const N = 1000;
+    const trN = Math.round(tr * N / 100);
+    const vlN = Math.round(vl * N / 100);
+    const teN = N - trN - vlN;
+    document.getElementById('sp-tr').textContent = trN;
+    document.getElementById('sp-vl').textContent = vlN;
+    document.getElementById('sp-te').textContent = teN;
+    if (strat === 'random') {
+      code.textContent = '>>> from torch.utils.data import random_split\n\n' +
+        'train_ds, val_ds, test_ds = random_split(\n' +
+        '    dataset,\n' +
+        '    [' + trN + ', ' + vlN + ', ' + teN + '],\n' +
+        '    generator=torch.Generator().manual_seed(42)\n' +
+        ')';
+    } else {
+      code.textContent = '>>> from torch.utils.data import Subset\n>>> # Time series — never shuffle!\n\n' +
+        'train = Subset(dataset, range(0, ' + trN + '))\n' +
+        'val   = Subset(dataset, range(' + trN + ', ' + (trN + vlN) + '))\n' +
+        'test  = Subset(dataset, range(' + (trN + vlN) + ', ' + N + '))';
+    }
+  }
+  trEl.addEventListener('input', update);
+  vlEl.addEventListener('input', update);
+  document.querySelectorAll('[data-split]').forEach(b => b.addEventListener('click', () => {
+    document.querySelectorAll('[data-split]').forEach(x => x.classList.remove('active'));
+    b.classList.add('active');
+    strat = b.dataset.split;
+    update();
+  }));
+  update();
+})();
+
+/* WIDGET 6: WeightedRandomSampler */
+(function(){
+  const arEl = document.getElementById('anom-rate');
+  const bsEl = document.getElementById('ws-bs');
+  const arV = document.getElementById('anom-rate-v');
+  const bsV = document.getElementById('ws-bs-v');
+
+  const ctx = document.getElementById('ws-chart').getContext('2d');
+  const chart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: ['Uniform sampler', 'Weighted sampler'],
+      datasets: [
+        { label: 'normal', data: [0, 0], backgroundColor: 'rgba(0, 229, 255, 0.55)', borderColor: '#00e5ff', borderWidth: 1, borderRadius: 3, stack: 'a' },
+        { label: 'anomaly', data: [0, 0], backgroundColor: 'rgba(255, 92, 192, 0.65)', borderColor: '#ff5cc0', borderWidth: 1, borderRadius: 3, stack: 'a' }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      animation: { duration: 200 },
+      plugins: { legend: { display: true, labels: { color: '#9aa8c4', font: { size: 11 }, boxWidth: 12 } } },
+      scales: {
+        x: { stacked: true, grid: { color: 'rgba(0,229,255,0.07)' }, ticks: { color: '#6b7896' } },
+        y: { stacked: true, grid: { color: 'rgba(0,229,255,0.07)' }, ticks: { color: '#6b7896' }, title: { display: true, text: 'samples per batch', color: '#9aa8c4', font: { size: 11 } } }
+      }
+    }
+  });
+
+  function update() {
+    const ar = +arEl.value;
+    const bs = +bsEl.value;
+    arV.textContent = (ar * 100).toFixed(0) + '%';
+    bsV.textContent = bs;
+    // uniform: pick bs samples — anomaly count is binomial-ish
+    let uA = 0, uN = 0;
+    for (let i = 0; i < bs; i++) {
+      if (Math.random() < ar) uA++; else uN++;
+    }
+    // weighted: 50/50 by design
+    let wA = 0, wN = 0;
+    for (let i = 0; i < bs; i++) {
+      if (Math.random() < 0.5) wA++; else wN++;
+    }
+    chart.data.datasets[0].data = [uN, wN];
+    chart.data.datasets[1].data = [uA, wA];
+    chart.update('none');
+    document.getElementById('ws-u-n').textContent = uN;
+    document.getElementById('ws-u-a').textContent = uA;
+    document.getElementById('ws-w-n').textContent = wN;
+    document.getElementById('ws-w-a').textContent = wA;
+  }
+  arEl.addEventListener('input', update);
+  bsEl.addEventListener('input', update);
+  document.getElementById('ws-resample').addEventListener('click', update);
+  update();
+})();
+</script>
+</body>
+</html>

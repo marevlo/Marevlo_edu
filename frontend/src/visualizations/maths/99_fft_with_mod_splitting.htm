@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FFT with Mod Splitting (MTT) &middot; Convolution under a Modulus</title>
+<style>
+:root{
+  --bg-page:#070b14; --bg-surface:rgba(255,255,255,.045); --bg-input:rgba(255,255,255,.04);
+  --border-main:rgba(255,255,255,.10); --btn-bg:rgba(255,255,255,.05); --btn-hover:rgba(255,255,255,.10);
+  --text-main:#e8eefb; --text-dim:#8b98b3;
+  --accent-blue:#06b6d4; --accent-purple:#a855f7; --accent-orange:#f5a524; --accent-green:#22c55e; --accent-red:#f85149;
+  --mono:ui-monospace,'SF Mono','Cascadia Code','Courier New',monospace;
+  --sans:'Inter',system-ui,-apple-system,'Segoe UI',sans-serif;
+  --shell:880px;
+}
+*{box-sizing:border-box;}
+html,body{overflow-x:hidden;}
+body{
+  background:
+    radial-gradient(1100px 600px at 15% -10%, rgba(6,182,212,.10), transparent 60%),
+    radial-gradient(900px 600px at 100% 10%, rgba(168,85,247,.10), transparent 55%),
+    linear-gradient(160deg,#070b14 0%,#0b1120 55%,#0a0f1c 100%);
+  background-attachment:fixed; color:var(--text-main); font-family:var(--sans); margin:0;
+  display:flex; flex-direction:column; align-items:center; min-height:100vh; padding-bottom:48px; -webkit-font-smoothing:antialiased;
+}
+body::before,body::after{content:'';position:fixed;border-radius:50%;filter:blur(70px);pointer-events:none;z-index:0;opacity:.45;}
+body::before{width:380px;height:380px;top:8%;left:-120px;background:radial-gradient(circle,rgba(6,182,212,.30),transparent 70%);}
+body::after{width:420px;height:420px;bottom:4%;right:-140px;background:radial-gradient(circle,rgba(168,85,247,.22),transparent 70%);}
+body>*{position:relative;z-index:1;}
+
+.input-bar{
+  width:100%; background:rgba(10,15,28,.55); backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px);
+  padding:14px 16px; display:flex; justify-content:center; align-items:center; gap:10px;
+  border-bottom:1px solid var(--border-main); flex-wrap:wrap; position:sticky; top:0; z-index:50;
+}
+.input-bar label{font-family:var(--mono); font-size:12px; color:var(--text-dim);}
+input[type="text"],input[type="number"]{
+  background:var(--bg-input); border:1px solid var(--border-main); color:var(--text-main);
+  height:34px; border-radius:9px; padding:0 12px; font-size:13px; font-family:var(--mono);
+  transition:border-color .2s, box-shadow .2s, background .2s;
+}
+input[type="text"]{width:150px;}
+input:focus{outline:none; border-color:var(--accent-blue); box-shadow:0 0 0 3px rgba(6,182,212,.18); background:rgba(6,182,212,.06);}
+button{
+  height:34px; border-radius:9px; padding:0 16px; background:var(--btn-bg);
+  border:1px solid var(--border-main); color:var(--text-main); font-size:13px; font-weight:600; cursor:pointer;
+  transition:transform .15s, background .2s, border-color .2s, box-shadow .2s;
+}
+button:hover{background:var(--btn-hover); border-color:rgba(6,182,212,.5); box-shadow:0 0 18px rgba(6,182,212,.18); transform:translateY(-1px);}
+#play-btn{background:linear-gradient(135deg,rgba(6,182,212,.22),rgba(6,182,212,.10)); border-color:rgba(6,182,212,.45); color:#a5f3fc; min-width:80px;}
+
+.shell{width:var(--shell); max-width:94%; margin:28px auto 0; display:flex; flex-direction:column; gap:16px;}
+.title-row{display:flex; align-items:baseline; justify-content:space-between; gap:12px; flex-wrap:wrap;}
+.title-row h1{font-size:18px; font-weight:800; margin:0;}
+.title-row .sub{color:var(--text-dim); font-weight:500; font-size:13px;}
+.step-badge{font-family:var(--mono); font-size:12px; font-weight:700; color:#a5f3fc;
+  background:rgba(6,182,212,.12); border:1px solid rgba(6,182,212,.3); padding:4px 10px; border-radius:999px; white-space:nowrap;}
+.progress-track{height:4px; width:100%; background:rgba(255,255,255,.07); border-radius:999px; overflow:hidden; margin-top:-6px;}
+.progress-fill{height:100%; width:0%; border-radius:999px; background:linear-gradient(90deg,var(--accent-blue),var(--accent-purple)); box-shadow:0 0 12px rgba(6,182,212,.5); transition:width .45s ease;}
+
+.narration{
+  background:var(--bg-surface); border:1px solid rgba(6,182,212,.22); border-radius:12px;
+  padding:12px 18px; font-family:var(--mono); font-size:14px; line-height:1.5; color:#cfe9f5;
+  min-height:48px; display:flex; align-items:center; gap:10px; transition:border-color .3s, background .3s;
+}
+.narration::before{content:'▸'; color:var(--accent-blue);}
+.narration.done{border-color:rgba(34,197,94,.4); background:rgba(34,197,94,.06);}
+.narration.done::before{content:'✓'; color:var(--accent-green);}
+.narration code{background:rgba(6,182,212,.12); color:#7dd3fc; padding:1px 6px; border-radius:5px;}
+.narration b{color:#fff;}
+
+.stage-card{background:var(--bg-surface); border:1px solid var(--border-main); border-radius:18px;
+  backdrop-filter:blur(10px); box-shadow:0 12px 38px rgba(0,0,0,.4); overflow:hidden;}
+.stage-screen{margin:14px; border-radius:14px;
+  background:radial-gradient(700px 240px at 50% -10%, rgba(6,182,212,.08), transparent 70%), #090d18;
+  border:1px solid rgba(255,255,255,.06); min-height:320px; padding:24px 22px; display:flex; flex-direction:column; gap:14px; align-items:center;}
+
+.poly-row{display:flex; align-items:center; gap:12px;}
+.poly-row .tag{font-family:var(--mono); font-size:12px; font-weight:700; width:54px; text-align:right; color:var(--text-dim);}
+.poly-row.a .tag{color:var(--accent-blue);} .poly-row.b .tag{color:var(--accent-purple);} .poly-row.c .tag{color:var(--accent-green);}
+.coeffs{display:flex; gap:9px; flex-wrap:wrap;}
+.cell{position:relative; min-width:58px; height:54px; padding:4px 8px 0; display:flex; flex-direction:column; align-items:center; justify-content:center;
+  border-radius:12px; font-family:var(--mono); font-weight:800; font-size:16px;
+  border:2px solid var(--border-main); background:rgba(255,255,255,.05); color:var(--text-main);
+  transition:background .35s, border-color .35s, color .35s, box-shadow .35s, transform .35s cubic-bezier(.34,1.3,.64,1); will-change:transform;}
+.cell .split{font-size:9.5px; font-weight:600; color:var(--text-dim); margin-top:2px; letter-spacing:.2px;}
+.cell .ix{position:absolute; bottom:-15px; left:0; right:0; text-align:center; font-size:9px; color:var(--text-dim); font-weight:600;}
+.poly-row.a .cell{border-color:rgba(6,182,212,.3);} .poly-row.b .cell{border-color:rgba(168,85,247,.3);}
+.cell.litA{border-color:var(--accent-blue); background:rgba(6,182,212,.18); color:#a5f3fc; box-shadow:0 0 18px rgba(6,182,212,.45); transform:scale(1.1);}
+.cell.litA .split{color:#a5f3fc;}
+.cell.litB{border-color:var(--accent-purple); background:rgba(168,85,247,.18); color:#e9d5ff; box-shadow:0 0 18px rgba(168,85,247,.45); transform:scale(1.1);}
+.cell.litB .split{color:#e9d5ff;}
+.cell.target{border-color:var(--accent-orange); background:rgba(245,165,36,.16); color:#ffd591; box-shadow:0 0 22px rgba(245,165,36,.5); --glow:rgba(245,165,36,.6); animation:breathe 2s ease-in-out infinite; transform:scale(1.08);}
+.cell.cdone{border-color:var(--accent-green); background:rgba(34,197,94,.14); color:#bbf7d0; box-shadow:0 0 14px rgba(34,197,94,.35);}
+.cell.empty{opacity:.4; color:var(--text-dim);}
+
+.split-line{font-family:var(--mono); font-size:11.5px; color:var(--text-dim); text-align:center; min-height:16px; line-height:1.4;}
+.split-line b{color:#cfe9f5;} .split-line .hi{color:var(--accent-orange);} .split-line .lo{color:var(--accent-blue);}
+
+.term-readout{font-family:var(--mono); font-size:14px; color:#cfe9f5; min-height:24px; text-align:center; line-height:1.5;}
+.term-readout b{color:#fff;} .term-readout .pa{color:var(--accent-blue);} .term-readout .pb{color:var(--accent-purple);} .term-readout .ps{color:var(--accent-green);} .term-readout .ph{color:var(--accent-orange);}
+#confetti{position:absolute; inset:0; overflow:visible; pointer-events:none; z-index:5;}
+.confetti-piece{position:absolute; top:30px; left:50%; width:8px; height:13px; border-radius:2px; opacity:0; animation:confettiFall ease-out forwards;}
+
+.controls{display:flex; align-items:center; gap:10px; flex-wrap:wrap; justify-content:center;}
+.controls .sp{display:flex; align-items:center; gap:6px;}
+.controls .sp span{font-family:var(--mono); font-size:11px; color:var(--text-dim);}
+input[type="range"]{accent-color:var(--accent-blue); width:110px; cursor:pointer;}
+.kbd{background:rgba(255,255,255,.07); border:1px solid var(--border-main); border-radius:5px; padding:1px 6px; font-size:10px; font-family:var(--mono); color:var(--text-dim);}
+
+.details-wrap{display:flex; flex-direction:column;}
+.details-toggle{align-self:center; height:32px; padding:0 16px; border-radius:999px; cursor:pointer;
+  background:rgba(255,255,255,.04); border:1px solid var(--border-main); color:var(--text-dim);
+  font-family:var(--mono); font-size:12px; font-weight:600; display:inline-flex; align-items:center; gap:8px;
+  transition:color .2s, border-color .2s, background .2s;}
+.details-toggle:hover{color:var(--text-main); border-color:rgba(6,182,212,.4); background:rgba(6,182,212,.06);}
+.details-toggle .chev{transition:transform .3s;}
+.details-wrap.open .details-toggle .chev{transform:rotate(180deg);}
+.details-body{display:grid; grid-template-rows:0fr; transition:grid-template-rows .4s ease;}
+.details-wrap.open .details-body{grid-template-rows:1fr;}
+.details-inner{overflow:hidden; min-height:0;}
+.details-grid{display:flex; flex-direction:column; gap:14px; padding-top:14px;}
+
+.code-panel{background:var(--bg-surface); border:1px solid var(--border-main); border-radius:14px; padding:12px 0; font-family:var(--mono); font-size:12.5px;}
+.code-line{display:flex; gap:12px; padding:1px 16px; border-left:2px solid transparent; white-space:pre; transition:background .3s, border-color .3s;}
+.code-line .lno{color:#4b5772; width:18px; text-align:right; user-select:none;}
+.code-line .kw{color:#c792ea;} .code-line .fn{color:#82aaff;} .code-line .src{color:#c4cee0;} .code-line .cm{color:#5b6b86;}
+.code-line.active{background:rgba(6,182,212,.12); border-left-color:var(--accent-blue);}
+.code-line.active .src,.code-line.active .lno{color:#e8eefb;}
+
+.state-strip{display:flex; flex-wrap:wrap; align-items:center; gap:8px;}
+.pill{display:inline-flex; align-items:center; gap:6px; font-family:var(--mono); font-size:12px; color:var(--text-dim);
+  background:rgba(255,255,255,.04); border:1px solid var(--border-main); border-radius:999px; padding:4px 11px;}
+.pill b{color:var(--text-main); font-weight:800;}
+.pill.k b{color:var(--accent-orange);} .pill.s b{color:var(--accent-green);} .pill.m b{color:var(--accent-blue);} .pill.bs b{color:var(--accent-purple);}
+.legend-inline{margin-left:auto; display:flex; gap:14px; flex-wrap:wrap;}
+.legend-inline .li{display:flex; align-items:center; font-size:11px; color:var(--text-dim);}
+.dot{width:10px; height:10px; border-radius:3px; margin-right:6px; display:inline-block;}
+
+.log-panel{border-radius:14px; padding:12px 16px; height:120px; overflow-y:auto;
+  font-family:var(--mono); font-size:12.5px; line-height:1.5; background:var(--bg-surface); border:1px solid var(--border-main);}
+.log-panel div{margin-bottom:2px; white-space:pre-wrap;}
+.log-panel::-webkit-scrollbar{width:8px;}
+.log-panel::-webkit-scrollbar-thumb{background:rgba(255,255,255,.12); border-radius:8px;}
+
+@keyframes breathe{0%,100%{box-shadow:0 0 16px var(--glow), inset 0 0 10px rgba(255,255,255,.04);}50%{box-shadow:0 0 30px var(--glow), inset 0 0 14px rgba(255,255,255,.08);}}
+@keyframes confettiFall{0%{opacity:1; transform:translate(-50%,0) rotate(0)}100%{opacity:0; transform:translate(calc(-50% + var(--x)), 220px) rotate(var(--rot))}}
+@media (prefers-reduced-motion: reduce){*,*::before,*::after{animation-duration:.001ms !important; animation-iteration-count:1 !important; transition-duration:.001ms !important;}}
+</style>
+</head>
+<body>
+<div class="input-bar">
+  <label>A =</label>
+  <input type="text" id="p1-input" value="[100000, 999999, 50000]">
+  <label>B =</label>
+  <input type="text" id="p2-input" value="[777777, 200000]">
+  <label>mod =</label>
+  <input type="number" id="prime-input" value="1000000007" style="width:130px">
+  <button onclick="loadCustom()">Load</button>
+  <button onclick="loadExample(0)">Ex 1 (large coeffs)</button>
+  <button onclick="loadExample(1)">Ex 2 (mod 998244353)</button>
+</div>
+
+<div class="shell">
+  <div class="title-row">
+    <div><h1>FFT with Mod Splitting <span class="sub">&middot; MTT convolution under a modulus</span></h1></div>
+    <div class="step-badge" id="step-badge">Step 0 / 0</div>
+  </div>
+  <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+  <div class="narration" id="narration">Initializing&hellip;</div>
+
+  <div class="stage-card">
+    <div class="stage-screen">
+      <div id="confetti"></div>
+      <div class="poly-row a"><span class="tag">A</span><div class="coeffs" id="row-a"></div></div>
+      <div class="poly-row b"><span class="tag">B</span><div class="coeffs" id="row-b"></div></div>
+      <div class="split-line" id="split-line">Split each coefficient: <b>a</b> = <span class="hi">hi</span>&middot;B + <span class="lo">lo</span>, &nbsp;B = 2<sup>15</sup> = 32768</div>
+      <div class="term-readout" id="term">C[k] = ( HH&middot;B<sup>2</sup> + MID&middot;B + LO ) mod p</div>
+      <div class="poly-row c"><span class="tag">A&times;B</span><div class="coeffs" id="row-c"></div></div>
+    </div>
+  </div>
+
+  <div class="controls">
+    <button onclick="reset()">↺ Reset</button>
+    <button onclick="back()">← Back</button>
+    <button onclick="togglePlay()" id="play-btn">Play</button>
+    <button onclick="next()">Next →</button>
+    <div class="sp"><span>Speed</span><input type="range" id="speed-slider" min="0" max="2" value="1"></div>
+    <span class="kbd">← →</span><span class="kbd">space</span>
+  </div>
+
+  <div class="details-wrap" id="details-wrap">
+    <button class="details-toggle" onclick="document.getElementById('details-wrap').classList.toggle('open')">
+      <span>Show code, state &amp; log</span><span class="chev">▾</span>
+    </button>
+    <div class="details-body"><div class="details-inner"><div class="details-grid">
+      <div class="code-panel" id="code-panel"></div>
+      <div class="state-strip">
+        <span class="pill k">output k = <b id="pill-k">—</b></span>
+        <span class="pill s">C[k] = <b id="pill-sum">—</b></span>
+        <span class="pill bs">B = <b id="pill-base">—</b></span>
+        <span class="pill m">mod <b id="pill-mod">—</b></span>
+        <div class="legend-inline">
+          <span class="li"><span class="dot" style="background:var(--accent-blue)"></span>A[i]</span>
+          <span class="li"><span class="dot" style="background:var(--accent-purple)"></span>B[k-i]</span>
+          <span class="li"><span class="dot" style="background:var(--accent-orange)"></span>recombine</span>
+          <span class="li"><span class="dot" style="background:var(--accent-green)"></span>done</span>
+        </div>
+      </div>
+      <div class="log-panel" id="log"></div>
+    </div></div></div>
+  </div>
+</div>
+
+<script>
+const REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+const FRAME=1000/60;
+function sampleSpring(s,d,m){const dt=1/60;let x=1,v=0;const o=[];for(let i=0;i<240;i++){const a=(-s*x-d*v)/m;v+=a*dt;x+=v*dt;o.push(1-x);if(Math.abs(x)<0.0015&&Math.abs(v)<0.0015)break;}o.push(1);return o;}
+const SPRING_POP=sampleSpring(540,17,1); const durOf=a=>a.length*FRAME;
+const Motion={ pop(el){ el.getAnimations().forEach(a=>a.cancel()); if(REDUCED) return;
+  el.animate(SPRING_POP.map(p=>({transform:`scale(${(0.7+0.4*p).toFixed(3)})`})),{duration:durOf(SPRING_POP),easing:'linear'});}};
+
+const BASE = 1<<15; // 32768
+
+const CODE=[
+  [['kw','function'],['fn',' multiplyMTT'],['src','(A, B, mod) {']],
+  [['src','  B = 1<<15;                       '],['cm','// split radix']],
+  [['src','  split a = a1*B + a0  for each coeff of A, B']],
+  [['src','  C = new Array(A.length + B.length - 1).fill(0);']],
+  [['kw','  for'],['src',' (i = 0; i < A.length; i++)']],
+  [['kw','    for'],['src',' (j = 0; j < B.length; j++) {']],
+  [['src','      HH += a1[i]*b1[j];  LO += a0[i]*b0[j];']],
+  [['src','      MID += a1[i]*b0[j] + a0[i]*b1[j];']],
+  [['src','    }']],
+  [['src','    C[k] = (HH%mod *B%mod *B + MID%mod *B + LO) % mod;']],
+  [['kw','  return'],['src',' C;']],
+  [['src','}']],
+];
+
+let A=[100000,999999,50000], B=[777777,200000], MOD=1000000007, steps=[], stepIndex=0, timer=null;
+const delays=[1300,720,360];
+const ca={}, cb={}, cc={};
+let confettiArmed=true;
+
+function init(){ buildCode(); loadExample(0); }
+function buildCode(){
+  const p=document.getElementById('code-panel'); p.innerHTML='';
+  CODE.forEach((toks,i)=>{
+    const ln=document.createElement('div'); ln.className='code-line'; ln.id='cl'+i;
+    const no=document.createElement('span'); no.className='lno'; no.textContent=i+1; ln.appendChild(no);
+    toks.forEach(([c,t])=>{const s=document.createElement('span'); s.className=c; s.textContent=t; ln.appendChild(s);});
+    p.appendChild(ln);
+  });
+}
+function parseArr(s){ try{ const v=JSON.parse(s); if(Array.isArray(v)&&v.every(x=>Number.isInteger(x)&&x>=0)) return v; }catch(e){} return null; }
+function loadExample(ex){
+  if(ex===0){ A=[100000,999999,50000]; B=[777777,200000]; MOD=1000000007; }
+  else { A=[60000,90000]; B=[80000,40000]; MOD=998244353; }
+  document.getElementById('p1-input').value=JSON.stringify(A);
+  document.getElementById('p2-input').value=JSON.stringify(B);
+  document.getElementById('prime-input').value=MOD;
+  build(); reset();
+}
+function loadCustom(){
+  const a=parseArr(document.getElementById('p1-input').value), b=parseArr(document.getElementById('p2-input').value);
+  const md=parseInt(document.getElementById('prime-input').value);
+  if(!a||!b||!a.length||!b.length){ alert('Enter non-negative integer arrays like [100000, 999999].'); return; }
+  if(!(md>=2)){ alert('mod must be >= 2.'); return; }
+  A=a; B=b; MOD=md; build(); reset();
+}
+
+const hiOf=v=>Math.floor(v/BASE), loOf=v=>v%BASE;
+
+function build(){
+  const ra=document.getElementById('row-a'), rb=document.getElementById('row-b'), rc=document.getElementById('row-c');
+  ra.innerHTML=''; rb.innerHTML=''; rc.innerHTML=''; for(const k in ca) delete ca[k]; for(const k in cb) delete cb[k]; for(const k in cc) delete cc[k];
+  A.forEach((v,i)=>{ const c=document.createElement('div'); c.className='cell';
+    c.innerHTML=`<span class="num">${v}</span><span class="split">${hiOf(v)}&middot;B+${loOf(v)}</span><span class="ix">x^${i}</span>`; ra.appendChild(c); ca[i]=c; });
+  B.forEach((v,j)=>{ const c=document.createElement('div'); c.className='cell';
+    c.innerHTML=`<span class="num">${v}</span><span class="split">${hiOf(v)}&middot;B+${loOf(v)}</span><span class="ix">x^${j}</span>`; rb.appendChild(c); cb[j]=c; });
+  const len=A.length+B.length-1;
+  for(let k=0;k<len;k++){ const c=document.createElement('div'); c.className='cell empty';
+    c.innerHTML=`<span class="num">0</span><span class="split">&nbsp;</span><span class="ix">x^${k}</span>`; rc.appendChild(c); cc[k]=c; }
+  generateSteps();
+}
+
+function generateSteps(){
+  steps=[]; const len=A.length+B.length-1; const C=new Array(len).fill(0);
+  const B2=(BASE*BASE)%MOD;
+  const a1=A.map(hiOf), a0=A.map(loOf), b1=B.map(hiOf), b0=B.map(loOf);
+  function snap(o){ steps.push({C:[...C], k:o.k??null, i:o.i??null, j:o.j??null, done:o.done??[], term:o.term||'',
+    sum:o.sum??'—', code:o.code, narr:o.narr, log:o.log, complete:o.complete}); }
+
+  snap({code:[0,1,2], narr:`Multiply <code>A</code> and <code>B</code> mod <b>${MOD}</b> &mdash; coefficients are large, so split each as <code>a = a&#8321;&middot;B + a&#8320;</code> with <b>B = 2<sup>15</sup> = ${BASE}</b>. The product is the <b>convolution</b>, recombined mod p.`,
+    log:`A=[${A}]  B=[${B}]  mod=${MOD}\nsplit radix B=${BASE}`});
+  snap({code:[2], done:[],
+    narr:`<b>Split A:</b> hi = <code>[${a1}]</code>, lo = <code>[${a0}]</code>. &nbsp; <b>Split B:</b> hi = <code>[${b1}]</code>, lo = <code>[${b0}]</code>.`,
+    log:`A.hi=[${a1}] A.lo=[${a0}]\nB.hi=[${b1}] B.lo=[${b0}]`});
+
+  for(let k=0;k<len;k++){
+    const done=[]; for(let t=0;t<k;t++) done.push(t);
+    let HH=0, MID=0, LO=0;
+    for(let i=0;i<A.length;i++){
+      const j=k-i; if(j<0||j>=B.length) continue;
+      HH += a1[i]*b1[j];
+      LO += a0[i]*b0[j];
+      MID += a1[i]*b0[j] + a0[i]*b1[j];
+      snap({k, i, j, done:[...done], sum:'(accumulating)', code:[4,5,6,7],
+        term:`<span class="pa">A[${i}]</span>&middot;<span class="pb">B[${j}]</span>: &nbsp;HH += <b>${a1[i]}&middot;${b1[j]}</b> &nbsp;MID += <b>${a1[i]}&middot;${b0[j]}+${a0[i]}&middot;${b1[j]}</b> &nbsp;LO += <b>${a0[i]}&middot;${b0[j]}</b>`,
+        narr:`Output <code>C[${k}]</code>: pair <code>A[${i}]&times;B[${j}]</code> &rarr; HH=<b>${HH}</b>, MID=<b>${MID}</b>, LO=<b>${LO}</b>.`,
+        log:`k=${k} i=${i} j=${j}: HH=${HH} MID=${MID} LO=${LO}`});
+    }
+    const hhm=HH%MOD, midm=MID%MOD, lom=LO%MOD;
+    const val=( ((hhm*B2)%MOD) + ((midm*BASE)%MOD) + lom ) % MOD;
+    C[k]=val; done.push(k);
+    snap({k, done:[...done], sum:val, code:[9],
+      term:`<span class="ph">C[${k}]</span> = ( <b>${hhm}</b>&middot;B<sup>2</sup> + <b>${midm}</b>&middot;B + <b>${lom}</b> ) mod ${MOD} = <span class="ps">${val}</span>`,
+      narr:`Recombine <code>C[${k}]</code> = (HH&middot;B&sup2; + MID&middot;B + LO) mod p = <b>${val}</b>.`,
+      log:`C[${k}] = (${hhm}*B^2 + ${midm}*B + ${lom}) % ${MOD} = ${val}`});
+  }
+
+  snap({C:[...C], done:Array.from({length:len},(_,i)=>i), code:[10],
+    narr:`Done. <code>A &times; B mod p = [${C.join(', ')}]</code> (degree ${len-1}).`,
+    log:`result = [${C.join(', ')}]`, complete:true});
+}
+
+function renderStep(idx){
+  const step=steps[idx]; if(!step) return;
+  for(const i in ca){ ca[i].classList.toggle('litA', step.i!=null && +i===step.i); }
+  for(const j in cb){ cb[j].classList.toggle('litB', step.j!=null && +j===step.j); }
+  for(const k in cc){
+    const el=cc[k]; const kk=+k; const val=step.C[kk]||0;
+    el.querySelector('.num').textContent=val;
+    el.classList.remove('empty','target','cdone');
+    if(step.complete || (step.done&&step.done.includes(kk))){ el.classList.add('cdone'); }
+    else if(step.k!=null && kk===step.k){ el.classList.add('target'); if(step.i!=null) Motion.pop(el); }
+    else if(!val) el.classList.add('empty');
+  }
+  document.getElementById('term').innerHTML=step.term||'C[k] = ( HH&middot;B<sup>2</sup> + MID&middot;B + LO ) mod p';
+  const narr=document.getElementById('narration'); narr.innerHTML=step.narr; narr.classList.toggle('done',!!step.complete);
+  CODE.forEach((_,i)=>{ const ln=document.getElementById('cl'+i); if(ln) ln.classList.toggle('active', step.code.includes(i)); });
+  document.getElementById('pill-k').textContent=step.k!=null?step.k:'—';
+  document.getElementById('pill-sum').textContent=step.sum;
+  document.getElementById('pill-base').textContent=BASE;
+  document.getElementById('pill-mod').textContent=MOD;
+  document.getElementById('progress-fill').style.width=(steps.length>1?(idx/(steps.length-1))*100:0)+'%';
+  document.getElementById('step-badge').textContent='Step '+(idx+1)+' / '+steps.length;
+  const log=document.getElementById('log'); log.innerHTML='';
+  for(let q=0;q<=idx;q++){ if(steps[q].log){ const d=document.createElement('div'); d.textContent=steps[q].log;
+    if(steps[q].complete) d.style.color='var(--accent-green)'; log.appendChild(d);} }
+  log.scrollTop=log.scrollHeight;
+  if(step.complete){ if(confettiArmed){ fireConfetti(); confettiArmed=false; } } else confettiArmed=true;
+}
+
+function fireConfetti(){
+  const host=document.getElementById('confetti'); if(!host||REDUCED) return;
+  const cols=['#06b6d4','#a855f7','#f5a524','#22c55e'];
+  for(let i=0;i<40;i++){ const p=document.createElement('div'); p.className='confetti-piece';
+    p.style.background=cols[i%cols.length]; p.style.setProperty('--x',(Math.floor(((i*53)%200))-100)+'px');
+    p.style.setProperty('--rot',((i*47)%360)+'deg'); p.style.animationDuration=(0.9+((i%5)*0.12))+'s';
+    p.style.left=(40+((i*7)%30))+'%'; host.appendChild(p); setTimeout(()=>p.remove(),1700); }
+}
+
+function next(){ if(stepIndex<steps.length-1){ stepIndex++; renderStep(stepIndex);} else pause(); }
+function back(){ if(stepIndex>0){ stepIndex--; renderStep(stepIndex);} }
+function reset(){ pause(); stepIndex=0; confettiArmed=true; renderStep(0); }
+function togglePlay(){ const b=document.getElementById('play-btn'); if(timer) pause();
+  else{ b.textContent='Pause'; if(stepIndex>=steps.length-1){ stepIndex=0; } timer=setInterval(next,delays[document.getElementById('speed-slider').value]); } }
+function pause(){ clearInterval(timer); timer=null; document.getElementById('play-btn').textContent='Play'; }
+
+document.addEventListener('keydown',e=>{ const t=(e.target.tagName||'').toLowerCase(); if(t==='input'||t==='textarea') return;
+  if(e.key==='ArrowRight'){ e.preventDefault(); pause(); next(); }
+  else if(e.key==='ArrowLeft'){ e.preventDefault(); pause(); back(); }
+  else if(e.key===' '){ e.preventDefault(); togglePlay(); } });
+window.addEventListener('resize',()=>renderStep(stepIndex));
+window.onload=init;
+</script>
+</body>
+</html>

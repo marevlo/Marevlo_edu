@@ -1,0 +1,622 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Subsets II</title>
+    <style>
+        :root {
+            --bg-page: #070b14;
+            --bg-surface: rgba(255, 255, 255, 0.045);
+            --bg-input: rgba(255, 255, 255, 0.04);
+            --border-main: rgba(255, 255, 255, 0.10);
+            --btn-bg: rgba(255, 255, 255, 0.05);
+            --btn-hover: rgba(255, 255, 255, 0.10);
+            --text-main: #e8eefb;
+            --text-dim: #8b98b3;
+            --accent-orange: #f5a524;   /* DFS path / cursor          */
+            --accent-blue:   #06b6d4;    /* edges / links              */
+            --accent-green:  #22c55e;    /* recorded subset            */
+            --accent-red:    #f43f5e;    /* pruned duplicate branch    */
+            --accent-purple: #a855f7;    /* root / current node        */
+            --mono: ui-monospace, 'SF Mono', 'Cascadia Code', 'Courier New', monospace;
+            --sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+            --shell: 980px;
+        }
+
+        * { box-sizing: border-box; }
+        html, body { overflow-x: hidden; }
+        body {
+            background:
+                radial-gradient(1100px 600px at 15% -10%, rgba(168, 85, 247, 0.12), transparent 60%),
+                radial-gradient(900px 600px at 100% 10%, rgba(6, 182, 212, 0.10), transparent 55%),
+                linear-gradient(160deg, #070b14 0%, #0b1120 55%, #0a0f1c 100%);
+            background-attachment: fixed;
+            color: var(--text-main); font-family: var(--sans); margin: 0;
+            display: flex; flex-direction: column; align-items: center; min-height: 100vh;
+            padding-bottom: 48px; -webkit-font-smoothing: antialiased;
+        }
+        body::before, body::after { content: ''; position: fixed; border-radius: 50%; filter: blur(70px); pointer-events: none; z-index: 0; opacity: 0.45; }
+        body::before { width: 380px; height: 380px; top: 8%; left: -120px; background: radial-gradient(circle, rgba(168,85,247,0.30), transparent 70%); }
+        body::after  { width: 420px; height: 420px; bottom: 4%; right: -140px; background: radial-gradient(circle, rgba(6,182,212,0.22), transparent 70%); }
+        body > * { position: relative; z-index: 1; }
+
+        .input-bar {
+            width: 100%; background: rgba(10, 15, 28, 0.55);
+            backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+            padding: 14px 16px; display: flex; justify-content: center; align-items: center; gap: 10px;
+            border-bottom: 1px solid var(--border-main); flex-wrap: wrap; position: sticky; top: 0; z-index: 50;
+        }
+        label.ui-label, .ui-label { font-family: var(--mono); font-size: 13px; color: var(--text-dim); letter-spacing: 0.2px; }
+        input[type="text"] {
+            background: var(--bg-input); border: 1px solid var(--border-main); color: var(--text-main);
+            height: 34px; border-radius: 9px; padding: 0 12px; font-size: 13px; font-family: var(--mono); width: 150px;
+            transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+        }
+        input[type="text"]:focus { outline: none; border-color: var(--accent-purple); box-shadow: 0 0 0 3px rgba(168, 85, 247, 0.18); background: rgba(168, 85, 247, 0.06); }
+
+        button {
+            height: 34px; border-radius: 9px; padding: 0 14px; background: var(--btn-bg);
+            border: 1px solid var(--border-main); color: var(--text-main); font-size: 13px; font-weight: 600; cursor: pointer;
+            transition: transform 0.15s ease, background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+        }
+        button:hover { background: var(--btn-hover); border-color: rgba(168, 85, 247, 0.5); box-shadow: 0 0 18px rgba(168, 85, 247, 0.18); transform: translateY(-1px); }
+        button:active { transform: translateY(0); }
+        #play-btn { background: linear-gradient(135deg, rgba(168,85,247,0.22), rgba(168,85,247,0.10)); border-color: rgba(168, 85, 247, 0.45); color: #e9d5ff; min-width: 80px; }
+
+        .shell { width: var(--shell); max-width: 95%; margin: 24px auto 0; display: flex; flex-direction: column; gap: 16px; }
+
+        .title-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+        .title-row h1 { font-size: 18px; font-weight: 800; margin: 0; letter-spacing: 0.2px; }
+        .title-row .sub { color: var(--text-dim); font-weight: 500; font-size: 13px; }
+        .step-badge { font-family: var(--mono); font-size: 12px; font-weight: 700; color: #e9d5ff; background: rgba(168,85,247,0.12); border: 1px solid rgba(168,85,247,0.3); padding: 4px 10px; border-radius: 999px; white-space: nowrap; }
+        .progress-track { height: 4px; width: 100%; background: rgba(255,255,255,0.07); border-radius: 999px; overflow: hidden; margin-top: -6px; }
+        .progress-fill { height: 100%; width: 0%; border-radius: 999px; background: linear-gradient(90deg, var(--accent-purple), var(--accent-blue)); box-shadow: 0 0 12px rgba(168,85,247,0.5); transition: width 0.45s cubic-bezier(0.34,1.1,0.64,1); }
+
+        .res-feed { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; min-height: 26px; }
+        .res-chip { font-family: var(--mono); font-size: 12px; font-weight: 800; padding: 4px 10px; border-radius: 8px; border: 1px solid rgba(34,197,94,0.4); color: #bbf7d0; background: rgba(34,197,94,0.12); opacity: 0; transform: scale(.6); transition: opacity .3s, transform .3s cubic-bezier(.34,1.5,.64,1); }
+        .res-chip.show { opacity: 1; transform: scale(1); }
+        .res-label { font-family: var(--mono); font-size: 12px; color: var(--text-dim); }
+
+        .narration { background: var(--bg-surface); border: 1px solid rgba(168,85,247,0.22); border-radius: 12px; padding: 12px 18px; font-family: var(--mono); font-size: 14px; line-height: 1.5; color: #ede9fe; min-height: 48px; display: flex; align-items: center; gap: 10px; transition: border-color 0.3s, background 0.3s; }
+        .narration::before { content: '\25B8'; color: var(--accent-purple); font-size: 13px; }
+        .narration.done { border-color: rgba(34,197,94,0.4); background: rgba(34,197,94,0.06); }
+        .narration.done::before { content: '\2713'; color: var(--accent-green); }
+        .narration.miss { border-color: rgba(244,63,94,0.4); background: rgba(244,63,94,0.06); }
+        .narration.miss::before { content: '\2717'; color: var(--accent-red); }
+        .narration code { background: rgba(168,85,247,0.14); color: #d8b4fe; padding: 1px 6px; border-radius: 5px; font-size: 12.5px; }
+        .narration b { color: #fff; }
+
+        .stage-card { background: var(--bg-surface); border: 1px solid var(--border-main); border-radius: 18px; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); box-shadow: 0 12px 38px rgba(0,0,0,0.4); overflow: hidden; }
+        .stage-screen { position: relative; margin: 14px; border-radius: 14px; background: radial-gradient(700px 300px at 50% -10%, rgba(168,85,247,0.08), transparent 70%), #090d18; border: 1px solid rgba(255,255,255,0.06); }
+        .tree-stage { position: relative; width: 100%; height: 430px; overflow: auto; scrollbar-width: thin; cursor: grab; }
+        .tree-stage.grabbing { cursor: grabbing; }
+        .tree-stage::-webkit-scrollbar { height: 7px; width: 7px; }
+        .tree-stage::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 8px; }
+        .tree-canvas { position: relative; }
+        .tree-inner { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
+        .zoom-bar { position: absolute; right: 14px; bottom: 12px; display: flex; gap: 6px; z-index: 12; }
+        .zoom-bar button { height: 30px; min-width: 30px; padding: 0 9px; border-radius: 8px; font-size: 15px; font-weight: 700; background: rgba(10,15,28,0.7); backdrop-filter: blur(6px); }
+        .zoom-bar .fit { font-size: 12px; }
+        #edges { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; z-index: 1; }
+        .edge-ln { stroke: var(--accent-blue); stroke-width: 2.2; fill: none; opacity: 0.5; transition: stroke 0.35s, opacity 0.35s; }
+        .edge-ln.on-path { stroke: var(--accent-orange); opacity: 1; filter: drop-shadow(0 0 6px rgba(245,165,36,0.6)); }
+        .edge-ln.pruned { stroke: var(--accent-red); opacity: 0.55; stroke-dasharray: 4 4; }
+        .edge-lbl { font-family: var(--mono); font-size: 13px; font-weight: 800; fill: var(--text-dim); }
+        .edge-lbl.on-path { fill: var(--accent-orange); }
+        .edge-lbl.pruned { fill: var(--accent-red); }
+
+        .tnode { position: absolute; min-width: 30px; height: 34px; padding: 0 8px; margin-left: 0; display: flex; align-items: center; justify-content: center;
+            border-radius: 9px; font-family: var(--mono); font-weight: 800; font-size: 13px; transform: translate(-50%, 0);
+            border: 2px solid var(--border-main); background: rgba(255,255,255,0.06); color: var(--text-main); white-space: nowrap;
+            z-index: 2; will-change: transform, left, top; transition: background 0.35s, border-color 0.35s, color 0.35s, box-shadow 0.35s; }
+        .tnode.root { border-color: var(--accent-purple); background: linear-gradient(180deg, rgba(168,85,247,0.30), rgba(168,85,247,0.12)); color: #e9d5ff; }
+        .tnode.on-path { border-color: var(--accent-orange); box-shadow: 0 0 16px rgba(245,165,36,0.45); color: #fff; }
+        .tnode.current { border-color: var(--accent-purple); box-shadow: 0 0 22px rgba(168,85,247,0.6); color: #fff; }
+        .tnode.recorded { border-color: var(--accent-green); background: linear-gradient(180deg, rgba(34,197,94,0.28), rgba(34,197,94,0.10)); color: #bbf7d0; }
+        .tnode.recorded.current { box-shadow: 0 0 22px rgba(34,197,94,0.6); color: #eafff2; }
+        .tnode.pruned { border-color: var(--accent-red); border-style: dashed; background: rgba(244,63,94,0.08); color: #fda4b4; font-size: 12px; }
+        .tnode.pruned.current { box-shadow: 0 0 20px rgba(244,63,94,0.5); }
+        .tnode.dim { opacity: 0.34; }
+
+        .controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: center; }
+        .controls .kbd-hint { font-size: 11px; color: var(--text-dim); font-family: var(--mono); margin-left: 4px; }
+        .kbd { background: rgba(255,255,255,0.07); border: 1px solid var(--border-main); border-radius: 5px; padding: 1px 6px; font-size: 10px; }
+        input[type="range"] { accent-color: var(--accent-purple); width: 110px; cursor: pointer; }
+        #confetti { position: fixed; left: 0; right: 0; top: 30%; height: 0; overflow: visible; pointer-events: none; z-index: 60; }
+        .confetti-piece { position: absolute; top: 0; left: 50%; width: 8px; height: 13px; border-radius: 2px; opacity: 0; animation: confettiFall ease-out forwards; }
+
+        .details-toggle { align-self: center; height: 32px; padding: 0 16px; border-radius: 999px; cursor: pointer; background: rgba(255,255,255,0.04); border: 1px solid var(--border-main); color: var(--text-dim); font-family: var(--mono); font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; gap: 8px; transition: color 0.2s, border-color 0.2s, background 0.2s; }
+        .details-toggle:hover { color: var(--text-main); border-color: rgba(168,85,247,0.4); background: rgba(168,85,247,0.06); }
+        .details-toggle .chev { transition: transform 0.3s ease; }
+        .details-wrap.open .details-toggle .chev { transform: rotate(180deg); }
+        .details-body { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.4s ease; }
+        .details-wrap.open .details-body { grid-template-rows: 1fr; }
+        .details-inner { overflow: hidden; min-height: 0; }
+        .details-grid { display: flex; flex-direction: column; gap: 14px; padding-top: 14px; }
+
+        .panel-card { background: var(--bg-surface); border: 1px solid var(--border-main); border-radius: 16px; backdrop-filter: blur(10px); box-shadow: 0 8px 30px rgba(0,0,0,0.35); }
+        .panel-head { display: flex; align-items: center; gap: 8px; padding: 11px 16px; border-bottom: 1px solid var(--border-main); font-size: 11px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; color: var(--text-dim); }
+        .panel-head .pip { width: 7px; height: 7px; border-radius: 50%; background: var(--accent-purple); box-shadow: 0 0 8px var(--accent-purple); }
+        .code-body { padding: 12px 6px 14px; font-family: var(--mono); font-size: 12.5px; line-height: 1.7; }
+        .code-line { display: flex; gap: 12px; padding: 1px 16px; border-left: 2px solid transparent; transition: background 0.3s, border-color 0.3s; white-space: pre; }
+        .code-line .lno { color: #4b5772; width: 16px; text-align: right; user-select: none; }
+        .code-line .src { color: #c4cee0; }
+        .code-line .kw { color: #c792ea; }
+        .code-line .fn { color: #82aaff; }
+        .code-line.active { background: rgba(168,85,247,0.12); border-left-color: var(--accent-purple); }
+        .code-line.active .src, .code-line.active .lno { color: #e8eefb; }
+
+        .state-pills { display: flex; flex-wrap: wrap; gap: 8px; padding: 4px 2px; }
+        .pill { font-family: var(--mono); font-size: 12px; padding: 6px 12px; border-radius: 999px; background: var(--bg-surface); border: 1px solid var(--border-main); color: var(--text-dim); display: flex; align-items: center; gap: 7px; }
+        .pill b { color: var(--text-main); font-weight: 800; }
+        .pill .k { color: var(--text-dim); }
+        .pill.idx b { color: var(--accent-orange); }
+        .pill.cur b { color: var(--accent-green); }
+        .pill.act b { color: #d8b4fe; }
+
+        .log-panel { border-radius: 14px; padding: 12px 16px; height: 110px; overflow-y: auto; font-family: var(--mono); font-size: 12.5px; line-height: 1.5; background: var(--bg-surface); border: 1px solid var(--border-main); }
+        .log-panel::-webkit-scrollbar { width: 8px; }
+        .log-panel::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 8px; }
+
+        @keyframes confettiFall { 0%{ opacity:1; transform: translate(-50%, 0) rotate(0deg); } 100%{ opacity:0; transform: translate(calc(-50% + var(--x)), 240px) rotate(var(--rot)); } }
+        @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; } }
+    </style>
+</head>
+<body>
+
+    <div class="input-bar">
+        <label class="ui-label">nums =</label>
+        <input type="text" id="input-arr" value="[1,2,2]">
+        <button onclick="loadCustom()">Build</button>
+        <span class="ui-label" style="opacity:.5">|</span>
+        <button onclick="loadExample('[1,2,2]')">Ex 1 ([1,2,2])</button>
+        <button onclick="loadExample('[0]')">Ex 2 ([0])</button>
+    </div>
+
+    <div class="shell">
+        <div class="title-row">
+            <h1>Subsets II <span class="sub">&middot; backtracking &middot; sort first, skip nums[i]==nums[i-1] on the same level</span></h1>
+            <span class="step-badge" id="step-badge">Step 1 / 1</span>
+        </div>
+        <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+
+        <div class="res-feed"><span class="res-label">subsets:</span><span id="res-feed"></span></div>
+
+        <div class="narration" id="main-panel">&mdash;</div>
+
+        <div class="stage-card">
+            <div class="stage-screen">
+                <div class="tree-stage" id="tree-stage">
+                    <div class="tree-canvas" id="tree-canvas">
+                        <div class="tree-inner" id="tree-inner">
+                            <svg id="edges"></svg>
+                        </div>
+                    </div>
+                </div>
+                <div class="zoom-bar">
+                    <button onclick="zoomBy(0.8)" title="Zoom out">&#8722;</button>
+                    <button class="fit" onclick="fitView()" title="Fit whole tree">Fit</button>
+                    <button onclick="zoomBy(1.25)" title="Zoom in">+</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="controls">
+            <button onclick="resetSim()">&#8634; Reset</button>
+            <button onclick="prevStep()">&#8592; Back</button>
+            <button onclick="togglePlay()" id="play-btn">Play</button>
+            <button onclick="nextStep()">Next &#8594;</button>
+            <span class="ui-label" style="margin-left:6px; font-size:11px">Speed</span>
+            <input type="range" id="speed" min="0" max="2" value="1">
+            <span class="kbd-hint"><span class="kbd">&#8592;</span> <span class="kbd">&#8594;</span> step &middot; <span class="kbd">space</span> play</span>
+        </div>
+
+        <div class="details-wrap" id="details-wrap">
+            <button class="details-toggle" onclick="toggleDetails()" aria-expanded="false">
+                <span id="details-label">Show code &amp; log</span> <span class="chev">&#9662;</span>
+            </button>
+            <div class="details-body">
+                <div class="details-inner">
+                    <div class="details-grid">
+                        <div class="panel-card">
+                            <div class="panel-head"><span class="pip"></span> Algorithm</div>
+                            <div class="code-body" id="code-panel"></div>
+                        </div>
+                        <div class="state-pills" id="state-pills"></div>
+                        <div class="log-panel" id="log"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div id="confetti"></div>
+
+    <script>
+        'use strict';
+
+        // ───────── Motion engine ─────────
+        const REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        const FRAME = 1000 / 60;
+        function sampleSpring(stiffness, damping, mass) {
+            const dt = 1 / 60; let x = 1, v = 0; const out = [];
+            for (let i = 0; i < 240; i++) { const a = (-stiffness * x - damping * v) / mass; v += a * dt; x += v * dt; out.push(1 - x); if (Math.abs(x) < 0.0015 && Math.abs(v) < 0.0015) break; }
+            out.push(1); return out;
+        }
+        const SPRING_POP = sampleSpring(520, 17, 1);
+        const durOf = (a) => a.length * FRAME;
+        const Motion = {
+            pop(el) {
+                if (REDUCED) { el.style.opacity = '1'; return; }
+                const base = el.style.transform.replace(/ scale\([^)]*\)/, '');
+                const kf = SPRING_POP.map(p => ({ opacity: Math.min(1, p * 2).toFixed(3), transform: `${base} scale(${(0.3 + 0.7 * p).toFixed(3)})` }));
+                const a = el.animate(kf, { duration: durOf(SPRING_POP), easing: 'linear' });
+                a.onfinish = () => { el.style.transform = base; el.style.opacity = '1'; };
+            },
+        };
+
+        // ───────── State ─────────
+        let targetArr = [1, 2, 2];
+        let sortedNums = [1, 2, 2];
+        let nodes = [];        // full recursion tree: {key, parent, label, subset, status, ...}
+        let steps = [];
+        let stepIdx = 0;
+        let timer = null;
+        let confettiArmed = true;
+        const delays = [1500, 760, 360];
+        const nodeEls = {};
+        const edgeEls = {};
+        let viewScale = 1, autoFit = true, contentW = 0, contentH = 0;
+
+        const CODE = [
+            [['kw','def '],['fn','subsetsWithDup'],['src','(nums):']],
+            [['src','  nums.sort()']],
+            [['kw','  def '],['fn','backtrack'],['src','(start, curr):']],
+            [['src','    res.append(curr[:])']],
+            [['kw','    for '],['src','i in range(start, len(nums)):']],
+            [['kw','      if '],['src','i > start and nums[i] == nums[i-1]:']],
+            [['kw','        continue']],
+            [['src','      curr.append(nums[i])']],
+            [['src','      backtrack(i + 1, curr)']],
+            [['src','      curr.pop()']],
+        ];
+        function buildCodePanel() {
+            const panel = document.getElementById('code-panel'); panel.innerHTML = '';
+            CODE.forEach((tokens, i) => {
+                const line = document.createElement('div'); line.className = 'code-line'; line.dataset.line = i;
+                const lno = document.createElement('span'); lno.className = 'lno'; lno.textContent = i + 1; line.appendChild(lno);
+                const src = document.createElement('span');
+                tokens.forEach(([cls, txt]) => { const s = document.createElement('span'); s.className = cls; s.textContent = txt; src.appendChild(s); });
+                line.appendChild(src); panel.appendChild(line);
+            });
+        }
+        function highlightCode(arr) { document.querySelectorAll('.code-line').forEach(el => el.classList.toggle('active', arr && arr.includes(+el.dataset.line))); }
+        function toggleDetails() {
+            const wrap = document.getElementById('details-wrap'); const open = wrap.classList.toggle('open');
+            wrap.querySelector('.details-toggle').setAttribute('aria-expanded', open ? 'true' : 'false');
+            document.getElementById('details-label').textContent = open ? 'Hide code & log' : 'Show code & log';
+        }
+
+        const fmt = (a) => '[' + a.join(',') + ']';
+
+        // ───────── build the full backtracking decision tree + DFS preorder steps ─────────
+        function generateSteps() {
+            nodes = []; steps = [];
+            const byKey = new Map();
+            let uid = 0;
+            // node.subset is the partial subset at that recursion frame
+            function addNode(parent, label, subset, start, kind) {
+                const key = 'k' + (uid++);
+                const node = { key, parent, label, subset: [...subset], start, kind, recorded: false };
+                nodes.push(node); byKey.set(key, node); return node;
+            }
+            const recorded = [];   // strings recorded, in DFS order
+
+            // root: the backtrack(0, []) frame
+            const root = addNode(null, null, [], 0, 'frame');
+
+            const order = [];   // ordered list of step descriptors
+
+            (function dfs(node) {
+                // record curr[:] on entry
+                node.recorded = true;
+                recorded.push([...node.subset]);
+                order.push({ kind: 'record', node });
+
+                for (let i = node.start; i < sortedNums.length; i++) {
+                    if (i > node.start && sortedNums[i] === sortedNums[i - 1]) {
+                        // pruned duplicate branch — add a visible stub node, skipped
+                        const stub = addNode(node.key, sortedNums[i], node.subset, i, 'pruned');
+                        stub.pruneVal = sortedNums[i];
+                        order.push({ kind: 'prune', node: stub, i });
+                        continue;
+                    }
+                    const childSubset = [...node.subset, sortedNums[i]];
+                    const child = addNode(node.key, sortedNums[i], childSubset, i + 1, 'frame');
+                    order.push({ kind: 'include', node: child, i });
+                    dfs(child);
+                    order.push({ kind: 'backtrack', node: child, i });
+                }
+            })(root);
+
+            const totalRecorded = recorded.length;
+            let found = 0;
+
+            // step 0: intro (only root present)
+            steps.push({
+                visible: new Set([root.key]), current: root.key, path: new Set([root.key]), found: 0,
+                code: [0, 1, 2], idx: '0', curStr: fmt([]), act: 'start',
+                panel: `Backtracking for <code>${fmt(targetArr)}</code>. Sort first &#8594; <code>${fmt(sortedNums)}</code>, then DFS. At each frame record <code>curr</code>; skip <code>nums[i]==nums[i&minus;1]</code> on the same level so duplicate subsets are <b>pruned</b>.`,
+                log: `sort ${fmt(targetArr)} -> ${fmt(sortedNums)}; backtrack(0, [])`
+            });
+
+            const visible = new Set([root.key]);
+            order.forEach((ev) => {
+                const node = ev.node;
+                visible.add(node.key);
+                // path from root to node
+                const path = new Set(); let cur = node;
+                while (cur) { path.add(cur.key); cur = cur.parent != null ? byKey.get(cur.parent) : null; }
+                const vis = new Set(visible);
+
+                if (ev.kind === 'record') {
+                    found++;
+                    const isRoot = node.parent == null;
+                    steps.push({
+                        visible: vis, current: node.key, path, found, recordPulse: true, confetti: found > 0,
+                        code: [3], idx: String(node.start), curStr: fmt(node.subset), act: 'record',
+                        panel: `Enter frame &#8594; <b>record</b> <code>${fmt(node.subset)}</code>${isRoot ? ' (the empty subset)' : ''}. Subset count: <b>${found}/${totalRecorded}</b>.`,
+                        log: `record ${fmt(node.subset)}  (${found}/${totalRecorded})`
+                    });
+                } else if (ev.kind === 'include') {
+                    steps.push({
+                        visible: vis, current: node.key, path, found,
+                        code: [4, 5, 7, 8], idx: String(ev.i), curStr: fmt(node.subset), act: 'include ' + node.label,
+                        panel: `i=${ev.i}: include <code>nums[${ev.i}]=${node.label}</code> &#8594; <code>curr=${fmt(node.subset)}</code>. Recurse <code>backtrack(${ev.i + 1}, curr)</code>.`,
+                        log: `i=${ev.i} include ${node.label} -> ${fmt(node.subset)}`
+                    });
+                } else if (ev.kind === 'prune') {
+                    const par = byKey.get(node.parent);
+                    steps.push({
+                        visible: vis, current: node.key, path, found, miss: true,
+                        code: [4, 5, 6], idx: String(ev.i), curStr: fmt(par ? par.subset : []), act: 'skip ' + node.pruneVal,
+                        panel: `i=${ev.i}: <code>nums[${ev.i}]=${node.pruneVal}</code> equals <code>nums[${ev.i - 1}]</code> with i&gt;start &#8594; <b>skip</b> this duplicate. Branch <b>pruned</b> to avoid a repeat subset.`,
+                        log: `i=${ev.i} skip dup ${node.pruneVal} (prune)`
+                    });
+                } else if (ev.kind === 'backtrack') {
+                    const par = byKey.get(node.parent);
+                    const parSub = par ? par.subset : [];
+                    steps.push({
+                        visible: vis, current: node.parent, path: (() => { const p = new Set(); let c = par; while (c) { p.add(c.key); c = c.parent != null ? byKey.get(c.parent) : null; } return p; })(), found, miss: true,
+                        code: [9], idx: String(ev.i), curStr: fmt(parSub), act: 'pop ' + node.label,
+                        panel: `Return from <code>${fmt(node.subset)}</code>: <b>backtrack</b> &#8594; pop <code>${node.label}</code>, restore <code>curr=${fmt(parSub)}</code>.`,
+                        log: `backtrack pop ${node.label} -> ${fmt(parSub)}`
+                    });
+                }
+            });
+
+            // final result, sorted by length then value (matches original lesson's display order)
+            const finalRes = recorded.map(r => [...r]).sort((a, b) => {
+                const ld = a.length - b.length; if (ld !== 0) return ld;
+                return JSON.stringify(a).localeCompare(JSON.stringify(b));
+            });
+            const finalStr = '[' + finalRes.map(fmt).join(',') + ']';
+
+            steps.push({
+                visible: new Set(nodes.map(n => n.key)), current: null, path: new Set(), found: totalRecorded,
+                complete: true, confetti: true, done: true,
+                code: [], idx: String(sortedNums.length), curStr: '[]', act: 'done', results: finalRes,
+                panel: `Search complete &#8594; <b>${totalRecorded}</b> unique subset${totalRecorded !== 1 ? 's' : ''}: <code>${finalStr}</code>.`,
+                log: `done  ${totalRecorded} unique subsets: ${finalStr}`
+            });
+            steps._finalStr = finalStr;
+        }
+
+        // ───────── layout (tidy top-down tree, leaf-packed) ─────────
+        const PADX = 56, PADY = 24, ROW = 70;
+        function layout() {
+            const byKey = new Map();
+            // depth = subset length for frames; pruned stub sits one row below its parent
+            nodes.forEach(n => byKey.set(n.key, Object.assign({}, n, { kids: [] })));
+            byKey.forEach(n => { if (n.parent != null && byKey.has(n.parent)) byKey.get(n.parent).kids.push(n); });
+            const root = nodes[0] ? byKey.get(nodes[0].key) : null;
+            const cnt = nodes.length;
+            const COL = cnt > 40 ? 60 : cnt > 20 ? 78 : 96;
+            let nextX = 0;
+            (function place(n, depth) {
+                n.y = depth * ROW + PADY;
+                if (n.kids.length === 0) { n.x = nextX * COL + PADX; nextX++; }
+                else { n.kids.forEach(k => place(k, depth + 1)); n.x = (n.kids[0].x + n.kids[n.kids.length - 1].x) / 2; }
+            })(root, 0);
+            const width = Math.max(nextX, 1) * COL + PADX * 2 - COL;
+            let maxDepth = 0; byKey.forEach(n => { const d = (n.y - PADY) / ROW; if (d > maxDepth) maxDepth = d; });
+            const height = maxDepth * ROW + PADY * 2 + 34;
+            return { byKey, width, height };
+        }
+
+        // ───────── render ─────────
+        function renderStep(idx) {
+            stepIdx = idx; const step = steps[idx]; if (!step) return;
+            const { byKey, width, height } = layout();
+            contentW = width; contentH = height;
+            const inner = document.getElementById('tree-inner');
+            const svg = document.getElementById('edges');
+            inner.style.width = width + 'px'; inner.style.height = height + 'px';
+            svg.setAttribute('width', width); svg.setAttribute('height', height);
+
+            const used = new Set();
+            byKey.forEach((n, key) => {
+                if (!step.visible.has(key)) return;
+                const elKey = 'n:' + key; used.add(elKey);
+                let el = nodeEls[elKey]; const fresh = !el;
+                if (!el) { el = document.createElement('div'); el.className = 'tnode'; inner.appendChild(el); nodeEls[elKey] = el; }
+                const isRoot = n.parent == null;
+                const isPruned = n.kind === 'pruned';
+                el.textContent = isPruned ? ('skip ' + n.pruneVal) : (n.subset.length === 0 ? '[ ]' : fmt(n.subset));
+                const onPath = step.path.has(key);
+                const isCur = step.current === key;
+                el.className = 'tnode'
+                    + (isRoot ? ' root' : '')
+                    + (isPruned ? ' pruned' : (n.recorded ? ' recorded' : ''))
+                    + (onPath && !isCur ? ' on-path' : '')
+                    + (isCur ? ' current' : '')
+                    + (!onPath && !isPruned && step.current ? ' dim' : '');
+                el.style.left = n.x + 'px'; el.style.top = n.y + 'px';
+                el.style.transform = 'translate(-50%, 0)';
+                if (fresh) { el.style.opacity = '0'; Motion.pop(el); }
+            });
+
+            const usedE = new Set();
+            byKey.forEach((n, key) => {
+                if (n.parent == null || !step.visible.has(key)) return;
+                const par = byKey.get(n.parent); if (!par || !step.visible.has(n.parent)) return;
+                const eKey = 'e:' + key; usedE.add(eKey);
+                let rec = edgeEls[eKey];
+                if (!rec) {
+                    const ln = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                    const lbl = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                    lbl.setAttribute('text-anchor', 'middle');
+                    svg.appendChild(ln); svg.appendChild(lbl); rec = { ln, lbl }; edgeEls[eKey] = rec;
+                }
+                const x1 = par.x, y1 = par.y + 34, x2 = n.x, y2 = n.y;
+                const my = (y1 + y2) / 2;
+                rec.ln.setAttribute('d', `M ${x1} ${y1} C ${x1} ${my}, ${x2} ${my}, ${x2} ${y2}`);
+                const isPruned = n.kind === 'pruned';
+                const on = step.path.has(key) && step.path.has(n.parent);
+                rec.ln.setAttribute('class', 'edge-ln' + (isPruned ? ' pruned' : (on ? ' on-path' : '')));
+                rec.lbl.textContent = isPruned ? '✕' : ('+' + n.label);
+                rec.lbl.setAttribute('x', (x1 + x2) / 2 + 11); rec.lbl.setAttribute('y', my - 1);
+                rec.lbl.setAttribute('class', 'edge-lbl' + (isPruned ? ' pruned' : (on ? ' on-path' : '')));
+            });
+
+            Object.keys(nodeEls).forEach(k => { if (!used.has(k)) { nodeEls[k].remove(); delete nodeEls[k]; } });
+            Object.keys(edgeEls).forEach(k => { if (!usedE.has(k)) { edgeEls[k].ln.remove(); edgeEls[k].lbl.remove(); delete edgeEls[k]; } });
+
+            // results feed
+            renderResFeed(step.found, step.results);
+
+            const mp = document.getElementById('main-panel');
+            mp.innerHTML = step.panel || '&mdash;';
+            mp.classList.toggle('done', !!step.complete);
+            mp.classList.toggle('miss', !!step.miss && !step.complete);
+            highlightCode(step.code);
+
+            // state pills
+            const pills = document.getElementById('state-pills');
+            pills.innerHTML =
+                `<span class="pill idx"><span class="k">index</span> <b>${step.idx}</b></span>` +
+                `<span class="pill cur"><span class="k">curr</span> <b>${step.curStr}</b></span>` +
+                `<span class="pill act"><span class="k">action</span> <b>${step.act}</b></span>` +
+                `<span class="pill"><span class="k">found</span> <b>${step.found}</b></span>`;
+
+            if (step.confetti) { if (confettiArmed) { fireConfetti(); confettiArmed = false; } } else confettiArmed = true;
+
+            document.getElementById('step-badge').textContent = `Step ${idx + 1} / ${steps.length}`;
+            document.getElementById('progress-fill').style.width = `${(idx / Math.max(1, steps.length - 1)) * 100}%`;
+
+            const logEl = document.getElementById('log');
+            logEl.innerHTML = steps.slice(0, idx + 1).map(s => `<div style="margin:3px 0;white-space:pre-wrap;">${s.log}</div>`).join('');
+            logEl.scrollTop = logEl.scrollHeight;
+
+            if (autoFit) fitView(); else applyView();
+        }
+
+        // recorded subsets discovered up to and including this step
+        function renderResFeed(found, finalResults) {
+            const feed = document.getElementById('res-feed');
+            const all = nodes.filter(n => n.recorded).map(n => fmt(n.subset));
+            feed.innerHTML = '';
+            all.forEach((r, i) => {
+                const chip = document.createElement('span'); chip.className = 'res-chip' + (i < found ? ' show' : '');
+                chip.textContent = r; feed.appendChild(chip);
+            });
+        }
+
+        function fireConfetti() {
+            const host = document.getElementById('confetti'); if (!host || REDUCED) return;
+            const colors = ['#22c55e', '#06b6d4', '#a855f7', '#f5a524', '#f43f5e'];
+            for (let i = 0; i < 36; i++) {
+                const p = document.createElement('div'); p.className = 'confetti-piece';
+                p.style.setProperty('--x', ((Math.random() * 2 - 1) * 260) + 'px');
+                p.style.setProperty('--rot', ((Math.random() * 720 - 360)) + 'deg');
+                p.style.background = colors[i % colors.length];
+                p.style.animationDuration = (0.9 + Math.random() * 0.8) + 's';
+                p.style.animationDelay = (Math.random() * 0.15) + 's';
+                host.appendChild(p); setTimeout(() => p.remove(), 1900);
+            }
+        }
+
+        // ───────── view: fit / zoom / pan ─────────
+        function applyView() {
+            const inner = document.getElementById('tree-inner'), canvas = document.getElementById('tree-canvas'), stage = document.getElementById('tree-stage');
+            if (!inner || !canvas || !stage) return;
+            inner.style.transform = 'scale(' + viewScale + ')';
+            const sw = contentW * viewScale, sh = contentH * viewScale;
+            canvas.style.width = sw + 'px'; canvas.style.height = sh + 'px';
+            canvas.style.marginLeft = Math.max(0, (stage.clientWidth - sw) / 2) + 'px';
+            canvas.style.marginTop = Math.max(0, (stage.clientHeight - sh) / 2) + 'px';
+        }
+        function fitView() {
+            autoFit = true;
+            const stage = document.getElementById('tree-stage');
+            if (!stage || !contentW || !contentH) { viewScale = 1; applyView(); return; }
+            const s = Math.min((stage.clientWidth - 18) / contentW, (stage.clientHeight - 18) / contentH, 1.3);
+            viewScale = Math.max(0.12, s); applyView();
+        }
+        function zoomBy(f) { autoFit = false; viewScale = Math.max(0.12, Math.min(2.6, viewScale * f)); applyView(); }
+        (function setupPanZoom() {
+            const stage = document.getElementById('tree-stage'); if (!stage) return;
+            stage.addEventListener('wheel', (e) => { e.preventDefault(); zoomBy(e.deltaY < 0 ? 1.12 : 0.9); }, { passive: false });
+            let drag = false, sx = 0, sy = 0, sl = 0, st = 0;
+            stage.addEventListener('mousedown', (e) => { drag = true; stage.classList.add('grabbing'); sx = e.clientX; sy = e.clientY; sl = stage.scrollLeft; st = stage.scrollTop; });
+            window.addEventListener('mousemove', (e) => { if (!drag) return; stage.scrollLeft = sl - (e.clientX - sx); stage.scrollTop = st - (e.clientY - sy); });
+            window.addEventListener('mouseup', () => { drag = false; stage.classList.remove('grabbing'); });
+        })();
+        let _rsT; window.addEventListener('resize', () => { clearTimeout(_rsT); _rsT = setTimeout(() => { if (autoFit) fitView(); else applyView(); }, 120); });
+
+        // ───────── controls ─────────
+        function nextStep() { if (stepIdx < steps.length - 1) renderStep(stepIdx + 1); else pause(); }
+        function prevStep() { if (stepIdx > 0) renderStep(stepIdx - 1); }
+        function resetSim() { pause(); renderStep(0); }
+        function togglePlay() {
+            const btn = document.getElementById('play-btn');
+            if (timer) { pause(); return; }
+            btn.textContent = 'Pause';
+            if (stepIdx >= steps.length - 1) renderStep(0);
+            timer = setInterval(() => { if (stepIdx < steps.length - 1) nextStep(); else pause(); }, delays[document.getElementById('speed').value]);
+        }
+        function pause() { clearInterval(timer); timer = null; document.getElementById('play-btn').textContent = 'Play'; }
+
+        function clearDom() { Object.keys(nodeEls).forEach(k => { nodeEls[k].remove(); delete nodeEls[k]; }); Object.keys(edgeEls).forEach(k => { edgeEls[k].ln.remove(); edgeEls[k].lbl.remove(); delete edgeEls[k]; }); confettiArmed = true; }
+        function loadArr(arr) {
+            pause();
+            targetArr = arr.slice();
+            sortedNums = [...arr].sort((a, b) => a - b);
+            clearDom(); generateSteps(); renderStep(0);
+        }
+        function loadCustom() {
+            const raw = document.getElementById('input-arr').value.trim();
+            let parsed;
+            try { parsed = JSON.parse(raw); } catch (e) { parsed = null; }
+            if (!Array.isArray(parsed) || parsed.some(x => typeof x !== 'number')) { parsed = [1, 2, 2]; document.getElementById('input-arr').value = '[1,2,2]'; }
+            loadArr(parsed);
+        }
+        function loadExample(example) {
+            document.getElementById('input-arr').value = example;
+            let parsed; try { parsed = JSON.parse(example); } catch (e) { parsed = [1, 2, 2]; }
+            loadArr(parsed);
+        }
+
+        document.addEventListener('keydown', (e) => {
+            const tag = (e.target.tagName || '').toLowerCase(); if (tag === 'input' || tag === 'textarea') return;
+            if (e.key === 'ArrowRight') { e.preventDefault(); pause(); nextStep(); }
+            else if (e.key === 'ArrowLeft') { e.preventDefault(); pause(); prevStep(); }
+            else if (e.key === ' ') { e.preventDefault(); togglePlay(); }
+        });
+        document.getElementById('input-arr').addEventListener('keydown', (e) => { if (e.key === 'Enter') loadCustom(); });
+
+        buildCodePanel();
+        window.onload = () => loadExample('[1,2,2]');
+    </script>
+</body>
+</html>

@@ -1,0 +1,782 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Find Cycle Start - Visualization</title>
+    <style>
+        :root {
+            --bg-page: #070b14;
+            --bg-surface: rgba(255, 255, 255, 0.045);
+            --bg-input: rgba(255, 255, 255, 0.04);
+            --border-main: rgba(255, 255, 255, 0.10);
+            --btn-bg: rgba(255, 255, 255, 0.05);
+            --btn-hover: rgba(255, 255, 255, 0.10);
+            --text-main: #e8eefb;
+            --text-dim: #8b98b3;
+            --accent-orange: #f5a524;   /* slow (tortoise) */
+            --accent-blue:   #06b6d4;   /* links / head / p1 */
+            --accent-green:  #22c55e;   /* meeting / start point */
+            --accent-red:    #f43f5e;   /* no cycle / null */
+            --accent-purple: #a855f7;   /* fast (hare)     */
+            --mono: ui-monospace, 'SF Mono', 'Cascadia Code', 'Courier New', monospace;
+            --sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+            --shell: 880px;
+        }
+
+        * { box-sizing: border-box; }
+        html, body { overflow-x: hidden; }
+        body {
+            background:
+                radial-gradient(1100px 600px at 15% -10%, rgba(6, 182, 212, 0.10), transparent 60%),
+                radial-gradient(900px 600px at 100% 10%, rgba(168, 85, 247, 0.10), transparent 55%),
+                linear-gradient(160deg, #070b14 0%, #0b1120 55%, #0a0f1c 100%);
+            background-attachment: fixed;
+            color: var(--text-main); font-family: var(--sans); margin: 0;
+            display: flex; flex-direction: column; align-items: center; min-height: 100vh;
+            padding-bottom: 48px; -webkit-font-smoothing: antialiased;
+        }
+        body::before, body::after { content: ''; position: fixed; border-radius: 50%; filter: blur(70px); pointer-events: none; z-index: 0; opacity: 0.45; }
+        body::before { width: 380px; height: 380px; top: 8%; left: -120px; background: radial-gradient(circle, rgba(245,165,36,0.20), transparent 70%); }
+        body::after  { width: 420px; height: 420px; bottom: 4%; right: -140px; background: radial-gradient(circle, rgba(168,85,247,0.22), transparent 70%); }
+        body > * { position: relative; z-index: 1; }
+
+        .input-bar {
+            width: 100%; background: rgba(10, 15, 28, 0.55);
+            backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+            padding: 14px 16px; display: flex; justify-content: center; align-items: center; gap: 10px;
+            border-bottom: 1px solid var(--border-main); flex-wrap: wrap; position: sticky; top: 0; z-index: 50;
+        }
+        label.ui-label, .ui-label { font-family: var(--mono); font-size: 13px; color: var(--text-dim); letter-spacing: 0.2px; }
+        input[type="text"], input[type="number"] {
+            background: var(--bg-input); border: 1px solid var(--border-main); color: var(--text-main);
+            height: 34px; border-radius: 9px; padding: 0 12px; font-size: 13px; font-family: var(--mono);
+            transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+        }
+        input[type="text"]:focus, input[type="number"]:focus { outline: none; border-color: var(--accent-blue); box-shadow: 0 0 0 3px rgba(6, 182, 212, 0.18); background: rgba(6, 182, 212, 0.06); }
+        .head-input { width: 220px; }
+        .target-input { width: 92px; }
+
+        button {
+            height: 34px; border-radius: 9px; padding: 0 16px; background: var(--btn-bg);
+            border: 1px solid var(--border-main); color: var(--text-main); font-size: 13px; font-weight: 600; cursor: pointer;
+            transition: transform 0.15s ease, background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+        }
+        button:hover { background: var(--btn-hover); border-color: rgba(6, 182, 212, 0.5); box-shadow: 0 0 18px rgba(6, 182, 212, 0.18); transform: translateY(-1px); }
+        button:active { transform: translateY(0); }
+        #play-btn { background: linear-gradient(135deg, rgba(6,182,212,0.22), rgba(6,182,212,0.10)); border-color: rgba(6, 182, 212, 0.45); color: #a5f3fc; min-width: 80px; }
+
+        .shell { width: var(--shell); max-width: 94%; margin: 28px auto 0; display: flex; flex-direction: column; gap: 16px; }
+
+        .title-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+        .title-row h1 { font-size: 18px; font-weight: 800; margin: 0; letter-spacing: 0.2px; }
+        .title-row .sub { color: var(--text-dim); font-weight: 500; font-size: 13px; }
+        .step-badge { font-family: var(--mono); font-size: 12px; font-weight: 700; color: #a5f3fc; background: rgba(6,182,212,0.12); border: 1px solid rgba(6,182,212,0.3); padding: 4px 10px; border-radius: 999px; white-space: nowrap; }
+        .progress-track { height: 4px; width: 100%; background: rgba(255,255,255,0.07); border-radius: 999px; overflow: hidden; margin-top: -6px; }
+        .progress-fill { height: 100%; width: 0%; border-radius: 999px; background: linear-gradient(90deg, var(--accent-orange), var(--accent-purple)); box-shadow: 0 0 12px rgba(168,85,247,0.5); transition: width 0.45s cubic-bezier(0.34,1.1,0.64,1); }
+
+        .narration { background: var(--bg-surface); border: 1px solid rgba(6,182,212,0.22); border-radius: 12px; padding: 12px 18px; font-family: var(--mono); font-size: 14px; line-height: 1.5; color: #cfe9f5; min-height: 48px; display: flex; align-items: center; gap: 10px; transition: border-color 0.3s, background 0.3s; }
+        .narration::before { content: '\25B8'; color: var(--accent-blue); font-size: 13px; }
+        .narration.done { border-color: rgba(34,197,94,0.4); background: rgba(34,197,94,0.06); }
+        .narration.done::before { content: '\2713'; color: var(--accent-green); }
+        .narration.miss { border-color: rgba(244,63,94,0.4); background: rgba(244,63,94,0.06); }
+        .narration.miss::before { content: '\2717'; color: var(--accent-red); }
+        .narration code { background: rgba(6,182,212,0.12); color: #7dd3fc; padding: 1px 6px; border-radius: 5px; font-size: 12.5px; }
+        .narration b { color: #fff; }
+
+        .stage-card { background: var(--bg-surface); border: 1px solid var(--border-main); border-radius: 18px; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); box-shadow: 0 12px 38px rgba(0,0,0,0.4); overflow: hidden; }
+        .stage-screen { margin: 14px; border-radius: 14px; background: radial-gradient(700px 240px at 50% -10%, rgba(6,182,212,0.08), transparent 70%), #090d18; border: 1px solid rgba(255,255,255,0.06); }
+        /* extra top room for the curved cycle back-edge arc */
+        .list-wrapper { display: flex; align-items: center; justify-content: flex-start; min-height: 210px; position: relative; overflow-x: auto; overflow-y: visible; padding: 78px 18px 56px; scrollbar-width: thin; }
+        .list-wrapper::-webkit-scrollbar { height: 7px; }
+        .list-wrapper::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 8px; }
+        .list-rail { display: flex; align-items: center; gap: 8px; margin: 0 auto; }
+
+        .node-unit { display: flex; flex-direction: column; align-items: center; gap: 6px; position: relative; flex: 0 0 auto; will-change: transform; }
+        .node {
+            min-width: 58px; height: 58px; display: flex; align-items: center; justify-content: center;
+            border-radius: 14px; font-size: 20px; font-weight: 800; font-family: var(--mono);
+            transition: background 0.4s ease, border-color 0.4s ease, color 0.4s ease, box-shadow 0.4s ease, outline-color 0.3s ease;
+            border: 2px solid var(--border-main); background: rgba(255, 255, 255, 0.05); color: var(--text-main);
+            position: relative; outline: 2px solid transparent; outline-offset: 3px;
+        }
+        .node.visited { background: rgba(6,182,212,0.10); border-color: rgba(6,182,212,0.35); }
+        .node.meet { background: linear-gradient(180deg, #8fb6ff, #5f8de0); border-color: #7dd3fc; color: #06182e; box-shadow: 0 0 24px rgba(6,182,212,0.55); }
+        .node.start { background: linear-gradient(180deg, #2fe08f, #21c275); border-color: #34d399; color: #06251a; box-shadow: 0 0 26px rgba(34,197,94,0.6); --glow: rgba(34,197,94,0.6); animation: breathe 1.8s ease-in-out infinite; }
+        .node.slow-ring { outline-color: var(--accent-orange); }
+        .node.fast-ring { outline-color: var(--accent-purple); }
+        /* both pointers on one node — dashed cyan ring */
+        .node.both-ring { outline-color: var(--accent-blue); outline-style: dashed; }
+        .node-index { font-size: 11px; color: var(--text-dim); font-family: var(--mono); height: 14px; font-weight: 600; }
+
+        .arrow { flex: 0 0 auto; display: flex; align-items: center; height: 58px; filter: drop-shadow(0 0 6px rgba(6,182,212,0.45)); }
+        .arrow svg { display: block; overflow: visible; }
+        .arrow .ln { stroke: var(--accent-blue); stroke-width: 2.5; }
+        .arrow .hd { fill: var(--accent-blue); }
+        .arrow.to-null { filter: drop-shadow(0 0 4px rgba(139,152,179,0.25)); }
+        .arrow.to-null .ln { stroke: var(--text-dim); }
+        .arrow.to-null .hd { fill: var(--text-dim); }
+
+        .nullterm { flex: 0 0 auto; min-width: 52px; height: 58px; display: flex; align-items: center; justify-content: center; border-radius: 14px; border: 2px dashed var(--border-main); color: var(--text-dim); font-family: var(--mono); font-size: 13px; font-weight: 700; background: rgba(255,255,255,0.02); }
+
+        /* curved back-edge (cycle link from tail to entry node) */
+        .backedge { position: absolute; left: 0; top: 0; pointer-events: none; z-index: 2; overflow: visible; }
+        .backedge .be-ln { fill: none; stroke: var(--accent-blue); stroke-width: 2.5; opacity: 0.55; stroke-dasharray: 6 5; }
+        .backedge.active .be-ln { stroke: var(--accent-green); opacity: 1; stroke-dasharray: none; filter: drop-shadow(0 0 7px rgba(34,197,94,0.7)); }
+        .backedge .be-hd { fill: var(--accent-blue); opacity: 0.7; }
+        .backedge.active .be-hd { fill: var(--accent-green); opacity: 1; }
+        .backedge .be-tag { font-family: var(--mono); font-size: 11px; font-weight: 800; fill: var(--text-dim); }
+        .backedge.active .be-tag { fill: var(--accent-green); }
+
+        /* pointer pills on stalks — JS spring positioned (below the rail) */
+        .ptr { position: absolute; left: 0; display: flex; flex-direction: column; align-items: center; opacity: 0; pointer-events: none; z-index: 5; transition: opacity 0.3s ease; will-change: transform; }
+        .ptr.below { bottom: 8px; }
+        .ptr .tag { font-family: var(--mono); font-size: 11px; font-weight: 800; padding: 3px 10px; border-radius: 8px; white-space: nowrap; }
+        .ptr .stalk { width: 2px; height: 16px; }
+        .ptr.slowptr .tag { background: var(--accent-orange); color: #3a2400; box-shadow: 0 0 14px rgba(245,165,36,0.6); }
+        .ptr.slowptr .stalk { background: var(--accent-orange); }
+        .ptr.fastptr .tag { background: var(--accent-purple); color: #1a0533; box-shadow: 0 0 14px rgba(168,85,247,0.6); }
+        .ptr.fastptr .stalk { background: var(--accent-purple); }
+        .ptr.bothptr .tag { background: var(--accent-blue); color: #042027; box-shadow: 0 0 14px rgba(6,182,212,0.6); }
+        .ptr.bothptr .stalk { background: var(--accent-blue); }
+        .ptr.meetptr .tag { background: linear-gradient(135deg,#7dd3fc,#06b6d4); color: #06182e; box-shadow: 0 0 16px rgba(6,182,212,0.7); }
+        .ptr.meetptr .stalk { background: var(--accent-blue); }
+        /* phase-2 walker from head (p1) */
+        .ptr.walkptr .tag { background: var(--accent-blue); color: #042027; box-shadow: 0 0 14px rgba(6,182,212,0.6); }
+        .ptr.walkptr .stalk { background: var(--accent-blue); }
+        /* phase-2 walker from meeting point (p2) */
+        .ptr.huntptr .tag { background: var(--accent-purple); color: #1a0533; box-shadow: 0 0 14px rgba(168,85,247,0.6); }
+        .ptr.huntptr .stalk { background: var(--accent-purple); }
+        /* start node pill — green */
+        .ptr.startptr .tag { background: var(--accent-green); color: #06251a; box-shadow: 0 0 16px rgba(34,197,94,0.7); }
+        .ptr.startptr .stalk { background: var(--accent-green); }
+
+        .action-stage { position: relative; min-height: 104px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; }
+        .float-tile { width: 64px; height: 64px; border-radius: 14px; display: flex; align-items: center; justify-content: center; font-family: var(--mono); font-size: 26px; font-weight: 800; opacity: 0; transform: scale(0.5); border: 2px solid transparent; will-change: transform; }
+        .action-word { font-family: var(--mono); font-weight: 800; font-size: 20px; letter-spacing: 0.5px; min-height: 24px; text-align: center; transition: color 0.3s ease; }
+        #confetti { position: absolute; inset: 0; overflow: visible; pointer-events: none; }
+        .confetti-piece { position: absolute; top: 0; left: 50%; width: 8px; height: 13px; border-radius: 2px; opacity: 0; animation: confettiFall ease-out forwards; }
+
+        .controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: center; }
+        .controls .kbd-hint { font-size: 11px; color: var(--text-dim); font-family: var(--mono); margin-left: 4px; }
+        .kbd { background: rgba(255,255,255,0.07); border: 1px solid var(--border-main); border-radius: 5px; padding: 1px 6px; font-size: 10px; }
+        input[type="range"] { accent-color: var(--accent-blue); width: 110px; cursor: pointer; }
+
+        .details-toggle { align-self: center; height: 32px; padding: 0 16px; border-radius: 999px; cursor: pointer; background: rgba(255,255,255,0.04); border: 1px solid var(--border-main); color: var(--text-dim); font-family: var(--mono); font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; gap: 8px; transition: color 0.2s, border-color 0.2s, background 0.2s; }
+        .details-toggle:hover { color: var(--text-main); border-color: rgba(6,182,212,0.4); background: rgba(6,182,212,0.06); }
+        .details-toggle .chev { transition: transform 0.3s ease; }
+        .details-wrap.open .details-toggle .chev { transform: rotate(180deg); }
+        .details-body { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.4s ease; }
+        .details-wrap.open .details-body { grid-template-rows: 1fr; }
+        .details-inner { overflow: hidden; min-height: 0; }
+        .details-grid { display: flex; flex-direction: column; gap: 14px; padding-top: 14px; }
+
+        .panel-card { background: var(--bg-surface); border: 1px solid var(--border-main); border-radius: 16px; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); box-shadow: 0 8px 30px rgba(0,0,0,0.35); }
+        .panel-head { display: flex; align-items: center; gap: 8px; padding: 11px 16px; border-bottom: 1px solid var(--border-main); font-size: 11px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; color: var(--text-dim); }
+        .panel-head .pip { width: 7px; height: 7px; border-radius: 50%; background: var(--accent-purple); box-shadow: 0 0 8px var(--accent-purple); }
+
+        .code-body { padding: 12px 6px 14px; font-family: var(--mono); font-size: 12.5px; line-height: 1.7; }
+        .code-line { display: flex; gap: 12px; padding: 1px 16px; border-left: 2px solid transparent; transition: background 0.3s, border-color 0.3s; white-space: pre; }
+        .code-line .lno { color: #4b5772; width: 16px; text-align: right; user-select: none; }
+        .code-line .src { color: #c4cee0; }
+        .code-line .kw { color: #c792ea; }
+        .code-line .fn { color: #82aaff; }
+        .code-line.active { background: rgba(168,85,247,0.12); border-left-color: var(--accent-purple); }
+        .code-line.active .src, .code-line.active .lno { color: #e8eefb; }
+
+        .state-strip { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 4px 2px; }
+        .pill { display: inline-flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 12px; color: var(--text-dim); background: rgba(255,255,255,0.04); border: 1px solid var(--border-main); border-radius: 999px; padding: 4px 11px; }
+        .pill b { color: var(--text-main); font-weight: 800; }
+        .pill.s b { color: var(--accent-orange); }
+        .pill.f b { color: var(--accent-purple); }
+        .pill.h b { color: var(--accent-blue); }
+        .pill.g b { color: var(--accent-green); }
+        .legend-inline { margin-left: auto; display: flex; gap: 14px; flex-wrap: wrap; }
+        .legend-item { display: flex; align-items: center; font-size: 11px; color: var(--text-dim); }
+        .dot { width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; display: inline-block; }
+
+        .log-panel { border-radius: 14px; padding: 12px 16px; height: 110px; overflow-y: auto; font-family: var(--mono); font-size: 12.5px; line-height: 1.5; background: var(--bg-surface); border: 1px solid var(--border-main); }
+        .log-panel::-webkit-scrollbar { width: 8px; }
+        .log-panel::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 8px; }
+
+        @keyframes breathe { 0%,100%{ box-shadow: 0 0 16px var(--glow), inset 0 0 10px rgba(255,255,255,0.06); } 50%{ box-shadow: 0 0 30px var(--glow), inset 0 0 14px rgba(255,255,255,0.12); } }
+        @keyframes confettiFall { 0%{ opacity:1; transform: translate(-50%, 0) rotate(0deg); } 100%{ opacity:0; transform: translate(calc(-50% + var(--x)), 190px) rotate(var(--rot)); } }
+
+        @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; } }
+    </style>
+</head>
+<body>
+
+    <div class="input-bar">
+        <label class="ui-label">head =</label>
+        <input type="text" id="head-input" class="head-input" placeholder="3->2->0->-4">
+        <label class="ui-label">cycle pos =</label>
+        <input type="number" id="target-input" class="target-input" placeholder="-1">
+        <button onclick="loadCustom()">Load</button>
+        <button onclick="loadExample([1,2,3,4,5], 2)">Ex 1: cycle</button>
+        <button onclick="loadExample([1,2,3,4,5], -1)">Ex 2: no cycle</button>
+    </div>
+
+    <div class="shell">
+        <div class="title-row">
+            <h1>Find Cycle Start <span class="sub">&middot; Floyd&#8217;s Two-Phase &middot; O(n)</span></h1>
+            <span class="step-badge" id="step-badge">Step 1 / 1</span>
+        </div>
+        <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+
+        <div class="narration" id="main-panel">&mdash;</div>
+
+        <div class="stage-card">
+            <div class="stage-screen">
+                <div class="list-wrapper" id="list-wrapper">
+                    <svg class="backedge" id="backedge" aria-hidden="true">
+                        <path class="be-ln" id="be-path" d=""/>
+                        <polygon class="be-hd" id="be-head" points="0,0 0,0 0,0"/>
+                        <text class="be-tag" id="be-tag" x="0" y="0" text-anchor="middle">cycle</text>
+                    </svg>
+                    <div class="list-rail" id="list-container"></div>
+                    <div class="ptr below slowptr" id="ptr-slow"><div class="stalk"></div><div class="tag">slow</div></div>
+                    <div class="ptr below fastptr" id="ptr-fast"><div class="stalk"></div><div class="tag">fast</div></div>
+                    <div class="ptr below bothptr" id="ptr-both"><div class="stalk"></div><div class="tag">slow, fast</div></div>
+                    <div class="ptr below meetptr" id="ptr-meet"><div class="stalk"></div><div class="tag">slow = fast</div></div>
+                    <div class="ptr below walkptr" id="ptr-walk"><div class="stalk"></div><div class="tag">p1 (head)</div></div>
+                    <div class="ptr below huntptr" id="ptr-hunt"><div class="stalk"></div><div class="tag">p2 (meet)</div></div>
+                    <div class="ptr below startptr" id="ptr-start"><div class="stalk"></div><div class="tag">start</div></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="action-stage">
+            <div id="confetti"></div>
+            <div class="float-tile" id="float-tile"><span id="float-val"></span></div>
+            <div class="action-word" id="action-word"></div>
+        </div>
+
+        <div class="controls">
+            <button onclick="reset()">&#8634; Reset</button>
+            <button onclick="back()">&#8592; Back</button>
+            <button onclick="togglePlay()" id="play-btn">Play</button>
+            <button onclick="next()">Next &#8594;</button>
+            <span class="ui-label" style="margin-left:6px; font-size:11px">Speed</span>
+            <input type="range" id="speed-slider" min="0" max="2" value="1">
+            <span class="kbd-hint"><span class="kbd">&#8592;</span> <span class="kbd">&#8594;</span> step &middot; <span class="kbd">space</span> play</span>
+        </div>
+
+        <div class="details-wrap" id="details-wrap">
+            <button class="details-toggle" onclick="toggleDetails()" aria-expanded="false">
+                <span id="details-label">Show code, state &amp; log</span> <span class="chev">&#9662;</span>
+            </button>
+            <div class="details-body">
+                <div class="details-inner">
+                    <div class="details-grid">
+                        <div class="panel-card">
+                            <div class="panel-head"><span class="pip"></span> Algorithm</div>
+                            <div class="code-body" id="code-panel"></div>
+                        </div>
+
+                        <div class="state-strip">
+                            <span class="pill s">slow <b id="val-slow">&mdash;</b></span>
+                            <span class="pill f">fast <b id="val-fast">&mdash;</b></span>
+                            <span class="pill h">head <b id="val-head">&mdash;</b></span>
+                            <span class="pill g">start <b id="val-start">&mdash;</b></span>
+                            <span class="pill">cycle pos <b id="val-target">&mdash;</b></span>
+                            <span class="legend-inline">
+                                <span class="legend-item"><span class="dot" style="background:rgba(245,165,36,0.15); border:2px solid var(--accent-orange)"></span>slow</span>
+                                <span class="legend-item"><span class="dot" style="background:rgba(168,85,247,0.15); border:2px solid var(--accent-purple)"></span>fast</span>
+                                <span class="legend-item"><span class="dot" style="background:linear-gradient(180deg,#8fb6ff,#5f8de0); border:2px solid #7dd3fc"></span>meet</span>
+                                <span class="legend-item"><span class="dot" style="background:linear-gradient(180deg,#2fe08f,#21c275); border:2px solid #34d399"></span>start</span>
+                            </span>
+                        </div>
+
+                        <div class="log-panel" id="log"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        'use strict';
+
+        // Motion engine (spring + FLIP, zero deps) - see VISUALIZATION_STYLE_GUIDE sec 4c
+        const REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        const FRAME = 1000 / 60;
+        function sampleSpring(stiffness, damping, mass) {
+            const dt = 1 / 60; let x = 1, v = 0; const out = [];
+            for (let i = 0; i < 240; i++) {
+                const a = (-stiffness * x - damping * v) / mass;
+                v += a * dt; x += v * dt; out.push(1 - x);
+                if (Math.abs(x) < 0.0015 && Math.abs(v) < 0.0015) break;
+            }
+            out.push(1); return out;
+        }
+        const SPRING_POS = sampleSpring(340, 30, 1);
+        const SPRING_POP = sampleSpring(540, 17, 1);
+        const durOf = (a) => a.length * FRAME;
+        const Motion = {
+            enter(el, delay = 0) {
+                if (REDUCED) return;
+                const kf = SPRING_POP.map(p => ({ opacity: Math.min(1, p*1.6).toFixed(3),
+                    transform: `translateY(${(-18*(1-p)).toFixed(2)}px) scale(${(0.45+0.55*p).toFixed(3)})` }));
+                el.animate(kf, { duration: durOf(SPRING_POP), easing: 'linear', delay, fill: 'backwards' });
+            },
+            pop(el) {
+                el.getAnimations().forEach(a => a.cancel());
+                if (REDUCED) { el.style.opacity = '1'; el.style.transform = 'scale(1)'; return; }
+                const kf = SPRING_POP.map(p => ({ opacity: Math.min(1, p*2).toFixed(3),
+                    transform: `scale(${(0.5+0.5*p).toFixed(3)}) translateY(${(10*(1-p)).toFixed(2)}px)` }));
+                el.animate(kf, { duration: durOf(SPRING_POP), easing: 'linear', fill: 'forwards' });
+            },
+            glide(el, x) {
+                const prev = el._x; el.style.opacity = '1';
+                const commit = `translateX(${x}px) translateX(-50%)`;
+                if (REDUCED || prev == null || Math.abs(x - prev) < 0.5) { el._x = x; el.style.transform = commit; return; }
+                const dx = x - prev;
+                const kf = SPRING_POS.map(p => ({ transform: `translateX(${(prev+dx*p).toFixed(2)}px) translateX(-50%)` }));
+                el.animate(kf, { duration: durOf(SPRING_POS), easing: 'linear' });
+                el._x = x; el.style.transform = commit;
+            },
+        };
+
+        // ───────── State ─────────
+        let nodes = [];          // values
+        let cyclePos = -1;       // index the tail links back to (-1 = no cycle)
+        let steps = [];
+        let stepIndex = 0;
+        let timer = null;
+        let confettiArmed = true;
+        const delays = [1800, 900, 450];
+        let els = {};            // 'k:'+key -> node-unit element
+
+        const CODE = [
+            [['kw','def '],['fn','cycle_start'],['src','(head):']],
+            [['src','    slow = fast = head']],
+            [['kw','    while '],['src','fast '],['kw','and'],['src',' fast.next:']],
+            [['src','        slow = slow.next']],
+            [['src','        fast = fast.next.next']],
+            [['kw','        if '],['src','slow == fast:']],
+            [['src','            ptr = head']],
+            [['kw','            while '],['src','ptr != slow:']],
+            [['src','                ptr = ptr.next']],
+            [['src','                slow = slow.next']],
+            [['kw','            return '],['src','ptr']],
+            [['kw','    return '],['kw','None']],
+        ];
+        const ARR = String.fromCharCode(8594);   // →
+        const CHK = String.fromCharCode(10003);   // ✓
+        const TILE_COLORS = {
+            green: { bg: 'rgba(34,197,94,0.18)',  fg: '#bbf7d0', bd: '#22c55e', glow: 'rgba(34,197,94,0.55)' },
+            red:   { bg: 'rgba(244,63,94,0.18)',  fg: '#fecdd3', bd: '#f43f5e', glow: 'rgba(244,63,94,0.55)' },
+            blue:  { bg: 'rgba(6,182,212,0.18)',  fg: '#a5f3fc', bd: '#06b6d4', glow: 'rgba(6,182,212,0.55)' },
+        };
+
+        function buildCodePanel() {
+            const panel = document.getElementById('code-panel');
+            panel.innerHTML = '';
+            CODE.forEach((tokens, i) => {
+                const line = document.createElement('div');
+                line.className = 'code-line'; line.dataset.line = i;
+                const lno = document.createElement('span'); lno.className = 'lno'; lno.textContent = i + 1; line.appendChild(lno);
+                const src = document.createElement('span');
+                tokens.forEach(([cls, txt]) => { const s = document.createElement('span'); s.className = cls; s.textContent = txt; src.appendChild(s); });
+                line.appendChild(src); panel.appendChild(line);
+            });
+        }
+        function highlightCode(lineArr) {
+            document.querySelectorAll('.code-line').forEach(el => el.classList.toggle('active', lineArr && lineArr.includes(+el.dataset.line)));
+        }
+        function toggleDetails() {
+            const wrap = document.getElementById('details-wrap');
+            const open = wrap.classList.toggle('open');
+            wrap.querySelector('.details-toggle').setAttribute('aria-expanded', open ? 'true' : 'false');
+            document.getElementById('details-label').textContent = open ? 'Hide code, state & log' : 'Show code, state & log';
+        }
+
+        function init() { buildCodePanel(); loadExample([3,2,0,-4], 1); }
+
+        function parseHead(str) {
+            if (!str || str.trim() === "") return [];
+            return str.split('->').map(x => parseInt(x.trim())).filter(x => !isNaN(x));
+        }
+
+        function loadExample(arr, pos) {
+            nodes = [...arr];
+            cyclePos = (pos === null || pos === undefined || pos < 0 || pos >= nodes.length) ? -1 : pos;
+            document.getElementById('head-input').value = nodes.length ? nodes.join('->') : 'null';
+            document.getElementById('target-input').value = cyclePos;
+            resetDom();
+            buildList();
+            generateSteps();
+            reset();
+        }
+
+        function loadCustom() {
+            const parsed = parseHead(document.getElementById('head-input').value.trim());
+            const raw = parseInt(document.getElementById('target-input').value);
+            const pos = isNaN(raw) ? -1 : raw;
+            loadExample(parsed, pos);
+        }
+
+        // nextOf(i): forward link; tail (n-1) links back to cyclePos if a cycle exists, else null
+        function nextOf(i) {
+            const n = nodes.length;
+            if (i < n - 1) return i + 1;
+            return cyclePos >= 0 ? cyclePos : null;
+        }
+
+        // ───────── step generation — Floyd two-phase cycle-start ─────────
+        function generateSteps() {
+            steps = [];
+            const n = nodes.length;
+            const valAt = (i) => (i === null ? 'null' : nodes[i]);
+
+            if (n === 0) {
+                steps.push({ type: 'final', complete: true, miss: true, codeLine: [11], slow: null, fast: null, meet: false,
+                    action: 'empty', actionColor: 'var(--accent-red)', tile: null,
+                    panel: `<code>head is null</code> ${ARR} no cycle, no start node.`, result: false,
+                    log: 'head == null -> return None', logColor: 'var(--accent-red)' });
+                return;
+            }
+
+            // STEP 0 — init (both at head)
+            steps.push({
+                type: 'init', codeLine: [1], slow: 0, fast: 0, meet: false, both: true,
+                action: 'slow = fast = head', actionColor: '#7dd3fc', tile: null,
+                panel: `<b>Phase 1.</b> Start both pointers at the head (node <b>${nodes[0]}</b>). Slow moves <b>1</b> step, fast moves <b>2</b>.`,
+                log: `slow = head (${nodes[0]})\nfast = head (${nodes[0]})`, logColor: 'var(--text-dim)'
+            });
+
+            // ───── PHASE 1: detect meeting point (verbatim Floyd from 14) ─────
+            let slow = 0, fast = 0, guard = 0, meetIdx = -1;
+            while (guard++ < 1000) {
+                // while fast and fast.next: — fast must have a next AND a next.next to take 2 steps
+                const f1 = nextOf(fast);
+                if (f1 === null) {
+                    steps.push(noCycleStep(slow, fast, `fast.next is null`));
+                    return;
+                }
+                const f2 = nextOf(f1);
+                if (f2 === null) {
+                    steps.push(noCycleStep(slow, fast, `fast.next.next is null`));
+                    return;
+                }
+                slow = nextOf(slow);
+                fast = f2;
+                if (slow === fast) {
+                    meetIdx = slow;
+                    steps.push({
+                        type: 'meet', codeLine: [5, 6], slow, fast, meet: true,
+                        action: CHK + ' slow = fast', actionColor: 'var(--accent-blue)', tile: nodes[slow], tileColor: 'blue',
+                        panel: `<span style="color:#7dd3fc">slow == fast</span> at node <b>${nodes[slow]}</b> ${ARR} the pointers met inside the loop. <b>Cycle detected!</b> Now begin Phase 2.`,
+                        log: `slow == fast (node ${nodes[slow]}) -> meeting point`, logColor: '#7dd3fc'
+                    });
+                    break;
+                }
+                steps.push({
+                    type: 'move', codeLine: [3, 4], slow, fast, meet: false,
+                    action: `slow${ARR}${valAt(slow)}  fast${ARR}${valAt(fast)}`, actionColor: 'var(--accent-purple)', tile: null,
+                    panel: `slow advances 1 ${ARR} node <b>${nodes[slow]}</b>; fast advances 2 ${ARR} node <b>${nodes[fast]}</b>.`,
+                    log: `slow -> ${nodes[slow]}\nfast -> ${nodes[fast]}`, logColor: 'var(--accent-orange)'
+                });
+            }
+            if (meetIdx < 0) return; // safety
+
+            // ───── PHASE 2: ptr = head; walk ptr & slow one step until they coincide ─────
+            let ptr = 0;          // p1 starts at head
+            let hunt = meetIdx;   // p2 stays at meeting node, then advances with ptr
+
+            // Phase-2 init: place ptr at head, keep hunt at meeting point.
+            steps.push({
+                type: 'phase2', codeLine: [6], slow: null, fast: null, meet: false,
+                walk: ptr, hunt: hunt,
+                action: 'ptr = head', actionColor: '#7dd3fc', tile: null,
+                panel: `<b>Phase 2.</b> Put a new pointer <b>p1</b> at the head (node <b>${nodes[ptr]}</b>) and keep <b>p2</b> at the meeting node (node <b>${nodes[hunt]}</b>). Advance both <b>1</b> step until they meet &mdash; that node is the cycle start.`,
+                log: `ptr = head (${nodes[ptr]})\np2 stays at meeting node (${nodes[hunt]})`, logColor: 'var(--text-dim)'
+            });
+
+            // If they already coincide (cycle starts at head), report immediately.
+            if (ptr === hunt) {
+                pushStartStep(ptr);
+                return;
+            }
+
+            let guard2 = 0;
+            while (guard2++ < 1000) {
+                ptr = nextOf(ptr);
+                hunt = nextOf(hunt);
+                if (ptr === hunt) {
+                    pushStartStep(ptr);
+                    return;
+                }
+                steps.push({
+                    type: 'walk', codeLine: [8, 9], slow: null, fast: null, meet: false,
+                    walk: ptr, hunt: hunt,
+                    action: `p1${ARR}${valAt(ptr)}  p2${ARR}${valAt(hunt)}`, actionColor: 'var(--accent-purple)', tile: null,
+                    panel: `p1 advances ${ARR} node <b>${nodes[ptr]}</b>; p2 advances ${ARR} node <b>${nodes[hunt]}</b>. Not equal yet &mdash; keep walking.`,
+                    log: `p1 -> ${nodes[ptr]}\np2 -> ${nodes[hunt]}`, logColor: 'var(--accent-orange)'
+                });
+            }
+        }
+
+        // emit the FINAL step highlighting the cycle-start node (green) + confetti
+        function pushStartStep(idx) {
+            steps.push({
+                type: 'final', complete: true, bold: true, confetti: true, codeLine: [10], slow: null, fast: null, meet: false,
+                start: idx, walk: idx, hunt: idx,
+                action: CHK + ' cycle start', actionColor: 'var(--accent-green)', tile: nodes[idx], tileColor: 'green',
+                panel: `<span style="color:var(--accent-green)">p1 == p2</span> at node <b>${nodes[idx]}</b> (index ${idx}) ${ARR} <b>cycle starts at node ${nodes[idx]}</b>.`,
+                result: true,
+                log: `p1 == p2 (node ${nodes[idx]}) -> cycle start = ${nodes[idx]}`, logColor: 'var(--accent-green)'
+            });
+        }
+
+        function noCycleStep(slow, fast, why) {
+            return {
+                type: 'final', complete: true, miss: true, codeLine: [2, 11], slow, fast, meet: false, reachedNull: true,
+                action: 'no cycle', actionColor: 'var(--accent-red)', tile: null,
+                panel: `<span style="color:var(--accent-red)">${why}</span> ${ARR} fast walked off the end. <b>No cycle ${ARR} no start node.</b>`,
+                result: false,
+                log: `${why} -> return None (no cycle)`, logColor: 'var(--accent-red)'
+            };
+        }
+
+        function resetDom() {
+            const c = document.getElementById('list-container');
+            Array.from(c.children).forEach(ch => { if (!ch.classList.contains('ptr')) c.removeChild(ch); });
+            els = {};
+            confettiArmed = true;
+            ['ptr-slow','ptr-fast','ptr-both','ptr-meet','ptr-walk','ptr-hunt','ptr-start'].forEach(id => { const p = document.getElementById(id); p.style.opacity = '0'; p._x = null; });
+        }
+
+        function arrowSVG() {
+            return `<svg viewBox="0 0 40 24" width="40" height="24">
+                <line class="ln" x1="2" y1="12" x2="28" y2="12" stroke-linecap="round"/>
+                <polygon class="hd" points="27,6 39,12 27,18"/></svg>`;
+        }
+
+        // build the (static) node rail once per load — nodes never change across steps
+        function buildList() {
+            const container = document.getElementById('list-container');
+            const n = nodes.length;
+            const ordered = [];
+            const fresh = [];
+            for (let i = 0; i < n; i++) {
+                const unit = document.createElement('div');
+                unit.className = 'node-unit';
+                unit.innerHTML = `<div class="node"></div><div class="node-index"></div>`;
+                unit.firstChild.textContent = nodes[i];
+                unit.lastChild.textContent = i === 0 ? 'head' : i;
+                els['k:o' + i] = unit;
+                fresh.push(unit.firstChild);
+                ordered.push(unit);
+                // forward arrow between consecutive nodes
+                if (i < n - 1) {
+                    const arr = document.createElement('div'); arr.className = 'arrow'; arr.innerHTML = arrowSVG();
+                    ordered.push(arr);
+                }
+            }
+            // tail: straight arrow to null only when there is NO cycle (cycle uses the curved back-edge)
+            if (n > 0 && cyclePos < 0) {
+                const arr = document.createElement('div'); arr.className = 'arrow to-null'; arr.innerHTML = arrowSVG();
+                const nul = document.createElement('div'); nul.className = 'nullterm'; nul.textContent = 'null';
+                ordered.push(arr, nul);
+            }
+            ordered.forEach(el => container.appendChild(el));
+            fresh.forEach((nodeEl, i) => Motion.enter(nodeEl, fresh.length > 1 ? i * 45 : 0));
+        }
+
+        function fireConfetti() {
+            const host = document.getElementById('confetti');
+            if (!host || REDUCED) return;
+            const colors = ['#22c55e', '#06b6d4', '#a855f7', '#f5a524', '#f43f5e'];
+            for (let i = 0; i < 42; i++) {
+                const p = document.createElement('div'); p.className = 'confetti-piece';
+                p.style.setProperty('--x', ((Math.random() * 2 - 1) * 230) + 'px');
+                p.style.setProperty('--rot', ((Math.random() * 720 - 360)) + 'deg');
+                p.style.background = colors[i % colors.length];
+                p.style.animationDuration = (0.9 + Math.random() * 0.8) + 's';
+                p.style.animationDelay = (Math.random() * 0.15) + 's';
+                host.appendChild(p);
+                setTimeout(() => p.remove(), 1900);
+            }
+        }
+
+        // draw the curved back-edge from the tail node up over the rail to the cycle-entry node
+        function drawBackEdge(active) {
+            const svg = document.getElementById('backedge');
+            const n = nodes.length;
+            if (cyclePos < 0 || n === 0) { svg.style.display = 'none'; return; }
+            const wrap = document.getElementById('list-wrapper');
+            const tail = els['k:o' + (n - 1)], entry = els['k:o' + cyclePos];
+            if (!tail || !entry) { svg.style.display = 'none'; return; }
+            const wr = wrap.getBoundingClientRect();
+            const tr = tail.getBoundingClientRect(), er = entry.getBoundingClientRect();
+            const sx = (tr.left + tr.right) / 2 - wr.left + wrap.scrollLeft;
+            const sy = tr.top - wr.top;                     // top-center of tail
+            const ex = (er.left + er.right) / 2 - wr.left + wrap.scrollLeft;
+            const ey = er.top - wr.top;                     // top-center of entry
+            const span = Math.abs(sx - ex);
+            const topY = Math.min(sy, ey) - Math.min(64, 26 + span * 0.10);  // arc apex above the rail
+            const d = `M ${sx} ${sy} C ${sx} ${topY}, ${ex} ${topY}, ${ex} ${ey - 2}`;
+            document.getElementById('be-path').setAttribute('d', d);
+            // arrowhead pointing down into the entry node (approach from above)
+            const hw = 6;
+            document.getElementById('be-head').setAttribute('points',
+                `${ex - hw},${ey - 12} ${ex + hw},${ey - 12} ${ex},${ey - 1}`);
+            const tg = document.getElementById('be-tag');
+            tg.setAttribute('x', (sx + ex) / 2); tg.setAttribute('y', topY - 6);
+            tg.textContent = 'cycle';
+            svg.setAttribute('width', Math.max(wrap.clientWidth, wrap.scrollWidth));
+            svg.setAttribute('height', wrap.clientHeight);
+            svg.style.display = 'block';
+            svg.classList.toggle('active', !!active);
+        }
+
+        function renderStep(idx) {
+            const step = steps[idx];
+            if (!step) return;
+
+            const hasStart = (step.start !== null && step.start !== undefined);
+
+            // update node classes (rail is static; only state changes)
+            for (let i = 0; i < nodes.length; i++) {
+                const unit = els['k:o' + i]; if (!unit) continue;
+                const nodeEl = unit.firstChild;
+                const isSlow = step.slow === i, isFast = step.fast === i;
+                const isWalk = step.walk === i, isHunt = step.hunt === i;
+                const isStart = hasStart && step.start === i;
+                let cls = 'node';
+                if (isStart) cls += ' start';
+                else if (step.meet && isSlow) cls += ' meet';
+                else if (!step.meet && step.both && isSlow) cls += ' both-ring';
+                else if (!step.meet && !step.both && isSlow) cls += ' slow-ring';
+                else if (!step.meet && !step.both && isFast) cls += ' fast-ring';
+                else if ((isWalk && isHunt)) cls += ' both-ring';
+                else if (isWalk) cls += ' slow-ring';
+                else if (isHunt) cls += ' fast-ring';
+                nodeEl.className = cls;
+                if (isStart) nodeEl.style.setProperty('--glow', 'rgba(34,197,94,0.6)');
+            }
+
+            // back-edge (green/active on meet or final start)
+            drawBackEdge(!!step.meet || hasStart);
+
+            // narration
+            const mainPanel = document.getElementById('main-panel');
+            mainPanel.innerHTML = step.panel || '&mdash;';
+            mainPanel.classList.toggle('done', !!step.complete && !step.miss);
+            mainPanel.classList.toggle('miss', !!step.miss);
+
+            // action word + float tile
+            const aw = document.getElementById('action-word');
+            aw.textContent = step.action || '';
+            aw.style.color = step.actionColor || 'var(--text-dim)';
+            const ft = document.getElementById('float-tile');
+            if (step.tile !== null && step.tile !== undefined) {
+                document.getElementById('float-val').textContent = step.tile;
+                const c = TILE_COLORS[step.tileColor] || TILE_COLORS.green;
+                ft.style.background = c.bg; ft.style.color = c.fg; ft.style.borderColor = c.bd; ft.style.boxShadow = '0 0 26px ' + c.glow;
+                Motion.pop(ft);
+            } else {
+                ft.getAnimations().forEach(a => a.cancel());
+                ft.style.opacity = '0'; ft.style.transform = 'scale(0.5)';
+            }
+
+            // confetti once when the cycle start is found
+            if (step.complete && step.confetti) { if (confettiArmed) { fireConfetti(); confettiArmed = false; } }
+            else if (!step.complete) { confettiArmed = true; }
+
+            // pointers
+            if (hasStart) {
+                // FINAL: single green start pill, hide everything else
+                positionPointer('ptr-slow', null);
+                positionPointer('ptr-fast', null);
+                positionPointer('ptr-both', null);
+                positionPointer('ptr-meet', null);
+                positionPointer('ptr-walk', null);
+                positionPointer('ptr-hunt', null);
+                positionPointer('ptr-start', step.start);
+            } else if (step.walk !== null && step.walk !== undefined) {
+                // PHASE 2: p1 (walk) + p2 (hunt); combined pill when they share a node
+                const sharedW = (step.walk === step.hunt);
+                positionPointer('ptr-slow', null);
+                positionPointer('ptr-fast', null);
+                positionPointer('ptr-meet', null);
+                positionPointer('ptr-start', null);
+                positionPointer('ptr-both', sharedW ? step.walk : null);
+                positionPointer('ptr-walk', sharedW ? null : step.walk);
+                positionPointer('ptr-hunt', sharedW ? null : step.hunt);
+            } else {
+                // PHASE 1: combined pill when slow & fast share a node (start / meet), else two pills
+                const shared = (step.slow !== null && step.slow === step.fast);
+                positionPointer('ptr-walk', null);
+                positionPointer('ptr-hunt', null);
+                positionPointer('ptr-start', null);
+                positionPointer('ptr-slow', shared ? null : step.slow);
+                positionPointer('ptr-fast', shared ? null : step.fast);
+                positionPointer('ptr-both', (shared && !step.meet) ? step.slow : null);
+                positionPointer('ptr-meet', (shared && step.meet) ? step.slow : null);
+            }
+
+            // state pills
+            document.getElementById('val-slow').textContent = step.slow !== null && step.slow !== undefined ? nodes[step.slow] : (step.walk !== null && step.walk !== undefined ? nodes[step.walk] : 'null');
+            document.getElementById('val-fast').textContent = step.fast !== null && step.fast !== undefined ? nodes[step.fast] : (step.hunt !== null && step.hunt !== undefined ? nodes[step.hunt] : 'null');
+            document.getElementById('val-head').textContent = nodes.length ? nodes[0] : 'null';
+            document.getElementById('val-start').textContent = hasStart ? nodes[step.start] : (step.result === false ? 'none' : '—');
+            document.getElementById('val-target').textContent = cyclePos;
+            highlightCode(step.codeLine);
+
+            document.getElementById('step-badge').textContent = `Step ${idx + 1} / ${steps.length}`;
+            document.getElementById('progress-fill').style.width = `${(idx / Math.max(1, steps.length - 1)) * 100}%`;
+
+            // cumulative log
+            const logPanel = document.getElementById('log');
+            logPanel.innerHTML = '';
+            for (let k = 0; k <= idx; k++) {
+                if (steps[k].log) {
+                    const line = document.createElement('div');
+                    line.style.marginBottom = '3px'; line.style.whiteSpace = 'pre-wrap';
+                    if (steps[k].logColor) line.style.color = steps[k].logColor;
+                    if (steps[k].bold) line.style.fontWeight = 'bold';
+                    line.textContent = steps[k].log;
+                    logPanel.appendChild(line);
+                }
+            }
+            logPanel.scrollTop = logPanel.scrollHeight;
+        }
+
+        function positionPointer(id, idxOrNull) {
+            const ptr = document.getElementById(id);
+            const unit = (idxOrNull !== null && idxOrNull !== undefined) ? els['k:o' + idxOrNull] : null;
+            if (!unit || !unit.isConnected) { ptr.style.opacity = '0'; ptr._x = null; return; }
+            Motion.glide(ptr, unit.offsetLeft + unit.offsetWidth / 2);
+        }
+
+        function next() { if (stepIndex < steps.length - 1) { stepIndex++; renderStep(stepIndex); } else pause(); }
+        function back() { if (stepIndex > 0) { stepIndex--; renderStep(stepIndex); } }
+        function reset() { pause(); stepIndex = 0; renderStep(0); }
+        function togglePlay() {
+            const btn = document.getElementById('play-btn');
+            if (timer) pause();
+            else {
+                btn.textContent = 'Pause';
+                if (stepIndex >= steps.length - 1) { stepIndex = 0; renderStep(0); }
+                timer = setInterval(next, delays[document.getElementById('speed-slider').value]);
+            }
+        }
+        function pause() { clearInterval(timer); timer = null; document.getElementById('play-btn').textContent = 'Play'; }
+
+        document.addEventListener('keydown', (e) => {
+            const tag = (e.target.tagName || '').toLowerCase();
+            if (tag === 'input' || tag === 'textarea') return;
+            if (e.key === 'ArrowRight') { e.preventDefault(); pause(); next(); }
+            else if (e.key === 'ArrowLeft') { e.preventDefault(); pause(); back(); }
+            else if (e.key === ' ') { e.preventDefault(); togglePlay(); }
+        });
+
+        let rT;
+        window.addEventListener('resize', () => { clearTimeout(rT); rT = setTimeout(() => { ['ptr-slow','ptr-fast','ptr-both','ptr-meet','ptr-walk','ptr-hunt','ptr-start'].forEach(id => { document.getElementById(id)._x = null; }); renderStep(stepIndex); }, 120); });
+        window.onload = init;
+    </script>
+</body>
+</html>

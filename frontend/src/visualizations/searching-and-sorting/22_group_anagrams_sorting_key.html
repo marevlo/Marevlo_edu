@@ -1,0 +1,614 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Group Anagrams &middot; Sorted-Key</title>
+    <style>
+        :root {
+            --bg-page: #070b14;
+            --bg-surface: rgba(255, 255, 255, 0.045);
+            --bg-input: rgba(255, 255, 255, 0.04);
+            --border-main: rgba(255, 255, 255, 0.10);
+            --btn-bg: rgba(255, 255, 255, 0.05);
+            --btn-hover: rgba(255, 255, 255, 0.10);
+            --text-main: #e8eefb;
+            --text-dim: #8b98b3;
+            --accent-orange: #f5a524;   /* value in motion / current word */
+            --accent-blue:   #06b6d4;    /* sorted key / chrome           */
+            --accent-green:  #22c55e;    /* grouped / done                */
+            --accent-red:    #f43f5e;    /* error                         */
+            --accent-purple: #a855f7;    /* pointer / current             */
+            --mono: ui-monospace, 'SF Mono', 'Cascadia Code', 'Courier New', monospace;
+            --sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+            --shell: 900px;
+        }
+
+        * { box-sizing: border-box; }
+        html, body { overflow-x: hidden; }
+        body {
+            background:
+                radial-gradient(1100px 600px at 15% -10%, rgba(168, 85, 247, 0.10), transparent 60%),
+                radial-gradient(900px 600px at 100% 10%, rgba(6, 182, 212, 0.10), transparent 55%),
+                linear-gradient(160deg, #070b14 0%, #0b1120 55%, #0a0f1c 100%);
+            background-attachment: fixed;
+            color: var(--text-main); font-family: var(--sans); margin: 0;
+            display: flex; flex-direction: column; align-items: center; min-height: 100vh;
+            padding-bottom: 48px; -webkit-font-smoothing: antialiased;
+        }
+        body::before, body::after { content: ''; position: fixed; border-radius: 50%; filter: blur(70px); pointer-events: none; z-index: 0; opacity: 0.45; }
+        body::before { width: 380px; height: 380px; top: 8%; left: -120px; background: radial-gradient(circle, rgba(168,85,247,0.30), transparent 70%); }
+        body::after  { width: 420px; height: 420px; bottom: 4%; right: -140px; background: radial-gradient(circle, rgba(6,182,212,0.22), transparent 70%); }
+        body > * { position: relative; z-index: 1; }
+
+        .input-bar {
+            width: 100%; background: rgba(10, 15, 28, 0.55);
+            backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+            padding: 14px 16px; display: flex; justify-content: center; align-items: center; gap: 10px;
+            border-bottom: 1px solid var(--border-main); flex-wrap: wrap; position: sticky; top: 0; z-index: 50;
+        }
+        label.ui-label, .ui-label { font-family: var(--mono); font-size: 13px; color: var(--text-dim); letter-spacing: 0.2px; }
+        input[type="text"] {
+            background: var(--bg-input); border: 1px solid var(--border-main); color: var(--text-main);
+            height: 34px; border-radius: 9px; padding: 0 12px; font-size: 13px; font-family: var(--mono); width: 300px;
+            transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+        }
+        input:focus { outline: none; border-color: var(--accent-purple); box-shadow: 0 0 0 3px rgba(168,85,247,0.18); background: rgba(168,85,247,0.06); }
+
+        button {
+            height: 34px; border-radius: 9px; padding: 0 14px; background: var(--btn-bg);
+            border: 1px solid var(--border-main); color: var(--text-main); font-size: 13px; font-weight: 600; cursor: pointer;
+            transition: transform 0.15s ease, background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+        }
+        button:hover { background: var(--btn-hover); border-color: rgba(168, 85, 247, 0.5); box-shadow: 0 0 18px rgba(168, 85, 247, 0.18); transform: translateY(-1px); }
+        button:active { transform: translateY(0); }
+        #play-btn { background: linear-gradient(135deg, rgba(168,85,247,0.22), rgba(168,85,247,0.10)); border-color: rgba(168, 85, 247, 0.45); color: #e9d5ff; min-width: 80px; }
+
+        .shell { width: var(--shell); max-width: 95%; margin: 24px auto 0; display: flex; flex-direction: column; gap: 16px; }
+
+        .title-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+        .title-row h1 { font-size: 18px; font-weight: 800; margin: 0; letter-spacing: 0.2px; }
+        .title-row .sub { color: var(--text-dim); font-weight: 500; font-size: 13px; }
+        .step-badge { font-family: var(--mono); font-size: 12px; font-weight: 700; color: #e9d5ff; background: rgba(168,85,247,0.12); border: 1px solid rgba(168,85,247,0.3); padding: 4px 10px; border-radius: 999px; white-space: nowrap; }
+        .progress-track { height: 4px; width: 100%; background: rgba(255,255,255,0.07); border-radius: 999px; overflow: hidden; margin-top: -6px; }
+        .progress-fill { height: 100%; width: 0%; border-radius: 999px; background: linear-gradient(90deg, var(--accent-purple), var(--accent-blue)); box-shadow: 0 0 12px rgba(168,85,247,0.5); transition: width 0.45s cubic-bezier(0.34,1.1,0.64,1); }
+
+        .narration { background: var(--bg-surface); border: 1px solid rgba(168,85,247,0.22); border-radius: 12px; padding: 12px 18px; font-family: var(--mono); font-size: 14px; line-height: 1.5; color: #ede9fe; min-height: 48px; display: flex; align-items: center; gap: 10px; transition: border-color 0.3s, background 0.3s; }
+        .narration::before { content: '\25B8'; color: var(--accent-purple); font-size: 13px; }
+        .narration.done { border-color: rgba(34,197,94,0.4); background: rgba(34,197,94,0.06); }
+        .narration.done::before { content: '\2713'; color: var(--accent-green); }
+        .narration code { background: rgba(168,85,247,0.14); color: #d8b4fe; padding: 1px 6px; border-radius: 5px; font-size: 12.5px; }
+        .narration b { color: #fff; }
+
+        .stage-card { background: var(--bg-surface); border: 1px solid var(--border-main); border-radius: 18px; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); box-shadow: 0 12px 38px rgba(0,0,0,0.4); overflow: hidden; }
+        .stage-screen { position: relative; margin: 14px; border-radius: 14px; background: radial-gradient(700px 300px at 50% -10%, rgba(168,85,247,0.08), transparent 70%), #090d18; padding: 50px 24px 30px; border: 1px solid rgba(255,255,255,0.06); display: flex; flex-direction: column; align-items: center; gap: 30px; overflow-x: auto; min-height: 320px; }
+
+        /* word rail */
+        .rail-label { font-family: var(--mono); font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--text-dim); align-self: flex-start; margin-left: 2px; }
+        .word-rail { position: relative; display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; min-height: 56px; }
+        .cell { min-width: 56px; height: 50px; padding: 0 10px; border-radius: 12px; display: flex; align-items: center; justify-content: center; position: relative;
+            font-family: var(--mono); font-weight: 800; font-size: 17px; will-change: transform;
+            border: 2px solid var(--border-main); background: rgba(255,255,255,0.05); color: var(--text-main);
+            transition: background 0.35s, border-color 0.35s, color 0.35s, box-shadow 0.35s, transform 0.3s, opacity 0.35s; }
+        .cell.pending { border-style: dashed; color: var(--text-dim); }
+        .cell.cur { box-shadow: 0 0 22px rgba(245,165,36,0.55); border-color: var(--accent-orange); color: #ffd591; background: rgba(245,165,36,0.12); transform: translateY(-3px) scale(1.06); z-index: 3; }
+        .cell.grouped { opacity: 0.42; }
+        .cell .ci { position: absolute; top: -21px; left: 0; right: 0; text-align: center; font-size: 11px; color: var(--text-dim); font-weight: 700; }
+        .cell .gdot { position: absolute; bottom: -7px; left: 50%; transform: translateX(-50%); width: 8px; height: 8px; border-radius: 50%; opacity: 0; transition: opacity 0.35s; }
+        .cell.grouped .gdot { opacity: 1; }
+
+        /* current-word pointer pill */
+        .sptr { position: absolute; left: 0; bottom: 100%; margin-bottom: 7px; display: flex; flex-direction: column-reverse; align-items: center; opacity: 0; pointer-events: none; will-change: transform; z-index: 6; }
+        .sptr .tag { font-family: var(--mono); font-size: 11px; font-weight: 800; padding: 3px 9px; border-radius: 8px; white-space: nowrap; background: var(--accent-orange); color: #3a2400; box-shadow: 0 0 14px rgba(245,165,36,0.6); }
+        .sptr .stalk { width: 2px; height: 13px; background: var(--accent-orange); }
+
+        /* sorted-key transform hero */
+        .keybox { display: flex; flex-direction: column; align-items: center; gap: 10px; min-height: 70px; }
+        .keyrow { display: flex; align-items: center; gap: 14px; font-family: var(--mono); }
+        .charset { display: flex; gap: 5px; }
+        .chip { width: 30px; height: 34px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-family: var(--mono); font-weight: 800; font-size: 16px; border: 2px solid var(--border-main); background: rgba(255,255,255,0.06); color: var(--text-main); transition: transform 0.3s, border-color 0.3s, background 0.3s, color 0.3s; }
+        .charset.sorted .chip { border-color: rgba(6,182,212,0.5); background: rgba(6,182,212,0.12); color: #a5f3fc; }
+        .keyarrow { color: var(--text-dim); font-size: 18px; font-weight: 800; }
+        .keyword { font-family: var(--mono); font-weight: 800; font-size: 17px; color: #ffd591; }
+        .keylabel { font-family: var(--mono); font-size: 11px; color: var(--text-dim); margin-top: 2px; }
+        .keybox.idle { opacity: 0.3; }
+
+        /* buckets */
+        .buckets { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; min-height: 70px; width: 100%; }
+        .bucket { border-radius: 13px; padding: 8px 10px 10px; min-width: 92px; display: flex; flex-direction: column; align-items: center; gap: 7px;
+            border: 1.5px solid var(--border-main); background: rgba(255,255,255,0.03); transition: border-color 0.35s, box-shadow 0.35s, background 0.35s, transform 0.3s; will-change: transform; }
+        .bucket.active { transform: translateY(-2px); }
+        .bucket .bkey { font-family: var(--mono); font-size: 12px; font-weight: 800; letter-spacing: 0.5px; padding: 2px 8px; border-radius: 7px; background: rgba(255,255,255,0.06); }
+        .bucket .bmembers { display: flex; flex-direction: column; gap: 5px; align-items: stretch; min-width: 64px; }
+        .bmember { font-family: var(--mono); font-weight: 700; font-size: 13px; text-align: center; padding: 4px 8px; border-radius: 7px; background: rgba(255,255,255,0.06); border: 1px solid var(--border-main); transition: transform 0.25s, background 0.3s, box-shadow 0.3s; }
+        .bmember.fresh { box-shadow: 0 0 14px rgba(34,197,94,0.5); }
+
+        /* flying word from cell to bucket */
+        .fly { position: absolute; padding: 0 10px; height: 36px; border-radius: 9px; display: flex; align-items: center; justify-content: center; font-family: var(--mono); font-weight: 800; font-size: 15px; pointer-events: none; z-index: 9; border: 2px solid var(--accent-orange); background: rgba(245,165,36,0.22); color: #ffd591; box-shadow: 0 0 18px rgba(245,165,36,0.55); white-space: nowrap; }
+
+        #confetti { position: absolute; inset: 0; overflow: visible; pointer-events: none; }
+        .confetti-piece { position: absolute; top: 0; left: 50%; width: 8px; height: 13px; border-radius: 2px; opacity: 0; animation: confettiFall ease-out forwards; }
+
+        .controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: center; }
+        .controls .kbd-hint { font-size: 11px; color: var(--text-dim); font-family: var(--mono); margin-left: 4px; }
+        .kbd { background: rgba(255,255,255,0.07); border: 1px solid var(--border-main); border-radius: 5px; padding: 1px 6px; font-size: 10px; }
+        input[type="range"] { accent-color: var(--accent-purple); width: 110px; cursor: pointer; }
+
+        .details-toggle { align-self: center; height: 32px; padding: 0 16px; border-radius: 999px; cursor: pointer; background: rgba(255,255,255,0.04); border: 1px solid var(--border-main); color: var(--text-dim); font-family: var(--mono); font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; gap: 8px; transition: color 0.2s, border-color 0.2s, background 0.2s; }
+        .details-toggle:hover { color: var(--text-main); border-color: rgba(168,85,247,0.4); background: rgba(168,85,247,0.06); }
+        .details-toggle .chev { transition: transform 0.3s ease; }
+        .details-wrap.open .details-toggle .chev { transform: rotate(180deg); }
+        .details-body { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.4s ease; }
+        .details-wrap.open .details-body { grid-template-rows: 1fr; }
+        .details-inner { overflow: hidden; min-height: 0; }
+        .details-grid { display: flex; flex-direction: column; gap: 14px; padding-top: 14px; }
+
+        .panel-card { background: var(--bg-surface); border: 1px solid var(--border-main); border-radius: 16px; backdrop-filter: blur(10px); box-shadow: 0 8px 30px rgba(0,0,0,0.35); }
+        .panel-head { display: flex; align-items: center; gap: 8px; padding: 11px 16px; border-bottom: 1px solid var(--border-main); font-size: 11px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; color: var(--text-dim); }
+        .panel-head .pip { width: 7px; height: 7px; border-radius: 50%; background: var(--accent-purple); box-shadow: 0 0 8px var(--accent-purple); }
+        .code-body { padding: 12px 6px 14px; font-family: var(--mono); font-size: 12.5px; line-height: 1.7; }
+        .code-line { display: flex; gap: 12px; padding: 1px 16px; border-left: 2px solid transparent; transition: background 0.3s, border-color 0.3s; white-space: pre; }
+        .code-line .lno { color: #4b5772; width: 16px; text-align: right; user-select: none; }
+        .code-line .src { color: #c4cee0; }
+        .code-line .kw { color: #c792ea; }
+        .code-line .fn { color: #82aaff; }
+        .code-line .st { color: #c3e88d; }
+        .code-line.active { background: rgba(168,85,247,0.12); border-left-color: var(--accent-purple); }
+        .code-line.active .src, .code-line.active .lno { color: #e8eefb; }
+
+        .state-strip { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 0 2px; }
+        .pill { display: inline-flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 12px; color: var(--text-dim); background: rgba(255,255,255,0.04); border: 1px solid var(--border-main); border-radius: 999px; padding: 4px 11px; }
+        .pill b { color: var(--text-main); font-weight: 800; }
+        .pill.cw b { color: var(--accent-orange); } .pill.ky b { color: var(--accent-blue); } .pill.gr b { color: var(--accent-green); }
+
+        .log-panel { border-radius: 14px; padding: 12px 16px; height: 110px; overflow-y: auto; font-family: var(--mono); font-size: 12.5px; line-height: 1.5; background: var(--bg-surface); border: 1px solid var(--border-main); }
+        .log-panel::-webkit-scrollbar { width: 8px; }
+        .log-panel::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 8px; }
+
+        @keyframes confettiFall { 0%{ opacity:1; transform: translate(-50%, 0) rotate(0deg); } 100%{ opacity:0; transform: translate(calc(-50% + var(--x)), 220px) rotate(var(--rot)); } }
+        @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; } }
+    </style>
+</head>
+<body>
+
+    <div class="input-bar">
+        <label class="ui-label">strs =</label>
+        <input type="text" id="strs-input" placeholder="eat, tea, tan, ate, nat, bat">
+        <button onclick="loadCustom()">Group</button>
+        <span class="ui-label" style="opacity:.5">|</span>
+        <button onclick="loadExample(0)">eat tea tan ate nat bat</button>
+        <button onclick="loadExample(1)">abc cab listen silent</button>
+    </div>
+
+    <div class="shell">
+        <div class="title-row">
+            <h1>Group Anagrams <span class="sub">&middot; sorted-letters key + hash map &middot; O(n &middot; k log k)</span></h1>
+            <span class="step-badge" id="step-badge">Step 1 / 1</span>
+        </div>
+        <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+
+        <div class="narration" id="main-panel">&mdash;</div>
+
+        <div class="stage-card">
+            <div class="stage-screen">
+                <div class="rail-label">input words</div>
+                <div class="word-rail" id="word-rail"></div>
+                <div class="keybox idle" id="keybox">
+                    <div class="keyrow">
+                        <div class="charset" id="charset-raw"></div>
+                        <span class="keyarrow">&#8594;</span>
+                        <div class="charset sorted" id="charset-sorted"></div>
+                        <span class="keyarrow">=</span>
+                        <span class="keyword" id="keyword">&mdash;</span>
+                    </div>
+                    <div class="keylabel" id="keylabel">sort the letters to build a canonical key</div>
+                </div>
+                <div class="buckets" id="buckets"></div>
+            </div>
+        </div>
+
+        <div class="controls">
+            <button onclick="resetSim()">&#8634; Reset</button>
+            <button onclick="prevStep()">&#8592; Back</button>
+            <button onclick="togglePlay()" id="play-btn">Play</button>
+            <button onclick="nextStep()">Next &#8594;</button>
+            <span class="ui-label" style="margin-left:6px; font-size:11px">Speed</span>
+            <input type="range" id="speed" min="0" max="2" value="1">
+            <span class="kbd-hint"><span class="kbd">&#8592;</span> <span class="kbd">&#8594;</span> step &middot; <span class="kbd">space</span> play</span>
+        </div>
+
+        <div id="confetti"></div>
+
+        <div class="details-wrap" id="details-wrap">
+            <button class="details-toggle" onclick="toggleDetails()" aria-expanded="false">
+                <span id="details-label">Show code, state &amp; log</span> <span class="chev">&#9662;</span>
+            </button>
+            <div class="details-body">
+                <div class="details-inner">
+                    <div class="details-grid">
+                        <div class="state-strip">
+                            <span class="pill cw">word <b id="st-word">&mdash;</b></span>
+                            <span class="pill ky">key <b id="st-key">&mdash;</b></span>
+                            <span class="pill gr">groups <b id="st-groups">0</b></span>
+                            <span class="pill">processed <b id="st-done">0</b></span>
+                        </div>
+                        <div class="panel-card">
+                            <div class="panel-head"><span class="pip"></span> Algorithm</div>
+                            <div class="code-body" id="code-panel"></div>
+                        </div>
+                        <div class="log-panel" id="log"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        'use strict';
+
+        // ───────── Motion engine (spring + FLIP fly) ─────────
+        const REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        const FRAME = 1000 / 60;
+        function sampleSpring(stiffness, damping, mass) {
+            const dt = 1 / 60; let x = 1, v = 0; const out = [];
+            for (let i = 0; i < 240; i++) { const a = (-stiffness * x - damping * v) / mass; v += a * dt; x += v * dt; out.push(1 - x); if (Math.abs(x) < 0.0015 && Math.abs(v) < 0.0015) break; }
+            out.push(1); return out;
+        }
+        const SPRING_POS = sampleSpring(320, 30, 1);
+        const durOf = (a) => a.length * FRAME;
+        const Motion = {
+            glide(el, x) {
+                const prev = el._x; el.style.opacity = '1';
+                const commit = `translateX(${x.toFixed(2)}px) translateX(-50%)`;
+                if (REDUCED || prev == null || Math.abs(x - prev) < 0.5) { el._x = x; el.style.transform = commit; return; }
+                const dx = x - prev;
+                const kf = SPRING_POS.map(p => ({ transform: `translateX(${(prev + dx * p).toFixed(2)}px) translateX(-50%)` }));
+                el.animate(kf, { duration: durOf(SPRING_POS), easing: 'linear' });
+                el._x = x; el.style.transform = commit;
+            },
+        };
+
+        // group palette (cycled by group order)
+        const GROUP_COLORS = [
+            { border: 'rgba(6,182,212,0.55)',  bg: 'rgba(6,182,212,0.12)',  txt: '#a5f3fc', dot: '#06b6d4' },
+            { border: 'rgba(168,85,247,0.55)', bg: 'rgba(168,85,247,0.12)', txt: '#e9d5ff', dot: '#a855f7' },
+            { border: 'rgba(34,197,94,0.55)',  bg: 'rgba(34,197,94,0.12)',  txt: '#bbf7d0', dot: '#22c55e' },
+            { border: 'rgba(245,165,36,0.55)', bg: 'rgba(245,165,36,0.12)', txt: '#ffd591', dot: '#f5a524' },
+            { border: 'rgba(244,63,94,0.55)',  bg: 'rgba(244,63,94,0.12)',  txt: '#fecdd3', dot: '#f43f5e' },
+        ];
+
+        // ───────── State ─────────
+        let strs = ['eat', 'tea', 'tan', 'ate', 'nat', 'bat'];
+        let steps = [];
+        let stepIdx = 0;
+        let timer = null;
+        let confettiArmed = true;
+        const delays = [1600, 850, 420];
+        const cellEls = {};      // index -> word cell
+        const bucketEls = {};    // key -> bucket node
+        let ptrEl = null;
+
+        const CODE = [
+            [['kw','def '],['fn','groupAnagrams'],['src','(strs):']],
+            [['src','  groups = {}']],
+            [['kw','  for '],['src','word '],['kw','in '],['src','strs:']],
+            [['src','    key = '],['st','"".join(sorted(word))']],
+            [['kw','    if '],['src','key '],['kw','not in '],['src','groups:']],
+            [['src','      groups[key] = []']],
+            [['src','    groups[key].append(word)']],
+            [['kw','  return '],['src','list(groups.values())']],
+        ];
+        function buildCodePanel() {
+            const panel = document.getElementById('code-panel'); panel.innerHTML = '';
+            CODE.forEach((tokens, i) => {
+                const line = document.createElement('div'); line.className = 'code-line'; line.dataset.line = i;
+                const lno = document.createElement('span'); lno.className = 'lno'; lno.textContent = i + 1; line.appendChild(lno);
+                const src = document.createElement('span');
+                tokens.forEach(([cls, txt]) => { const s = document.createElement('span'); s.className = cls; s.textContent = txt; src.appendChild(s); });
+                line.appendChild(src); panel.appendChild(line);
+            });
+        }
+        function highlightCode(a) { document.querySelectorAll('.code-line').forEach(el => el.classList.toggle('active', a && a.includes(+el.dataset.line))); }
+        function toggleDetails() {
+            const wrap = document.getElementById('details-wrap'); const open = wrap.classList.toggle('open');
+            wrap.querySelector('.details-toggle').setAttribute('aria-expanded', open ? 'true' : 'false');
+            document.getElementById('details-label').textContent = open ? 'Hide code, state & log' : 'Show code, state & log';
+        }
+
+        const sortedKey = (w) => w.split('').sort().join('');
+
+        // ───────── step generation (Group Anagrams, sorted key) ─────────
+        function generateSteps() {
+            steps = [];
+            const n = strs.length;
+            const groupOrder = [];                 // keys in first-seen order
+            const groupMembers = {};               // key -> [words]
+            const groupColorIdx = {};               // key -> palette index
+            // grouped[i] true once word i routed; bucketOf[i] = key
+            const grouped = new Array(n).fill(false);
+            const bucketOf = new Array(n).fill(null);
+
+            const snapBuckets = () => groupOrder.map(k => ({ key: k, members: [...groupMembers[k]], color: groupColorIdx[k] }));
+            const snap = (extra) => Object.assign({
+                arr: [...strs], grouped: [...grouped], bucketOf: [...bucketOf],
+                buckets: snapBuckets(), cur: -1, key: null, raw: null,
+                done: false, complete: false, processedCount: groupOrder.reduce((a, k) => a + groupMembers[k].length, 0),
+                fly: null, freshKey: null, freshWord: null,
+            }, extra);
+
+            steps.push(snap({ code: [0, 1], action: 'START',
+                panel: `Group <b>anagrams</b> together. Build a map <code>groups</code>: each key is the word's letters <b>sorted</b>, so all anagrams collapse to the <b>same</b> key.`,
+                log: `init  ${n} words  groups = {}` }));
+
+            for (let i = 0; i < n; i++) {
+                const word = strs[i];
+                const key = sortedKey(word);
+
+                // 1) pick the word
+                steps.push(snap({ cur: i, code: [2], action: `read strs[${i}]`,
+                    panel: `Take <code>strs[${i}] = "${word}"</code>. Next we compute its sorted-letters key.`,
+                    log: `read  strs[${i}] = "${word}"` }));
+
+                // 2) compute sorted key (hero)
+                steps.push(snap({ cur: i, code: [3], action: `sort("${word}")`, raw: word, key: key,
+                    panel: `Sort the letters of <code>"${word}"</code> &#8594; key <code>"${key}"</code>. Anagrams always sort to the identical key.`,
+                    log: `key   sorted("${word}") = "${key}"` }));
+
+                const isNew = !groupMembers[key];
+                if (isNew) {
+                    groupColorIdx[key] = groupOrder.length % GROUP_COLORS.length;
+                    groupMembers[key] = [];
+                    groupOrder.push(key);
+                    steps.push(snap({ cur: i, code: [4, 5], action: `new bucket "${key}"`, raw: word, key: key, freshKey: key,
+                        panel: `Key <code>"${key}"</code> is not in <code>groups</code> yet &#8594; open a <b>new bucket</b> for it.`,
+                        log: `bucket new "${key}"` }));
+                } else {
+                    steps.push(snap({ cur: i, code: [4], action: `bucket "${key}" exists`, raw: word, key: key,
+                        panel: `Key <code>"${key}"</code> already has a bucket &#8594; this word is an anagram of words already inside it.`,
+                        log: `bucket has "${key}"` }));
+                }
+
+                // 3) route word into its bucket
+                groupMembers[key].push(word);
+                grouped[i] = true;
+                bucketOf[i] = key;
+                steps.push(snap({ cur: i, code: [6], action: `groups["${key}"] += "${word}"`,
+                    fly: { from: i, key: key }, freshWord: { key: key, word: word, idx: groupMembers[key].length - 1 },
+                    panel: `Append <code>"${word}"</code> into bucket <code>"${key}"</code> &#8594; the bucket now holds <b>${groupMembers[key].length}</b> word${groupMembers[key].length > 1 ? 's' : ''}.`,
+                    log: `route "${word}" -> ["${key}"]  (size ${groupMembers[key].length})` }));
+            }
+
+            const result = groupOrder.map(k => groupMembers[k]);
+            steps.push(snap({ done: true, complete: true, confetti: true, code: [7], action: '✓ GROUPED',
+                panel: `Every word is placed. Return all bucket lists &#8594; <b>${groupOrder.length}</b> anagram group${groupOrder.length > 1 ? 's' : ''}: <code>${result.map(g => '[' + g.join(', ') + ']').join('  ')}</code>.`,
+                log: `done  ${groupOrder.length} groups  ${result.map(g => '[' + g.join(',') + ']').join(' ')}` }));
+        }
+
+        // ───────── render ─────────
+        function applyGroupColor(node, idx) {
+            const c = GROUP_COLORS[idx % GROUP_COLORS.length];
+            node.style.borderColor = c.border; node.style.background = c.bg;
+            const bkey = node.querySelector('.bkey'); if (bkey) { bkey.style.color = c.txt; bkey.style.background = 'rgba(255,255,255,0.05)'; }
+            return c;
+        }
+
+        function renderStep(idx) {
+            stepIdx = idx; const step = steps[idx]; if (!step) return;
+            const rail = document.getElementById('word-rail');
+
+            // ── word cells (persistent, keyed by index) ──
+            const used = new Set();
+            for (let i = 0; i < step.arr.length; i++) {
+                used.add(String(i));
+                let el = cellEls[i];
+                if (!el) {
+                    el = document.createElement('div'); el.className = 'cell';
+                    el.innerHTML = `<span class="ci"></span><span class="cv"></span><span class="gdot"></span>`;
+                    cellEls[i] = el; rail.appendChild(el);
+                }
+                el.querySelector('.ci').textContent = i;
+                el.querySelector('.cv').textContent = step.arr[i] === '' ? '∅' : step.arr[i];
+                let cls = 'cell';
+                if (step.grouped[i]) cls += ' grouped';
+                else cls += ' pending';
+                if (i === step.cur && !step.done) cls += ' cur';
+                el.className = cls;
+                const dot = el.querySelector('.gdot');
+                if (step.grouped[i] && step.bucketOf[i] != null) {
+                    const bk = step.buckets.find(b => b.key === step.bucketOf[i]);
+                    dot.style.background = bk ? GROUP_COLORS[bk.color % GROUP_COLORS.length].dot : 'transparent';
+                } else dot.style.background = 'transparent';
+            }
+            Object.keys(cellEls).forEach(k => { if (!used.has(k)) { cellEls[k].remove(); delete cellEls[k]; } });
+
+            // pointer pill above current word
+            placePtr(step.done ? null : step.cur);
+
+            // ── sorted-key hero ──
+            renderKeybox(step);
+
+            // ── buckets (persistent, keyed by key string) ──
+            const usedB = new Set();
+            const host = document.getElementById('buckets');
+            step.buckets.forEach((b) => {
+                usedB.add(b.key);
+                let node = bucketEls[b.key];
+                if (!node) {
+                    node = document.createElement('div'); node.className = 'bucket';
+                    const head = document.createElement('div'); head.className = 'bkey'; head.textContent = '"' + b.key + '"';
+                    const mem = document.createElement('div'); mem.className = 'bmembers';
+                    node.append(head, mem); bucketEls[b.key] = node; host.appendChild(node);
+                }
+                applyGroupColor(node, b.color);
+                const c = GROUP_COLORS[b.color % GROUP_COLORS.length];
+                node.classList.toggle('active', step.cur >= 0 && step.bucketOf[step.cur] === b.key && !step.done);
+                if (step.freshKey === b.key) node.style.boxShadow = '0 0 18px ' + c.border;
+                else node.style.boxShadow = 'none';
+                // members reconcile
+                const mem = node.querySelector('.bmembers');
+                const have = mem.children.length;
+                for (let m = have; m < b.members.length; m++) {
+                    const mm = document.createElement('div'); mm.className = 'bmember';
+                    mm.textContent = b.members[m] === '' ? '∅' : b.members[m];
+                    mm.style.color = c.txt; mm.style.borderColor = c.border;
+                    mem.appendChild(mm);
+                }
+                while (mem.children.length > b.members.length) mem.removeChild(mem.lastChild);
+                // fresh highlight only on the just-added member
+                Array.from(mem.children).forEach((mm, mi) => {
+                    mm.classList.toggle('fresh', !!step.freshWord && step.freshWord.key === b.key && step.freshWord.idx === mi);
+                });
+            });
+            Object.keys(bucketEls).forEach(k => { if (!usedB.has(k)) { bucketEls[k].remove(); delete bucketEls[k]; } });
+
+            // fly animation: word routes from its cell into its bucket
+            if (step.fly) playFly(step.fly.from, step.fly.key, step.arr[step.fly.from]);
+
+            // ── narration + chrome ──
+            const mp = document.getElementById('main-panel');
+            mp.innerHTML = step.panel || '&mdash;';
+            mp.classList.toggle('done', !!step.complete);
+            highlightCode(step.code);
+
+            if (step.confetti) { if (confettiArmed) { fireConfetti(); confettiArmed = false; } } else confettiArmed = true;
+
+            document.getElementById('st-word').textContent = step.cur >= 0 && !step.done ? (step.arr[step.cur] === '' ? '∅' : step.arr[step.cur]) : '—';
+            document.getElementById('st-key').textContent = step.key ? '"' + step.key + '"' : '—';
+            document.getElementById('st-groups').textContent = step.buckets.length;
+            document.getElementById('st-done').textContent = `${step.processedCount} / ${step.arr.length}`;
+            document.getElementById('step-badge').textContent = `Step ${idx + 1} / ${steps.length}`;
+            document.getElementById('progress-fill').style.width = `${(idx / Math.max(1, steps.length - 1)) * 100}%`;
+
+            const logEl = document.getElementById('log');
+            logEl.innerHTML = steps.slice(0, idx + 1).map(s => `<div style="margin:3px 0;white-space:pre-wrap;">${s.log}</div>`).join('');
+            logEl.scrollTop = logEl.scrollHeight;
+        }
+
+        function renderKeybox(step) {
+            const box = document.getElementById('keybox');
+            const raw = document.getElementById('charset-raw');
+            const sorted = document.getElementById('charset-sorted');
+            const kw = document.getElementById('keyword');
+            const kl = document.getElementById('keylabel');
+            if (!step.raw && !step.key) {
+                box.classList.add('idle');
+                raw.innerHTML = ''; sorted.innerHTML = ''; kw.textContent = '—';
+                kl.textContent = step.done ? 'all words sorted into their anagram buckets' : 'sort the letters to build a canonical key';
+                return;
+            }
+            box.classList.remove('idle');
+            const word = step.raw || '';
+            const rc = word.split('');
+            const sc = (step.key || '').split('');
+            // reconcile raw chips
+            syncChips(raw, rc);
+            syncChips(sorted, sc);
+            kw.textContent = step.key ? '"' + step.key + '"' : '—';
+            kl.textContent = `letters of "${word === '' ? '∅' : word}" sorted alphabetically`;
+        }
+        function syncChips(host, chars) {
+            while (host.children.length > chars.length) host.removeChild(host.lastChild);
+            for (let i = host.children.length; i < chars.length; i++) { const c = document.createElement('div'); c.className = 'chip'; host.appendChild(c); }
+            chars.forEach((ch, i) => { host.children[i].textContent = ch; });
+            if (chars.length === 0) { const c = document.createElement('div'); c.className = 'chip'; c.textContent = '∅'; host.appendChild(c); }
+        }
+
+        // fly a clone of the word from its cell down into the target bucket
+        function playFly(fromIdx, key, word) {
+            if (REDUCED) return;
+            const cell = cellEls[fromIdx]; const bucket = bucketEls[key];
+            const screen = document.querySelector('.stage-screen');
+            if (!cell || !bucket || !screen) return;
+            const sb = screen.getBoundingClientRect();
+            const cb = cell.getBoundingClientRect();
+            const bb = bucket.getBoundingClientRect();
+            const fromX = cb.left - sb.left + screen.scrollLeft;
+            const fromY = cb.top - sb.top + screen.scrollTop;
+            const toX = bb.left - sb.left + screen.scrollLeft + bb.width / 2 - cb.width / 2;
+            const toY = bb.bottom - sb.top + screen.scrollTop - 40;
+            const f = document.createElement('div'); f.className = 'fly'; f.textContent = (word === '' ? '∅' : word);
+            f.style.left = '0px'; f.style.top = '0px';
+            screen.appendChild(f);
+            const arcLift = 18;
+            const kf = SPRING_POS.map(p => ({
+                transform: `translate(${(fromX + (toX - fromX) * p).toFixed(1)}px, ${(fromY + (toY - fromY) * p - arcLift * Math.sin(Math.PI * p)).toFixed(1)}px)`,
+                opacity: (p < 0.08 ? p / 0.08 : p > 0.88 ? (1 - p) / 0.12 : 1).toFixed(2)
+            }));
+            const an = f.animate(kf, { duration: durOf(SPRING_POS), easing: 'linear' });
+            an.onfinish = () => f.remove();
+        }
+
+        function placePtr(i) {
+            if (!ptrEl) {
+                ptrEl = document.createElement('div'); ptrEl.className = 'sptr';
+                ptrEl.innerHTML = `<div class="tag">now</div><div class="stalk"></div>`;
+                document.getElementById('word-rail').appendChild(ptrEl);
+            }
+            if (i == null || !cellEls[i]) { ptrEl.style.opacity = '0'; ptrEl._x = null; return; }
+            const el = cellEls[i];
+            Motion.glide(ptrEl, el.offsetLeft + el.offsetWidth / 2);
+        }
+
+        function fireConfetti() {
+            const host = document.getElementById('confetti'); if (!host || REDUCED) return;
+            const colors = ['#22c55e', '#06b6d4', '#a855f7', '#f5a524', '#f43f5e'];
+            for (let i = 0; i < 38; i++) {
+                const p = document.createElement('div'); p.className = 'confetti-piece';
+                p.style.setProperty('--x', ((Math.random() * 2 - 1) * 220) + 'px');
+                p.style.setProperty('--rot', ((Math.random() * 720 - 360)) + 'deg');
+                p.style.background = colors[i % colors.length];
+                p.style.animationDuration = (0.9 + Math.random() * 0.8) + 's';
+                p.style.animationDelay = (Math.random() * 0.15) + 's';
+                host.appendChild(p); setTimeout(() => p.remove(), 1900);
+            }
+        }
+
+        // ───────── controls ─────────
+        function nextStep() { if (stepIdx < steps.length - 1) renderStep(stepIdx + 1); else pause(); }
+        function prevStep() { if (stepIdx > 0) renderStep(stepIdx - 1); }
+        function resetSim() { pause(); renderStep(0); }
+        function togglePlay() {
+            const btn = document.getElementById('play-btn');
+            if (timer) { pause(); return; }
+            btn.textContent = 'Pause';
+            if (stepIdx >= steps.length - 1) renderStep(0);
+            timer = setInterval(() => { if (stepIdx < steps.length - 1) nextStep(); else pause(); }, delays[document.getElementById('speed').value]);
+        }
+        function pause() { clearInterval(timer); timer = null; document.getElementById('play-btn').textContent = 'Play'; }
+
+        function clearDom() {
+            Object.keys(cellEls).forEach(k => { cellEls[k].remove(); delete cellEls[k]; });
+            Object.keys(bucketEls).forEach(k => { bucketEls[k].remove(); delete bucketEls[k]; });
+            if (ptrEl) { ptrEl.remove(); ptrEl = null; }
+            document.querySelectorAll('.fly').forEach(f => f.remove());
+            confettiArmed = true;
+        }
+        function loadArr(a) { pause(); strs = a; clearDom(); generateSteps(); renderStep(0); }
+        function loadCustom() {
+            const raw = (document.getElementById('strs-input').value || '')
+                .split(',').map(s => s.trim().toLowerCase()).filter(s => s.length > 0 && /^[a-z]+$/.test(s));
+            if (raw.length) loadArr(raw.slice(0, 12));
+        }
+        function loadExample(n) {
+            const ex = [
+                ['eat', 'tea', 'tan', 'ate', 'nat', 'bat'],
+                ['abc', 'cab', 'listen', 'silent', 'bca'],
+            ][n];
+            document.getElementById('strs-input').value = ex.join(', ');
+            loadArr(ex);
+        }
+
+        document.addEventListener('keydown', (e) => {
+            const tag = (e.target.tagName || '').toLowerCase(); if (tag === 'input' || tag === 'textarea') return;
+            if (e.key === 'ArrowRight') { e.preventDefault(); pause(); nextStep(); }
+            else if (e.key === 'ArrowLeft') { e.preventDefault(); pause(); prevStep(); }
+            else if (e.key === ' ') { e.preventDefault(); togglePlay(); }
+        });
+        document.getElementById('strs-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') loadCustom(); });
+        window.addEventListener('resize', () => renderStep(stepIdx));
+
+        buildCodePanel();
+        window.onload = () => loadExample(0);
+    </script>
+</body>
+</html>

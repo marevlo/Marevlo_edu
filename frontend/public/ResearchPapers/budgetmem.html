@@ -1,0 +1,1344 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>BudgetMem Query-Aware Budget-Tier Routing for Runtime Agent Memory · Zhang et al., 2026</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;0,9..144,900;1,9..144,400&family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&family=Source+Serif+4:ital,opsz,wght@0,8..60,300;0,8..60,400;0,8..60,500;0,8..60,600;1,8..60,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"
+        onload="renderMathInElement(document.body,{delimiters:[{left:'$$',right:'$$',display:true},{left:'$',right:'$',display:false},{left:'\\\\(',right:'\\\\)',display:false},{left:'\\\\[',right:'\\\\]',display:true}],throwOnError:false});"></script>
+<style>
+:root{
+  --bg: #07090c; --bg-raise: #0d1117; --bg-raise2: #131a22; --bg-sunk: #050709;
+  --surf: rgba(255,255,255,0.025); --surf-hi: rgba(255,255,255,0.045); --surf-lo: rgba(255,255,255,0.012);
+  --line: rgba(255,255,255,0.07); --line-soft: rgba(255,255,255,0.04); --line-hard: rgba(255,255,255,0.12);
+  --ink: #f1f1f6; --ink-dim: #b9c2cc; --ink-faint: #7a8592; --ink-ghost: #4a5260;
+  --c-amber: #f3c969; --c-sky: #67a3d9; --c-iris: #a38bfa; --c-rose: #f0729a; --c-mint: #5eead4;
+  --grad-spine: linear-gradient(90deg,#f3c969 0%,#67a3d9 35%,#a38bfa 65%,#f0729a 90%);
+  --grad-head: linear-gradient(135deg,#dedef0 0%,#f3c969 60%,#67a3d9 100%);
+  --grad-card: linear-gradient(165deg,rgba(255,255,255,0.06) 0%,rgba(255,255,255,0.015) 100%);
+  --grad-iris: linear-gradient(135deg,rgba(243,201,105,0.14) 0%,rgba(243,201,105,0.02) 100%);
+  --shadow-hi: 0 32px 96px -20px rgba(0,0,0,0.7), 0 8px 28px -8px rgba(0,0,0,0.5), 0 1px 0 rgba(255,255,255,0.04) inset;
+  --shadow-md: 0 16px 56px -18px rgba(0,0,0,0.6), 0 2px 8px -2px rgba(0,0,0,0.4);
+  --shadow-sm: 0 4px 16px -4px rgba(0,0,0,0.5), 0 1px 0 rgba(255,255,255,0.04) inset;
+  --r-xs: 8px; --r-sm: 12px; --r-md: 16px; --r-lg: 22px; --r-xl: 28px;
+  --max: 1180px; --reading: 760px;
+}
+
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth;scroll-padding-top:90px}
+body{
+  background:var(--bg);color:var(--ink);
+  font-family:'Outfit',-apple-system,sans-serif;
+  font-size:16.5px;line-height:1.72;
+  -webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;
+  overflow-x:hidden;text-rendering:optimizeLegibility;
+}
+
+body::before{
+  content:"";position:fixed;inset:0;z-index:-2;
+  background:
+    radial-gradient(70rem 40rem at 15% -5%, rgba(243,201,105,0.12), transparent 60%),
+    radial-gradient(60rem 35rem at 95% 15%, rgba(103,163,217,0.08), transparent 65%),
+    radial-gradient(55rem 30rem at 50% 100%, rgba(163,139,250,0.09), transparent 65%);
+  pointer-events:none;
+}
+body::after{
+  content:"";position:fixed;inset:0;z-index:-1;
+  background-image: radial-gradient(circle, rgba(255,255,255,0.018) 1px, transparent 1px);
+  background-size:28px 28px;
+  mask-image:radial-gradient(ellipse 90% 80% at 50% 40%, black 30%, transparent 85%);
+  -webkit-mask-image:radial-gradient(ellipse 90% 80% at 50% 40%, black 30%, transparent 85%);
+  pointer-events:none;
+}
+::selection{background:rgba(243,201,105,0.35);color:#fff}
+
+
+nav{
+  position:fixed;top:0;left:0;right:0;z-index:50;
+  display:flex;align-items:center;justify-content:space-between;
+  padding:0.85rem 1.6rem;
+  background:rgba(7,9,12,0.88);backdrop-filter:blur(32px) saturate(1.4);
+  -webkit-backdrop-filter:blur(32px) saturate(1.4);
+  border-bottom:1px solid rgba(255,255,255,0.07);
+  box-shadow:0 1px 0 rgba(255,255,255,0.04) inset, 0 4px 24px rgba(0,0,0,0.4);
+}
+.nav-brand{display:flex;align-items:center;gap:10px;font-family:'JetBrains Mono',monospace;font-size:0.72rem;color:var(--ink-dim);letter-spacing:0.18em;text-transform:uppercase;text-decoration:none;}
+.nav-brand-mark{width:22px;height:22px;border-radius:6px;background:var(--grad-spine);position:relative;box-shadow:0 0 20px rgba(243,201,105,0.4);}
+.nav-brand-mark::after{content:"";position:absolute;inset:3px;border-radius:3px;background:var(--bg);}
+.nav-cite{font-family:'JetBrains Mono',monospace;font-size:0.7rem;color:var(--ink-faint);letter-spacing:0.04em;max-width:38vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.nav-actions{display:flex;gap:6px}
+.nav-btn{font-family:'JetBrains Mono',monospace;font-size:0.66rem;color:var(--ink-dim);letter-spacing:0.1em;text-transform:uppercase;text-decoration:none;padding:0.45rem 0.9rem;border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.05);backdrop-filter:blur(6px);border-radius:999px;transition:all 0.2s;box-shadow:0 1px 0 rgba(255,255,255,0.04) inset;}
+.nav-btn:hover{border-color:rgba(243,201,105,0.35);color:var(--c-amber);transform:translateY(-1px);}
+@media(max-width:720px){.nav-cite{display:none}nav{padding:0.7rem 1rem}}
+
+.hero{position:relative;min-height:96vh;display:flex;flex-direction:column;justify-content:center;padding:9rem 1.6rem 4rem;overflow:hidden;}
+.hero-inner{max-width:var(--max);width:100%;margin:0 auto;position:relative;z-index:2;}
+.hero-kicker{display:inline-flex;align-items:center;gap:10px;margin-bottom:2.4rem;font-family:'JetBrains Mono',monospace;font-size:0.68rem;letter-spacing:0.28em;text-transform:uppercase;color:var(--c-amber);}
+.hero-kicker .dot{width:6px;height:6px;border-radius:50%;background:var(--c-amber);box-shadow:0 0 10px var(--c-amber);animation:heartbeat 2.4s ease-in-out infinite;}
+.hero-kicker .bar{width:40px;height:1px;background:linear-gradient(90deg,var(--c-amber),transparent);}
+@keyframes heartbeat{0%,100%{opacity:1;transform:scale(1)}50%{opacity:0.35;transform:scale(0.6)}}
+
+h1.hero-title{font-family:'Source Serif 4',serif;font-optical-sizing:auto;font-variation-settings:'opsz' 144;font-weight:400;font-size:clamp(2.4rem, 6.8vw, 5.4rem);line-height:1.02;letter-spacing:-0.035em;margin-bottom:2rem;max-width:20ch;}
+h1.hero-title em{font-style:italic;font-weight:300;background:var(--grad-head);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;}
+
+.hero-meta{display:flex;flex-wrap:wrap;gap:0.75rem;align-items:flex-start;margin-bottom:2rem;padding-bottom:2rem;border-bottom:1px solid var(--line-soft);max-width:700px;}
+.hero-meta-cell{display:flex;flex-direction:column;gap:0.3rem;padding:0.65rem 1rem;border-radius:10px;background:var(--surf-lo);border:1px solid var(--line-soft);}
+.hero-meta-label{font-family:'JetBrains Mono',monospace;font-size:0.62rem;letter-spacing:0.22em;text-transform:uppercase;color:var(--c-amber);opacity:0.7;}
+.hero-meta-val{font-size:0.92rem;color:var(--ink);font-weight:500;letter-spacing:-0.01em;}
+
+.hero-abstract{font-family:'Source Serif 4',serif;font-size:clamp(1.05rem,1.5vw,1.2rem);line-height:1.7;color:var(--ink-dim);max-width:58ch;margin-bottom:2.6rem;font-weight:300;}
+.hero-abstract{line-height:1.84;max-width:100%;}.hero-abstract+.hero-abstract{margin-top:1.1rem;}.hero-abstract strong{color:var(--c-amber);font-weight:600}.hero-abstract em{color:var(--ink);}
+
+.hero-tags{display:flex;flex-wrap:wrap;gap:0.5rem;}
+.hero-tag{display:inline-flex;align-items:center;gap:6px;padding:0.4rem 0.8rem;border-radius:999px;border:1px solid var(--line);background:var(--surf-lo);font-family:'JetBrains Mono',monospace;font-size:0.68rem;letter-spacing:0.06em;color:var(--ink-dim);}
+.hero-tag.t-level{border-color:rgba(240,114,154,0.3);color:var(--c-rose);background:rgba(240,114,154,0.05)}
+.hero-tag.t-topic{border-color:rgba(243,201,105,0.3);color:var(--c-amber);background:rgba(243,201,105,0.05)}
+
+.hero-scroll{position:fixed;bottom:2.4rem;left:50%;transform:translateX(-50%);display:flex;flex-direction:column;gap:0.7rem;align-items:center;color:var(--ink-ghost);font-family:'JetBrains Mono',monospace;font-size:0.64rem;letter-spacing:0.3em;text-transform:uppercase;z-index:2;}
+.hero-scroll .line{width:1px;height:40px;background:linear-gradient(180deg,var(--c-amber),transparent);animation:scrollLine 2.2s ease-in-out infinite;transform-origin:top;}
+@keyframes scrollLine{0%{transform:scaleY(0);opacity:0}40%{transform:scaleY(1);opacity:1}100%{transform:scaleY(1);opacity:0;transform-origin:bottom}}
+
+.lineage{max-width:var(--max);margin:0 auto;padding:0 1.6rem;margin-top:-2rem;margin-bottom:4rem;position:relative;z-index:3;}
+.lineage-card{background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:var(--r-lg);padding:1.6rem 1.8rem;box-shadow:0 30px 90px -20px rgba(0,0,0,0.6);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);display:flex;align-items:center;gap:1.6rem;flex-wrap:wrap;overflow-x:auto;}
+.lineage-label{font-family:'JetBrains Mono',monospace;font-size:0.62rem;letter-spacing:0.24em;text-transform:uppercase;color:var(--ink-ghost);flex-shrink:0;}
+.lineage-chain{display:flex;align-items:center;gap:0.5rem;flex:1;min-width:0;}
+.lineage-node{display:flex;flex-direction:column;align-items:center;gap:0.35rem;padding:0.55rem 0.85rem;border-radius:10px;border:1px solid var(--line-soft);background:var(--surf-lo);flex-shrink:0;}
+.lineage-node.is-focus{border-color:var(--c-amber);background:rgba(243,201,105,0.08);box-shadow:0 0 24px rgba(243,201,105,0.15);}
+.lineage-node.is-focus .ln-name{color:var(--c-amber)}
+.ln-name{font-family:'JetBrains Mono',monospace;font-size:0.72rem;font-weight:600;color:var(--ink)}
+.ln-year{font-family:'JetBrains Mono',monospace;font-size:0.6rem;color:var(--ink-faint)}
+.lineage-arrow{color:var(--ink-ghost);font-family:'JetBrains Mono',monospace;font-size:0.8rem;flex-shrink:0;}
+
+.content{max-width:var(--max);margin:0 auto;padding:0 1.6rem 8rem;}
+.sec{margin-bottom:6rem;opacity:0;transform:translateY(24px);transition:opacity 0.7s ease, transform 0.7s ease;}
+.sec.visible{opacity:1;transform:translateY(0)}
+.sec-head{display:flex;align-items:center;gap:14px;font-family:'JetBrains Mono',monospace;font-size:0.66rem;letter-spacing:0.24em;text-transform:uppercase;color:var(--c-amber);margin-bottom:1.4rem;}
+.sec-head::after{content:"";height:1px;flex:1;background:linear-gradient(90deg,rgba(243,201,105,0.5),transparent);}
+.sec h2{font-family:'Source Serif 4',serif;font-variation-settings:'opsz' 96;font-weight:400;font-size:clamp(1.8rem,3.6vw,2.8rem);line-height:1.08;letter-spacing:-0.025em;margin-bottom:1.1rem;max-width:24ch;}
+.sec h2 em{font-style:italic;font-weight:300;background:var(--grad-head);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;}
+.sec-lead{font-family:'Source Serif 4',serif;font-size:1.08rem;line-height:1.75;color:var(--ink-dim);max-width:var(--reading);margin-bottom:2.4rem;font-weight:300;}
+
+.engine{position:relative;}
+.engine-bar{position:static;z-index:10;padding-top:0.5rem;padding-bottom:0.6rem;background:linear-gradient(180deg,rgba(7,9,12,0.95) 60%,rgba(7,9,12,0) 100%);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);margin-bottom:1.4rem;}
+.tabs{display:flex;gap:4px;padding:5px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.07);border-radius:16px;overflow-x:auto;scrollbar-width:none;box-shadow:0 16px 56px -18px rgba(0,0,0,0.5), 0 1px 0 rgba(255,255,255,0.04) inset;backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);}
+.tabs::-webkit-scrollbar{display:none}
+.tab{flex:1;min-width:108px;padding:0.65rem 0.6rem;background:transparent;border:none;border-radius:10px;color:var(--ink-faint);font-family:'JetBrains Mono',monospace;font-size:0.66rem;letter-spacing:0.08em;text-transform:uppercase;font-weight:500;cursor:pointer;transition:all 0.22s;position:relative;display:flex;align-items:center;justify-content:center;gap:6px;white-space:nowrap;}
+.tab:hover{color:var(--ink-dim);background:rgba(255,255,255,0.06);box-shadow:0 1px 4px rgba(0,0,0,0.3);}
+.tab.active{color:var(--c-amber);background:rgba(255,255,255,0.08);box-shadow:0 2px 10px rgba(0,0,0,0.3), inset 0 0 0 1px rgba(243,201,105,0.25), 0 1px 0 rgba(255,255,255,0.06) inset;}
+.tab .tab-dot{width:5px;height:5px;border-radius:50%;background:var(--c-amber);opacity:0;transition:opacity 0.2s;}
+.tab.visited .tab-dot{opacity:0.6}
+.tab.active .tab-dot{opacity:1;box-shadow:0 0 8px var(--c-amber)}
+.tab-glyph{font-size:0.95rem;line-height:1;filter:grayscale(0.3);}
+
+.layer{display:none;animation:layerFade 0.45s ease}
+.layer.active{display:block}
+@keyframes layerFade{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+.layer-eyebrow{font-family:'JetBrains Mono',monospace;font-size:0.64rem;letter-spacing:0.26em;text-transform:uppercase;color:var(--c-amber);margin-bottom:1.4rem;padding-bottom:0.7rem;border-bottom:1px solid var(--line-soft);display:flex;align-items:center;gap:0.6rem;}
+.layer-eyebrow::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--c-amber);box-shadow:0 0 10px var(--c-amber);}
+
+.brain-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;margin-bottom:1.8rem;}
+@media(max-width:780px){.brain-grid{grid-template-columns:1fr}}
+.brain-card{position:relative;padding:1.6rem;border-radius:var(--r-md);background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.07);overflow:hidden;transition:border-color 0.25s, transform 0.25s, box-shadow 0.25s;box-shadow:0 4px 16px rgba(0,0,0,0.3), 0 1px 0 rgba(255,255,255,0.04) inset;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);}
+.brain-card::before{content:"";position:absolute;top:0;left:0;right:0;height:2.5px;background:var(--accent,var(--c-iris));opacity:0.85;border-radius:2px 2px 0 0;}
+.brain-card:hover{transform:translateY(-5px);box-shadow:0 20px 60px -16px rgba(0,0,0,0.6), 0 4px 16px -4px rgba(0,0,0,0.4);border-color:rgba(255,255,255,0.12);}
+.brain-card[data-tone="problem"]{--accent:var(--c-rose)}
+.brain-card[data-tone="idea"]{--accent:var(--c-amber)}
+.brain-card[data-tone="impact"]{--accent:var(--c-sky)}
+.brain-label{font-family:'JetBrains Mono',monospace;font-size:0.6rem;letter-spacing:0.22em;text-transform:uppercase;color:var(--accent,var(--c-amber));margin-bottom:0.7rem;}
+.brain-text{font-size:0.94rem;line-height:1.7;color:var(--ink-dim);}
+.brain-text strong{color:var(--ink);font-weight:600}
+
+.one-line{padding:1.3rem 1.5rem;border-radius:var(--r-md);background:linear-gradient(135deg,rgba(243,201,105,0.08),rgba(103,163,217,0.04));border:1px solid rgba(243,201,105,0.2);margin-bottom:1.6rem;font-family:'Source Serif 4',serif;font-size:1.05rem;line-height:1.65;color:var(--ink);}
+.one-line-label{font-family:'JetBrains Mono',monospace;font-size:0.62rem;letter-spacing:0.22em;text-transform:uppercase;color:var(--c-amber);margin-bottom:0.5rem;display:block;}
+.one-line em{font-style:italic;color:var(--c-amber)}
+
+.cta-row{display:flex;gap:0.6rem;flex-wrap:wrap;margin-top:1rem}
+.cta-btn{padding:0.55rem 1.1rem;border-radius:999px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.09);color:var(--ink);font-family:'JetBrains Mono',monospace;font-size:0.7rem;letter-spacing:0.06em;cursor:pointer;transition:all 0.2s;backdrop-filter:blur(6px);box-shadow:0 1px 3px rgba(0,0,0,0.3), 0 1px 0 rgba(255,255,255,0.04) inset;}
+.cta-btn:hover{border-color:rgba(243,201,105,0.3);color:var(--c-amber);transform:translateY(-1px);}
+.cta-btn.primary{background:linear-gradient(135deg,rgba(243,201,105,0.12) 0%,rgba(243,201,105,0.04) 100%);border-color:rgba(243,201,105,0.3);color:var(--c-amber);}
+
+.viz-frame{border-radius:var(--r-lg);background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);padding:1.6rem;margin-bottom:1.4rem;box-shadow:0 14px 50px -20px rgba(0,0,0,0.5);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);}
+.viz-title{font-family:'JetBrains Mono',monospace;font-size:0.66rem;letter-spacing:0.2em;text-transform:uppercase;color:var(--c-amber);margin-bottom:1.2rem;display:flex;align-items:center;gap:0.6rem;}
+.viz-title::before{content:"▸";opacity:0.7}
+.viz-stage{background:radial-gradient(ellipse at center, rgba(243,201,105,0.04), transparent 70%), var(--bg-sunk);border:1px solid rgba(255,255,255,0.05);border-radius:var(--r-md);padding:1.4rem 0.8rem;overflow:hidden;box-shadow:0 1px 0 rgba(255,255,255,0.04) inset;}
+.viz-controls{display:flex;align-items:center;gap:0.8rem;flex-wrap:wrap;margin-top:1rem;}
+.viz-play{padding:0.55rem 1.2rem;border-radius:999px;background:rgba(243,201,105,0.1);border:1.5px solid rgba(243,201,105,0.35);color:var(--c-amber);font-family:'JetBrains Mono',monospace;font-size:0.74rem;letter-spacing:0.04em;font-weight:600;cursor:pointer;transition:all 0.2s;}
+.viz-play:hover{background:rgba(243,201,105,0.18)}
+.viz-reset{padding:0.5rem 1rem;border-radius:999px;background:transparent;border:1px solid var(--line);color:var(--ink-faint);font-family:'JetBrains Mono',monospace;font-size:0.72rem;cursor:pointer;transition:all 0.2s;}
+.viz-reset:hover{border-color:var(--ink-faint);color:var(--ink-dim)}
+.viz-status{flex:1;min-width:220px;text-align:right;font-family:'JetBrains Mono',monospace;font-size:0.72rem;color:var(--c-amber);letter-spacing:0.02em;}
+
+.callout{display:flex;gap:1rem;align-items:flex-start;padding:1.2rem 1.4rem;border-radius:var(--r-md);margin-bottom:1.2rem;border:1px solid rgba(255,255,255,0.07);backdrop-filter:blur(6px);box-shadow:0 2px 12px rgba(0,0,0,0.3), 0 1px 0 rgba(255,255,255,0.04) inset;}
+.callout.k-map{background:linear-gradient(135deg,rgba(163,139,250,0.07) 0%,rgba(163,139,250,0.02) 100%);border-color:rgba(163,139,250,0.18);}
+.callout.k-warn{background:linear-gradient(135deg,rgba(243,201,105,0.07) 0%,rgba(243,201,105,0.02) 100%);border-color:rgba(243,201,105,0.18);}
+.callout.k-iris{background:linear-gradient(135deg,rgba(94,234,212,0.07) 0%,rgba(94,234,212,0.02) 100%);border-color:rgba(94,234,212,0.18);}
+.callout.k-sky{background:linear-gradient(135deg,rgba(103,163,217,0.07) 0%,rgba(103,163,217,0.02) 100%);border-color:rgba(103,163,217,0.18);}
+.callout.k-rose{background:linear-gradient(135deg,rgba(240,114,154,0.07) 0%,rgba(240,114,154,0.02) 100%);border-color:rgba(240,114,154,0.18);}
+.callout-icon{font-size:1.3rem;flex-shrink:0;line-height:1.2;margin-top:0.1rem}
+.callout-body h4{font-size:0.95rem;font-weight:600;color:var(--ink);margin-bottom:0.35rem;letter-spacing:-0.01em;}
+.callout-body p{font-size:0.9rem;line-height:1.7;color:var(--ink-dim);}
+.callout-body code{font-family:'JetBrains Mono',monospace;font-size:0.82rem;background:rgba(255,255,255,0.06);padding:0.1rem 0.35rem;border-radius:4px;color:var(--c-amber);}
+
+.accordion{border:1px solid rgba(255,255,255,0.07);border-radius:var(--r-md);overflow:hidden;margin-bottom:0.7rem;background:rgba(255,255,255,0.04);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);transition:border-color 0.2s, box-shadow 0.2s;box-shadow:0 1px 4px rgba(0,0,0,0.3), 0 1px 0 rgba(255,255,255,0.04) inset;}
+.accordion:hover{border-color:rgba(255,255,255,0.12);box-shadow:0 4px 20px rgba(0,0,0,0.4), 0 1px 0 rgba(255,255,255,0.04) inset;}
+.accordion.open{border-color:rgba(243,201,105,0.3);box-shadow:0 4px 20px rgba(243,201,105,0.08), 0 1px 0 rgba(255,255,255,0.04) inset;}
+.acc-q{padding:1.05rem 1.35rem;font-size:0.94rem;font-weight:500;color:var(--ink);cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:1rem;letter-spacing:-0.005em;}
+.acc-chev{color:var(--c-amber);transition:transform 0.25s;font-family:'JetBrains Mono',monospace;font-size:0.9rem}
+.accordion.open .acc-chev{transform:rotate(90deg)}
+.acc-a{padding:0 1.35rem 1.2rem;font-size:0.88rem;line-height:1.78;color:var(--ink-dim);display:none;border-top:1px solid var(--line-soft);padding-top:1.2rem;margin-top:-1px;}
+.accordion.open .acc-a{display:block}
+.acc-a strong{color:var(--ink);font-weight:600}
+.acc-a code{font-family:'JetBrains Mono',monospace;font-size:0.82rem;background:rgba(255,255,255,0.06);padding:0.1rem 0.35rem;border-radius:4px;color:var(--c-amber)}
+.acc-a ul{margin:0.6rem 0 0.6rem 1.2rem;font-size:0.86rem;line-height:1.75}
+.tldr{display:inline-block;font-family:'JetBrains Mono',monospace;font-size:0.7rem;padding:0.35rem 0.75rem;border-radius:6px;margin-bottom:0.9rem;background:rgba(243,201,105,0.08);border:1px solid rgba(243,201,105,0.2);color:var(--c-amber);letter-spacing:0.02em;}
+.tldr::before{content:"⚡ TLDR  ";font-weight:700;opacity:0.9}
+
+.paper-intro{display:flex;gap:1rem;align-items:flex-start;padding:1.4rem 1.5rem;margin-bottom:2.4rem;background:var(--grad-iris);border:1px solid rgba(243,201,105,0.18);border-radius:var(--r-md);}
+.paper-intro-icon{font-size:1.6rem;flex-shrink:0;}
+.paper-intro-body{font-size:0.92rem;line-height:1.72;color:var(--ink-dim)}
+.paper-intro-body strong{color:var(--ink)}
+
+.psec{padding:2rem 0 2.4rem;border-bottom:1px solid var(--line-soft);}
+.psec:last-child{border-bottom:none}
+.psec-head{display:flex;align-items:baseline;gap:1rem;margin-bottom:1.4rem;}
+.psec-num{font-family:'Source Serif 4',serif;font-style:italic;font-size:1.8rem;font-weight:400;color:var(--c-amber);min-width:3rem;}
+.psec-title{font-family:'Source Serif 4',serif;font-size:clamp(1.3rem,2.4vw,1.7rem);font-weight:400;line-height:1.2;color:var(--ink);letter-spacing:-0.02em;}
+.psec-body{max-width:var(--reading)}
+.psec-body p{font-family:'Source Serif 4',serif;font-size:1.02rem;line-height:1.78;color:var(--ink-dim);margin-bottom:1rem;font-weight:300;}
+.psec-body p strong{color:var(--ink);font-weight:500}
+.psec-body p em{color:var(--ink);font-style:italic}
+
+.compare-row{display:grid;grid-template-columns:130px 1fr;gap:1rem;padding:0.8rem 1rem;margin:0.35rem 0;border-left:2px solid var(--c-rose);background:rgba(240,114,154,0.035);border-radius:0 10px 10px 0;}
+.cr-method{font-family:'JetBrains Mono',monospace;font-size:0.82rem;color:var(--c-rose);font-weight:600;letter-spacing:0.02em;}
+.cr-fail{font-size:0.88rem;line-height:1.65;color:var(--ink-dim);font-family:'Outfit',sans-serif}
+
+.insight-box{margin-top:1.6rem;padding:1.3rem 1.5rem;background:linear-gradient(135deg,rgba(243,201,105,0.08),rgba(103,163,217,0.03));border-left:3px solid var(--c-amber);border-radius:0 var(--r-sm) var(--r-sm) 0;}
+.insight-label{font-family:'JetBrains Mono',monospace;font-size:0.62rem;letter-spacing:0.2em;text-transform:uppercase;color:var(--c-amber);margin-bottom:0.6rem;}
+.insight-box p{font-family:'Source Serif 4',serif;font-size:0.98rem;line-height:1.75;color:var(--ink);font-weight:300;}
+
+.algo{margin:1.6rem 0;border:1px solid var(--line);border-radius:var(--r-md);background:var(--bg-raise);overflow:hidden;}
+.algo-head{padding:0.9rem 1.4rem;background:linear-gradient(90deg,rgba(243,201,105,0.08),transparent);border-bottom:1px solid var(--line);font-family:'JetBrains Mono',monospace;font-size:0.76rem;color:var(--c-amber);letter-spacing:0.02em;}
+.algo-step{display:grid;grid-template-columns:minmax(220px,34%) 1fr;gap:1rem;padding:1rem 1.4rem;border-top:1px solid var(--line-soft);align-items:start;}
+.algo-step:first-of-type{border-top:none}
+.algo-step.hi{background:rgba(243,201,105,0.04)}
+.algo-step.lp{background:rgba(103,163,217,0.03)}
+.algo-step.ind{padding-left:2.6rem}
+.algo-code{font-family:'JetBrains Mono',monospace;font-size:0.84rem;line-height:1.6;color:var(--ink);white-space:pre-wrap;word-break:break-word;}
+.algo-expl{font-size:0.88rem;line-height:1.72;color:var(--ink-dim);}
+.algo-expl strong{color:var(--ink);font-weight:600}
+.algo-expl em{color:var(--ink);font-style:italic}
+.algo-expl ul{margin:0.5rem 0 0.5rem 1.1rem;font-size:0.84rem;line-height:1.78}
+@media(max-width:700px){.algo-step{grid-template-columns:1fr}.algo-step.ind{padding-left:1.4rem;border-left:2px solid rgba(103,163,217,0.3)}}
+
+.example{margin-top:1.8rem;padding:1.4rem 1.6rem;background:rgba(163,139,250,0.04);border:1px solid rgba(163,139,250,0.2);border-radius:var(--r-md);position:relative;}
+.example::before{content:"WORKED EXAMPLE";position:absolute;top:-9px;left:1.3rem;padding:0 0.6rem;background:var(--bg);font-family:'JetBrains Mono',monospace;font-size:0.6rem;letter-spacing:0.2em;color:var(--c-iris);}
+.example-intro{font-size:0.9rem;color:var(--ink-dim);margin-bottom:1rem;line-height:1.7}
+.ex-step{display:flex;gap:0.9rem;align-items:flex-start;margin-bottom:0.8rem;}
+.ex-num{flex-shrink:0;width:26px;height:26px;border-radius:50%;background:rgba(163,139,250,0.12);border:1px solid rgba(163,139,250,0.35);color:var(--c-iris);font-family:'JetBrains Mono',monospace;font-size:0.72rem;font-weight:700;display:flex;align-items:center;justify-content:center;margin-top:0.1rem;}
+.ex-body{font-size:0.88rem;line-height:1.72;color:var(--ink-dim);flex:1}
+.ex-body strong{color:var(--ink);font-weight:600}
+
+.theorem{margin:1.6rem 0;padding:1.6rem 1.8rem;background:linear-gradient(135deg,rgba(243,201,105,0.08),rgba(243,201,105,0.02));border:1px solid rgba(243,201,105,0.3);border-radius:var(--r-md);position:relative;}
+.theorem::before{content:"CLAIM";position:absolute;top:-9px;left:1.4rem;padding:0 0.6rem;background:var(--bg);font-family:'JetBrains Mono',monospace;font-size:0.6rem;letter-spacing:0.22em;color:var(--c-amber);}
+.theorem-body{font-family:'Source Serif 4',serif;font-size:1.05rem;line-height:1.72;color:var(--ink);font-weight:300;}
+.theorem-body strong{color:var(--c-amber);font-weight:500}
+
+.math-block{margin:1.2rem 0;padding:1.2rem 1.4rem;background:var(--bg-raise);border:1px solid var(--line);border-radius:var(--r-sm);}
+.math-block-label{font-family:'JetBrains Mono',monospace;font-size:0.64rem;letter-spacing:0.2em;text-transform:uppercase;color:var(--c-amber);margin-bottom:0.8rem;}
+.math-line{font-family:'JetBrains Mono',monospace;font-size:0.92rem;color:var(--ink);padding:0.6rem 0;text-align:center;letter-spacing:0.03em;}
+.math-block p{font-size:0.9rem;line-height:1.7;color:var(--ink-dim);margin:0.5rem 0;}
+
+.exp-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:1rem;margin-bottom:1.4rem;}
+@media(max-width:680px){.exp-grid{grid-template-columns:1fr}}
+.exp-card{padding:1.2rem 1.3rem;background:var(--surf-lo);border:1px solid var(--line);border-radius:var(--r-sm);}
+.exp-dataset{font-family:'JetBrains Mono',monospace;font-size:0.74rem;color:var(--c-amber);margin-bottom:0.5rem;letter-spacing:0.04em;font-weight:600;}
+.exp-result{font-size:0.88rem;line-height:1.68;color:var(--ink-dim)}
+.exp-result strong{color:var(--ink);font-weight:600}
+
+.limit-row{padding:0.9rem 1rem;margin-bottom:0.5rem;border-left:2px solid var(--c-mint);background:rgba(94,234,212,0.03);border-radius:0 8px 8px 0;}
+.limit-title{font-size:0.92rem;color:var(--ink);font-weight:600;margin-bottom:0.25rem;letter-spacing:-0.005em;}
+.limit-text{font-size:0.86rem;line-height:1.7;color:var(--ink-dim)}
+
+.timeline{margin-top:1rem;padding-left:1.8rem;border-left:1px solid var(--line);}
+.tl-item{position:relative;padding-bottom:1.3rem;}
+.tl-item::before{content:"";position:absolute;left:-2.25rem;top:0.3rem;width:9px;height:9px;border-radius:50%;background:var(--c-amber);box-shadow:0 0 0 3px var(--bg), 0 0 12px rgba(243,201,105,0.5);}
+.tl-year{font-family:'JetBrains Mono',monospace;font-size:0.8rem;color:var(--c-amber);margin-bottom:0.3rem;font-weight:600;}
+.tl-content{font-size:0.9rem;line-height:1.7;color:var(--ink-dim)}
+.tl-content strong{color:var(--ink);font-weight:600}
+
+.sub-head{font-family:'JetBrains Mono',monospace;font-size:0.68rem;letter-spacing:0.2em;text-transform:uppercase;color:var(--ink-faint);margin:2rem 0 1rem;padding-bottom:0.5rem;border-bottom:1px solid var(--line-soft);display:flex;align-items:center;gap:0.6rem;}
+.sub-head::before{content:"◆";color:var(--c-amber);font-size:0.6rem}
+
+.decision{padding:1.4rem 1.5rem;background:var(--grad-card);border:1px solid var(--line);border-radius:var(--r-md);margin-bottom:1.2rem;}
+.decision-stem{font-size:1rem;font-weight:500;color:var(--ink);margin-bottom:1.1rem;line-height:1.55;letter-spacing:-0.005em;}
+.decision-opts{display:grid;grid-template-columns:1fr 1fr;gap:0.6rem;margin-bottom:0.7rem;}
+@media(max-width:620px){.decision-opts{grid-template-columns:1fr}}
+.d-opt{padding:0.9rem 1rem;border:1.5px solid var(--line);border-radius:var(--r-sm);background:var(--surf-lo);color:var(--ink-dim);font-family:'Outfit',sans-serif;font-size:0.88rem;line-height:1.55;text-align:left;cursor:pointer;transition:all 0.2s;}
+.d-opt:hover:not([disabled]){border-color:var(--c-amber);background:rgba(243,201,105,0.05);color:var(--ink);}
+.d-opt.d-correct{border-color:rgba(243,201,105,0.6);background:rgba(243,201,105,0.06);color:var(--ink);}
+.d-opt.d-wrong{border-color:rgba(240,114,154,0.45);background:rgba(240,114,154,0.04);color:var(--ink-dim);}
+.d-reveal{display:none;margin-top:0.7rem;padding:1rem 1.15rem;background:var(--surf);border:1px solid var(--line);border-radius:var(--r-sm);font-size:0.87rem;line-height:1.7;color:var(--ink-dim);}
+.d-reveal.open{display:block}
+.d-reveal strong{color:var(--ink)}
+
+.failure-box{padding:1.2rem 1.4rem;margin-bottom:0.8rem;border-radius:var(--r-sm);background:rgba(240,114,154,0.04);border-left:3px solid var(--c-rose);}
+.fb-title{font-size:0.92rem;font-weight:600;color:var(--c-rose);margin-bottom:0.4rem;}
+.fb-text{font-size:0.88rem;line-height:1.72;color:var(--ink-dim)}
+.fb-text strong{color:var(--ink);font-weight:600}
+
+.reality{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1.6rem}
+@media(max-width:620px){.reality{grid-template-columns:1fr}}
+.rgl{padding:1.2rem 1.3rem;border-radius:var(--r-md);background:rgba(243,201,105,0.04);border:1px solid rgba(243,201,105,0.2);}
+.rgr{padding:1.2rem 1.3rem;border-radius:var(--r-md);background:rgba(240,114,154,0.04);border:1px solid rgba(240,114,154,0.18);}
+.rg-title{font-family:'JetBrains Mono',monospace;font-size:0.66rem;letter-spacing:0.18em;text-transform:uppercase;font-weight:600;margin-bottom:0.8rem;}
+.rgl .rg-title{color:var(--c-amber)}
+.rgr .rg-title{color:var(--c-rose)}
+.rg-li{font-size:0.86rem;line-height:1.75;color:var(--ink-dim);padding-left:14px;position:relative;margin-bottom:0.3rem;}
+.rg-li::before{content:"";position:absolute;left:0;top:10px;width:5px;height:5px;border-radius:50%;background:currentColor;opacity:0.5;}
+
+.cmp-table{width:100%;border-collapse:collapse;margin-top:1rem;font-size:0.86rem;background:var(--bg-raise);border:1px solid var(--line);border-radius:var(--r-md);overflow:hidden;}
+.cmp-table th{text-align:left;padding:0.85rem 1.1rem;font-family:'JetBrains Mono',monospace;font-size:0.62rem;letter-spacing:0.14em;text-transform:uppercase;color:var(--ink-faint);font-weight:600;border-bottom:1px solid var(--line);background:var(--surf-lo);}
+.cmp-table td{padding:0.8rem 1.1rem;border-bottom:1px solid var(--line-soft);color:var(--ink-dim);line-height:1.6;}
+.cmp-table td:first-child{color:var(--ink);font-weight:500}
+.cmp-table tr:last-child td{border-bottom:none}
+.cmp-table tr:hover td{background:var(--surf-lo)}
+.td-good{color:var(--c-amber)!important;font-weight:500}
+.td-bad{color:var(--c-rose)!important}
+
+.build-step{display:flex;gap:1rem;align-items:flex-start;padding:1.1rem 0;border-top:1px solid var(--line-soft);}
+.build-step:first-child{border-top:none;padding-top:0}
+.bs-num{flex-shrink:0;width:30px;height:30px;border-radius:50%;background:rgba(243,201,105,0.1);border:1px solid rgba(243,201,105,0.3);color:var(--c-amber);font-family:'JetBrains Mono',monospace;font-size:0.78rem;font-weight:700;display:flex;align-items:center;justify-content:center;margin-top:0.15rem;}
+.bs-body{flex:1}
+.bs-title{font-size:0.95rem;font-weight:600;color:var(--ink);margin-bottom:0.3rem;letter-spacing:-0.005em;}
+.bs-desc{font-size:0.87rem;line-height:1.7;color:var(--ink-dim)}
+.bs-desc code{font-family:'JetBrains Mono',monospace;font-size:0.82rem;background:rgba(255,255,255,0.06);padding:0.1rem 0.35rem;border-radius:4px;color:var(--c-amber);}
+.bs-skip{font-family:'JetBrains Mono',monospace;font-size:0.72rem;color:var(--c-mint);margin-top:0.4rem;}
+.bs-skip::before{content:"↓ skip: ";opacity:0.7}
+
+.idea-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:0.9rem;margin-top:1.6rem;}
+@media(max-width:780px){.idea-grid{grid-template-columns:1fr}}
+.idea-card{padding:1.1rem 1.15rem;border-radius:var(--r-md)}
+.ic-a{background:rgba(243,201,105,0.05);border:1px solid rgba(243,201,105,0.22)}
+.ic-b{background:rgba(94,234,212,0.05);border:1px solid rgba(94,234,212,0.22)}
+.ic-c{background:rgba(163,139,250,0.05);border:1px solid rgba(163,139,250,0.22)}
+.ic-label{font-family:'JetBrains Mono',monospace;font-size:0.62rem;letter-spacing:0.2em;text-transform:uppercase;font-weight:600;margin-bottom:0.55rem;}
+.ic-a .ic-label{color:var(--c-amber)}
+.ic-b .ic-label{color:var(--c-mint)}
+.ic-c .ic-label{color:var(--c-iris)}
+.ic-text{font-size:0.86rem;line-height:1.68;color:var(--ink-dim)}
+
+.notes-area{width:100%;min-height:140px;padding:1.1rem 1.2rem;background:var(--surf-lo);border:1px solid var(--line);border-radius:var(--r-md);color:var(--ink);font-family:'Source Serif 4',serif;font-size:1rem;line-height:1.65;resize:vertical;margin-bottom:0.9rem;transition:border-color 0.2s;}
+.notes-area:focus{outline:none;border-color:var(--c-amber)}
+.notes-area::placeholder{color:var(--ink-ghost);font-style:italic}
+.saved-note{padding:1rem 1.2rem;background:var(--surf-lo);border:1px solid var(--line);border-radius:var(--r-sm);margin-top:0.6rem;font-size:0.9rem;line-height:1.7;color:var(--ink-dim);}
+.note-ts{font-family:'JetBrains Mono',monospace;font-size:0.66rem;color:var(--ink-ghost);margin-bottom:0.3rem;letter-spacing:0.04em;}
+
+.progress-panel{margin-top:2rem;padding:1.4rem 1.5rem;background:var(--bg-raise);border:1px solid var(--line);border-radius:var(--r-md);}
+.progress-panel-title{font-family:'JetBrains Mono',monospace;font-size:0.66rem;letter-spacing:0.2em;text-transform:uppercase;color:var(--ink-faint);margin-bottom:1rem;}
+.prog-row{display:grid;grid-template-columns:140px 1fr 40px;gap:0.8rem;align-items:center;padding:0.4rem 0;}
+.prog-name{font-size:0.82rem;color:var(--ink-dim)}
+.prog-bar{height:4px;background:var(--surf);border-radius:2px;overflow:hidden;}
+.prog-fill{height:100%;width:0;background:var(--grad-spine);transition:width 0.5s ease;}
+.prog-pct{font-family:'JetBrains Mono',monospace;font-size:0.72rem;color:var(--c-amber);text-align:right;}
+
+.pdf-wrap{background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:var(--r-lg);overflow:hidden;box-shadow:0 32px 96px -20px rgba(0,0,0,0.7), 0 8px 28px -8px rgba(0,0,0,0.5);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);}
+.pdf-head{display:flex;align-items:center;justify-content:space-between;padding:1rem 1.4rem;border-bottom:1px solid rgba(255,255,255,0.07);background:linear-gradient(135deg,rgba(243,201,105,0.1) 0%,rgba(103,163,217,0.04) 50%,rgba(94,234,212,0.03) 100%);}
+.pdf-title{font-family:'JetBrains Mono',monospace;font-size:0.76rem;color:var(--c-amber);letter-spacing:0.04em;}
+.pdf-open{padding:0.45rem 0.95rem;border-radius:999px;background:rgba(255,255,255,0.06);border:1px solid rgba(243,201,105,0.3);color:var(--c-amber);text-decoration:none;font-family:'JetBrains Mono',monospace;font-size:0.72rem;transition:all 0.2s;box-shadow:0 1px 4px rgba(0,0,0,0.3), 0 1px 0 rgba(255,255,255,0.04) inset;}
+.pdf-open:hover{transform:translateY(-1px);box-shadow:0 4px 14px rgba(243,201,105,0.15);background:rgba(255,255,255,0.1);}
+.pdf-frame{width:100%;height:780px;border:none;display:block;background:#1a1a24;}
+.pdf-fallback{padding:3.5rem 2rem;text-align:center;display:flex;flex-direction:column;align-items:center;gap:1rem;min-height:500px;justify-content:center;background:linear-gradient(180deg,var(--bg-raise),var(--bg-sunk));}
+.pdf-fallback-icon{font-size:2.4rem;opacity:0.6}
+.pdf-fallback-title{font-family:'Source Serif 4',serif;font-size:1.2rem;color:var(--ink);font-weight:500;letter-spacing:-0.01em;}
+.pdf-fallback-sub{font-size:0.92rem;line-height:1.7;color:var(--ink-dim);max-width:48ch;}
+.pdf-fallback-sub code{font-family:'JetBrains Mono',monospace;font-size:0.82rem;background:rgba(255,255,255,0.06);padding:0.15rem 0.4rem;border-radius:5px;color:var(--c-amber);}
+.pdf-fallback-actions{display:flex;flex-direction:column;gap:0.6rem;width:100%;max-width:380px;margin-top:0.6rem;}
+.pc-action{display:flex;align-items:center;gap:0.95rem;padding:0.95rem 1.1rem;background:var(--surf-lo);border:1px solid var(--line);border-radius:var(--r-sm);text-decoration:none;transition:all 0.2s;color:var(--ink);text-align:left;}
+.pc-action:hover{border-color:var(--c-amber);background:rgba(243,201,105,0.05);transform:translateX(2px);}
+.pc-action.primary{background:linear-gradient(135deg,rgba(243,201,105,0.12),rgba(243,201,105,0.04));border-color:rgba(243,201,105,0.35);}
+.pc-action.primary:hover{background:rgba(243,201,105,0.18)}
+.pc-action-icon{flex-shrink:0;width:36px;height:36px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-family:'JetBrains Mono',monospace;font-size:1rem;background:rgba(243,201,105,0.1);border:1px solid rgba(243,201,105,0.25);color:var(--c-amber);}
+.pc-action-body{display:flex;flex-direction:column;gap:0.15rem;flex:1;min-width:0}
+.pc-action-title{font-size:0.92rem;font-weight:600;color:var(--ink);letter-spacing:-0.005em;}
+.pc-action-sub{font-family:'JetBrains Mono',monospace;font-size:0.68rem;color:var(--ink-faint);letter-spacing:0.02em;}
+
+.quiz-card{background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:var(--r-lg);padding:2.2rem;box-shadow:0 32px 96px -20px rgba(0,0,0,0.6), 0 8px 28px -8px rgba(0,0,0,0.4);backdrop-filter:blur(12px) saturate(1.2);-webkit-backdrop-filter:blur(12px) saturate(1.2);}
+.quiz-title{font-family:'Source Serif 4',serif;font-size:1.3rem;font-weight:500;color:var(--ink);margin-bottom:0.3rem;letter-spacing:-0.015em;}
+.quiz-sub{font-family:'JetBrains Mono',monospace;font-size:0.72rem;color:var(--ink-faint);margin-bottom:1.6rem;letter-spacing:0.02em;}
+.qprog{margin-bottom:2rem}
+.qprog-bar{height:3px;background:var(--surf);border-radius:2px;overflow:hidden;margin-bottom:0.5rem;}
+.qprog-fill{height:100%;width:0;background:var(--grad-spine);transition:width 0.5s ease;}
+.qprog-text{font-family:'JetBrains Mono',monospace;font-size:0.7rem;color:var(--ink-faint);}
+.qq{padding:1.6rem 0;border-top:1px solid var(--line-soft);}
+.qq:first-of-type{border-top:none;padding-top:0}
+.qnum{font-family:'JetBrains Mono',monospace;font-size:0.68rem;color:var(--c-amber);letter-spacing:0.16em;text-transform:uppercase;margin-bottom:0.5rem;}
+.qq h4{font-family:'Source Serif 4',serif;font-size:1.05rem;line-height:1.55;color:var(--ink);margin-bottom:1.1rem;font-weight:400;letter-spacing:-0.005em;}
+.qo{display:flex;flex-direction:column;gap:0.5rem}
+.qob{padding:0.9rem 1.15rem;text-align:left;border:1.5px solid rgba(255,255,255,0.07);border-radius:var(--r-sm);background:rgba(255,255,255,0.04);color:var(--ink-dim);font-family:'Outfit',sans-serif;font-size:0.9rem;line-height:1.58;cursor:pointer;transition:all 0.22s cubic-bezier(.4,0,.2,1);box-shadow:0 1px 3px rgba(0,0,0,0.3), 0 1px 0 rgba(255,255,255,0.04) inset;}
+.qob:hover:not([disabled]){border-color:rgba(243,201,105,0.3);background:rgba(255,255,255,0.08);color:var(--ink);transform:translateX(3px);box-shadow:0 4px 16px rgba(0,0,0,0.3), 0 1px 0 rgba(255,255,255,0.04) inset;}
+.qob.ok{border-color:rgba(243,201,105,0.55);background:rgba(243,201,105,0.06);color:var(--ink)}
+.qob.no{border-color:rgba(240,114,154,0.45);background:rgba(240,114,154,0.05)}
+.qob[data-opt]::before{content:attr(data-opt) " ";font-family:'JetBrains Mono',monospace;font-weight:700;color:var(--c-amber);margin-right:0.45rem;}
+.qfeed{display:none;margin-top:0.9rem;padding:1.1rem 1.25rem;border-radius:var(--r-sm);font-size:0.87rem;line-height:1.7;}
+.qfeed.correct{background:rgba(243,201,105,0.05);border:1px solid rgba(243,201,105,0.22);color:var(--ink-dim)}
+.qfeed.wrong{background:rgba(240,114,154,0.04);border:1px solid rgba(240,114,154,0.2);color:var(--ink-dim)}
+.qfeed-head{font-family:'JetBrains Mono',monospace;font-size:0.74rem;margin-bottom:0.5rem;font-weight:600;letter-spacing:0.02em;}
+.qfeed.correct .qfeed-head{color:var(--c-amber)}
+.qfeed.wrong .qfeed-head{color:var(--c-rose)}
+.qfeed-why strong{color:var(--ink);font-weight:600}
+.quiz-score{display:none;margin-top:2rem;padding:1.6rem;text-align:center;background:var(--grad-iris);border:1px solid rgba(243,201,105,0.25);border-radius:var(--r-md);}
+.quiz-score h3{font-family:'Source Serif 4',serif;font-size:2rem;font-weight:500;color:var(--ink);margin-bottom:0.4rem;}
+.quiz-score p{color:var(--ink-dim);font-size:0.95rem}
+
+footer{margin-top:6rem;padding:2.4rem 1.6rem;border-top:1px solid rgba(255,255,255,0.06);background:linear-gradient(180deg,rgba(7,9,12,0.4) 0%,var(--bg-sunk) 100%);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);}
+.footer-inner{max-width:var(--max);margin:0 auto;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:1rem;font-family:'JetBrains Mono',monospace;font-size:0.72rem;color:var(--ink-faint);}
+.footer-inner a{color:var(--ink-dim);text-decoration:none;transition:color 0.2s}
+.footer-inner a:hover{color:var(--c-amber)}
+
+@media(max-width:640px){.hero{padding:7rem 1.2rem 3rem}.content{padding:0 1.2rem 5rem}.sec{margin-bottom:4rem}}
+</style>
+<style id="meta-uniform-v1">
+/* nav flush to top, progress bar as clean top accent */
+nav{top:0!important;}
+.progress-rail{background:transparent!important;z-index:120!important;}
+.progress-fill{box-shadow:0 0 14px rgba(245,166,35,0.5)!important;}
+/* Uniform hero-meta: single row of 4 cards across all papers */
+.hero-meta{display:flex!important;flex-wrap:nowrap!important;gap:0.7rem!important;align-items:stretch!important;margin:0 0 2.2rem!important;padding:0 0 2rem!important;border-top:none!important;border-bottom:1px solid var(--line-soft)!important;max-width:100%!important;grid-template-columns:none!important;}
+.hero-meta-cell{display:flex!important;flex-direction:column!important;gap:0.3rem!important;padding:0.7rem 1rem!important;border-radius:12px!important;background:var(--surf-lo)!important;border:1px solid var(--line-soft)!important;min-width:0!important;justify-content:center!important;}
+.hero-meta-cell:nth-child(1){flex:2.4 1 0!important;}
+.hero-meta-cell:nth-child(2){flex:0.7 1 0!important;}
+.hero-meta-cell:nth-child(3){flex:1.3 1 0!important;}
+.hero-meta-cell:nth-child(4){flex:1.8 1 0!important;}
+.hero-meta-label{font-family:'JetBrains Mono',monospace!important;font-size:0.6rem!important;letter-spacing:0.18em!important;text-transform:uppercase!important;color:var(--c-amber)!important;opacity:0.8!important;}
+.hero-meta-val{font-size:0.9rem!important;color:var(--ink)!important;font-weight:500!important;line-height:1.42!important;word-break:break-word!important;}
+@media(max-width:700px){.hero-meta{flex-wrap:wrap!important;}.hero-meta-cell{flex:1 1 42%!important;}}
+</style>
+<style id="rpc-light-theme-v1">
+/* ───────────────────────────────────────────────────────────────────────
+   LIGHT THEME. The base :root above is the DARK palette (the host app forces
+   data-theme="dark" on load). This block supplies the LIGHT palette + surface
+   overrides so the navbar's theme toggle actually flips the paper. Values
+   mirror the sibling papers (e.g. roma.html) for a consistent look.
+   ─────────────────────────────────────────────────────────────────────── */
+html[data-theme="light"]{
+  --bg:#fffbf0; --bg-raise:#fffef7; --bg-raise2:#fef3d8; --bg-sunk:#fde8b8;
+  --surf:rgba(75,55,12,0.05); --surf-hi:rgba(75,55,12,0.09); --surf-lo:rgba(75,55,12,0.028);
+  --line:rgba(75,55,12,0.13); --line-soft:rgba(75,55,12,0.075); --line-hard:rgba(75,55,12,0.22);
+  --ink:#2d3748; --ink-dim:#4a5568; --ink-faint:#718096; --ink-ghost:#a0aec0;
+  --grad-head:linear-gradient(135deg,#2d3748 0%,#f3c969 58%,#67a3d9 100%);
+  --grad-card:linear-gradient(165deg,rgba(255,255,255,0.72) 0%,rgba(255,255,255,0.38) 100%);
+  --shadow-hi:0 32px 96px -20px rgba(90,65,15,0.22),0 8px 28px -8px rgba(90,65,15,0.14),0 1px 0 rgba(255,255,255,0.6) inset;
+  --shadow-md:0 16px 56px -18px rgba(90,65,15,0.18),0 2px 8px -2px rgba(90,65,15,0.08);
+  --shadow-sm:0 4px 16px -4px rgba(90,65,15,0.12),0 1px 0 rgba(255,255,255,0.5) inset;
+  color-scheme:light;
+}
+html[data-theme="light"] nav{background:rgba(255,251,238,0.9)!important;border-bottom-color:rgba(75,55,12,0.1)!important;box-shadow:0 1px 0 rgba(255,255,255,0.6) inset,0 4px 24px rgba(90,65,15,0.08)!important;}
+html[data-theme="light"] body::before{background:
+  radial-gradient(70rem 40rem at 15% -5%,rgba(243,201,105,0.16),transparent 60%),
+  radial-gradient(60rem 35rem at 95% 15%,rgba(103,163,217,0.12),transparent 65%),
+  radial-gradient(55rem 30rem at 50% 100%,rgba(163,139,250,0.1),transparent 65%)!important;}
+html[data-theme="light"] body::after{background-image:radial-gradient(circle,rgba(75,55,12,0.05) 1px,transparent 1px)!important;}
+html[data-theme="light"] ::selection{background:rgba(243,201,105,0.32)!important;color:#2d3748!important;}
+html[data-theme="light"] .nav-btn{background:rgba(255,255,255,0.5)!important;border-color:rgba(75,55,12,0.12)!important;}
+html[data-theme="light"] .engine-bar{background:linear-gradient(180deg,rgba(255,251,238,0.96) 60%,rgba(255,251,238,0) 100%)!important;}
+html[data-theme="light"] .lineage-card{background:var(--grad-card)!important;border-color:rgba(75,55,12,0.1)!important;box-shadow:var(--shadow-hi)!important;}
+html[data-theme="light"] .tabs{background:rgba(255,255,255,0.55)!important;border-color:rgba(75,55,12,0.09)!important;}
+html[data-theme="light"] .tab:hover{background:rgba(255,255,255,0.6)!important;}
+html[data-theme="light"] .tab.active{background:rgba(255,255,255,0.85)!important;}
+html[data-theme="light"] .brain-card{background:var(--grad-card)!important;border-color:rgba(75,55,12,0.1)!important;box-shadow:var(--shadow-sm)!important;}
+html[data-theme="light"] .brain-card:hover{border-color:rgba(75,55,12,0.16)!important;}
+html[data-theme="light"] .cta-btn{background:rgba(255,255,255,0.5)!important;border-color:rgba(75,55,12,0.12)!important;}
+html[data-theme="light"] .viz-frame{background:rgba(255,253,244,0.7)!important;border-color:rgba(75,55,12,0.1)!important;box-shadow:var(--shadow-md)!important;}
+html[data-theme="light"] .viz-stage{border-color:rgba(75,55,12,0.08)!important;box-shadow:0 1px 0 rgba(255,255,255,0.5) inset!important;}
+html[data-theme="light"] .callout{border-color:var(--line)!important;box-shadow:0 2px 12px rgba(90,65,15,0.05),0 1px 0 rgba(255,255,255,0.55) inset!important;}
+html[data-theme="light"] .accordion{background:rgba(255,255,255,0.48)!important;border-color:rgba(75,55,12,0.1)!important;box-shadow:0 1px 4px rgba(90,65,15,0.05),0 1px 0 rgba(255,255,255,0.65) inset!important;}
+html[data-theme="light"] .accordion:hover{border-color:rgba(75,55,12,0.18)!important;}
+html[data-theme="light"] .quiz-card{background:rgba(255,253,244,0.85)!important;border-color:rgba(75,55,12,0.11)!important;box-shadow:var(--shadow-hi)!important;}
+html[data-theme="light"] .qob{background:rgba(255,255,255,0.55)!important;border-color:rgba(75,55,12,0.11)!important;color:var(--ink-dim)!important;box-shadow:0 1px 3px rgba(90,65,15,0.05),0 1px 0 rgba(255,255,255,0.6) inset!important;}
+html[data-theme="light"] .qob:hover:not([disabled]){background:rgba(255,255,255,0.78)!important;color:var(--ink)!important;}
+html[data-theme="light"] .d-opt{background:var(--surf-lo)!important;border-color:var(--line)!important;color:var(--ink-dim)!important;}
+html[data-theme="light"] .decision{background:var(--grad-card)!important;border-color:var(--line)!important;}
+html[data-theme="light"] .pdf-wrap{background:rgba(255,253,244,0.8)!important;border-color:rgba(75,55,12,0.1)!important;}
+html[data-theme="light"] .pdf-open{background:rgba(255,255,255,0.6)!important;}
+html[data-theme="light"] footer{border-top-color:rgba(75,55,12,0.1)!important;background:linear-gradient(180deg,rgba(255,251,238,0.5) 0%,var(--bg-sunk) 100%)!important;}
+/* inline code chips authored as white-on-dark → subtle dark tint on light */
+html[data-theme="light"] .callout-body code,
+html[data-theme="light"] .acc-a code,
+html[data-theme="light"] .bs-desc code,
+html[data-theme="light"] .stack-note code,
+html[data-theme="light"] .pdf-fallback-sub code{background:rgba(45,55,72,0.07)!important;}
+/* SVG diagram fills/strokes authored for dark → keep legible on light */
+html[data-theme="light"] svg [fill^="rgba(255,255,255"]{fill:rgba(45,55,72,0.06)!important;}
+html[data-theme="light"] svg [stroke^="rgba(255,255,255"]{stroke:rgba(45,55,72,0.2)!important;}
+/* smooth cross-theme transition */
+html,body,nav,.lineage-card,.brain-card,.accordion,.callout,.viz-frame,.engine-bar,.tabs,.tab,.nav-btn,.cta-btn,.quiz-card,.qob,.hero-tag,.hero-meta-cell{transition:background .35s ease,background-color .35s ease,border-color .35s ease,color .2s ease,box-shadow .35s ease;}
+</style>
+<style id="rpc-perf-v1">
+/* PERF: neutralise live backdrop-filter blur — the dominant first-paint &
+   scroll paint cost when these papers are embedded in the app's iframe. The
+   translucent panel backgrounds remain; only the expensive real-time blur is
+   dropped. */
+*,*::before,*::after{backdrop-filter:none!important;-webkit-backdrop-filter:none!important}
+</style>
+</head><body>
+
+<nav>
+  <a class="nav-brand" href="#top">
+    <div class="nav-brand-mark"></div>
+    Research Paper
+  </a>
+  <span class="nav-cite">Zhang et al. · arXiv 2602.06025 · 2026</span>
+  <div class="nav-actions">
+    <a class="nav-btn" href="#spdf">PDF</a>
+    <a class="nav-btn" href="#squiz">Quiz</a>
+  </div>
+</nav>
+
+<section class="hero" id="top">
+  <div class="hero-inner">
+    <div class="hero-kicker">
+      <span class="dot"></span>
+      Research Paper Breakdown
+      <span class="bar"></span>
+    </div>
+
+    <h1 class="hero-title">
+      BudgetMem agent memory that <em>spends compute on demand</em>
+    </h1>
+
+    <div class="hero-meta">
+      <div class="hero-meta-cell"><span class="hero-meta-label">Authors</span><span class="hero-meta-val">Zhang · Yue · Feng · Long · Bao · Jin · Zhang · Li · You · Qin · Wang</span></div>
+      <div class="hero-meta-cell"><span class="hero-meta-label">Year</span><span class="hero-meta-val">2026</span></div>
+      <div class="hero-meta-cell"><span class="hero-meta-label">Venue</span><span class="hero-meta-val">arXiv preprint, Feb 2026</span></div>
+      <div class="hero-meta-cell"><span class="hero-meta-label">Code</span><span class="hero-meta-val">github.com/ViktorAxelsen/BudgetMem</span></div>
+    </div>
+
+    <p class="hero-abstract">
+      Most agent memory systems do their expensive work <em>offline</em> they pre-process the entire conversation history once and discard whatever doesn't seem important. But "important" is query-dependent: a fact useless for one question can be critical for another.
+      BudgetMem flips this: it does memory extraction <strong>on-demand at runtime</strong>, conditioned on the actual query, and gives every module <strong>three budget tiers</strong> (Low/Mid/High). A small reinforcement-learning-trained <strong>router</strong> decides which tier to use per module per query.
+      Easy queries route Low; hard queries route High; the cost-accuracy frontier becomes a runtime dial. Beats baselines under tight budgets across LoCoMo, LongMemEval, and HotpotQA. The router transfers from LLaMA to Qwen <em>without retraining</em>.
+    </p>
+
+    <div class="hero-tags">
+      <span class="hero-tag t-level">Level · Intermediate</span>
+      <span class="hero-tag t-topic">Agent memory</span>
+      <span class="hero-tag t-topic">Adaptive routing</span>
+      <span class="hero-tag t-topic">Cost-aware RL</span>
+      <span class="hero-tag">~22 min read</span>
+    </div>
+  </div>
+
+  <div class="hero-scroll">
+    <span>Scroll</span>
+    <div class="line"></div>
+  </div>
+</section>
+
+<div class="lineage">
+  <div class="lineage-card">
+    <span class="lineage-label">Lineage</span>
+    <div class="lineage-chain">
+      <div class="lineage-node"><span class="ln-name">RAG</span><span class="ln-year">2020</span></div>
+      <span class="lineage-arrow">→</span>
+      <div class="lineage-node"><span class="ln-name">MemGPT</span><span class="ln-year">2023</span></div>
+      <span class="lineage-arrow">→</span>
+      <div class="lineage-node"><span class="ln-name">Mem0</span><span class="ln-year">2024</span></div>
+      <span class="lineage-arrow">→</span>
+      <div class="lineage-node"><span class="ln-name">A-Mem</span><span class="ln-year">2025</span></div>
+      <span class="lineage-arrow">→</span>
+      <div class="lineage-node is-focus"><span class="ln-name">BudgetMem</span><span class="ln-year">2026</span></div>
+      <span class="lineage-arrow">→</span>
+      <div class="lineage-node"><span class="ln-name">?</span><span class="ln-year">next</span></div>
+    </div>
+  </div>
+</div>
+
+<div class="content">
+
+<section class="sec visible" id="sengine">
+  <div class="sec-head">The Research Thinking Engine</div>
+  <h2>Eight ways to <em>read</em> this paper</h2>
+  <p class="sec-lead">
+    From a 2-minute brain download on why offline memory wastes compute, to the RL-trained router's reward design,
+    to a production decision about how to deploy long-context QA on tight budgets. Pick any tab.
+  </p>
+
+  <div class="engine">
+    <div class="engine-bar">
+      <div class="tabs" role="tablist">
+        <button class="tab active" data-tab="brain" onclick="setTab('brain')"><span class="tab-glyph">⚡</span>Brain<span class="tab-dot"></span></button>
+        <button class="tab" data-tab="visual" onclick="setTab('visual')"><span class="tab-glyph">◎</span>Visual<span class="tab-dot"></span></button>
+        <button class="tab" data-tab="deep" onclick="setTab('deep')"><span class="tab-glyph">↯</span>Deep dive<span class="tab-dot"></span></button>
+        <button class="tab" data-tab="paper" onclick="setTab('paper')"><span class="tab-glyph">✎</span>The paper<span class="tab-dot"></span></button>
+        <button class="tab" data-tab="think" onclick="setTab('think')"><span class="tab-glyph">✦</span>Researcher<span class="tab-dot"></span></button>
+        <button class="tab" data-tab="reality" onclick="setTab('reality')"><span class="tab-glyph">⊛</span>Reality<span class="tab-dot"></span></button>
+        <button class="tab" data-tab="build" onclick="setTab('build')"><span class="tab-glyph">⊞</span>Build it<span class="tab-dot"></span></button>
+        <button class="tab" data-tab="notes" onclick="setTab('notes')"><span class="tab-glyph">✐</span>Notes<span class="tab-dot"></span></button>
+      </div>
+    </div>
+
+    <!-- BRAIN -->
+    <div class="layer active" id="layer-brain">
+      <div class="layer-eyebrow">2-minute brain download · the core of BudgetMem</div>
+
+      <div class="brain-grid">
+        <div class="brain-card" data-tone="problem">
+          <div class="brain-label">The problem</div>
+          <div class="brain-text">
+            Existing agent memory systems do <strong>offline, query-agnostic memory construction</strong> pre-process the whole history once, throw away "unimportant" parts. But <em>importance is query-dependent</em>. A fact useless for question A might be critical for question B. Worse: prior runtime systems that fix this incur huge overhead and offer no explicit cost control.
+          </div>
+        </div>
+        <div class="brain-card" data-tone="idea">
+          <div class="brain-label">The idea</div>
+          <div class="brain-text">
+            Build memory <strong>on demand at runtime</strong>, conditioned on the query. Structure extraction as <em>modules</em>, each offered in three budget tiers: <strong>Low</strong> (cheap), <strong>Mid</strong> (balanced), <strong>High</strong> (expensive). A lightweight <strong>RL-trained router</strong> picks tiers per module per query, balancing task reward against cost.
+          </div>
+        </div>
+        <div class="brain-card" data-tone="impact">
+          <div class="brain-label">Why it matters</div>
+          <div class="brain-text">
+            Beats baselines under tight cost budgets across <strong>LoCoMo, LongMemEval, HotpotQA</strong>. Transfers from <strong>LLaMA → Qwen without retraining</strong> the router's policy generalises across base models. Three different "tiering strategies" (implementation, reasoning, capacity) tested each useful at different budget regimes.
+          </div>
+        </div>
+      </div>
+
+      <div class="one-line">
+        <span class="one-line-label">One-line intuition</span>
+        Most memory systems are like a librarian who categorises every book the day they arrive, ignoring what readers will eventually ask.
+        BudgetMem is a librarian who waits to hear the question, then decides <em>how thoroughly to search</em> based on the question's difficulty and how much budget you've given her today.
+      </div>
+
+      <div class="cta-row">
+        <button class="cta-btn primary" onclick="setTab('visual')">Go deeper →</button>
+        <button class="cta-btn" onclick="setTab('paper')">Jump to the algorithm →</button>
+        <button class="cta-btn" onclick="setTab('build')">Skip to build it →</button>
+      </div>
+    </div>
+
+    <!-- VISUAL -->
+    <div class="layer" id="layer-visual">
+      <div class="layer-eyebrow">Interactive watch the router pick tiers per query</div>
+
+      <div class="viz-frame">
+        <div class="viz-title">BudgetMem adaptive tier routing across modules</div>
+        <div class="viz-stage">
+          <svg id="bm-svg" viewBox="0 0 860 380" xmlns="http://www.w3.org/2000/svg" style="width:100%;display:block">
+
+            <!-- Query input box -->
+            <g id="bm-query">
+              <rect x="40" y="160" width="140" height="60" rx="8" fill="rgba(243,201,105,0.1)" stroke="#f3c969" stroke-width="1.6"/>
+              <text x="110" y="180" font-family="JetBrains Mono,monospace" font-size="9" fill="#f3c969" text-anchor="middle" font-weight="700">USER QUERY</text>
+              <text id="bm-query-text" x="110" y="195" font-family="JetBrains Mono,monospace" font-size="8" fill="#b9c2cc" text-anchor="middle">"What did I order Tue?"</text>
+              <text id="bm-query-difficulty" x="110" y="208" font-family="JetBrains Mono,monospace" font-size="7" fill="#a38bfa" text-anchor="middle">(easy)</text>
+            </g>
+
+            <!-- Router -->
+            <g id="bm-router">
+              <rect x="220" y="155" width="120" height="70" rx="10" fill="rgba(163,139,250,0.08)" stroke="#a38bfa" stroke-width="1.6"/>
+              <text x="280" y="178" font-family="JetBrains Mono,monospace" font-size="9" fill="#a38bfa" text-anchor="middle" font-weight="700">ROUTER</text>
+              <text x="280" y="190" font-family="JetBrains Mono,monospace" font-size="7" fill="#b9c2cc" text-anchor="middle">RL-trained</text>
+              <text x="280" y="201" font-family="JetBrains Mono,monospace" font-size="7" fill="#b9c2cc" text-anchor="middle">policy network</text>
+              <text id="bm-router-decision" x="280" y="216" font-family="JetBrains Mono,monospace" font-size="7" fill="#f3c969" text-anchor="middle" font-weight="600">→ choose tiers</text>
+            </g>
+
+            <!-- Arrow query → router -->
+            <path d="M180,190 L218,190" stroke="#f3c969" stroke-width="1.5" fill="none" marker-end="url(#bm-arr)"/>
+            <defs>
+              <marker id="bm-arr" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+                <polygon points="0 0, 6 3, 0 6" fill="#f3c969"/>
+              </marker>
+              <marker id="bm-arr-iris" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+                <polygon points="0 0, 6 3, 0 6" fill="#a38bfa"/>
+              </marker>
+            </defs>
+
+            <!-- 3 modules: Retrieve, Filter, Extract -->
+            <!-- Module 1: Retrieve -->
+            <g id="bm-mod1">
+              <rect x="380" y="40" width="130" height="80" rx="8" fill="rgba(255,255,255,0.025)" stroke="rgba(255,255,255,0.12)" stroke-width="1.2"/>
+              <text x="445" y="60" font-family="JetBrains Mono,monospace" font-size="8.5" fill="#dedef0" text-anchor="middle" font-weight="700">RETRIEVE</text>
+              <text x="445" y="73" font-family="JetBrains Mono,monospace" font-size="7" fill="#7a8592" text-anchor="middle">candidate chunks</text>
+              <!-- Tier indicators -->
+              <rect id="bm-m1-low" x="392" y="85" width="32" height="22" rx="4" fill="rgba(94,234,212,0.08)" stroke="rgba(94,234,212,0.3)" stroke-width="1"/>
+              <text x="408" y="99" font-family="JetBrains Mono,monospace" font-size="7" fill="#5eead4" text-anchor="middle">LOW</text>
+              <rect id="bm-m1-mid" x="429" y="85" width="32" height="22" rx="4" fill="rgba(243,201,105,0.08)" stroke="rgba(243,201,105,0.3)" stroke-width="1"/>
+              <text x="445" y="99" font-family="JetBrains Mono,monospace" font-size="7" fill="#f3c969" text-anchor="middle">MID</text>
+              <rect id="bm-m1-high" x="466" y="85" width="32" height="22" rx="4" fill="rgba(240,114,154,0.08)" stroke="rgba(240,114,154,0.3)" stroke-width="1"/>
+              <text x="482" y="99" font-family="JetBrains Mono,monospace" font-size="7" fill="#f0729a" text-anchor="middle">HIGH</text>
+            </g>
+
+            <!-- Module 2: Filter -->
+            <g id="bm-mod2">
+              <rect x="380" y="150" width="130" height="80" rx="8" fill="rgba(255,255,255,0.025)" stroke="rgba(255,255,255,0.12)" stroke-width="1.2"/>
+              <text x="445" y="170" font-family="JetBrains Mono,monospace" font-size="8.5" fill="#dedef0" text-anchor="middle" font-weight="700">FILTER</text>
+              <text x="445" y="183" font-family="JetBrains Mono,monospace" font-size="7" fill="#7a8592" text-anchor="middle">drop irrelevant</text>
+              <rect id="bm-m2-low" x="392" y="195" width="32" height="22" rx="4" fill="rgba(94,234,212,0.08)" stroke="rgba(94,234,212,0.3)" stroke-width="1"/>
+              <text x="408" y="209" font-family="JetBrains Mono,monospace" font-size="7" fill="#5eead4" text-anchor="middle">LOW</text>
+              <rect id="bm-m2-mid" x="429" y="195" width="32" height="22" rx="4" fill="rgba(243,201,105,0.08)" stroke="rgba(243,201,105,0.3)" stroke-width="1"/>
+              <text x="445" y="209" font-family="JetBrains Mono,monospace" font-size="7" fill="#f3c969" text-anchor="middle">MID</text>
+              <rect id="bm-m2-high" x="466" y="195" width="32" height="22" rx="4" fill="rgba(240,114,154,0.08)" stroke="rgba(240,114,154,0.3)" stroke-width="1"/>
+              <text x="482" y="209" font-family="JetBrains Mono,monospace" font-size="7" fill="#f0729a" text-anchor="middle">HIGH</text>
+            </g>
+
+            <!-- Module 3: Extract -->
+            <g id="bm-mod3">
+              <rect x="380" y="260" width="130" height="80" rx="8" fill="rgba(255,255,255,0.025)" stroke="rgba(255,255,255,0.12)" stroke-width="1.2"/>
+              <text x="445" y="280" font-family="JetBrains Mono,monospace" font-size="8.5" fill="#dedef0" text-anchor="middle" font-weight="700">EXTRACT</text>
+              <text x="445" y="293" font-family="JetBrains Mono,monospace" font-size="7" fill="#7a8592" text-anchor="middle">distill answer evidence</text>
+              <rect id="bm-m3-low" x="392" y="305" width="32" height="22" rx="4" fill="rgba(94,234,212,0.08)" stroke="rgba(94,234,212,0.3)" stroke-width="1"/>
+              <text x="408" y="319" font-family="JetBrains Mono,monospace" font-size="7" fill="#5eead4" text-anchor="middle">LOW</text>
+              <rect id="bm-m3-mid" x="429" y="305" width="32" height="22" rx="4" fill="rgba(243,201,105,0.08)" stroke="rgba(243,201,105,0.3)" stroke-width="1"/>
+              <text x="445" y="319" font-family="JetBrains Mono,monospace" font-size="7" fill="#f3c969" text-anchor="middle">MID</text>
+              <rect id="bm-m3-high" x="466" y="305" width="32" height="22" rx="4" fill="rgba(240,114,154,0.08)" stroke="rgba(240,114,154,0.3)" stroke-width="1"/>
+              <text x="482" y="319" font-family="JetBrains Mono,monospace" font-size="7" fill="#f0729a" text-anchor="middle">HIGH</text>
+            </g>
+
+            <!-- Arrows router → modules -->
+            <path d="M340,180 L378,80" stroke="#a38bfa" stroke-width="1.2" fill="none" marker-end="url(#bm-arr-iris)" stroke-dasharray="3,2" opacity="0.4"/>
+            <path d="M340,190 L378,190" stroke="#a38bfa" stroke-width="1.2" fill="none" marker-end="url(#bm-arr-iris)" stroke-dasharray="3,2" opacity="0.4"/>
+            <path d="M340,200 L378,300" stroke="#a38bfa" stroke-width="1.2" fill="none" marker-end="url(#bm-arr-iris)" stroke-dasharray="3,2" opacity="0.4"/>
+
+            <!-- Arrows modules → answer -->
+            <g id="bm-pipe-arrows" opacity="0">
+              <path d="M510,80 Q620,150 660,170" stroke="#dedef0" stroke-width="1" fill="none" stroke-dasharray="2,2" opacity="0.5"/>
+              <path d="M510,190 L660,190" stroke="#dedef0" stroke-width="1" fill="none" stroke-dasharray="2,2" opacity="0.5"/>
+              <path d="M510,300 Q620,230 660,210" stroke="#dedef0" stroke-width="1" fill="none" stroke-dasharray="2,2" opacity="0.5"/>
+            </g>
+
+            <!-- Final answer -->
+            <g id="bm-answer" opacity="0">
+              <rect x="660" y="160" width="160" height="60" rx="8" fill="rgba(94,234,212,0.1)" stroke="#5eead4" stroke-width="1.6"/>
+              <text x="740" y="180" font-family="JetBrains Mono,monospace" font-size="9" fill="#5eead4" text-anchor="middle" font-weight="700">✓ ANSWER</text>
+              <text id="bm-answer-cost" x="740" y="195" font-family="JetBrains Mono,monospace" font-size="7" fill="#b9c2cc" text-anchor="middle">cost: 1.2K tokens</text>
+              <text id="bm-answer-acc" x="740" y="208" font-family="JetBrains Mono,monospace" font-size="7" fill="#5eead4" text-anchor="middle">F1: 0.78</text>
+            </g>
+
+            <!-- Status badge below -->
+            <g id="bm-status-badge" opacity="0">
+              <rect x="80" y="350" width="700" height="20" rx="5" fill="rgba(255,255,255,0.025)" stroke="rgba(255,255,255,0.08)" stroke-width="1"/>
+              <text id="bm-status-text" x="430" y="364" font-family="JetBrains Mono,monospace" font-size="9" fill="#f3c969" text-anchor="middle">Click ▶ to start</text>
+            </g>
+
+          </svg>
+        </div>
+
+        <div class="viz-controls">
+          <button class="viz-play" id="viz-play-btn" onclick="bmStep()">▶ Run easy query</button>
+          <button class="viz-reset" onclick="bmReset()">↺ Reset</button>
+          <span class="viz-status" id="vis-status">Click ▶ to watch the router pick tiers based on query difficulty</span>
+        </div>
+      </div>
+
+      <div class="callout k-map">
+        <div class="callout-icon">⚖</div>
+        <div class="callout-body">
+          <h4>Why per-module tier selection beats per-query model selection</h4>
+          <p>The naive alternative is "easy queries → cheap LLM, hard queries → expensive LLM" (model routing). BudgetMem's insight: <strong>different modules within the same query have different cost-quality sensitivities</strong>. For a typical question, the Retrieve module benefits from High tier (better recall pays for itself), while Filter is fine at Low (filtering has lower variance). Per-module tier picking exploits this one query might use [Retrieve:High, Filter:Low, Extract:Mid], another [Retrieve:Low, Filter:Mid, Extract:High]. Search space is 3<sup>M</sup> for M modules; the RL router learns the policy.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- DEEP DIVE -->
+    <div class="layer" id="layer-deep">
+      <div class="layer-eyebrow">Deep dive · four questions the paper makes you reconstruct</div>
+
+      <div class="accordion" onclick="toggleAcc(this)">
+        <div class="acc-q">
+          <span>Why do "offline, query-agnostic" memory systems leak information critical to specific queries?</span>
+          <span class="acc-chev">▸</span>
+        </div>
+        <div class="acc-a">
+          <div class="tldr">Importance is query-dependent. Pre-processing throws away facts that look unimportant in general but are essential for specific questions.</div>
+          <p>Consider an agent memory built from a long conversation. An offline system processes the whole history once, summarises it, and indexes the summary. Suppose the conversation included "I prefer my coffee black" the summariser may drop this as trivial.</p>
+          <p>Later, the user asks "Why didn't you remember my coffee preference?" the answer is gone. The summariser couldn't have known this would matter. The fundamental limitation: <em>any summary that fits in less than the full history necessarily discards information, and you can't predict which information will be queried</em>.</p>
+          <p>BudgetMem's runtime approach: don't pre-summarise. Keep raw chunks. When a query comes in, retrieve relevant chunks and extract just-in-time. The query conditions the extraction the same chunk gets extracted differently depending on what's being asked. Information that "wouldn't matter generally" can still be surfaced when its specific question arrives.</p>
+        </div>
+      </div>
+
+      <div class="accordion" onclick="toggleAcc(this)">
+        <div class="acc-q">
+          <span>What are the three "tiering strategies" and when does each win?</span>
+          <span class="acc-chev">▸</span>
+        </div>
+        <div class="acc-a">
+          <div class="tldr">Implementation (method complexity), Reasoning (inference behaviour), Capacity (model size). Each captures a different cost axis. Optimal mix varies by budget regime.</div>
+          <p>The paper systematically studies three orthogonal ways a module can be made cheaper or more expensive:</p>
+          <ul>
+            <li><strong>Implementation tiering:</strong> swap a complex method for a simpler one. Low = simple keyword match; Mid = BM25 retrieval; High = dense embedding + reranker. Pure algorithmic cost.</li>
+            <li><strong>Reasoning tiering:</strong> change the inference behaviour. Low = no chain-of-thought; Mid = brief CoT; High = full multi-step reasoning. Same model, different prompting.</li>
+            <li><strong>Capacity tiering:</strong> use a smaller model for cheap tiers. Low = 7B; Mid = 13B; High = 70B. Same algorithm, different model sizes.</li>
+          </ul>
+          <p>Findings: <em>Implementation tiering</em> is best at very tight budgets gains a lot of accuracy by switching from "no module" to "simple module." <em>Reasoning tiering</em> is best at mid budgets extracts more from existing models without paying for new ones. <em>Capacity tiering</em> dominates at high budgets when you can afford a 70B, it just works better. The router's job: pick across these axes per module per query.</p>
+        </div>
+      </div>
+
+      <div class="accordion" onclick="toggleAcc(this)">
+        <div class="acc-q">
+          <span>How does the RL training balance task reward vs cost?</span>
+          <span class="acc-chev">▸</span>
+        </div>
+        <div class="acc-a">
+          <div class="tldr">Cost-aware reward: $r = r_{task} - \lambda \cdot c$. The hyperparameter $\lambda$ encodes user's cost-accuracy preference. Train at one $\lambda$, deploy with another by varying it.</div>
+          <p>The router is a small policy network (compact, the paper notes). Trained with PPO or similar policy-gradient method. Reward per query: <em>task performance reward minus cost</em>, where cost is measured in compute (often tokens × per-token price).</p>
+          <div class="math-line">$r = r_{task}(answer, ground\_truth) - \lambda \cdot c(tier\_choices)$</div>
+          <p>The $\lambda$ coefficient is the cost-accuracy slider. Train at $\lambda = 1.0$ for balanced trade-off. At inference time, you can vary $\lambda$ to push the router toward cheaper or more accurate decisions per query, without retraining the LLM modules. This is how "explicit, controllable performance-cost trade-offs" work in practice.</p>
+          <p>The router is small enough to retrain quickly. The paper notes the policy is portable trained on LLaMA-based modules, it transfers to Qwen-based modules without retraining, suggesting the router learns query-difficulty patterns that generalise across base models.</p>
+        </div>
+      </div>
+
+      <div class="accordion" onclick="toggleAcc(this)">
+        <div class="acc-q">
+          <span>Why does BudgetMem beat baselines at HIGH budget too, not just tight budgets?</span>
+          <span class="acc-chev">▸</span>
+        </div>
+        <div class="acc-a">
+          <div class="tldr">On-demand extraction avoids the offline-summarisation information loss. Even with unlimited budget, query-conditioned extraction beats query-agnostic preprocessing.</div>
+          <p>You'd expect a paper about budget-tier routing to win at tight budgets and lose (or tie) at high budgets once you have unlimited compute, there's no need to "route" anything. But BudgetMem also wins in performance-first settings.</p>
+          <p>Why? The on-demand design is <em>independent of the routing mechanism</em>. Even if the router always picks High tier (budget unconstrained), BudgetMem's <strong>query-conditioned runtime extraction</strong> still beats baselines that rely on offline preprocessing. The routing is one contribution; runtime extraction is another, larger one.</p>
+          <p>This is a nice "two-for-one" framing: the paper introduces both (a) runtime memory extraction as an architecture pattern, and (b) RL-trained routing on top. They evaluate jointly but the gains decompose. Practitioners can adopt the runtime approach without the routing if they don't have RL infrastructure.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- PAPER -->
+    <div class="layer" id="layer-paper">
+      <div class="layer-eyebrow">The paper · Zhang et al. 2026, explained end-to-end</div>
+
+      <div class="paper-intro">
+        <div class="paper-intro-icon">📄</div>
+        <div class="paper-intro-body">
+          <strong>What you're about to read.</strong> Six sections walking from the offline-vs-runtime trade-off → the modular memory pipeline → the three tiering strategies → the RL router design → experiments on three benchmarks → limitations and what's next.
+        </div>
+      </div>
+
+      <div class="psec">
+        <div class="psec-head"><span class="psec-num">§1</span><span class="psec-title">Why offline memory falls short</span></div>
+        <div class="psec-body">
+          <p>The paper opens with a dichotomy in agent memory design:</p>
+          <div class="compare-row"><div class="cr-method">Offline construction</div><div class="cr-fail">Pre-process the whole history once. Store summaries / embeddings. Cheap at query time, but <em>throws away query-critical information</em> because importance is unknown at construction time.</div></div>
+          <div class="compare-row"><div class="cr-method">Runtime extraction</div><div class="cr-fail">Extract relevant memory at query time, conditioned on the question. Preserves query-critical info, but expensive and lacks explicit cost control.</div></div>
+          <div class="compare-row"><div class="cr-method">Status quo runtime systems</div><div class="cr-fail">Either resort to ad-hoc cost reduction or just throw more compute at the problem. No principled cost-quality slider.</div></div>
+          <div class="insight-box">
+            <div class="insight-label">The reframe</div>
+            <p>Treat runtime memory as a <em>budget allocation problem</em>. Each module has a cost-quality dial; the system picks each dial per query. The cost-accuracy frontier becomes a continuous, controllable surface rather than a fixed point.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="psec">
+        <div class="psec-head"><span class="psec-num">§2</span><span class="psec-title">The modular memory pipeline</span></div>
+        <div class="psec-body">
+          <p>BudgetMem structures runtime memory as a sequence of <strong>modules</strong>, each performing one well-defined operation:</p>
+          <div class="algo">
+            <div class="algo-head">Pipeline · query → answer (with intermediate states)</div>
+            <div class="algo-step"><div class="algo-code">retrieve(q, history) → candidate_chunks
+  # raw chunks possibly relevant to q</div>
+              <div class="algo-expl"><strong>Retrieve.</strong> Pull a candidate set of raw memory chunks from the chunked history. No offline preprocessing required chunks are stored as-is.</div></div>
+            <div class="algo-step hi"><div class="algo-code">filter(q, candidates) → filtered_chunks
+  # discard clearly irrelevant ones</div>
+              <div class="algo-expl"><strong>Filter.</strong> Drop chunks that clearly don't address the query. Reduces input size for downstream extraction.</div></div>
+            <div class="algo-step lp"><div class="algo-code">extract(q, filtered) → memory_evidence
+  # structured evidence supporting the answer</div>
+              <div class="algo-expl"><strong>Extract.</strong> From the filtered chunks, distil structured evidence specifically supporting (or contradicting) the answer. This is where most "intelligence" lives.</div></div>
+            <div class="algo-step ind"><div class="algo-code">answer = generate(q, memory_evidence)</div>
+              <div class="algo-expl"><strong>Generate.</strong> Final LLM call that uses the extracted evidence to produce the answer. Outside the budget-tiering scope (downstream consumer of memory).</div></div>
+          </div>
+          <p>Each module exposes the same <strong>budget-tier interface</strong>: it accepts a tier choice (Low / Mid / High) and behaves accordingly. Module interfaces are uniform; only internal implementation varies per tier.</p>
+        </div>
+      </div>
+
+      <div class="psec">
+        <div class="psec-head"><span class="psec-num">§3</span><span class="psec-title">Three tiering strategies</span></div>
+        <div class="psec-body">
+          <p>The paper studies three orthogonal axes for realising tiers. Any module can be tiered along one (or, in principle, combinations) of these axes:</p>
+          <div class="exp-grid">
+            <div class="exp-card">
+              <div class="exp-dataset">Implementation tiering</div>
+              <div class="exp-result">Vary <strong>method complexity</strong>. Low = lightweight rule-based; Mid = traditional ML (BM25, TF-IDF); High = dense embeddings + neural reranker. Same module interface, drastically different algorithmic cost.</div>
+            </div>
+            <div class="exp-card">
+              <div class="exp-dataset">Reasoning tiering</div>
+              <div class="exp-result">Vary <strong>inference behaviour</strong>. Low = direct answer, no thinking; Mid = brief CoT (few sentences); High = full multi-step reasoning with self-verification. Same model, different prompts.</div>
+            </div>
+            <div class="exp-card">
+              <div class="exp-dataset">Capacity tiering</div>
+              <div class="exp-result">Vary <strong>module model size</strong>. Low = small (7B); Mid = medium (13-30B); High = large (70B+). Same algorithm, different model classes.</div>
+            </div>
+            <div class="exp-card">
+              <div class="exp-dataset">When each wins</div>
+              <div class="exp-result">Tight budgets favour Implementation tiering (basic methods recover most performance cheaply). Mid budgets favour Reasoning. High budgets favour Capacity (big models pay off when you can afford them). The router learns this implicitly.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="psec">
+        <div class="psec-head"><span class="psec-num">§4</span><span class="psec-title">The RL-trained budget-tier router</span></div>
+        <div class="psec-body">
+          <p>The router is a <strong>compact neural policy network</strong> trained with reinforcement learning. It observes the query and intermediate states (e.g., output of upstream modules) and decides which tier to invoke next.</p>
+          <div class="algo">
+            <div class="algo-head">Algorithm · cost-aware policy training</div>
+            <div class="algo-step">
+              <div class="algo-code">for each training query q:
+  trajectory = []
+  for module m in pipeline:
+    state = (q, intermediate_outputs)
+    tier = router(state)  # Low/Mid/High
+    output = m.run(tier, ...)
+    trajectory.append((state, tier, cost(m, tier)))
+  
+  answer = generate(q, evidence)
+  r_task = reward(answer, ground_truth)
+  r_total = r_task − λ · sum(costs)
+  
+  policy_gradient_update(router, trajectory, r_total)</div>
+              <div class="algo-expl"><strong>The training loop.</strong> Each query produces a trajectory of (state, tier-choice, cost) tuples. Final reward is task performance minus weighted total cost. PPO-style updates push the policy toward tier choices that yield high task reward without overspending. The $\lambda$ coefficient is the cost-accuracy slider adjusting it at training time changes the operating point.</div></div>
+          </div>
+          <div class="example">
+            <p class="example-intro"><strong>Worked example:</strong> a hard multi-hop query like "What was the third paper my coauthor cited in chapter 4 of the doc we discussed last week?"</p>
+            <div class="ex-step"><div class="ex-num">1</div><div class="ex-body">
+              <strong>Router observes:</strong> long query with multiple resolution steps (third, chapter 4, last week). Encodes high difficulty.
+            </div></div>
+            <div class="ex-step"><div class="ex-num">2</div><div class="ex-body">
+              <strong>Router picks:</strong> [Retrieve: <em>High</em>], [Filter: <em>Mid</em>], [Extract: <em>High</em>]. Heavy investment in retrieval (need precise multi-hop chunks) and extraction (need structured reasoning over them); medium filter (cheap quality is OK).
+            </div></div>
+            <div class="ex-step"><div class="ex-num">3</div><div class="ex-body">
+              <strong>Cost:</strong> ~5K tokens. <strong>Accuracy:</strong> high. Router rewarded.
+            </div></div>
+            <div class="ex-step"><div class="ex-num">4</div><div class="ex-body">
+              <strong>Compare:</strong> easy query "what's my coffee order?" gets [Low, Low, Low] → 0.4K tokens, equally accurate. Router learns to discriminate based on query embedding + difficulty signals.
+            </div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="psec">
+        <div class="psec-head"><span class="psec-num">§5</span><span class="psec-title">Experiments three benchmarks, transferable router</span></div>
+        <div class="psec-body">
+          <p>BudgetMem is evaluated on three long-context QA benchmarks chosen to stress different memory properties.</p>
+          <div class="exp-grid">
+            <div class="exp-card">
+              <div class="exp-dataset">LoCoMo (long conversation)</div>
+              <div class="exp-result">Multi-session dialogues. Tests retention across many turns. Shorter histories where cost gap to baselines is smaller (less to save), but BudgetMem still wins on quality.</div>
+            </div>
+            <div class="exp-card">
+              <div class="exp-dataset">LongMemEval</div>
+              <div class="exp-result">Long-term memory evaluation with diverse query types. The on-demand design's strongest setting query-critical info in long history that offline systems would lose.</div>
+            </div>
+            <div class="exp-card">
+              <div class="exp-dataset">HotpotQA (multi-hop)</div>
+              <div class="exp-result">Multi-document multi-hop QA. Tests whether the router correctly invests in heavy extraction for genuinely hard questions while staying cheap on easy lookups.</div>
+            </div>
+            <div class="exp-card">
+              <div class="exp-dataset">Cross-model transfer</div>
+              <div class="exp-result">Router trained on LLaMA-based modules, deployed with Qwen-based modules works without retraining. The policy generalises beyond a single base LLM, which is unusual and a strong practical signal.</div>
+            </div>
+          </div>
+          <div class="insight-box">
+            <div class="insight-label">The metric to watch</div>
+            <p>The paper reports F1, LLM-as-a-judge, and cost (tokens). The right way to read the results is the <strong>cost-accuracy frontier</strong>: at any budget level, is BudgetMem above the baselines? Yes, across all three benchmarks. At the tightest budgets the gap is largest that's where router benefit dominates.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="psec">
+        <div class="psec-head"><span class="psec-num">§6</span><span class="psec-title">Limitations and what's next</span></div>
+        <div class="psec-body">
+          <div class="limit-row"><div class="limit-title">Tier set is fixed at 3</div>
+          <div class="limit-text">Three tiers (Low/Mid/High) is a design choice, not a fundamental constraint. More tiers might give finer cost-quality control but increase router action space and training difficulty. Future work could explore continuous tier interpolation.</div></div>
+          <div class="limit-row"><div class="limit-title">RL training requires task-reward labels</div>
+          <div class="limit-text">The router needs ground-truth answers to compute task reward during training. For domains without labelled QA data, you can't train. LLM-as-a-judge can substitute imperfectly but adds noise to the gradient.</div></div>
+          <div class="limit-row"><div class="limit-title">Modules must share interfaces</div>
+          <div class="limit-text">All Low/Mid/High implementations of a module must accept the same input and produce the same output type. Engineering discipline required. Mixing libraries with different interfaces requires adapter glue.</div></div>
+          <div class="limit-row"><div class="limit-title">No support for combinatorial tiering across axes</div>
+          <div class="limit-text">The paper studies implementation, reasoning, capacity tiering as separate strategies. A genuine combinatorial search ("Low-implementation × Mid-reasoning × High-capacity") explodes the action space left for future work.</div></div>
+          <div class="limit-row"><div class="limit-title">Router latency adds to wall-clock</div>
+          <div class="limit-text">Even though the router is "lightweight," it's a forward pass per module per query. For very latency-sensitive deployments, the routing overhead matters. The paper doesn't deeply analyse latency trade-offs vs token cost.</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- THINK -->
+    <div class="layer" id="layer-think">
+      <div class="layer-eyebrow">Think like a researcher · where this leads</div>
+
+      <div class="accordion" onclick="toggleAcc(this)">
+        <div class="acc-q"><span>What does "the router transfers from LLaMA to Qwen without retraining" tell you?</span><span class="acc-chev">▸</span></div>
+        <div class="acc-a">
+          <div class="tldr">The router learns query-difficulty patterns that are mostly base-model-invariant. Strong evidence the routing problem is more about queries than about models.</div>
+          <p>If the router were learning model-specific quirks ("LLaMA is good at X, so route X to High when LLaMA module is involved"), transferring to Qwen would break it. The fact that it transfers means the router is mostly learning <em>query-side features</em> (difficulty, topic, length, hop count) rather than module-side features.</p>
+          <p>This is great for production: train the router once, swap underlying LLMs as needed (cost optimisations, model upgrades) without retraining. The router becomes a stable infrastructure layer above changing model providers.</p>
+          <p>It also suggests a bigger principle: <em>query-difficulty estimation</em> is a model-agnostic problem that LLMs (or small classifiers) can learn. This connects to broader work on adaptive inference (Budget-Aware Agentic Routing, etc.).</p>
+        </div>
+      </div>
+
+      <div class="accordion" onclick="toggleAcc(this)">
+        <div class="acc-q"><span>Three attack points where BudgetMem can be improved</span><span class="acc-chev">▸</span></div>
+        <div class="acc-a">
+          <div class="tldr">Continuous tier interpolation, multi-axis tiering, online (no-label) training.</div>
+          <p><strong>1. Continuous tier interpolation.</strong> Instead of discrete Low/Mid/High, let the router output a continuous "effort" scalar that smoothly interpolates between cheap and expensive behaviour. Easier exploration; finer control. Tricky to design module implementations need to support continuous knobs.</p>
+          <p><strong>2. Multi-axis combinatorial tiering.</strong> Allow the router to pick (implementation, reasoning, capacity) jointly per module. Action space goes from 3 to 27 per module but unlocks new operating points. Need a curriculum or factored policy to make training tractable.</p>
+          <p><strong>3. Online RL without ground-truth labels.</strong> For deployments without labelled QA data, train the router from <em>downstream signals</em> (user thumbs up/down, repeat queries, follow-up questions). Hard but practically critical for non-benchmark deployments. Connects to the broader RLHF / RLAIF literature.</p>
+        </div>
+      </div>
+
+      <div class="accordion" onclick="toggleAcc(this)">
+        <div class="acc-q"><span>Where does BudgetMem sit relative to model routing (cheap vs expensive LLM)?</span><span class="acc-chev">▸</span></div>
+        <div class="acc-a">
+          <div class="tldr">Complementary and orthogonal. Model routing picks the LLM for the task; BudgetMem picks tier for the memory pipeline. Use both.</div>
+          <p>Concurrent work like "Budget-Aware Agentic Routing" (arXiv 2602.21227) addresses model routing at each step, pick a cheap or expensive LLM. BudgetMem addresses module routing within memory extraction, pick cheap or expensive implementation.</p>
+          <p>These are <em>orthogonal axes</em>. A production agent stack can have both: model router decides "this turn uses Claude vs DeepSeek;" BudgetMem decides "the memory module runs at Mid tier this query." Together they form a 2D cost-quality optimisation. Neither subsumes the other.</p>
+          <p>The combined system is the obvious next paper. Expect it within months.</p>
+        </div>
+      </div>
+
+      <div class="sub-head">Interactive decision</div>
+      <div class="decision">
+        <div class="decision-stem">
+          You're shipping a customer-support agent that answers questions about long support history per customer. Average history: 10K tokens. Token budget: $0.05 per query. Latency target: under 3 seconds. Which memory architecture?
+        </div>
+        <input type="hidden" id="decided-d1" value="0">
+        <div class="decision-opts">
+          <button class="d-opt dopt-d1" onclick="decide('d1',0)">Stuff full history into the context every query simplest, max accuracy</button>
+          <button class="d-opt dopt-d1" onclick="decide('d1',1)">Offline summarise history once into a compact memory; query summary at runtime</button>
+          <button class="d-opt dopt-d1" onclick="decide('d1',2)">BudgetMem with router tuned to the latency-cost target</button>
+          <button class="d-opt dopt-d1" onclick="decide('d1',3)">Pure RAG vector index over chunks, no router, fixed top-K retrieval</button>
+        </div>
+        <div class="d-reveal" id="drev-d1"></div>
+      </div>
+
+      <div class="sub-head">Why this paper might mislead in production</div>
+      <div class="failure-box">
+        <div class="fb-title">Pitfall: λ tuning is the real product surface</div>
+        <div class="fb-text"><strong>Real case:</strong> a team adopts BudgetMem expecting auto-magical cost-quality balance. They train the router at $\lambda = 1.0$ (paper default) and ship. In production, hard queries get over-budget while easy queries are over-served neither customer happy. <strong>Root cause:</strong> the chosen $\lambda$ doesn't match their actual cost preference. <strong>Fix:</strong> treat $\lambda$ as a tunable per-product hyperparameter. Estimate the user's cost-accuracy curve from analytics; pick $\lambda$ on a Pareto frontier of (accuracy, cost) reasonable for your business.</div>
+      </div>
+      <div class="failure-box">
+        <div class="fb-title">Pitfall: routing overhead at scale</div>
+        <div class="fb-text"><strong>Real case:</strong> shopping-search agent does ~50 queries per user session. With 3 modules per query and a router forward pass per module, that's 150 router calls per session. Even at 50ms per call → 7.5s of router latency on top of the LLM cost. <strong>Root cause:</strong> the "lightweight" router isn't latency-free. <strong>Fix:</strong> batch router decisions when possible, use a smaller policy network, or skip the router on identified easy queries via cached previous decisions.</div>
+      </div>
+    </div>
+
+    <!-- REALITY -->
+    <div class="layer" id="layer-reality">
+      <div class="layer-eyebrow">Reality check · when to use BudgetMem</div>
+
+      <div class="reality">
+        <div class="rgl">
+          <div class="rg-title">Where it shines</div>
+          <div class="rg-li">Long-context QA where history exceeds context window</div>
+          <div class="rg-li">Cost-sensitive deployments with explicit budget constraints</div>
+          <div class="rg-li">Mixed query difficulty (some easy lookups, some hard multi-hop)</div>
+          <div class="rg-li">Multi-tenant systems where per-tenant cost matters</div>
+          <div class="rg-li">When you have ground-truth QA pairs for router training</div>
+        </div>
+        <div class="rgr">
+          <div class="rg-title">Where it's overkill or wrong</div>
+          <div class="rg-li">Short context that fits comfortably (no memory needed)</div>
+          <div class="rg-li">Uniform query difficulty (router has nothing to discriminate on)</div>
+          <div class="rg-li">No labelled training data (can't compute task reward)</div>
+          <div class="rg-li">Strict sub-second latency requirements (router overhead matters)</div>
+          <div class="rg-li">Static workloads where offline summarisation is good enough</div>
+        </div>
+      </div>
+
+      <table class="cmp-table">
+        <thead><tr><th>Approach</th><th>Setup cost</th><th>Per-query cost</th><th>Quality at low budget</th><th>Quality at high budget</th><th>Cost control</th></tr></thead>
+        <tbody>
+          <tr><td>Full context</td><td class="td-good">None</td><td class="td-bad">Very high</td><td> </td><td class="td-good">Best</td><td class="td-bad">None</td></tr>
+          <tr><td>Offline summary</td><td class="td-bad">High (offline)</td><td class="td-good">Low</td><td class="td-bad">Mediocre</td><td>Mediocre</td><td>Implicit (summary size)</td></tr>
+          <tr><td>Vanilla RAG</td><td>Medium</td><td>Medium</td><td>OK</td><td>OK</td><td class="td-bad">None</td></tr>
+          <tr><td>Runtime extraction (no router)</td><td class="td-good">None</td><td class="td-bad">High</td><td class="td-bad">Same as high</td><td class="td-good">Good</td><td class="td-bad">None</td></tr>
+          <tr><td><strong>BudgetMem</strong></td><td>Medium (router training)</td><td>Adaptive</td><td class="td-good">Best</td><td class="td-good">Best</td><td class="td-good">Explicit (λ slider)</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- BUILD -->
+    <div class="layer" id="layer-build">
+      <div class="layer-eyebrow">Build it · five steps to BudgetMem in production</div>
+
+      <div class="build-step">
+        <div class="bs-num">1</div>
+        <div class="bs-body">
+          <div class="bs-title">Start by building the on-demand pipeline (no router yet)</div>
+          <div class="bs-desc">Implement Retrieve / Filter / Extract as separate modules with clean interfaces. Always run at the same tier (e.g., Mid) initially. Verify quality matches or beats your offline-summary baseline. The runtime architecture alone is most of the win get this working before adding routing.</div>
+        </div>
+      </div>
+      <div class="build-step">
+        <div class="bs-num">2</div>
+        <div class="bs-body">
+          <div class="bs-title">Implement Low/Mid/High tiers per module</div>
+          <div class="bs-desc">For each module, decide which tiering axis fits: Implementation (good for Filter), Reasoning (good for Extract), Capacity (good for any LLM-bound module). Hardcode tier names; benchmark each tier's cost and quality independently. You'll need this data for router training rewards.</div>
+          <div class="bs-skip">implementing all three tiering axes pick the one that fits each module best</div>
+        </div>
+      </div>
+      <div class="build-step">
+        <div class="bs-num">3</div>
+        <div class="bs-body">
+          <div class="bs-title">Train the router with PPO and labelled queries</div>
+          <div class="bs-desc">Need ~5K labelled QA pairs from your domain. Router input: query embedding + intermediate state features. Output: tier per module. Reward: <code>F1 − λ × tokens</code>. Train at multiple λ values; you'll deploy at the operating point matching your business.</div>
+        </div>
+      </div>
+      <div class="build-step">
+        <div class="bs-num">4</div>
+        <div class="bs-body">
+          <div class="bs-title">Pick the deployment λ from a cost-quality Pareto sweep</div>
+          <div class="bs-desc">Run the router at λ ∈ {0.1, 0.5, 1.0, 2.0, 5.0} on validation set. Plot cost vs F1. The "elbow" is your sweet spot. For a $0.05/query budget, find the λ that hits average cost just under $0.05 and pick that for production.</div>
+        </div>
+      </div>
+      <div class="build-step">
+        <div class="bs-num">5</div>
+        <div class="bs-body">
+          <div class="bs-title">Monitor router decisions; A/B vs always-Mid</div>
+          <div class="bs-desc">In production, log every router decision (tier per module per query). Build a dashboard showing tier distribution. Compare router-driven against fixed-Mid in an A/B. If gains are within 1-2%, you might not need the router fixed-Mid is simpler.</div>
+        </div>
+      </div>
+
+      <div class="idea-grid">
+        <div class="idea-card ic-a">
+          <div class="ic-label">Research idea</div>
+          <div class="ic-text">Multi-axis tiering: train one router that picks (implementation, reasoning, capacity) jointly. Action space goes from 3 to 27 per module. Use a factored policy (one head per axis) to keep training tractable. Could unlock new cost-accuracy operating points.</div>
+        </div>
+        <div class="idea-card ic-b">
+          <div class="ic-label">Startup idea</div>
+          <div class="ic-text">"Cost-aware AI orchestration" platform: takes any agent pipeline, instruments it with module-level tiers, trains a router on the customer's QA data, ships a budget-controlled deployment. Sells to enterprises with strict per-query cost ceilings.</div>
+        </div>
+        <div class="idea-card ic-c">
+          <div class="ic-label">1-line improvement</div>
+          <div class="ic-text">Cache router decisions keyed by (query embedding hash, module). Many queries are similar; reuse decisions across them. Cuts router latency to ~0 for cache hits. Especially valuable for high-traffic deployments with repeated query patterns.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- NOTES -->
+    <div class="layer" id="layer-notes">
+      <div class="layer-eyebrow">My research brain · your own thinking goes here</div>
+      <textarea class="notes-area" id="notes-input" placeholder="What did you understand? What would you change? What confused you? Write it here this is YOUR thinking."></textarea>
+      <div style="display:flex;align-items:center;gap:0.8rem;flex-wrap:wrap">
+        <button class="cta-btn primary" onclick="saveNote()">Save insight</button>
+        <span id="save-msg" style="font-family:'JetBrains Mono',monospace;font-size:0.72rem;color:var(--ink-faint)"></span>
+      </div>
+      <div id="notes-list"></div>
+      <div class="progress-panel">
+        <div class="progress-panel-title">Your reading progress across the eight layers</div>
+        <div class="prog-row"><div class="prog-name">⚡ Brain</div><div class="prog-bar"><div class="prog-fill" id="pg-brain"></div></div><div class="prog-pct" id="pv-brain">0%</div></div>
+        <div class="prog-row"><div class="prog-name">◎ Visual</div><div class="prog-bar"><div class="prog-fill" id="pg-visual"></div></div><div class="prog-pct" id="pv-visual">0%</div></div>
+        <div class="prog-row"><div class="prog-name">↯ Deep dive</div><div class="prog-bar"><div class="prog-fill" id="pg-deep"></div></div><div class="prog-pct" id="pv-deep">0%</div></div>
+        <div class="prog-row"><div class="prog-name">✎ The paper</div><div class="prog-bar"><div class="prog-fill" id="pg-paper"></div></div><div class="prog-pct" id="pv-paper">0%</div></div>
+        <div class="prog-row"><div class="prog-name">✦ Researcher</div><div class="prog-bar"><div class="prog-fill" id="pg-think"></div></div><div class="prog-pct" id="pv-think">0%</div></div>
+        <div class="prog-row"><div class="prog-name">⊛ Reality</div><div class="prog-bar"><div class="prog-fill" id="pg-reality"></div></div><div class="prog-pct" id="pv-reality">0%</div></div>
+        <div class="prog-row"><div class="prog-name">⊞ Build it</div><div class="prog-bar"><div class="prog-fill" id="pg-build"></div></div><div class="prog-pct" id="pv-build">0%</div></div>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<!-- PDF -->
+<section class="sec" id="spdf">
+  <div class="sec-head">The original paper</div>
+  <h2>Read the <em>source</em> alongside</h2>
+  <p class="sec-lead">Keep the PDF open in a split view the "Deep dive" and "Researcher" tabs interrogate what you find in the source.</p>
+  <div class="pdf-wrap">
+    <div class="pdf-head">
+      <span class="pdf-title">↗ Original · BudgetMem · arXiv 2602.06025 · 2026</span>
+      <a class="pdf-open" href="https://arxiv.org/pdf/2602.06025" target="_blank" rel="noopener">Open in new tab ↗</a>
+    </div>
+    <iframe id="paper-frame" class="pdf-frame" src="https://arxiv.org/pdf/2602.06025" data-pdf-src="https://arxiv.org/pdf/2602.06025" title="BudgetMem paper Zhang et al. 2026"></iframe>
+    <div id="paper-fallback" class="pdf-fallback" style="display:none">
+      <div class="pdf-fallback-icon">📄</div>
+      <div class="pdf-fallback-title">The paper PDF isn't loaded alongside this file.</div>
+      <div class="pdf-fallback-sub">Place <code>budgetmem_paper.pdf</code> in the same folder as this HTML and reload. Or open directly:</div>
+      <div class="pdf-fallback-actions">
+        <a class="pc-action primary" href="https://arxiv.org/pdf/2602.06025" target="_blank" rel="noopener"><span class="pc-action-icon">↗</span><span class="pc-action-body"><span class="pc-action-title">Open paper (arXiv)</span><span class="pc-action-sub">2602.06025 · Feb 2026</span></span></a>
+        <a class="pc-action" href="https://github.com/ViktorAxelsen/BudgetMem" target="_blank" rel="noopener"><span class="pc-action-icon">◆</span><span class="pc-action-body"><span class="pc-action-title">GitHub BudgetMem code</span><span class="pc-action-sub">official implementation</span></span></a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- QUIZ -->
+<section class="sec" id="squiz">
+  <div class="sec-head">Assessment · eight deep questions</div>
+  <h2>Research <em>mastery</em> quiz</h2>
+  <p class="sec-lead">On-demand vs offline memory, the three tiering strategies, RL training with cost-aware reward, and when BudgetMem helps vs hurts.</p>
+  <div class="quiz-card">
+    <div class="quiz-title">BudgetMem mastery adaptive memory under explicit budgets</div>
+    <div class="quiz-sub">8 questions · aim for 6+ correct</div>
+    <div class="qprog"><div class="qprog-bar"><div class="qprog-fill"></div></div><div class="qprog-text">0/8 answered</div></div>
+
+    <div class="qq"><div class="qnum">Question 1 of 8 · Why on-demand</div>
+      <h4>Why does the paper argue that "offline, query-agnostic" memory construction discards query-critical information?</h4>
+      <div class="qo">
+        <button class="qob" data-opt="A" onclick="cq(this,0,false)">Offline systems use weaker models that produce lower-quality summaries.</button>
+        <button class="qob" data-opt="B" onclick="cq(this,0,true)"><strong>Importance is query-dependent.</strong> Any summary fits less than the full history, so it must discard information. Without knowing what queries will eventually be asked, the summariser drops facts that look unimportant <em>in general</em> but might be critical for <em>specific</em> queries. A throwaway statement like "I prefer my coffee black" looks trivial during summarisation but matters when later asked "remind me of my coffee preference." On-demand extraction keeps raw chunks and conditions extraction on the actual query, surfacing whatever the question needs.</button>
+        <button class="qob" data-opt="C" onclick="cq(this,0,false)">Offline systems can't handle multi-modal input, so they lose visual cues.</button>
+        <button class="qob" data-opt="D" onclick="cq(this,0,false)">Offline construction has higher latency than runtime, so it's slower overall.</button>
+      </div>
+      <div class="qfeed"><div class="qfeed-head"></div><div class="qfeed-why"><strong>Core insight:</strong> the limitation is fundamental, not a quality issue. Compressing without knowing future queries necessarily loses information. The on-demand design moves the extraction decision to the moment when the query exists.</div></div>
+    </div>
+
+    <div class="qq"><div class="qnum">Question 2 of 8 · Three tiering strategies</div>
+      <h4>Match each tiering strategy to its dominant cost axis:</h4>
+      <div class="qo">
+        <button class="qob" data-opt="A" onclick="cq(this,1,false)">Implementation = model size; Reasoning = inference behaviour; Capacity = method complexity.</button>
+        <button class="qob" data-opt="B" onclick="cq(this,1,true)"><strong>Implementation = method complexity</strong> (e.g., keyword match → BM25 → dense + reranker). <strong>Reasoning = inference behaviour</strong> (no CoT → brief CoT → full multi-step). <strong>Capacity = module model size</strong> (7B → 13B → 70B). Each captures a different cost source. Implementation tiering wins at very tight budgets (basic methods recover most performance cheaply); Reasoning at mid budgets (extract more from existing models); Capacity at high budgets (big models pay off when affordable).</button>
+        <button class="qob" data-opt="C" onclick="cq(this,1,false)">All three are the same axis with different names they all measure compute.</button>
+        <button class="qob" data-opt="D" onclick="cq(this,1,false)">Implementation = which database; Reasoning = number of retries; Capacity = batch size.</button>
+      </div>
+      <div class="qfeed"><div class="qfeed-head"></div><div class="qfeed-why"><strong>Why three axes:</strong> they're orthogonal you can vary one while holding the others fixed. The router learns which axis to dial under different budget regimes.</div></div>
+    </div>
+
+    <div class="qq"><div class="qnum">Question 3 of 8 · The cost-aware reward</div>
+      <h4>The router is trained with a reward $r = r_{task} - \lambda \cdot c$. What does $\lambda$ encode and why does it matter at inference time?</h4>
+      <div class="qo">
+        <button class="qob" data-opt="A" onclick="cq(this,2,false)">$\lambda$ is the learning rate for the policy network irrelevant at inference.</button>
+        <button class="qob" data-opt="B" onclick="cq(this,2,true)"><strong>$\lambda$ is the cost-accuracy trade-off slider.</strong> High $\lambda$ → router prioritises cheap tier choices (penalises cost heavily); low $\lambda$ → router prioritises task accuracy (almost ignores cost). At inference, varying $\lambda$ moves the operating point along the cost-accuracy frontier <em>without retraining the LLM modules</em>. This is the "explicit, controllable performance-cost trade-offs" the paper promises pick $\lambda$ per deployment based on your budget.</button>
+        <button class="qob" data-opt="C" onclick="cq(this,2,false)">$\lambda$ is the discount factor for future rewards fixed at 0.99 by convention.</button>
+        <button class="qob" data-opt="D" onclick="cq(this,2,false)">$\lambda$ is the regularisation strength only matters during training.</button>
+      </div>
+      <div class="qfeed"><div class="qfeed-head"></div><div class="qfeed-why"><strong>Operationally:</strong> train router at multiple $\lambda$ values, deploy at the one matching your business cost-accuracy preference. The slider is a product surface surface it to the operator if their cost preferences vary.</div></div>
+    </div>
+
+    <div class="qq"><div class="qnum">Question 4 of 8 · Cross-model transfer</div>
+      <h4>The router trained on LLaMA-based modules works on Qwen-based modules without retraining. What does this tell you about what the router learned?</h4>
+      <div class="qo">
+        <button class="qob" data-opt="A" onclick="cq(this,3,false)">The router memorised LLaMA-specific quirks Qwen happens to share them by coincidence.</button>
+        <button class="qob" data-opt="B" onclick="cq(this,3,true)"><strong>The router learned mostly query-side features</strong> (difficulty, topic, length, hop count) rather than module/model-side features. If it had learned model-specific behaviour, swapping the base LLM would break the policy. Cross-model transfer means the routing problem is largely about <em>what the query needs</em>, not about <em>what the LLM is good at</em>. This is great for production: train router once, swap LLMs freely. Suggests query-difficulty estimation is a model-agnostic problem.</button>
+        <button class="qob" data-opt="C" onclick="cq(this,3,false)">Both LLaMA and Qwen output the same number of tokens, so the router can't tell them apart.</button>
+        <button class="qob" data-opt="D" onclick="cq(this,3,false)">The router secretly retrained itself during inference via online learning.</button>
+      </div>
+      <div class="qfeed"><div class="qfeed-head"></div><div class="qfeed-why"><strong>The infrastructure implication:</strong> the router becomes a stable layer above changing LLM providers. You can refresh the underlying LLMs without retraining the router. Connect this to the broader trend of "adaptive inference" research.</div></div>
+    </div>
+
+    <div class="qq"><div class="qnum">Question 5 of 8 · Why win at high budget</div>
+      <h4>You'd expect a budget-routing paper to win only at tight budgets. Why does BudgetMem also win at HIGH budgets?</h4>
+      <div class="qo">
+        <button class="qob" data-opt="A" onclick="cq(this,4,false)">The router learns to deliberately over-spend to game the metric.</button>
+        <button class="qob" data-opt="B" onclick="cq(this,4,true)"><strong>On-demand runtime extraction is independent of routing.</strong> Even if the router always picks High tier (no budget constraint), BudgetMem's <em>query-conditioned runtime extraction</em> still beats baselines that pre-process offline. Offline summarisation discards information the query needs; runtime extraction surfaces it. Two separate contributions: (a) on-demand architecture (wins at any budget) and (b) RL routing (extra wins at tight budgets). Practitioners can adopt the architecture without the routing if they don't have RL infrastructure.</button>
+        <button class="qob" data-opt="C" onclick="cq(this,4,false)">High budget means more compute available for router training, which transfers to inference.</button>
+        <button class="qob" data-opt="D" onclick="cq(this,4,false)">The baselines secretly use lower-quality models, so any method beats them.</button>
+      </div>
+      <div class="qfeed"><div class="qfeed-head"></div><div class="qfeed-why"><strong>The two-for-one framing:</strong> the architecture and the routing are separable. Always-Mid BudgetMem (no router) is a simpler baseline that already beats offline systems; the router pushes further. Decompose contributions when reading any composite paper.</div></div>
+    </div>
+
+    <div class="qq"><div class="qnum">Question 6 of 8 · When NOT to use BudgetMem</div>
+      <h4>For which scenario would BudgetMem be the WRONG choice?</h4>
+      <div class="qo">
+        <button class="qob" data-opt="A" onclick="cq(this,5,false)">Customer support agent with long conversation histories per customer.</button>
+        <button class="qob" data-opt="B" onclick="cq(this,5,false)">Multi-document research assistant with mixed query difficulty.</button>
+        <button class="qob" data-opt="C" onclick="cq(this,5,true)"><strong>A short-context chatbot where every conversation fits comfortably in 8K tokens.</strong> No memory needed → no extraction modules to tier → router has nothing to learn. The whole architecture exists for situations where history exceeds what fits in context. For short context, just stuff the whole history into the prompt simplest and best. BudgetMem's overhead (router latency, tier infrastructure) only pays off when memory extraction is genuinely needed.</button>
+        <button class="qob" data-opt="D" onclick="cq(this,5,false)">Cost-sensitive RAG over a large enterprise document corpus.</button>
+      </div>
+      <div class="qfeed"><div class="qfeed-head"></div><div class="qfeed-why"><strong>Right tool, right problem:</strong> BudgetMem solves a specific problem (long context with budget constraints). Don't apply it where the problem doesn't exist. A, B, D all genuinely have memory pressure; C doesn't.</div></div>
+    </div>
+
+    <div class="qq"><div class="qnum">Question 7 of 8 · The training data requirement</div>
+      <h4>You want to deploy BudgetMem on a domain (legal contract review) where you have NO labelled QA pairs. What's your best option?</h4>
+      <div class="qo">
+        <button class="qob" data-opt="A" onclick="cq(this,6,false)">Use BudgetMem with a randomly initialised router RL will learn online.</button>
+        <button class="qob" data-opt="B" onclick="cq(this,6,true)"><strong>Use BudgetMem's on-demand architecture without RL routing fix all modules at Mid tier.</strong> The architecture (runtime extraction) doesn't need labels only the router does. You get most of the gain (beating offline systems) without the router training requirement. Alternatively, use LLM-as-a-judge to generate noisy labels for router training, but expect lower router quality. The cleanest fallback is fixed-Mid; revisit RL routing once you have labelled data.</button>
+        <button class="qob" data-opt="C" onclick="cq(this,6,false)">Skip BudgetMem entirely and use vanilla RAG.</button>
+        <button class="qob" data-opt="D" onclick="cq(this,6,false)">Generate fake QA pairs by prompting GPT-4 train the router on those.</button>
+      </div>
+      <div class="qfeed"><div class="qfeed-head"></div><div class="qfeed-why"><strong>Decompose the contributions:</strong> BudgetMem = on-demand architecture + RL router. The architecture works without labels. The router needs them. When labels are unavailable, take just the architecture half.</div></div>
+    </div>
+
+    <div class="qq"><div class="qnum">Question 8 of 8 · The big-picture trend</div>
+      <h4>BudgetMem is part of a broader 2026 trend in agent infrastructure. Which one?</h4>
+      <div class="qo">
+        <button class="qob" data-opt="A" onclick="cq(this,7,false)">Replacing LLMs entirely with smaller specialised models.</button>
+        <button class="qob" data-opt="B" onclick="cq(this,7,false)">Pre-training agents from scratch on agentic task data.</button>
+        <button class="qob" data-opt="C" onclick="cq(this,7,true)"><strong>Adaptive inference making compute decisions per-query rather than fixed.</strong> Sister papers like "Budget-Aware Agentic Routing" (model-level) and "MIRA" (memory-guided RL) all attack the same theme: <em>compute should be a function of query difficulty, not a fixed parameter</em>. Easy queries get cheap inference; hard queries get expensive inference. BudgetMem applies this principle to memory modules; model-routing papers apply it to LLM choice. The unifying insight: agents waste compute by treating every query identically.</button>
+        <button class="qob" data-opt="D" onclick="cq(this,7,false)">Replacing reinforcement learning with imitation learning everywhere.</button>
+      </div>
+      <div class="qfeed"><div class="qfeed-head"></div><div class="qfeed-why"><strong>The meta-trend:</strong> 2026 agent papers are increasingly about <em>adaptive compute allocation</em>. Watch for the next composition: BudgetMem (memory) × Budget-Aware Routing (model) → fully adaptive agent stack. The combined system will be the obvious next paper.</div></div>
+    </div>
+
+    <div class="quiz-score" id="quiz-score"><h3 id="qscore-num">0/8 correct</h3><p id="qscore-msg"></p></div>
+  </div>
+</section>
+</div>
+
+<footer>
+  <div class="footer-inner">
+    <span>Research paper breakdown</span>
+    <span>Zhang et al. · arXiv 2602.06025 · 2026 · <a href="https://arxiv.org/pdf/2602.06025" target="_blank">download PDF</a></span>
+  </div>
+</footer>
+
+<script>
+var obs=new IntersectionObserver(function(entries){entries.forEach(function(e){if(e.isIntersecting)e.target.classList.add('visible');});},{threshold:0.08});document.querySelectorAll('.sec').forEach(function(s){obs.observe(s);});
+
+var visited={brain:true};
+function setTab(id){document.querySelectorAll('.layer').forEach(function(l){l.classList.remove('active');});var tgt=document.getElementById('layer-'+id);if(tgt)tgt.classList.add('active');document.querySelectorAll('.tab').forEach(function(t){t.classList.remove('active');});var btn=document.querySelector('.tab[data-tab="'+id+'"]');if(btn){btn.classList.add('active');btn.classList.add('visited');}visited[id]=true;updateLayerProgress();if(window.renderMathInElement){try{renderMathInElement(tgt,{delimiters:[{left:'$$',right:'$$',display:true},{left:'$',right:'$',display:false}],throwOnError:false});}catch(e){}}}
+function toggleAcc(el){el.classList.toggle('open');}
+
+var decisionData={d1:{correct:2,explanations:['Stuffing 10K tokens per query at $0.05 budget won\'t fit. Frontier model input pricing alone exceeds budget. Also slow.','Offline summary loses query-critical information. Customer asks about a subtle detail buried in turn 27 of conversation 3 → summary won\'t have it. Common production failure mode.','Correct. BudgetMem with a router tuned to your latency-cost target. On-demand extraction surfaces the right history per query; router picks cheap tiers for easy lookups (status check) and expensive tiers for genuinely hard ones (refund eligibility). Pareto-optimal for your constraints.','Vanilla RAG with fixed top-K is simpler but doesn\'t adapt: easy queries waste budget retrieving more than needed; hard queries don\'t retrieve enough. Falls between offline and BudgetMem on quality.']}};
+function decide(qid,chosenIdx){var flag=document.getElementById('decided-'+qid);if(flag&&flag.value==='1')return;if(flag)flag.value='1';var data=decisionData[qid];document.querySelectorAll('.dopt-'+qid).forEach(function(btn,i){btn.setAttribute('disabled','');if(i===data.correct)btn.classList.add('d-correct');else if(i===chosenIdx)btn.classList.add('d-wrong');});var rev=document.getElementById('drev-'+qid);if(rev){rev.innerHTML='<strong>'+(chosenIdx===data.correct?'✓ Correct.':'✗ Not quite.')+'</strong> '+data.explanations[chosenIdx];rev.classList.add('open');}}
+
+var notes=[];
+function saveNote(){var ta=document.getElementById('notes-input');if(!ta||!ta.value.trim())return;notes.push({text:ta.value.trim(),ts:new Date().toLocaleTimeString()});ta.value='';var msg=document.getElementById('save-msg');if(msg){msg.textContent='✓ Saved';setTimeout(function(){msg.textContent='';},2000);}renderNotes();}
+function renderNotes(){var c=document.getElementById('notes-list');if(!c)return;c.innerHTML=notes.map(function(n){return '<div class="saved-note"><div class="note-ts">'+n.ts+'</div>'+n.text+'</div>';}).join('');}
+function updateLayerProgress(){['brain','visual','deep','paper','think','reality','build'].forEach(function(id){var fill=document.getElementById('pg-'+id);var pct=document.getElementById('pv-'+id);var v=visited[id]?100:0;if(fill)fill.style.width=v+'%';if(pct)pct.textContent=v+'%';});}
+
+(function(){var step=0;
+var steps=[
+  // Easy query path
+  {id:1,desc:'EASY query: simple lookup. Router observes the query.',
+   highlights:[],status:'Step 1/5 Easy query: "What did I order Tuesday?" Router activates.'},
+  {id:2,desc:'Router picks LOW for all 3 modules easy queries don\'t need expensive processing.',
+   highlights:[['bm-m1-low','#5eead4'],['bm-m2-low','#5eead4'],['bm-m3-low','#5eead4']],
+   status:'Step 2/5 Router decision: [Retrieve:LOW, Filter:LOW, Extract:LOW]. Cheap path.'},
+  {id:3,desc:'Pipeline runs at low cost.',show:['bm-pipe-arrows','bm-answer'],
+   answerCost:'cost: 0.4K tokens',answerAcc:'F1: 0.81',
+   status:'Step 3/5 Pipeline runs cheaply. Total cost: 0.4K tokens. F1: 0.81.'},
+  // Hard query path
+  {id:4,desc:'HARD query: multi-hop. Router escalates.',
+   queryText:'"3rd paper my coauthor cited..."',difficulty:'(hard, multi-hop)',
+   resetHighlights:true,
+   highlights:[['bm-m1-high','#f0729a'],['bm-m2-mid','#f3c969'],['bm-m3-high','#f0729a']],
+   status:'Step 4/5 Hard query. Router decision: [Retrieve:HIGH, Filter:MID, Extract:HIGH].'},
+  {id:5,desc:'Pipeline runs at high quality. Same architecture, different cost.',
+   answerCost:'cost: 4.8K tokens',answerAcc:'F1: 0.84',
+   status:'Step 5/5 Hard query handled. Cost: 4.8K tokens (12× higher). Quality maintained. The router pays only when the query needs it.'}
+];
+window.bmStep=function(){if(step>=steps.length){bmReset();return;}var s=steps[step];
+  if(s.queryText){document.getElementById('bm-query-text').textContent=s.queryText;document.getElementById('bm-query-difficulty').textContent=s.difficulty;}
+  if(s.resetHighlights){['bm-m1-low','bm-m1-mid','bm-m1-high','bm-m2-low','bm-m2-mid','bm-m2-high','bm-m3-low','bm-m3-mid','bm-m3-high'].forEach(function(id){var el=document.getElementById(id);if(el){el.setAttribute('stroke-width','1');el.style.filter='none';}});}
+  (s.highlights||[]).forEach(function(h){var el=document.getElementById(h[0]);if(el){el.setAttribute('stroke-width','2.5');el.style.filter='drop-shadow(0 0 8px '+h[1]+')';}});
+  (s.show||[]).forEach(function(id){var el=document.getElementById(id);if(el)el.setAttribute('opacity','1');});
+  if(s.answerCost)document.getElementById('bm-answer-cost').textContent=s.answerCost;
+  if(s.answerAcc)document.getElementById('bm-answer-acc').textContent=s.answerAcc;
+  document.getElementById('vis-status').textContent=s.status;
+  var btn=document.getElementById('viz-play-btn');step++;
+  if(step>=steps.length){btn.textContent='✓ Complete';btn.style.borderColor='#f3c969';btn.style.color='#f3c969';btn.style.background='rgba(243,201,105,0.08)';}
+  else if(step===3){btn.textContent='▶ Run hard query (4/5)';}
+  else{btn.textContent='▶ Next ('+(step+1)+'/5)';}};
+window.bmReset=function(){step=0;
+  ['bm-m1-low','bm-m1-mid','bm-m1-high','bm-m2-low','bm-m2-mid','bm-m2-high','bm-m3-low','bm-m3-mid','bm-m3-high'].forEach(function(id){var el=document.getElementById(id);if(el){el.setAttribute('stroke-width','1');el.style.filter='none';}});
+  ['bm-pipe-arrows','bm-answer'].forEach(function(id){var el=document.getElementById(id);if(el)el.setAttribute('opacity','0');});
+  document.getElementById('bm-query-text').textContent='"What did I order Tue?"';
+  document.getElementById('bm-query-difficulty').textContent='(easy)';
+  document.getElementById('vis-status').textContent='Click ▶ to watch the router pick tiers based on query difficulty';
+  var btn=document.getElementById('viz-play-btn');btn.textContent='▶ Run easy query';btn.style.borderColor='rgba(243,201,105,0.35)';btn.style.color='#f3c969';btn.style.background='rgba(243,201,105,0.1)';};
+})();
+
+var qstate={};var qtotal=document.querySelectorAll('.qq').length;
+function cq(btn,qi,isCorrect){if(qstate[qi]!==undefined)return;qstate[qi]=isCorrect;var qq=btn.closest('.qq');qq.querySelectorAll('.qob').forEach(function(b){b.setAttribute('disabled','');var oc=b.getAttribute('onclick')||'';if(/,\s*true\)/.test(oc))b.classList.add('ok');else if(b===btn&&!isCorrect)b.classList.add('no');});var feed=qq.querySelector('.qfeed');if(feed){feed.style.display='block';feed.className='qfeed '+(isCorrect?'correct':'wrong');var head=feed.querySelector('.qfeed-head');if(head)head.textContent=isCorrect?'✓ Correct '+btn.getAttribute('data-opt')+' is right':'✗ Not quite option '+btn.getAttribute('data-opt')+' is wrong. See explanation below.';}updateQuizProgress();}
+function updateQuizProgress(){var done=Object.keys(qstate).length;var fill=document.querySelector('.qprog-fill');var txt=document.querySelector('.qprog-text');if(fill)fill.style.width=Math.round(done/qtotal*100)+'%';if(txt)txt.textContent=done+'/'+qtotal+' answered';if(done===qtotal)showQuizScore();}
+function showQuizScore(){var c=Object.values(qstate).filter(function(v){return v;}).length;var n=document.getElementById('qscore-num');var m=document.getElementById('qscore-msg');var box=document.getElementById('quiz-score');if(n)n.textContent=c+' / '+qtotal+' correct';if(m){var msgs=['Review the deep dive and try again.','Keep going.','Solid grasp of BudgetMem.','Strong architectural understanding.','Production-ready mastery.'];m.textContent=msgs[c<=2?0:c<=4?1:c<=6?2:c===7?3:4];}if(box)box.style.display='block';}
+
+// Keep the PDF iframe visible. Cross-origin HEAD checks can fail even when the PDF itself renders correctly.
+window.addEventListener('load',function(){setTab('brain');document.querySelector('.tab[data-tab="brain"]').classList.add('visited');});
+</script>
+<script>
+(function(){var hs=document.querySelector(".hero-scroll");if(!hs)return;hs.style.transition="opacity 0.5s ease";window.addEventListener("scroll",function(){hs.style.opacity=window.scrollY>window.innerHeight*0.4?"0":"1";},{passive:true});})();
+</script>
+</body>
+</html>

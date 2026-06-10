@@ -1,0 +1,1563 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Part 3 — Reducing Hallucination & Context Optimization | Prompt Engineering Mastery</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&family=Source+Serif+4:ital,opsz,wght@0,8..60,300;0,8..60,400;0,8..60,500;0,8..60,600;1,8..60,400&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#08090b;
+  --bg-2:#0b0f1a;
+  --bg-3:#111827;
+  --panel:#0d1117;
+  --panel-2:#111827;
+  --line:#1e2330;
+  --line-2:#2a3142;
+  --ink:#e8eaed;
+  --ink-2:#a8aeb8;
+  --ink-3:#6b7280;
+  --ink-4:#454b58;
+  --accent:#6366f1;       /* indigo — primary accent */
+  --accent-2:#818cf8;
+  --accent-glow:rgba(99,102,241,0.18);
+  --plan:#f59e0b;        /* planning / cognition */
+  --tool:#10b981;        /* tool execution */
+  --observe:#8b5cf6;     /* observation */
+  --fail:#f7768e;
+  --success:#10b981;
+  --serif:'Source Serif 4', Georgia, serif;
+  --sans:'Outfit', -apple-system, sans-serif;
+  --mono:'JetBrains Mono', monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{
+  background:var(--bg);
+  color:var(--ink);
+  font-family:var(--sans);
+  font-weight:400;
+  line-height:1.6;
+  -webkit-font-smoothing:antialiased;
+  overflow-x:hidden;
+}
+body::before{
+  content:'';position:fixed;inset:0;
+  background:
+    radial-gradient(ellipse 80% 50% at 42% -15%, rgba(99,102,241,0.1), transparent 60%),
+    radial-gradient(ellipse 60% 40% at 100% 100%, rgba(99,102,241,0.04), transparent 60%);
+  pointer-events:none;z-index:0;
+}
+body::after{
+  content:'';position:fixed;inset:0;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='300' height='300' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E");
+  background-size:300px 300px;
+  opacity:0.025;
+  pointer-events:none;z-index:0;
+}
+
+/* ============== LAYOUT ============== */
+.shell{position:relative;z-index:1;display:grid;grid-template-columns:280px 1fr;min-height:100vh}
+.sidebar{
+  position:sticky;top:0;height:100vh;
+  border-right:1px solid transparent;
+  background:linear-gradient(180deg, rgba(13,17,23,0.92) 0%, rgba(8,9,11,0.96) 100%);
+  backdrop-filter:blur(20px) saturate(1.4);
+  -webkit-backdrop-filter:blur(20px) saturate(1.4);
+  padding:36px 22px 28px;
+  overflow-y:auto;
+  box-shadow:inset -1px 0 0 rgba(255,255,255,0.04), 1px 0 32px rgba(0,0,0,0.5);
+  display:flex;flex-direction:column;
+}
+.sidebar::before{
+  content:'';
+  position:absolute;left:0;top:0;bottom:0;width:2px;
+  background:linear-gradient(180deg,
+    transparent 0%,
+    rgba(99,102,241,0.5) 20%,
+    rgba(99,102,241,0.3) 60%,
+    transparent 100%);
+  pointer-events:none;z-index:2;
+}
+.sidebar::-webkit-scrollbar{width:3px}
+.sidebar::-webkit-scrollbar-track{background:transparent}
+.sidebar::-webkit-scrollbar-thumb{background:linear-gradient(180deg, var(--accent), transparent);border-radius:3px;opacity:0.5}
+.brand{
+  display:flex;align-items:center;gap:10px;margin-bottom:8px;
+  position:relative;
+}
+.brand::before{
+  content:'';
+  position:absolute;top:-28px;left:-22px;right:-22px;height:90px;
+  background:radial-gradient(ellipse 70% 60% at 40% 0%, rgba(99,102,241,0.18), transparent 70%);
+  pointer-events:none;z-index:0;
+  border-radius:50%;
+}
+.brand > *{position:relative;z-index:1}
+.brand-mark{
+  width:36px;height:36px;border-radius:8px;
+  background:transparent;
+  display:grid;place-items:center;
+  overflow:hidden;
+  flex-shrink:0;
+}
+.brand-mark img{
+  width:36px;height:36px;
+  object-fit:contain;
+  mix-blend-mode:screen;
+  display:block;
+}
+.brand-name{font-size:13px;font-weight:600;letter-spacing:0.02em}
+.brand-sub{font-size:11px;color:var(--ink-3);margin-top:2px;letter-spacing:0.04em}
+.brand-divider{
+  height:1px;
+  margin:18px 0 4px;
+  background:linear-gradient(90deg, transparent 0%, rgba(99,102,241,0.25) 40%, rgba(99,102,241,0.25) 60%, transparent 100%);
+}
+.module-tag{
+  margin-top:24px;padding:13px 15px;
+  background:linear-gradient(135deg, rgba(99,102,241,0.06) 0%, rgba(13,17,23,0.9) 100%);
+  border:1px solid rgba(99,102,241,0.18);
+  border-radius:9px;
+  box-shadow:0 1px 12px rgba(0,0,0,0.25);
+}
+.module-tag-label{font-size:10px;color:var(--ink-3);letter-spacing:0.04em;margin-bottom:4px}
+.module-tag-title{font-family:var(--serif);font-size:13px;color:var(--ink);font-weight:400}
+.toc{margin-top:24px}
+.toc-label{font-size:10px;color:var(--ink-3);letter-spacing:0.05em;margin-bottom:12px;padding-left:10px}
+.toc a{
+  display:flex;align-items:center;gap:10px;
+  padding:9px 11px;color:var(--ink-2);text-decoration:none;font-size:13px;
+  border-radius:6px;border-left:2px solid transparent;
+  transition:background 0.18s ease, color 0.18s ease, border-color 0.18s ease;
+  position:relative;
+}
+.toc a:hover{
+  background:rgba(255,255,255,0.03);
+  color:var(--ink);
+}
+.toc a.active{
+  background:linear-gradient(90deg, rgba(99,102,241,0.12) 0%, transparent 100%);
+  color:var(--accent);
+  border-left-color:var(--accent);
+  box-shadow:inset 0 0 0 1px rgba(99,102,241,0.08);
+}
+.toc a.past{
+  opacity:0.38;
+  color:var(--ink-4);
+}
+.toc a.past .toc-num{color:var(--ink-4)}
+.toc-num{font-family:var(--mono);font-size:11px;color:var(--ink-4);width:24px;transition:color 0.18s}
+.toc a.active .toc-num{color:var(--accent-2)}
+.progress-rail{
+  margin-top:28px;padding:15px 16px;
+  background:linear-gradient(135deg, rgba(99,102,241,0.05) 0%, rgba(13,17,23,0.8) 100%);
+  border:1px solid rgba(99,102,241,0.14);
+  border-radius:9px;
+  box-shadow:0 1px 10px rgba(0,0,0,0.2);
+}
+.progress-bar{
+  height:3px;background:rgba(255,255,255,0.05);border-radius:2px;overflow:hidden;margin-top:10px;
+  box-shadow:inset 0 1px 2px rgba(0,0,0,0.4);
+}
+.progress-fill{
+  height:100%;width:0%;
+  background:linear-gradient(90deg, var(--accent), var(--accent-2));
+  transition:width 0.5s cubic-bezier(0.4,0,0.2,1);
+  box-shadow:0 0 8px rgba(99,102,241,0.5);
+}
+.progress-text{font-size:11px;color:var(--ink-3);font-family:var(--serif)}
+
+.sidebar-footer{
+  margin-top:auto;
+  padding-top:24px;
+  border-top:1px solid rgba(255,255,255,0.04);
+}
+.depth-badge{
+  display:flex;align-items:center;gap:9px;
+  padding:11px 13px;
+  background:linear-gradient(135deg, rgba(99,102,241,0.06) 0%, rgba(13,17,23,0.8) 100%);
+  border:1px solid rgba(99,102,241,0.14);
+  border-radius:9px;
+  font-size:11px;font-family:var(--mono);
+  color:var(--ink-3);letter-spacing:0.03em;
+  box-shadow:0 1px 10px rgba(0,0,0,0.2);
+}
+.depth-badge .pulse{
+  width:5px;height:5px;flex-shrink:0;border-radius:50%;background:var(--accent);
+  box-shadow:0 0 6px rgba(99,102,241,0.7);
+  animation:pulse 2s infinite;
+}
+.depth-badge .badge-text{color:var(--ink-3);line-height:1.4}
+.depth-badge .badge-text strong{display:block;color:var(--ink-2);font-weight:500;font-size:11px;margin-bottom:1px}
+@keyframes pulse{0%,100%{opacity:0.5;transform:scale(1)}50%{opacity:1;transform:scale(1.3)}}
+
+.main{padding:80px 80px 200px;max-width:980px}
+@media (max-width: 1100px){
+  .shell{grid-template-columns:1fr}
+  .sidebar{position:relative;height:auto;border-right:none;border-bottom:1px solid var(--line)}
+  .main{padding:48px 32px 120px}
+}
+
+/* ============== HERO ============== */
+.hero {
+  position: relative;
+  padding: 60px 40px;
+  margin-bottom: 80px;
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.04) 0%, rgba(13, 17, 23, 0.4) 100%);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.hero canvas {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.6;
+}
+.hero > * {
+  position: relative;
+  z-index: 1;
+}
+.hero-meta{
+  display:inline-flex;align-items:center;gap:0;
+  margin-bottom:36px;
+  font-family:var(--mono);font-size:11px;color:var(--ink-3);letter-spacing:0.05em;
+  background:linear-gradient(135deg, rgba(99,102,241,0.07) 0%, rgba(13,17,23,0.6) 100%);
+  border:1px solid rgba(99,102,241,0.2);
+  border-radius:100px;
+  padding:7px 16px;
+  backdrop-filter:blur(8px);
+  box-shadow:0 0 0 1px rgba(255,255,255,0.03), 0 4px 24px rgba(0,0,0,0.3), 0 0 32px rgba(99,102,241,0.06);
+}
+.hero-meta span{white-space:nowrap;padding:0 2px}
+.hero-meta .sep{
+  width:1px;height:10px;
+  background:rgba(255,255,255,0.08);
+  flex-shrink:0;margin:0 12px;
+}
+.hero-meta .track-label{color:var(--accent-2);font-weight:500}
+.hero-meta .level-badge{
+  padding:2px 9px;
+  background:rgba(99,102,241,0.12);
+  border:1px solid rgba(99,102,241,0.25);
+  border-radius:100px;
+  color:var(--accent-2);
+  font-weight:600;
+  font-size:10px;
+  letter-spacing:0.08em;
+  margin-left:4px;
+}
+.hero h1{
+  font-family:var(--serif);font-weight:900;font-size:clamp(32px, 5vw, 56px);
+  line-height:1.1;letter-spacing:-0.022em;margin-bottom:24px;
+}
+.hero h1 .gt{
+  background: linear-gradient(120deg, var(--accent), var(--accent-2) 60%, var(--plan));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  font-weight: 700;
+}
+.hero-lede, .hs{
+  font-family:var(--serif);font-size:20px;line-height:1.55;color:var(--ink-2);
+  max-width:680px;font-weight:300;
+}
+
+/* ============== SECTIONS ============== */
+section{margin-bottom:88px;scroll-margin-top:32px}
+section:nth-child(3n){margin-bottom:104px}
+section:nth-child(2n){margin-bottom:96px}
+.section-head{margin-bottom:28px;padding-bottom:18px;border-bottom:1px solid var(--line)}
+.section-num{font-family:var(--mono);font-size:11px;color:var(--accent);letter-spacing:0.15em}
+.section-title{
+  font-family:var(--serif);font-size:36px;font-weight:400;line-height:1.15;
+  letter-spacing:-0.01em;margin-top:8px;
+}
+.section-sub{font-size:15px;color:var(--ink-3);margin-top:12px;max-width:680px}
+
+p{font-family:var(--serif);font-size:17px;line-height:1.73;color:var(--ink-2);margin-bottom:20px;font-weight:300}
+p strong, p b{color:var(--ink);font-weight:500}
+p em{color:var(--accent);font-style:italic}
+ul,ol{margin:16px 0 20px 0;padding-left:24px;color:var(--ink-2)}
+li{font-family:var(--serif);font-size:17px;line-height:1.68;color:var(--ink-2);margin-bottom:10px;font-weight:300}
+li strong{color:var(--ink);font-weight:500}
+code{font-family:var(--mono);font-size:14px;background:var(--bg-2);padding:2px 6px;border-radius:3px;color:var(--accent-2)}
+h3{font-family:var(--sans);font-size:20px;font-weight:600;margin:48px 0 16px;letter-spacing:-0.005em;color:var(--ink)}
+h4{font-family:var(--sans);font-size:15px;font-weight:600;margin:24px 0 12px;color:var(--ink);text-transform:uppercase;letter-spacing:0.06em}
+
+.gd{height:1px;background:var(--line);margin:3.5rem 0}
+.badge{display:inline-flex;background:rgba(16,185,129,.1);border:1px solid rgba(16,185,129,.2);color:var(--success);padding:3px 11px;border-radius:100px;font-family:var(--mono);font-size:11px;font-weight:500}
+
+/* Custom Callouts */
+.ins {
+  margin: 32px 0;
+  padding: 22px 28px;
+  border-radius: 0 7px 7px 0;
+  background: linear-gradient(135deg, rgba(99,102,241,0.06), rgba(99,102,241,0.02));
+  border-left: 2px solid var(--accent);
+}
+.ins p { margin: 0; font-size: 16px; color: var(--ink); font-family: var(--serif); font-weight: 300; }
+.ins p strong { color: var(--accent-2); font-weight: 600; }
+
+.ec {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 20px 24px;
+  margin: 1rem 0;
+  border-left: 3px solid var(--success);
+}
+.ec .et {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--success);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+  font-weight: 600;
+}
+.ec p { margin: 0; font-size: 15px; color: var(--ink-2); font-weight: 300; }
+.ec.q { border-left-color: var(--plan); }
+.ec.q .et { color: var(--plan); }
+
+.cb {
+  background: var(--bg-3);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+  margin: 1.5rem 0;
+}
+.cbh {
+  display: flex;
+  align-items: center;
+  padding: 10px 16px;
+  background: rgba(255,255,255,0.02);
+  border-bottom: 1px solid var(--line);
+}
+.cl {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--accent-2);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  letter-spacing: 0.05em;
+}
+.cl::before {
+  content: '●';
+  font-size: 8px;
+  color: var(--accent);
+}
+.cb pre {
+  padding: 16px 20px;
+  overflow-x: auto;
+  font-family: var(--mono);
+  font-size: 13px;
+  line-height: 1.7;
+  color: #c8d3e0;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.fc {
+  background: linear-gradient(180deg, rgba(99,102,241,0.06), rgba(99,102,241,0.02));
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 24px 28px;
+  margin: 1.5rem 0;
+  position: relative;
+  overflow: hidden;
+}
+.fc::before {
+  content: '';
+  position: absolute;
+  top: -1px; left: -1px;
+  width: 14px; height: 14px;
+  border-top: 1px solid var(--accent);
+  border-left: 1px solid var(--accent);
+}
+.fc::after {
+  content: '';
+  position: absolute;
+  bottom: -1px; right: -1px;
+  width: 14px; height: 14px;
+  border-bottom: 1px solid var(--accent);
+  border-right: 1px solid var(--accent);
+}
+.fc .fl {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--accent-2);
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  margin-bottom: 12px;
+  font-weight: 600;
+}
+.fc .fm {
+  font-size: 18px;
+  color: var(--ink);
+  font-weight: 400;
+  letter-spacing: 0.02em;
+  margin-bottom: 12px;
+  font-family: var(--serif);
+  line-height: 1.6;
+}
+.fc .fe {
+  font-size: 13px;
+  color: var(--ink-3);
+  line-height: 1.6;
+  font-family: var(--sans);
+}
+
+.ct {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 28px 0;
+  font-family: var(--sans);
+  font-size: 14px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+}
+.ct th {
+  font-family: var(--mono);
+  font-weight: 500;
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--accent-2);
+  background: rgba(255,255,255,0.02);
+  border-bottom: 1px solid var(--line);
+  padding: 12px;
+  text-align: left;
+}
+.ct td {
+  padding: 12px;
+  color: var(--ink-2);
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+}
+.ct tr:last-child td { border-bottom: none; }
+.ct td:first-child { color: var(--ink); font-weight: 500; }
+.ct .g { color: var(--success); }
+.ct .b { color: var(--fail); }
+
+.sl {
+  list-style: none;
+  margin: 16px 0 20px 0;
+  padding-left: 0;
+  counter-reset: st;
+}
+.sl li {
+  counter-increment: st;
+  position: relative;
+  padding: 13px 16px 13px 52px;
+  margin-bottom: 7px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--ink-2);
+  font-size: 15px;
+  font-family: var(--serif);
+  font-weight: 300;
+}
+.sl li::before {
+  content: counter(st);
+  position: absolute;
+  left: 15px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 25px;
+  height: 25px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: rgba(99,102,241,0.14);
+  color: var(--accent-2);
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 600;
+}
+.sl li strong { color: var(--ink); font-weight: 500; }
+
+/* ============== INTERACTIVE CARDS ============== */
+.ic{background:var(--panel);border:1px solid var(--line);border-radius:12px;overflow:hidden;margin:2rem 0;box-shadow:0 8px 40px rgba(0,0,0,.45);transition:border-color .3s}
+.ic:hover{border-color:var(--accent-glow)}
+.ich{display:flex;align-items:center;justify-content:space-between;padding:13px 22px;background:rgba(255,255,255,.015);border-bottom:1px solid var(--line);font-family:var(--mono);font-size:12px;color:var(--ink-2)}
+.ich .tg{background:rgba(99,102,241,.14);color:var(--accent-2);padding:3px 11px;border-radius:100px;font-size:10px;font-weight:600}
+.icb{padding:26px}
+.ic canvas{width:100%;border-radius:8px;display:block}
+.cr{display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin-top:16px;padding-top:16px;border-top:1px solid var(--line)}
+.bs{font-family:var(--mono);font-size:11px;padding:7px 16px;border:1px solid var(--line-2);border-radius:8px;background:rgba(255,255,255,.025);color:var(--ink-2);cursor:pointer;transition:all .25s}
+.bs:hover{background:rgba(99,102,241,.14);border-color:var(--accent);color:var(--accent-2)}
+.bsa{background:rgba(99,102,241,.18);border-color:rgba(99,102,241,.38);color:var(--accent-2)}
+
+/* Toggle lists */
+.toggle { cursor: pointer; user-select: none; margin: 10px 0; }
+.toggle-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 18px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  transition: all 0.3s;
+}
+.toggle-head:hover { border-color: var(--accent); background: var(--panel-2); }
+.toggle-head .ti { font-size: 1.2rem; flex-shrink: 0; }
+.toggle-head .tt { font-weight: 600; font-size: 14px; flex: 1; color: var(--ink); }
+.toggle-head .ttg { font-family: var(--mono); font-size: 10px; color: var(--accent-2); text-transform: uppercase; letter-spacing: 0.05em; }
+.toggle-body { display: none; padding: 12px 4px 0; animation: slideIn 0.3s ease-out; }
+.toggle-body.open { display: block; }
+@keyframes slideIn { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
+
+/* Flow diagram elements */
+.flow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  justify-content: center;
+  margin: 2rem 0;
+}
+.fn2 {
+  padding: 12px 18px;
+  border-radius: 8px;
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 500;
+  text-align: center;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--ink-2);
+}
+.fn2.p {
+  background: rgba(99,102,241,0.08);
+  border-color: rgba(99,102,241,0.25);
+  color: var(--accent-2);
+}
+.fn2.s {
+  background: rgba(16,185,129,0.08);
+  border-color: rgba(16,185,129,0.25);
+  color: var(--success);
+}
+.fn2.w {
+  background: rgba(245,158,11,0.08);
+  border-color: rgba(245,158,11,0.25);
+  color: var(--plan);
+}
+.fn2.g {
+  background: rgba(16,185,129,0.12);
+  border-color: rgba(16,185,129,0.4);
+  color: var(--success);
+  font-weight: 600;
+}
+.fn2.d {
+  background: rgba(247,118,142,0.08);
+  border-color: rgba(247,118,142,0.25);
+  color: var(--fail);
+}
+.fa {
+  color: var(--ink-3);
+  font-family: var(--sans);
+  font-size: 16px;
+  padding: 0 4px;
+}
+
+/* Quiz elements */
+.qc {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  margin: 1.5rem 0;
+  overflow: hidden;
+}
+.qch {
+  padding: 14px 20px;
+  background: linear-gradient(180deg, var(--panel-2), var(--panel));
+  border-bottom: 1px solid var(--line);
+  font-family: var(--sans);
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+.qcb { padding: 24px; }
+.qq { font-family: var(--serif); font-size: 18px; color: var(--ink); margin-bottom: 18px; font-weight: 400; line-height: 1.5; }
+.qos { display: flex; flex-direction: column; gap: 10px; }
+.qo {
+  padding: 14px 18px;
+  background: var(--bg-3);
+  border: 1px solid var(--line-2);
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+  color: var(--ink-2);
+  transition: all 0.15s;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  line-height: 1.55;
+}
+.qo:hover {
+  border-color: var(--accent);
+  color: var(--ink);
+  background: rgba(99,102,241,0.04);
+}
+.qo.cor {
+  border-color: var(--success);
+  background: rgba(16,185,129,0.08);
+  color: var(--ink);
+}
+.qo.inc {
+  border-color: var(--fail);
+  background: rgba(247,118,142,0.06);
+  color: var(--ink);
+}
+.qo .ol {
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 600;
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  border: 1px solid var(--line-2);
+  flex-shrink: 0;
+}
+.qo.cor .ol {
+  border-color: var(--success);
+  color: var(--success);
+}
+.qo.inc .ol {
+  border-color: var(--fail);
+  color: var(--fail);
+}
+.qf {
+  margin-top: 16px;
+  padding: 16px 20px;
+  background: var(--bg-3);
+  border-radius: 8px;
+  font-family: var(--serif);
+  font-size: 14px;
+  line-height: 1.6;
+  display: none;
+  border-left: 2px solid var(--accent);
+}
+.qf.sh { display: block; }
+.qf.cf {
+  border-left-color: var(--success);
+  color: var(--ink-2);
+}
+.qf.if {
+  border-left-color: var(--fail);
+  color: var(--ink-2);
+}
+
+.lm {
+  background: linear-gradient(135deg, rgba(99,102,241,0.06), rgba(99,102,241,0.02));
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 22px 28px;
+  margin: 2rem 0;
+  position: relative;
+}
+.lm::before {
+  content: '';
+  position: absolute;
+  left: -1px; top: -1px; bottom: -1px; width: 3px;
+  background: linear-gradient(180deg, var(--accent), var(--accent-2));
+  border-radius: 8px 0 0 8px;
+}
+.lm h3 {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--accent-2);
+  margin: 0 0 12px;
+  font-weight: 600;
+}
+.lm p { font-size: 15px; margin-bottom: 14px; color: var(--ink-2); font-family: var(--serif); font-weight: 300; }
+.lm ul { list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; }
+.lm li { margin: 0; font-size: 14px; color: var(--ink-2); display: flex; align-items: center; }
+.lm a { color: var(--ink); text-decoration: none; border-bottom: 1px solid rgba(129,140,248,0.3); transition: all 0.2s; }
+.lm a:hover { color: var(--accent-2); border-bottom-color: var(--accent-2); }
+.lm .ll {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--plan);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  margin-right: 12px;
+  display: inline-block;
+  min-width: 80px;
+}
+
+/* Next Module Card */
+.module-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 64px;
+  padding: 28px 32px;
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.08) 0%, rgba(13, 17, 23, 0.6) 100%);
+  border: 1px solid rgba(99, 102, 241, 0.2);
+  border-radius: 12px;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3), 0 0 32px rgba(99, 102, 241, 0.04);
+}
+.module-nav-label {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--accent-2);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+.module-nav-title {
+  font-family: var(--serif);
+  font-size: 20px;
+  color: var(--ink);
+  font-weight: 400;
+}
+.module-nav-cta {
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 600;
+  color: #fff;
+  background: var(--accent);
+  padding: 12px 24px;
+  border-radius: 6px;
+  text-decoration: none;
+  transition: all 0.2s;
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+}
+.module-nav-cta:hover {
+  background: var(--accent-2);
+  transform: translateX(4px);
+  box-shadow: 0 6px 16px rgba(99, 102, 241, 0.4);
+}
+
+::selection{background:var(--accent);color:#1a1a1a}
+
+@media(max-width:680px){
+  .hero h1{font-size:36px}
+  .hero-lede, .hs{font-size:17px}
+  .section-title{font-size:26px}
+  p,li{font-size:16px}
+  .main{padding:40px 20px 80px}
+}
+</style>
+</head>
+<body>
+
+<div class="shell">
+  <!-- ============ SIDEBAR ============ -->
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-mark"><img src="../../../logo/Logo_Marevlo.png" alt="Marevlo" /></div>
+      <div>
+        <div class="brand-name">Marevlo Research</div>
+        <div class="brand-sub">Prompt Engineering Track</div>
+      </div>
+    </div>
+    <div class="brand-divider"></div>
+    <div class="module-tag">
+      <div class="module-tag-label">Phase 1 · Part 3</div>
+      <div class="module-tag-title">Hallucination &amp; Context Optimization</div>
+    </div>
+    <nav class="toc">
+      <div class="toc-label">Module 4: Hallucination</div>
+      <a href="#s41" class="toc-link"><span class="toc-num">4.1</span>ReAct Prompting</a>
+      <a href="#s42" class="toc-link"><span class="toc-num">4.2</span>Chain-of-Verification</a>
+      <a href="#s43" class="toc-link"><span class="toc-num">4.3</span>Chain-of-Note</a>
+      <a href="#s44" class="toc-link"><span class="toc-num">4.4</span>Chain-of-Knowledge</a>
+      <a href="#ttable" class="toc-link"><span class="toc-num">Ref</span>Technique Table</a>
+      <a href="#q4" class="toc-link"><span class="toc-num">Q4</span>Mastery Check</a>
+      
+      <div class="toc-label" style="margin-top: 20px;">Module 5: Context Optimization</div>
+      <a href="#s51" class="toc-link"><span class="toc-num">5.1</span>Naive Truncation</a>
+      <a href="#s52" class="toc-link"><span class="toc-num">5.2</span>Retrieval-Based Selection</a>
+      <a href="#s53" class="toc-link"><span class="toc-num">5.3</span>Language Compression</a>
+      <a href="#s54" class="toc-link"><span class="toc-num">5.4</span>Dynamic Context (DCPO)</a>
+      <a href="#q5" class="toc-link"><span class="toc-num">Q5</span>Mastery Check</a>
+    </nav>
+    <div class="progress-rail">
+      <div class="progress-text">Reading progress</div>
+      <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+    </div>
+    <div class="sidebar-footer">
+      <div class="depth-badge">
+        <span class="pulse"></span>
+        <div class="badge-text">
+          <strong>Marevlo &middot; Prompt Engineering</strong>
+          Part 3 of 5
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ============ MAIN ============ -->
+  <main class="main">
+
+    <header class="hero">
+      <canvas id="heroC"></canvas>
+      <div class="hero-meta">
+        <span class="track-label">Part 3 of 5</span>
+        <span class="sep"></span>
+        <span>Modules 4 &amp; 5</span>
+        <span class="sep"></span>
+        <span>~1h 45m</span>
+        <span class="sep"></span>
+        <span class="level-badge">Intermediate</span>
+      </div>
+      <h1>Reducing <span class="gt">Hallucination</span><br>&amp; Context <span class="gt">Optimization</span></h1>
+      <p class="hs">ReAct, Chain-of-Verification, Chain-of-Note, Chain-of-Knowledge — stop AI from making stuff up. Plus truncation, retrieval, compression, and dynamic optimization.</p>
+    </header>
+
+    <!-- MODULE 4 -->
+    <section id="m4">
+      <div class="section-head">
+        <div class="section-num">Module 04</div>
+        <div class="section-title">Reducing Hallucination in LLMs</div>
+        <div class="section-sub">Hallucinations happen when the model makes up facts that aren't true. It's common because models predict based on patterns, not perfect knowledge.</div>
+      </div>
+    </section>
+
+    <!-- 4.1 ReAct -->
+    <section id="s41">
+      <div class="section-head">
+        <div class="section-num">4.1 / ReAct (Reason + Act) Prompting</div>
+        <div class="section-title">Think &rarr; Act &rarr; Observe &rarr; Repeat</div>
+      </div>
+      <p>ReAct is a prompting framework where an LLM combines reasoning steps and external actions (like searching or tool use), allowing it to gather information, update plans, etc.</p>
+      <p><strong>How it works:</strong> A simple repeating loop of <strong>Thought → Action → Observation → repeat</strong> until the answer is ready.</p>
+
+      <div class="ic"><div class="ich"><span>ReAct Circular Loop — Live Animation</span><span class="tg">ANIMATED</span></div><div class="icb">
+        <p style="font-size:.85rem;color:var(--ink-2);margin-bottom:14px"><strong style="color:var(--ink)">Watch the orbiting particle</strong> cycle through Thought → Action → Observation. The loop counter increments each full cycle.</p>
+        <canvas id="reactC" height="360"></canvas>
+        <div class="cr"><button class="bs bsa" onclick="startReact()">▶ Replay</button></div>
+      </div></div>
+
+      <div class="toggle" onclick="tog(this)"><div class="toggle-head"><span class="ti">🔍</span><span class="tt">Example 1: Finding the Best Matching Product</span><span class="ttg">▶ FULL PROMPT + I/O</span></div><div class="toggle-body">
+        <div class="cb"><div class="cbh"><span class="cl">ReAct — Product Search (Complete YAML)</span></div><pre>instruction: >
+  You are a smart shopping assistant. Use the ReAct
+  reasoning format strictly.
+
+format:
+  loop:
+    Thought: "Reason step by step about the query"
+    Action: "Take a specific action (e.g., search catalog,
+             compare items, calculate discount)"
+    Observation: "Record the result of the action"
+
+rule: "Repeat Thought → Action → Observation until the
+       final answer is ready."
+
+input:
+  customer_query: "&lt;PUT_QUERY_HERE&gt;"
+
+output:
+  reasoning_trace: "ReAct steps"
+  final_answer: "Recommended product or response"</pre></div>
+        <div class="ec q"><div class="et">Input</div><p>"I need wireless earbuds under ₹2000 with good noise cancellation and at least 20 hours battery."</p></div>
+        <div class="ec"><div class="et">Output</div><p><strong>Thought:</strong> Need to find earbuds under ₹2000 with noise cancellation and ≥20h battery.<br><strong>Action:</strong> Search catalog for "wireless earbuds noise cancelling under ₹2000 20h battery".<br><strong>Observation:</strong> Found 3 models — Model X: ₹1799, ANC, 22h; Model Y: ₹1999, ANC, 18h; Model Z: ₹1499, no ANC.<br><strong>Thought:</strong> Model X satisfies price (&lt;₹2000), ANC present, and battery ≥20h.<br><strong>Final output:</strong> Recommend Model X at ₹1799.</p></div>
+      </div></div>
+
+      <div class="toggle" onclick="tog(this)"><div class="toggle-head"><span class="ti">🎁</span><span class="tt">Example 2: Personalized Bundle Recommendation with Price Check</span><span class="ttg">▶ FULL PROMPT + I/O</span></div><div class="toggle-body">
+        <div class="cb"><div class="cbh"><span class="cl">ReAct — Bundle Builder (Complete YAML)</span></div><pre>instruction: >
+  You are a bundling expert. Use a ReAct loop to create
+  product bundles.
+
+loop_format:
+  - Thought: "Reason about the bundling step"
+  - Action: "search_related_products(item) |
+             calculate_bundle_price(items) | check_stock"
+  - Observation: "Result of the action"
+
+rule: "Repeat Thought → Action → Observation until the
+       bundle is finalized."
+
+output:
+  reasoning_trace: "ReAct steps"
+  final_answer: "Bundle item and price"</pre></div>
+        <div class="ec q"><div class="et">Input</div><p>Customer just added smartphone (₹24999) to cart. Suggest a value bundle.</p></div>
+        <div class="ec"><div class="et">Output</div><p><strong>Thought:</strong> Smartphone buyer often needs protection + accessories.<br><strong>Action:</strong> search_related_products("smartphone accessories")<br><strong>Observation:</strong> Top: case ₹799, screen protector ₹499, charger ₹999.<br><strong>Thought:</strong> Bundle case + protector = good protection, total add ₹1298.<br><strong>Action:</strong> calculate_bundle_price([smartphone, case, protector])<br><strong>Observation:</strong> Bundle price ₹26298 (5% discount).<br><strong>Final output:</strong> Recommend "Protection Bundle": case + screen protector for ₹26298 total.</p></div>
+      </div></div>
+
+      <p><strong>When to use it:</strong> For tasks needing real-world info, tools, or interaction (search, calculators, APIs) — very powerful in agents or tool-using AIs.</p>
+      <table class="ct"><thead><tr><th>Pros</th><th>Cons</th></tr></thead><tbody><tr><td class="g">Enhances interpretability and accuracy in interactive or knowledge-intensive tasks, handles exceptions well</td><td class="b">Needs tool access (not plain chat); more complex to set up</td></tr></tbody></table>
+
+      <div class="lm">
+        <h3>Learn More</h3>
+        <p><strong>Concept:</strong> Interleave reasoning with tool calls: think, act, observe, repeat.</p>
+        <ul>
+          <li><span class="ll">Progressive</span><a href="https://machinelearningmastery.com/building-react-agents-with-langgraph-a-beginners-guide/" target="_blank" rel="noopener">Building ReAct Agents with LangGraph - Machine Learning Mastery</a></li>
+          <li><span class="ll">Canonical</span><a href="https://arxiv.org/abs/2210.03629" target="_blank" rel="noopener">Yao et al. - ReAct</a></li>
+          <li><span class="ll">GitHub</span><a href="https://github.com/langchain-ai/langgraph" target="_blank" rel="noopener">LangGraph ReAct Agent</a></li>
+        </ul>
+      </div>
+    </section>
+
+    <div class="gd"></div>
+
+    <!-- 4.2 CoVe -->
+    <section id="s42">
+      <div class="section-head">
+        <div class="section-num">04.2 / Chain-of-Verification (CoVe)</div>
+        <div class="section-title">Write, Verify, Fix</div>
+      </div>
+      <p>CoVe is a structured prompting method where the model first produces an answer, then deliberately verifies its own claims through targeted questions and revises the final response to reduce hallucinations and logical errors.</p>
+      <p><strong>How it works:</strong> The model generates an initial response, creates verification questions about its claims, answers them independently, and then revises the final answer using the verified facts.</p>
+      <div class="ins"><p><strong>Do you know?</strong> CoVe is like making the AI write an answer and then become its own strict teacher — it creates a checklist and fact-checks itself before finalizing!</p></div>
+
+      <div class="ic"><div class="ich"><span>CoVe 4-Step Pipeline — Live Animation</span><span class="tg">ANIMATED</span></div><div class="icb">
+        <p style="font-size:.85rem;color:var(--ink-2);margin-bottom:14px"><strong style="color:var(--ink)">Watch data packets flow</strong> through Draft → Verify → Answer → Revise with transformation effects at each stage.</p>
+        <canvas id="coveC" height="340"></canvas>
+        <div class="cr"><button class="bs bsa" onclick="startCove()">▶ Replay</button></div>
+      </div></div>
+
+      <h4>Example 1: Aggregating Customer Review Highlights</h4>
+      <p><strong>Task:</strong> Summarize common pros/cons from reviews of smartphone. The CoVe flow generates a draft summary, creates verification questions about each claim, answers each independently from the reviews, then revises to remove unverified claims.</p>
+
+      <h4>Example 2: Verifying a Product Feature Summary</h4>
+      <p><strong>Task:</strong> Summarize key features of wireless earbuds accurately (no exaggeration).</p>
+      <p><strong>CoVe Flow (multi-prompt):</strong></p>
+      <ol class="sl">
+        <li><strong>Draft Prompt:</strong> "Summarize the main features of XYZ wireless earbuds from the product specs: noise cancelling, 30-hour battery, IPX5 waterproof, deep bass."<br><em>Draft: "XYZ earbuds offer top noise cancelling, incredible 40-hour battery, fully waterproof, and booming bass — best in class!"</em></li>
+        <li><strong>Plan Verification Questions Prompt:</strong> "Given the draft summary above and original specs, generate 4 verification questions to check accuracy, completeness, and no exaggeration."<br><em>Questions: 1. What is the actual battery life claimed? 2. Is "top noise cancelling" supported by specs? 3. What is the exact waterproof rating? 4. Does it say "best in class"?</em></li>
+        <li><strong>Independent Answer Questions Prompt:</strong> "Answer this verification question based only on original product specs: [question]"<br><em>Answers: 1. 30 hours. 2. No — specs say "active noise cancellation" but no "top". 3. IPX5. 4. No such claim.</em></li>
+        <li><strong>Revise Prompt:</strong> "Original draft: [draft]. Verification Q&A: [paste answers]. Revise the summary to be 100% factual and accurate."<br><em>Final: "XYZ wireless earbuds feature active noise cancellation, 30-hour battery life, IPX5 water resistance, and deep bass sound."</em></li>
+      </ol>
+      <p><strong>When to use it:</strong> Best for hallucination-prone tasks such as multi-hop question answering (e.g., HotpotQA), fact extraction, list-based queries, or long-form content generation where deliberate self-verification identifies inconsistencies better than single-pass methods like CoT.</p>
+      <table class="ct"><thead><tr><th>Pros</th><th>Cons</th></tr></thead><tbody><tr><td class="g">Effectively reduces hallucinations by promoting self-correction; suitable for QA, verification, and generation needing coherence</td><td class="b">Requires multiple steps, increasing latency and compute; not ideal for simple queries or real-time applications</td></tr></tbody></table>
+
+      <div class="lm">
+        <h3>Learn More</h3>
+        <p><strong>Concept:</strong> Generate a draft, create verification questions, answer them independently, then revise.</p>
+        <ul>
+          <li><span class="ll">Progressive</span><a href="https://www.prompthub.us/blog/enhancing-ai-accuracy-decreasing-hallucinations-with-cove" target="_blank" rel="noopener">Enhancing AI Accuracy with CoVe - PromptHub</a></li>
+          <li><span class="ll">Canonical</span><a href="https://arxiv.org/abs/2309.11495" target="_blank" rel="noopener">Dhuliawala et al. - Chain-of-Verification</a></li>
+          <li><span class="ll">GitHub</span><a href="https://github.com/ritun16/chain-of-verification" target="_blank" rel="noopener">ritun16/chain-of-verification</a></li>
+        </ul>
+      </div>
+    </section>
+
+    <div class="gd"></div>
+
+    <!-- 4.3 CoN -->
+    <section id="s43">
+      <div class="section-head">
+        <div class="section-num">04.3 / Chain-of-Note (CoN)</div>
+        <div class="section-title">Read Carefully, Ignore the Noise</div>
+      </div>
+      <p>Chain-of-Note prompting improves retrieval-augmented language models by forcing them to explicitly evaluate, filter, and summarize retrieved documents into structured "notes," helping the model ignore noisy or irrelevant information and correctly admit when knowledge is insufficient.</p>
+      <p><strong>How it works:</strong> The model first converts retrieved documents into concise relevance-checked notes, then reasons only over those validated notes to produce an answer or decide "unknown."</p>
+      <div class="ins"><p><strong>Do you know?</strong> When you give the AI lots of documents or search results, it often gets confused by junk. CoN forces it to read carefully, make short honest "notes", and ignore the noise.</p></div>
+
+      <div class="ic"><div class="ich"><span>CoN Document Filter — Live Animation</span><span class="tg">ANIMATED</span></div><div class="icb">
+        <p style="font-size:.85rem;color:var(--ink-2);margin-bottom:14px"><strong style="color:var(--ink)">Watch chunks get scanned</strong> — relevant ones glow green and pass, noisy ones get rejected with a red flash.</p>
+        <canvas id="conC" height="320"></canvas>
+        <div class="cr"><button class="bs bsa" onclick="startCon()">▶ Replay</button></div>
+      </div></div>
+
+      <div class="toggle" onclick="tog(this)"><div class="toggle-head"><span class="ti">📋</span><span class="tt">Example 1: Answering Policy Question from Mixed Docs</span><span class="ttg">▶ FULL PROMPT + I/O</span></div><div class="toggle-body">
+        <div class="cb"><div class="cbh"><span class="cl">CoN — Policy Q&A (Complete YAML)</span></div><pre>instruction: >
+  You are a policy Q&A agent. Use Chain-of-Note reasoning.
+
+process:
+  - For each retrieved policy/document chunk, write a Note.
+  - Note fields: relevance to "return window for custom items",
+    key rule, contradiction/noise.
+  - Chain reliable notes and ignore noisy or contradictory ones.
+  - Answer only using the reliable notes.
+
+output:
+  notes: []
+  final_answer: ""
+
+input:
+  query: "&lt;PUT_QUERY_HERE&gt;"</pre></div>
+        <div class="ec q"><div class="et">Input</div><p>"Can I return a custom-printed T-shirt?"<br><strong>Retrieved:</strong><br>Chunk 1: "Standard returns 15 days..."<br>Chunk 2: "Custom/personalized items non-returnable except defect."<br>Chunk 3: "Sale items final sale."<br>Chunk 4: "Free shipping over ₹999."</p></div>
+        <div class="ec"><div class="et">Output — Notes</div><p>• Chunk 1: <span style="color:var(--fail)">Not relevant</span> (general 15-day return window).<br>• Chunk 2: <span style="color:var(--success)">Relevant</span>. Key rule: Custom/personalized items are non-returnable except for manufacturing defects.<br>• Chunk 3: <span style="color:var(--fail)">Not relevant</span> (sale item rule).<br>• Chunk 4: <span style="color:var(--fail)">Noise</span> (shipping policy).<br><br><strong>Note utilized:</strong> Chunk 2<br><strong>Final Answer:</strong> No, custom-printed T-shirts are non-returnable except for manufacturing defects.</p></div>
+      </div></div>
+
+      <div class="toggle" onclick="tog(this)"><div class="toggle-head"><span class="ti">🎧</span><span class="tt">Example 2: Product Recommendation with Catalog + Reviews</span><span class="ttg">▶ FULL PROMPT + I/O</span></div><div class="toggle-body">
+        <div class="cb"><div class="cbh"><span class="cl">CoN — Product Recommendation (Complete YAML)</span></div><pre>instruction: >
+  You are a recommender. Use Chain-of-Note reasoning.
+
+process:
+  - For each retrieved chunk, write a short Note
+    (relevant / irrelevant + key info).
+  - Ignore noisy or irrelevant chunks.
+  - Recommend only from reliable notes that satisfy the query.
+
+input:
+  query: "&lt;PUT_QUERY_HERE&gt;"
+  retrieved_chunks: []
+
+output_format:
+  notes: []
+  recommendation: ""</pre></div>
+        <div class="ec q"><div class="et">Input</div><p>Recommend budget noise-cancelling earbuds under ₹2500.<br><strong>Retrieved chunks:</strong><br>Chunk 1: "Model A: ₹1999, ANC, 20h battery."<br>Chunk 2: "Model B review: Best ANC under 3k!"<br>Chunk 3: "Old blog post about wired headphones..."<br>Chunk 4: "Model C: ₹2999, no ANC."</p></div>
+        <div class="ec"><div class="et">Output — Notes</div><p>Chunk 1: <span style="color:var(--success)">Relevant</span>, key specs.<br>Chunk 2: <span style="color:var(--success)">Relevant</span>, positive sentiment for Model A/B range.<br>Chunk 3: <span style="color:var(--fail)">Irrelevant</span> (wired, old).<br>Chunk 4: <span style="color:var(--fail)">Relevant but over budget + no ANC</span>.<br><br><strong>Output:</strong> "Model A at ₹1999 — solid ANC and battery, good reviews in budget range."</p></div>
+      </div></div>
+
+      <p><strong>When to use it:</strong> Ideal for open-domain question-answering tasks where retrieved documents may contain noise, irrelevance, or gaps.</p>
+      <table class="ct"><thead><tr><th>Pros</th><th>Cons</th></tr></thead><tbody><tr><td class="g">Enhances robustness in noisy environments by improving exact match accuracy and rejection rates</td><td class="b">Increases response latency and token usage; less efficient for clean retrievals</td></tr></tbody></table>
+
+      <div class="lm">
+        <h3>Learn More</h3>
+        <p><strong>Concept:</strong> Write relevance notes for retrieved documents, then answer only from reliable notes.</p>
+        <ul>
+          <li><span class="ll">Progressive</span><a href="https://www.promptingguide.ai/techniques/rag" target="_blank" rel="noopener">Prompt Engineering Guide - Retrieval-Augmented Generation</a></li>
+          <li><span class="ll">Canonical</span><a href="https://arxiv.org/abs/2311.09210" target="_blank" rel="noopener">Yu et al. - Chain-of-Note</a></li>
+          <li><span class="ll">GitHub</span><a href="https://github.com/anthropics/anthropic-cookbook" target="_blank" rel="noopener">Anthropic Cookbook RAG Patterns</a></li>
+        </ul>
+      </div>
+    </section>
+
+    <div class="gd"></div>
+
+    <!-- 4.4 CoK -->
+    <section id="s44">
+      <div class="section-head">
+        <div class="section-num">04.4 / Chain-of-Knowledge (CoK)</div>
+        <div class="section-title">Build Knowledge Piece by Piece</div>
+      </div>
+      <p>This prompting method improves factual accuracy and complex reasoning by guiding the model to iteratively gather, verify, and integrate knowledge from multiple sources before producing an answer, reducing hallucinations compared to single-step reasoning.</p>
+      <p><strong>How it works:</strong> The prompt forces the model to first frame the problem, then progressively retrieve and validate relevant knowledge from internal or external sources, and finally synthesize a grounded answer.</p>
+      <div class="ins"><p><strong>Do you know?</strong> This one makes the AI act like a detective — it collects facts piece by piece from different areas, connects them, then gives a super grounded answer.</p></div>
+
+      <div class="ic"><div class="ich"><span>CoK Knowledge Chain — Live Animation</span><span class="tg">ANIMATED</span></div><div class="icb">
+        <p style="font-size:.85rem;color:var(--ink-2);margin-bottom:14px"><strong style="color:var(--ink)">Watch 7 knowledge domains</strong> connect one by one with animated links into a decision chain.</p>
+        <canvas id="cokC" height="360"></canvas>
+        <div class="cr"><button class="bs bsa" onclick="startCok()">▶ Replay</button></div>
+      </div></div>
+
+      <div class="toggle" onclick="tog(this)"><div class="toggle-head"><span class="ti">💰</span><span class="tt">Example 1: Deciding Dynamic Pricing for a Flash Sale</span><span class="ttg">▶ FULL PROMPT + I/O</span></div><div class="toggle-body">
+        <div class="cb"><div class="cbh"><span class="cl">CoK — Flash Sale Pricing (Complete YAML)</span></div><pre>instruction: >
+  You are a pricing strategist. Use Chain-of-Knowledge reasoning.
+  Build the knowledge chain step-by-step, then give a recommendation.
+
+chain_steps:
+  - Stock level and demand trend
+  - Average daily sales (no discount)
+  - Expected sales lift from discount
+  - Profit margin (full vs discounted)
+  - Competitor pricing
+  - Target customer segment
+  - Brand dilution risk
+
+output_format:
+  knowledge_chain: []
+  recommendation: "Yes | No"
+  suggested_discount: ""
+  reasoning: ""
+
+input:
+  question: "&lt;PUT_QUESTION_HERE&gt;"</pre></div>
+        <div class="ec q"><div class="et">Input</div><p>Should we run a 25% flash sale on wireless earbuds (normal ₹2499, cost ₹1499) for the next 24 hours?</p></div>
+        <p><strong>Chain steps applied:</strong> 1. Current stock level and trend. 2. Average daily sales without discount. 3. Expected sales lift from 25% discount. 4. Profit margin at full price vs discounted. 5. Competitor pricing. 6. Customer segment most likely to buy. 7. Risk of devaluing brand or training customers to wait for sales.</p>
+        <div class="ec"><div class="et">Output</div><p><strong>Knowledge:</strong> High stock + strong lift expected + competitors already discounting<br><strong>Output:</strong> Yes, but only 20% to protect margin.</p></div>
+      </div></div>
+
+      <div class="toggle" onclick="tog(this)"><div class="toggle-head"><span class="ti">🚨</span><span class="tt">Example 2: Approve Instant Refund for "Not Received" Claim (₹12,999 UPI)?</span><span class="ttg">▶ FULL PROMPT + I/O</span></div><div class="toggle-body">
+        <div class="cb"><div class="cbh"><span class="cl">CoK — Refund Risk (Complete YAML)</span></div><pre>instruction: >
+  You are a risk decision agent. Use Chain-of-Knowledge reasoning.
+  Build knowledge step-by-step across domains, refine rationales,
+  then give the final decision.
+
+process:
+  step_1_initial_rationales:
+    - Generate 2–3 preliminary hypotheses about the case.
+  step_2_identify_domains:
+    - Determine knowledge domains needed (tracking, payment risk,
+      fraud signals, customer history, policy).
+  step_3_build_knowledge_chain:
+    - Insert verified facts from each domain.
+  step_4_refine_reasoning:
+    - Update rationales using the collected knowledge.
+  step_5_decision:
+    - Combine the knowledge chain to produce final decision.
+
+output_format:
+  rationales: []
+  knowledge_chain: []
+  conclusion: ""
+  action: ""
+
+input:
+  case: "&lt;PUT_CASE_DETAILS_HERE&gt;"</pre></div>
+        <p><strong>Initial rationales:</strong></p>
+        <ul><li>Rationale 1: "If tracking shows delivered, probably not genuine non-delivery."</li><li>Rationale 2: "But UPI payments sometimes have fraud patterns."</li></ul>
+        <p><strong>Dynamic Knowledge Building — 6 domains:</strong></p>
+        <ul>
+          <li><strong>Domain 1 (Tracking):</strong> Order ORD98765 — "Delivered" 2 days ago, proof-of-delivery photo shows package at gate, signed as received.</li>
+          <li><strong>Domain 2 (Payment Risk):</strong> Paid via UPI (instant, low chargeback protection), new account created 3 days before order.</li>
+          <li><strong>Domain 3 (Customer History):</strong> First order, no previous returns or disputes.</li>
+          <li><strong>Domain 4 (Fraud Patterns):</strong> Common scam = claim "not received" after COD/UPI delivery with photo proof (~18% of such claims were fraudulent per internal data).</li>
+          <li><strong>Domain 5 (Policy):</strong> Investigate "not received" claims with proof required; refund only if confirmed lost after 72-hour re-verification.</li>
+          <li><strong>Domain 6 (Business Impact):</strong> Instant refund = ₹12,999 fraud exposure. Investigation = possible negative review but protects revenue.</li>
+        </ul>
+        <p><strong>Consolidated:</strong> "Strong delivery proof + new account + UPI + known fraud pattern → high fraud likelihood → policy requires investigation."</p>
+        <div class="ec"><div class="et">Final Output</div><p>Do not approve instant refund. Send polite messages asking customer to check with family/neighbor/guard (reference delivery photo), allow 72 hours for re-verification. If no update, escalate to full investigation/refund only if confirmed missing.</p></div>
+      </div></div>
+
+      <p><strong>When to use it:</strong> Best for knowledge-intensive QA spanning multiple domains, outperforming CoT by dynamically grounding responses in heterogeneous sources.</p>
+      <table class="ct"><thead><tr><th>Pros</th><th>Cons</th></tr></thead><tbody><tr><td class="g">Significantly improves factual reliability by integrating diverse sources</td><td class="b">Adds computational overhead; unsuitable for simple factual questions</td></tr></tbody></table>
+
+      <div class="lm">
+        <h3>Learn More</h3>
+        <p><strong>Concept:</strong> Decompose a question, retrieve and verify evidence for each piece, then synthesize.</p>
+        <ul>
+          <li><span class="ll">Progressive</span><a href="https://www.promptingguide.ai/research/rag" target="_blank" rel="noopener">Prompt Engineering Guide - RAG Techniques</a></li>
+          <li><span class="ll">Canonical</span><a href="https://arxiv.org/abs/2305.13269" target="_blank" rel="noopener">Li et al. - Chain-of-Knowledge</a></li>
+          <li><span class="ll">GitHub</span><a href="https://github.com/DAMO-NLP-SG/chain-of-knowledge" target="_blank" rel="noopener">DAMO-NLP-SG/chain-of-knowledge</a></li>
+        </ul>
+      </div>
+    </section>
+
+    <div class="gd"></div>
+
+    <!-- TECHNIQUE TABLE -->
+    <section id="ttable">
+      <div class="section-head">
+        <div class="section-num">Reference</div>
+        <div class="section-title">Table 1: All Popular Prompt Engineering Techniques</div>
+      </div>
+      <table class="ct" style="font-size:.82rem"><thead><tr><th>Technique</th><th>Simple Explanation</th><th>How It Works</th><th>Main Goal</th><th>Add to Prompt</th></tr></thead><tbody>
+        <tr><td>Zero-shot</td><td>Just ask</td><td>Question only</td><td>Quick tasks</td><td>(nothing)</td></tr>
+        <tr><td>Few-shot</td><td>1–5 examples first</td><td>Show→Answer repeated</td><td>Copy a style</td><td>"Example 1:… Now do:"</td></tr>
+        <tr><td>CoT</td><td>"Think step by step"</td><td>Step-by-step before answer</td><td>Math, logic, multi-step</td><td>"Let's think step by step."</td></tr>
+        <tr><td>Zero-shot CoT</td><td>CoT without examples</td><td>Add magic sentence</td><td>Skip writing examples</td><td>"Let's think step by step."</td></tr>
+        <tr><td>Auto-CoT</td><td>Model creates own examples</td><td>LLM generates demos</td><td>Save time</td><td>(behind scenes)</td></tr>
+        <tr><td>Self-Consistency</td><td>Ask several times → vote</td><td>CoT many times + majority</td><td>More reliable</td><td>(run 5–10× and vote)</td></tr>
+        <tr><td>ToT</td><td>Try several paths</td><td>Explore→evaluate→pick best</td><td>Hard planning/strategy</td><td>"Explore 3 paths…"</td></tr>
+        <tr><td>GoT</td><td>Thoughts connect any way</td><td>Merge/loop/multi-parent</td><td>Very complex reasoning</td><td>(special framework)</td></tr>
+        <tr><td>ReAct</td><td>Think+Act+Observe loop</td><td>Reason→action→result→repeat</td><td>Tasks needing tools</td><td>"Think→Action→Observation"</td></tr>
+        <tr><td>CoVe</td><td>Answer→checklist→fix</td><td>Generate→verify→correct</td><td>Reduce hallucinations</td><td>"Generate→verify Qs→check"</td></tr>
+      </tbody></table>
+      <div class="ins"><p><strong>Quick challenge:</strong> Pick any one technique (start with ReAct or CoVe) and test it right now with "Recommend earbuds under ₹2000".</p></div>
+    </section>
+
+    <div class="gd"></div>
+
+    <!-- MODULE 5 -->
+    <section id="m5">
+      <div class="section-head">
+        <div class="section-num">Module 05</div>
+        <div class="section-title">Context Optimization Techniques</div>
+        <div class="section-sub">LLMs support 128K to 1M+ tokens, but real apps can exceed limits. Exceeding increases latency, cost, and sometimes reduces performance.</div>
+      </div>
+    </section>
+
+    <section id="s5i">
+      <p>Prompts may contain instructions, conversation history, examples, documents, and user inputs. When all included together, tokens become too large. Context optimization techniques help reduce tokens while keeping the most important information.</p>
+    </section>
+
+    <!-- 5.1 -->
+    <section id="s51">
+      <div class="section-head">
+        <div class="section-num">05.1 / Naive Truncation</div>
+        <div class="section-title">The Simplest Cut</div>
+      </div>
+      <h3>5.1.1 Removing Extra Tokens</h3>
+      <p>Tokens are simply removed when total exceeds the limit. Most APIs use <strong>left truncation</strong> (remove oldest first). Some use <strong>right truncation</strong> (remove from end), less common since recent info is usually more important.</p>
+      <table class="ct"><thead><tr><th>Pros</th><th>Cons</th></tr></thead><tbody><tr><td class="g">Zero compute, trivial to implement, predictable token usage</td><td class="b">Non-semantic — critical info discarded arbitrarily. Causes hallucinations, errors, loss of intent.</td></tr></tbody></table>
+      <h3>5.1.2 Sliding Window Approach</h3>
+      <p>Keeps most recent context while summarizing key info from earlier parts:</p>
+      <ul><li>Extract relevant sections based on keywords or similarity</li><li>Maintain fixed-size buffer of recent conversation turns</li><li>Optionally include short summary of earlier interactions</li></ul>
+
+      <div class="lm">
+        <h3>Learn More</h3>
+        <p><strong>Concept:</strong> Drop tokens, keep a sliding window of recent turns, or summarize older context.</p>
+        <ul>
+          <li><span class="ll">Progressive</span><a href="https://python.plainenglish.io/streaming-apis-for-beginners-python-fastapi-and-async-generators-848b73a8fc06" target="_blank" rel="noopener">Streaming APIs for Beginners - Okan Yenigun</a></li>
+          <li><span class="ll">Canonical</span><a href="https://python.langchain.com/docs/concepts/chat_history/" target="_blank" rel="noopener">LangChain Docs - Managing Chat History</a></li>
+          <li><span class="ll">GitHub</span><a href="https://github.com/langchain-ai/langchain" target="_blank" rel="noopener">LangChain Memory Modules</a></li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- 5.2 -->
+    <section id="s52">
+      <div class="section-head">
+        <div class="section-num">05.2 / Retrieval-Based Selection</div>
+        <div class="section-title">Pick Only What Matters</div>
+      </div>
+      <p>When working with external knowledge, select only the most relevant pieces instead of including everything.</p>
+      <div class="ic"><div class="ich"><span>Retrieval Pipeline — Live Animation</span><span class="tg">ANIMATED</span></div><div class="icb">
+        <p style="font-size:.85rem;color:var(--ink-2);margin-bottom:14px"><strong style="color:var(--ink)">Watch data particles flow</strong> through: Knowledge Base → Retrieve → Rank → Compress → Insert.</p>
+        <canvas id="retC" height="220"></canvas>
+        <div class="cr"><button class="bs bsa" onclick="startRet()">▶ Replay</button></div>
+      </div></div>
+      <div class="fc"><div class="fl">Note</div><div class="fe">Retrieval methods are a key part of RAG. In this module, we only introduce the basic concept. RAG will be covered in a separate module.</div></div>
+      <p><strong>Advanced retrieval techniques:</strong></p>
+      <ul><li><strong>Maximal Marginal Relevance (MMR):</strong> Retrieve docs that are both relevant AND diverse</li><li><strong>Contextual Compression Retrieval:</strong> Retrieve then compress before sending to LLM</li><li><strong>Hierarchical Retrieval:</strong> Retrieve in multiple levels instead of loading many chunks</li></ul>
+
+      <div class="lm">
+        <h3>Learn More</h3>
+        <p><strong>Concept:</strong> Select only the most relevant retrieved context before inserting it into the prompt.</p>
+        <ul>
+          <li><span class="ll">Progressive</span><a href="https://www.promptingguide.ai/techniques/rag" target="_blank" rel="noopener">Prompt Engineering Guide - RAG</a></li>
+          <li><span class="ll">Canonical</span><a href="https://python.langchain.com/docs/concepts/chat_history/" target="_blank" rel="noopener">LangChain Docs - Context and Chat History</a></li>
+          <li><span class="ll">GitHub</span><a href="https://github.com/langchain-ai/langchain" target="_blank" rel="noopener">LangChain</a></li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- 5.3 -->
+    <section id="s53">
+      <div class="section-head">
+        <div class="section-num">05.3 / Natural Language Compression</div>
+        <div class="section-title">Shrink Without Losing Meaning</div>
+      </div>
+      <p>Advanced techniques reduce prompt size by <strong>rewriting or summarizing while keeping meaning intact</strong>. Can compress text <strong>5–20×</strong>.</p>
+      <h3>5.3.1 Prompt Compression</h3>
+      <p>Methods like <span class="badge">LLMLingua</span> and <span class="badge">LongLLMLingua</span> use smaller LMs to remove low-information tokens: stopwords, redundant phrases, repeated formatting/boilerplate. <strong>Soft prompts</strong> replace long text with learned token embeddings.</p>
+      <h3>5.3.2 Token Optimization</h3>
+      <p>Removing excessive formatting, merging repeated instructions, shortening descriptions. Some methods estimate <strong>token importance</strong> using entropy/perplexity scores.</p>
+      <h3>5.3.3 Semantic Summarization (ACON)</h3>
+      <p><span class="badge">ACON</span> (2025) iteratively improves summarization for long-running AI systems:</p>
+      <div class="ic"><div class="ich"><span>ACON Iterative Loop — Live Animation</span><span class="tg">ANIMATED</span></div><div class="icb">
+        <p style="font-size:.85rem;color:var(--ink-2);margin-bottom:14px"><strong style="color:var(--ink)">Watch the 5-step ACON cycle</strong> iterate with a growing performance meter that stabilizes at ~95%.</p>
+        <canvas id="aconC" height="320"></canvas>
+        <div class="cr"><button class="bs bsa" onclick="startAcon()">▶ Replay</button></div>
+      </div></div>
+      <ol class="sl"><li>Start with simple summarization instruction</li><li>Identify cases where compressed context causes errors</li><li>Use stronger LLM to analyze why compression failed</li><li>Improve the summarization guideline</li><li>Repeat until performance stabilizes</li></ol>
+      <p>Result: compress by <strong>30–50%+</strong> while maintaining <strong>~95% performance</strong>.</p>
+
+      <div class="lm">
+        <h3>Learn More</h3>
+        <p><strong>Concept:</strong> Compress prompts by removing low-information tokens or semantically summarizing older context.</p>
+        <ul>
+          <li><span class="ll">Progressive</span><a href="https://medium.com/@srajsonu/redis-semantic-caching-cut-your-llm-costs-by-80-with-smarter-cache-hits-8512cdcbb7be" target="_blank" rel="noopener">Redis Semantic Caching and LLM Cost Control - Sonu Raj</a></li>
+          <li><span class="ll">Canonical</span><a href="https://arxiv.org/abs/2310.05736" target="_blank" rel="noopener">Jiang et al. - LLMLingua</a></li>
+          <li><span class="ll">GitHub</span><a href="https://github.com/microsoft/LLMLingua" target="_blank" rel="noopener">Microsoft LLMLingua</a></li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- 5.4 -->
+    <section id="s54">
+      <div class="section-head">
+        <div class="section-num">05.4 / Dynamic Context Prompt Optimization (DCPO)</div>
+        <div class="section-title">Adjust as Conversation Progresses</div>
+      </div>
+      <h3>5.4.1 Context Rewriting</h3>
+      <p>Every <strong>5–10 turns</strong> or at <strong>80% token limit</strong>, the system rewrites: summarize history, extract entities, remove repeated info, rewrite instructions concisely.</p>
+      <h3>5.4.2 Prompt Refinement Loops</h3>
+      <p>After generating output, the model evaluates whether it meets criteria. If not, adjusts prompt before next output. Some frameworks compress reasoning traces over time.</p>
+      <h3>5.4.3 Adaptive Prompts</h3>
+      <ul><li>Increase/decrease compression based on remaining token budget</li><li>Inject stored memory when needed</li><li>Switch instruction style (detailed → concise) as task becomes clearer</li></ul>
+      <p>Advanced agent frameworks monitor token usage and auto-switch to summarized context when limits approach.</p>
+
+      <div class="lm">
+        <h3>Learn More</h3>
+        <p><strong>Concept:</strong> Rewrite queries, refine prompts, and adapt context as the conversation progresses.</p>
+        <ul>
+          <li><span class="ll">Progressive</span><a href="https://medium.com/@mudassar.hakim/retrieval-is-the-bottleneck-hyde-query-expansion-and-multi-query-rag-explained-for-production-c1842bed7f8a" target="_blank" rel="noopener">HyDE, Query Expansion, and Multi-Query RAG - Mudassar Hakim</a></li>
+          <li><span class="ll">Canonical</span><a href="https://arxiv.org/abs/2212.10496" target="_blank" rel="noopener">Gao et al. - HyDE</a></li>
+          <li><span class="ll">GitHub</span><a href="https://github.com/langchain-ai/rag-from-scratch" target="_blank" rel="noopener">LangChain MultiQueryRetriever + HyDE Examples</a></li>
+        </ul>
+      </div>
+    </section>
+
+    <div class="gd"></div>
+
+    <!-- QUIZ M4 -->
+    <section id="q4">
+      <div class="section-head">
+        <div class="section-num">Module 4 — Assessment</div>
+        <div class="section-title">Reducing Hallucination — Mastery Check</div>
+      </div>
+      <div id="qz4"></div>
+      <div id="q4s" style="display:none;margin-top:2rem">
+        <div class="fc" style="text-align:center">
+          <div class="fl">MODULE 4 SCORE</div>
+          <div class="fm" id="q4v">—</div>
+          <div class="fe" id="q4m"></div>
+        </div>
+      </div>
+    </section>
+
+    <div class="gd"></div>
+
+    <!-- QUIZ M5 -->
+    <section id="q5">
+      <div class="section-head">
+        <div class="section-num">Module 5 — Assessment</div>
+        <div class="section-title">Context Optimization — Mastery Check</div>
+      </div>
+      <div id="qz5"></div>
+      <div id="q5s" style="display:none;margin-top:2rem">
+        <div class="fc" style="text-align:center">
+          <div class="fl">MODULE 5 SCORE</div>
+          <div class="fm" id="q5v">—</div>
+          <div class="fe" id="q5m"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- =================== NEXT MODULE =================== -->
+    <div class="module-nav">
+      <div>
+        <div class="module-nav-label">Next up · Part 4</div>
+        <div class="module-nav-title">Production Prompt Engineering &amp; Optimization</div>
+      </div>
+      <a class="module-nav-cta" href="part4_prompt_engineering.html">Continue →</a>
+    </div>
+
+  </main>
+</div>
+
+<script>
+// ══════ CORE ══════
+function tog(el){const b=el.querySelector('.toggle-body'),t=el.querySelector('.ttg');b.classList.toggle('open');t.textContent=b.classList.contains('open')?'▼ COLLAPSE':'▶ FULL PROMPT + I/O';}
+function rr(c,x,y,w,h,r){c.beginPath();c.moveTo(x+r,y);c.lineTo(x+w-r,y);c.quadraticCurveTo(x+w,y,x+w,y+r);c.lineTo(x+w,y+h-r);c.quadraticCurveTo(x+w,y+h,x+w-r,y+h);c.lineTo(x+r,y+h);c.quadraticCurveTo(x,y+h,x,y+h-r);c.lineTo(x,y+r);c.quadraticCurveTo(x,y,x+r,y);c.closePath();}
+
+// ══════ HERO PARTICLES ══════
+const hC=document.getElementById('heroC'),hX=hC.getContext('2d');let pts=[];
+function initH(){hC.width=hC.parentElement.clientWidth;hC.height=hC.parentElement.clientHeight;pts=[];for(let i=0;i<50;i++)pts.push({x:Math.random()*hC.width,y:Math.random()*hC.height,vx:(Math.random()-.5)*.4,vy:(Math.random()-.5)*.4,r:Math.random()*2+.5,c:['#6366f1','#10b981','#f7768e','#f59e0b','#06b6d4'][~~(Math.random()*5)]});}
+function drawH(){hX.clearRect(0,0,hC.width,hC.height);pts.forEach((p,i)=>{p.x+=p.vx;p.y+=p.vy;if(p.x<0||p.x>hC.width)p.vx*=-1;if(p.y<0||p.y>hC.height)p.vy*=-1;hX.globalAlpha=.35;hX.fillStyle=p.c;hX.beginPath();hX.arc(p.x,p.y,p.r,0,Math.PI*2);hX.fill();pts.slice(i+1).forEach(q=>{const d=Math.hypot(p.x-q.x,p.y-q.y);if(d<100){hX.globalAlpha=.05*(1-d/100);hX.strokeStyle=p.c;hX.lineWidth=.5;hX.beginPath();hX.moveTo(p.x,p.y);hX.lineTo(q.x,q.y);hX.stroke();}});});hX.globalAlpha=1;requestAnimationFrame(drawH);}
+
+// ══════ REACT: SMOOTH ORBITING LOOP ══════
+const rC=document.getElementById('reactC'),rX=rC.getContext('2d');
+let rAng=0,rNode=0,rLoops=0,rRunning=false;
+const rNodes=[{l:'💭 Thought',sub:'Reason about the query',c:'#6366f1',a:-Math.PI/2},{l:'⚡ Action',sub:'Search / calculate / tool',c:'#f59e0b',a:Math.PI/6},{l:'👁️ Observe',sub:'Record the result',c:'#10b981',a:5*Math.PI/6}];
+function resR(){rC.width=rC.parentElement.clientWidth;}
+function drawR(){const w=rC.width,h=rC.height,cx=w/2,cy=h/2,R=Math.min(w*.38,h*.38);rX.clearRect(0,0,w,h);
+// Orbit ring
+rX.strokeStyle='rgba(255,255,255,.04)';rX.lineWidth=2;rX.beginPath();rX.arc(cx,cy,R,0,Math.PI*2);rX.stroke();
+// Glow ring based on active node
+const ac=rNodes[rNode].c;rX.strokeStyle=ac+'15';rX.lineWidth=6;rX.beginPath();rX.arc(cx,cy,R,0,Math.PI*2);rX.stroke();
+// Center
+rX.fillStyle='rgba(255,255,255,.08)';rX.font='bold 14px "Outfit"';rX.textAlign='center';rX.fillText('ReAct Loop',cx,cy-2);rX.fillStyle=rLoops>0?'#10b981':'rgba(255,255,255,.15)';rX.font='bold 11px "JetBrains Mono"';rX.fillText(rLoops>0?`Cycle ${rLoops}`:'',cx,cy+16);
+// Orbiting particle with trail
+for(let i=0;i<12;i++){const ta=rAng-i*.08;const al=(1-i/12)*.6;const pr=R;rX.globalAlpha=al;rX.fillStyle=ac;rX.beginPath();rX.arc(cx+Math.cos(ta)*pr,cy+Math.sin(ta)*pr,6-i*.4,0,Math.PI*2);rX.fill();}rX.globalAlpha=1;
+// Outer glow on orbiter
+rX.shadowColor=ac;rX.shadowBlur=20;rX.fillStyle=ac;rX.beginPath();rX.arc(cx+Math.cos(rAng)*R,cy+Math.sin(rAng)*R,7,0,Math.PI*2);rX.fill();rX.shadowBlur=0;
+// Nodes
+rNodes.forEach((n,i)=>{const nx=cx+Math.cos(n.a)*(R+65);const ny=cy+Math.sin(n.a)*(R+65);const cur=i===rNode;
+// Node card
+rX.fillStyle=n.c+(cur?'18':'08');rr(rX,nx-58,ny-28,116,56,10);rX.fill();rX.strokeStyle=n.c+(cur?'66':'22');rX.lineWidth=cur?2:1;rr(rX,nx-58,ny-28,116,56,10);rX.stroke();
+if(cur){rX.shadowColor=n.c;rX.shadowBlur=15;rr(rX,nx-58,ny-28,116,56,10);rX.stroke();rX.shadowBlur=0;}
+rX.fillStyle='#e8eaed';rX.font=`${cur?'bold ':''}12px "Outfit"`;rX.textAlign='center';rX.fillText(n.l,nx,ny-4);rX.fillStyle='#a8aeb8';rX.font='9px "JetBrains Mono"';rX.fillText(n.sub,nx,ny+14);
+// Connection line to orbit
+rX.strokeStyle=n.c+'18';rX.lineWidth=1;rX.setLineDash([3,4]);rX.beginPath();rX.moveTo(cx+Math.cos(n.a)*R,cy+Math.sin(n.a)*R);rX.lineTo(nx,ny);rX.stroke();rX.setLineDash([]);});}
+function tickR(){if(!rRunning)return;rAng+=.03;
+// Determine which node is closest to orbiter
+let closest=0,minD=Infinity;rNodes.forEach((n,i)=>{const d=Math.abs(((rAng%(Math.PI*2))+Math.PI*2)%(Math.PI*2)-((n.a+Math.PI*2)%(Math.PI*2)));const d2=Math.min(d,Math.PI*2-d);if(d2<minD){minD=d2;closest=i;}});
+if(closest!==rNode){rNode=closest;if(rNode===0)rLoops++;}
+drawR();requestAnimationFrame(tickR);}
+function startReact(){rAng=-Math.PI/2;rNode=0;rLoops=0;rRunning=true;tickR();}
+
+// ══════ COVE: FLOWING PIPELINE ══════
+const cvC=document.getElementById('coveC'),cvX=cvC.getContext('2d');
+let cvS=0,cvPx=[],cvA=null;
+const cvSteps=[{l:'📝 Draft',sub:'Generate initial answer\n(may have errors)',c:'#6366f1'},{l:'❓ Verify',sub:'Create 4 verification\nquestions from claims',c:'#f59e0b'},{l:'✅ Answer',sub:'Answer each question\nindependently from source',c:'#10b981'},{l:'✍️ Revise',sub:'Fix errors using\nverified facts only',c:'#818cf8'}];
+function resCv(){cvC.width=cvC.parentElement.clientWidth;}
+function drawCv(){const w=cvC.width,h=cvC.height;cvX.clearRect(0,0,w,h);const bw=Math.min(170,(w-30)/cvSteps.length-10);const gap=(w-cvSteps.length*bw)/(cvSteps.length+1);const cy=h/2;
+cvSteps.forEach((s,i)=>{const x=gap+i*(bw+gap);const act=i<=cvS;const cur=i===cvS;
+cvX.globalAlpha=act?1:.1;
+// Card with glow
+if(cur){cvX.shadowColor=s.c;cvX.shadowBlur=20;}
+cvX.fillStyle=s.c+'0c';rr(cvX,x,cy-65,bw,130,12);cvX.fill();cvX.strokeStyle=s.c+(cur?'77':'25');cvX.lineWidth=cur?2:1;rr(cvX,x,cy-65,bw,130,12);cvX.stroke();cvX.shadowBlur=0;
+// Step number
+cvX.fillStyle=s.c;cvX.font='bold 9px "JetBrains Mono"';cvX.textAlign='center';cvX.fillText('STEP '+(i+1),x+bw/2,cy-42);
+// Icon + label
+cvX.fillStyle='#e8eaed';cvX.font='600 12px "Outfit"';cvX.fillText(s.l,x+bw/2,cy-20);
+// Sub text
+cvX.fillStyle='#a8aeb8';cvX.font='10px "Outfit"';s.sub.split('\n').forEach((ln,li)=>cvX.fillText(ln,x+bw/2,cy+2+li*15));
+// Flowing particles between stages
+if(i<cvSteps.length-1&&act){cvX.globalAlpha=.6;for(let p=0;p<3;p++){const t=((Date.now()/600+p*.33)%1);const px2=x+bw+t*gap;const pulse=Math.sin(t*Math.PI)*.8+.2;cvX.fillStyle=s.c;cvX.globalAlpha=pulse*.5;cvX.beginPath();cvX.arc(px2,cy,3,0,Math.PI*2);cvX.fill();}}});cvX.globalAlpha=1;}
+function animCv(){cvS++;if(cvS>=cvSteps.length)return;drawCv();cvA=setTimeout(animCv,1100);}
+function loopCv(){drawCv();if(cvS<cvSteps.length)requestAnimationFrame(loopCv);}
+function startCove(){if(cvA)clearTimeout(cvA);cvS=0;drawCv();animCv();loopCv();}
+
+// ══════ CON: SCANNING FILTER ══════
+const cnC=document.getElementById('conC'),cnX=cnC.getContext('2d');
+let cnS=-1,cnA=null;
+const cnChunks=[{l:'Chunk 1: "Standard returns 15 days…"',rel:false,note:'Not relevant (general)'},{l:'Chunk 2: "Custom items non-returnable…"',rel:true,note:'RELEVANT — key rule'},{l:'Chunk 3: "Sale items final sale"',rel:false,note:'Not relevant (sale rule)'},{l:'Chunk 4: "Free shipping over ₹999"',rel:false,note:'Noise (shipping)'}];
+function resCn(){cnC.width=cnC.parentElement.clientWidth;}
+function drawCn(){const w=cnC.width,h=cnC.height;cnX.clearRect(0,0,w,h);const rh=62;const sy=20;
+// Scanner line
+if(cnS>=0&&cnS<cnChunks.length){const scanY=sy+cnS*(rh+10)+rh/2;cnX.strokeStyle='rgba(99,102,241,.3)';cnX.lineWidth=2;cnX.beginPath();cnX.moveTo(0,scanY);cnX.lineTo(w,scanY);cnX.stroke();
+// Scanning glow
+const grad=cnX.createLinearGradient(0,scanY-30,0,scanY+30);grad.addColorStop(0,'transparent');grad.addColorStop(.5,'rgba(99,102,241,.08)');grad.addColorStop(1,'transparent');cnX.fillStyle=grad;cnX.fillRect(0,scanY-30,w,60);}
+cnChunks.forEach((c,i)=>{const y=sy+i*(rh+10);const scanned=i<=cnS;const col=c.rel?'#10b981':'#f7768e';
+// Card
+cnX.fillStyle=scanned?(col+'0c'):'rgba(255,255,255,.02)';rr(cnX,20,y,w-40,rh,10);cnX.fill();cnX.strokeStyle=scanned?(col+'55'):'rgba(255,255,255,.06)';cnX.lineWidth=scanned&&i===cnS?2:1;rr(cnX,20,y,w-40,rh,10);cnX.stroke();
+// Glow for active
+if(i===cnS){cnX.shadowColor=col;cnX.shadowBlur=15;rr(cnX,20,y,w-40,rh,10);cnX.stroke();cnX.shadowBlur=0;}
+// Icon
+cnX.font='18px serif';cnX.textAlign='left';cnX.fillText(scanned?(c.rel?'✅':'❌'):'📄',32,y+28);
+// Text
+cnX.fillStyle=scanned?'#e8eaed':'#6b7280';cnX.font='12px "Outfit"';cnX.fillText(c.l,58,y+26);
+// Note
+if(scanned){cnX.fillStyle=col;cnX.font='10px "JetBrains Mono"';cnX.fillText('→ '+c.note,58,y+46);}
+// Rejection X effect
+if(scanned&&!c.rel){cnX.globalAlpha=.2;cnX.strokeStyle='#f7768e';cnX.lineWidth=2;cnX.beginPath();cnX.moveTo(w-60,y+8);cnX.lineTo(w-30,y+rh-8);cnX.moveTo(w-30,y+8);cnX.lineTo(w-60,y+rh-8);cnX.stroke();cnX.globalAlpha=1;}});}
+function animCn(){cnS++;if(cnS>=cnChunks.length){drawCn();return;}drawCn();cnA=setTimeout(animCn,1000);}
+function startCon(){if(cnA)clearTimeout(cnA);cnS=-1;drawCn();cnA=setTimeout(animCn,500);}
+
+// ══════ COK: GROWING CHAIN ══════
+const ckC=document.getElementById('cokC'),ckX=ckC.getContext('2d');
+let ckS=-1,ckA=null;
+const ckD=[{l:'📦 Tracking',sub:'Delivered, photo proof',c:'#6366f1'},{l:'💳 Payment',sub:'UPI, new account',c:'#f59e0b'},{l:'👤 History',sub:'First order',c:'#10b981'},{l:'🚨 Fraud',sub:'18% similar = fraud',c:'#f7768e'},{l:'📋 Policy',sub:'72h re-verify',c:'#818cf8'},{l:'💼 Impact',sub:'₹12,999 risk',c:'#a8aeb8'},{l:'✅ Decision',sub:'Hold & investigate',c:'#10b981'}];
+function resCk(){ckC.width=ckC.parentElement.clientWidth;}
+function drawCk(){const w=ckC.width,h=ckC.height;ckX.clearRect(0,0,w,h);
+const nodeW=Math.min(105,(w-40)/ckD.length-6);const gap=(w-ckD.length*nodeW)/(ckD.length+1);const cy=h/2;
+// Chain backbone
+ckX.strokeStyle='rgba(255,255,255,.04)';ckX.lineWidth=3;ckX.beginPath();ckX.moveTo(gap/2,cy);ckX.lineTo(w-gap/2,cy);ckX.stroke();
+ckD.forEach((d,i)=>{const x=gap+i*(nodeW+gap);const act=i<=ckS;const cur=i===ckS;
+if(!act){ckX.globalAlpha=.08;ckX.fillStyle='rgba(255,255,255,.05)';rr(ckX,x,cy-40,nodeW,80,10);ckX.fill();ckX.globalAlpha=1;return;}
+// Active chain link glow
+if(cur){const grad=ckX.createRadialGradient(x+nodeW/2,cy,0,x+nodeW/2,cy,nodeW);grad.addColorStop(0,d.c+'20');grad.addColorStop(1,d.c+'00');ckX.fillStyle=grad;ckX.beginPath();ckX.arc(x+nodeW/2,cy,nodeW*.7,0,Math.PI*2);ckX.fill();}
+// Node card
+ckX.fillStyle=d.c+'10';rr(ckX,x,cy-40,nodeW,80,10);ckX.fill();ckX.strokeStyle=d.c+(cur?'77':'33');ckX.lineWidth=cur?2:1;rr(ckX,x,cy-40,nodeW,80,10);ckX.stroke();
+// Chain dot
+ckX.fillStyle=d.c;ckX.beginPath();ckX.arc(x+nodeW/2,cy+48,4,0,Math.PI*2);ckX.fill();
+// Connection to previous
+if(i>0&&act){const px=gap+(i-1)*(nodeW+gap)+nodeW/2;ckX.strokeStyle=d.c+'40';ckX.lineWidth=2;ckX.beginPath();ckX.moveTo(px,cy+48);ckX.lineTo(x+nodeW/2,cy+48);ckX.stroke();
+// Animated particle
+const t=(Date.now()%800)/800;const mx=px+(x+nodeW/2-px)*t;ckX.fillStyle=d.c;ckX.globalAlpha=.7;ckX.beginPath();ckX.arc(mx,cy+48,3,0,Math.PI*2);ckX.fill();ckX.globalAlpha=1;}
+// Labels
+ckX.fillStyle='#e8eaed';ckX.font='11px "Outfit"';ckX.textAlign='center';ckX.fillText(d.l,x+nodeW/2,cy-10);ckX.fillStyle='#a8aeb8';ckX.font='9px "JetBrains Mono"';ckX.fillText(d.sub,x+nodeW/2,cy+10);});}
+function animCk(){ckS++;if(ckS>=ckD.length){loopCk();return;}drawCk();ckA=setTimeout(animCk,650);}
+function loopCk(){drawCk();requestAnimationFrame(loopCk);}
+function startCok(){if(ckA)clearTimeout(ckA);ckS=-1;drawCk();ckA=setTimeout(animCk,400);}
+
+// ══════ RETRIEVAL PIPELINE ══════
+const rtC=document.getElementById('retC'),rtX=rtC.getContext('2d');
+let rtS=0,rtA=null,rtParticles=[];
+const rtSteps=[{l:'📚 Knowledge Base',c:'#6366f1'},{l:'🔍 Retrieve Top-K',c:'#10b981'},{l:'📊 Rank',c:'#f59e0b'},{l:'✂️ Compress',c:'#f7768e'},{l:'📝 Into Prompt',c:'#818cf8'}];
+function resRt(){rtC.width=rtC.parentElement.clientWidth;}
+function drawRt(){const w=rtC.width,h=rtC.height;rtX.clearRect(0,0,w,h);const bw=Math.min(140,(w-20)/rtSteps.length-8);const gap=(w-rtSteps.length*bw)/(rtSteps.length+1);const cy=h/2;
+rtSteps.forEach((s,i)=>{const x=gap+i*(bw+gap);const act=i<=rtS;const cur=i===rtS;
+rtX.globalAlpha=act?1:.1;
+if(cur){rtX.shadowColor=s.c;rtX.shadowBlur=15;}
+rtX.fillStyle=s.c+'0c';rr(rtX,x,cy-28,bw,56,10);rtX.fill();rtX.strokeStyle=s.c+(cur?'77':'25');rtX.lineWidth=cur?2:1;rr(rtX,x,cy-28,bw,56,10);rtX.stroke();rtX.shadowBlur=0;
+rtX.fillStyle='#e8eaed';rtX.font='11px "Outfit"';rtX.textAlign='center';rtX.fillText(s.l,x+bw/2,cy+5);
+// Flowing dots between
+if(i<rtSteps.length-1&&act){for(let p=0;p<2;p++){const t=((Date.now()/500+p*.5)%1);const px=x+bw+t*gap;rtX.globalAlpha=Math.sin(t*Math.PI)*.5;rtX.fillStyle=s.c;rtX.beginPath();rtX.arc(px,cy,3,0,Math.PI*2);rtX.fill();}}});rtX.globalAlpha=1;}
+function animRt(){rtS++;if(rtS>=rtSteps.length)return;drawRt();rtA=setTimeout(animRt,700);}
+function loopRt(){drawRt();requestAnimationFrame(loopRt);}
+function startRet(){if(rtA)clearTimeout(rtA);rtS=0;animRt();loopRt();}
+
+// ══════ ACON LOOP ══════
+const acC=document.getElementById('aconC'),acX=acC.getContext('2d');
+let acS=0,acI=1,acA=null,acPerf=70;
+const acSteps=[{l:'📝 Summarize',c:'#6366f1'},{l:'🔍 Find Errors',c:'#f7768e'},{l:'🧠 Analyze Why',c:'#f59e0b'},{l:'📋 Improve',c:'#10b981'},{l:'🔄 Repeat',c:'#818cf8'}];
+function resAc(){acC.width=acC.parentElement.clientWidth;}
+function drawAc(){const w=acC.width,h=acC.height,cx=w/2,cy=h/2-10,R=Math.min(w*.32,h*.32);acX.clearRect(0,0,w,h);
+// Ring
+acX.strokeStyle='rgba(255,255,255,.04)';acX.lineWidth=2;acX.beginPath();acX.arc(cx,cy,R,0,Math.PI*2);acX.stroke();
+// Performance arc
+const perfAng=(acPerf/100)*Math.PI*2;acX.strokeStyle='#10b981'+(acPerf>90?'88':'44');acX.lineWidth=4;acX.beginPath();acX.arc(cx,cy,R+12,-Math.PI/2,-Math.PI/2+perfAng);acX.stroke();
+// Center
+acX.fillStyle='rgba(255,255,255,.1)';acX.font='bold 13px "Outfit"';acX.textAlign='center';acX.fillText('ACON',cx,cy-8);acX.fillStyle='#10b981';acX.font='bold 18px "JetBrains Mono"';acX.fillText(Math.round(acPerf)+'%',cx,cy+16);acX.fillStyle='#a8aeb8';acX.font='9px "Outfit"';acX.fillText(`Iteration ${acI}`,cx,cy+34);
+// Step nodes
+acSteps.forEach((s,i)=>{const a=-Math.PI/2+(i/acSteps.length)*Math.PI*2;const nx=cx+Math.cos(a)*R;const ny=cy+Math.sin(a)*R;const cur=i===acS;
+if(cur){acX.shadowColor=s.c;acX.shadowBlur=15;}
+acX.fillStyle=s.c+(cur?'25':'10');acX.beginPath();acX.arc(nx,ny,28,0,Math.PI*2);acX.fill();acX.strokeStyle=s.c+(cur?'77':'22');acX.lineWidth=cur?2:1;acX.beginPath();acX.arc(nx,ny,28,0,Math.PI*2);acX.stroke();acX.shadowBlur=0;
+acX.fillStyle='#e8eaed';acX.font='10px "Outfit"';acX.textAlign='center';acX.fillText(s.l,nx,ny+4);});}
+function animAc(){acS++;if(acS>=acSteps.length){acS=0;acI++;acPerf=Math.min(96,acPerf+5);if(acI>5)return;}drawAc();acA=setTimeout(animAc,500);}
+function startAcon(){if(acA)clearTimeout(acA);acS=0;acI=1;acPerf=70;drawAc();acA=setTimeout(animAc,400);}
+
+// ══════ QUIZ ══════
+function chk(el,idx){const c=el.parentElement;if(c.dataset.a)return;c.dataset.a='1';const cor=parseInt(c.dataset.correct);const exp=c.dataset.explanation;c.querySelectorAll('.qo').forEach((o,i)=>{if(i===cor)o.classList.add('cor');else if(i===idx&&i!==cor)o.classList.add('inc');o.style.pointerEvents='none'});const fb=c.nextElementSibling;fb.classList.add('sh');fb.className=idx===cor?'qf sh cf':'qf sh if';fb.innerHTML=(idx===cor?'✓ Correct! ':'✗ Not quite. ')+exp;const pc=c.closest('[id^="qz"]');if(pc)chkD(pc);}
+function chkD(ct){const qs=ct.querySelectorAll('.qos');let a=0,c2=0;qs.forEach(q=>{if(q.dataset.a){a++;if(q.querySelectorAll('.qo')[parseInt(q.dataset.correct)].classList.contains('cor')&&!q.querySelector('.qo.inc'))c2++;}});if(a===qs.length){const id=ct.id.replace('qz','q');document.getElementById(id+'s').style.display='block';document.getElementById(id+'v').textContent=c2+'/'+qs.length;document.getElementById(id+'m').textContent=c2===qs.length?'Perfect! 🎯':c2>=Math.floor(qs.length*.7)?'Strong! Review missed Qs.':'Revisit material above.';}}
+function bQ(id,d){document.getElementById(id).innerHTML=d.map((q,i)=>`<div class="qc" style="margin-top:${i?'12px':'0'}"><div class="qch">Question ${i+1} of ${d.length}</div><div class="qcb"><div class="qq">${q.q}</div><div class="qos" data-correct="${q.c}" data-explanation="${q.e}">${q.o.map((o,oi)=>`<div class="qo" onclick="chk(this,${oi})"><span class="ol">${'ABCD'[oi]}</span><span>${o}</span></div>`).join('')}</div><div class="qf"></div></div></div>`).join('');}
+
+const q4d=[
+{q:"What is the ReAct loop pattern?",o:["Read→Edit→Apply→Test","Thought  Action  Observation  repeat until answer ready","Request→Auth→Compute","React component lifecycle"],c:1,e:"ReAct = Thought (reason) → Action (use tool/search) → Observation (see result) → repeat until done."},
+{q:"How does Chain-of-Verification (CoVe) reduce hallucination?",o:["Uses a bigger model","Drafts an answer, creates verification questions, answers them independently, then revises","Removes all context","Always refuses uncertain Qs"],c:1,e:"CoVe is self-fact-checking: draft → generate verification Qs → answer each independently → revise using only verified facts."},
+{q:"In CoN, what happens to irrelevant retrieved documents?",o:["Included anyway","Marked as noise in notes and ignored in the final answer","Sent to another model","Cause a crash"],c:1,e:"CoN forces honest note-taking per chunk — irrelevant ones are tagged and excluded from reasoning."},
+{q:"What makes CoK different from standard CoT?",o:["CoK is faster","CoK iteratively gathers knowledge from multiple domains before answering","CoK doesn't reason","CoK only does math"],c:1,e:"CoK = detective mode: collect facts from tracking, payment, history, fraud, policy, business domains, then synthesize a grounded answer."},
+{q:"In the CoK refund example, what was the final action for the ₹12,999 claim?",o:["Approve instant refund","Reject and close","Hold for 72h re-verification with delivery partner","Ask customer to pay again"],c:2,e:"Delivery proof + new account + UPI + fraud pattern → hold for investigation, 72h re-verify, escalate only if confirmed missing."},
+{q:"When should you use ReAct prompting?",o:["Simple factual Qs","When tasks need real-world tools, search, APIs, calculators","Only creative writing","Only mathematical proofs"],c:1,e:"ReAct shines for tasks needing external tools — search, databases, calculators — ideal for building agents."},
+{q:"What's the main disadvantage of CoVe?",o:["Always wrong","Multiple steps increase latency and compute; not ideal for real-time apps","Can't handle text","Only works with GPT-4"],c:1,e:"The 4-step process (draft→questions→verify→revise) adds time and cost, making it less suitable for speed-critical use."},
+{q:"In the CoVe earbuds example, what was the original draft's error?",o:["Wrong product name","Claimed '40-hour battery' and 'best in class' when specs said 30h and made no such claim","Wrong color","Forgot the price"],c:1,e:"The draft exaggerated: 40h (actual 30h), 'top' (actual just 'ANC'), 'fully waterproof' (actual IPX5), 'best in class' (no such claim)."},
+];
+
+const q5d=[
+{q:"What is 'naive truncation'?",o:["Advanced compression","Simply removing tokens when total exceeds limit — usually oldest first","A prompt template","Summarizing context"],c:1,e:"Simplest approach: just cut tokens to fit. Left truncation removes oldest, keeping recent context intact."},
+{q:"What's the main risk of naive truncation?",o:["Too slow","Non-semantic — critical info discarded arbitrarily, causing hallucinations and errors","Too expensive","Only works for short prompts"],c:1,e:"Truncation doesn't understand content importance — it may delete crucial info while keeping irrelevant recent messages."},
+{q:"What are the three advanced retrieval techniques?",o:["BFS, DFS, A*","MMR, Contextual Compression, Hierarchical Retrieval","Binary, Linear, Hash","None exist"],c:1,e:"MMR = relevant + diverse. Contextual Compression = retrieve then compress. Hierarchical = multi-level retrieval."},
+{q:"What do LLMLingua and LongLLMLingua do?",o:["They are LLM models","Use smaller models to identify and remove low-information tokens (stopwords, boilerplate)","Generate longer prompts","Translate languages"],c:1,e:"These prompt compression tools use small LMs to estimate token importance and remove those contributing least."},
+{q:"What does ACON achieve?",o:["Doubles context window","Iteratively improves summarization to compress by 30-50% while maintaining ~95% performance","Removes formatting","Encrypts the prompt"],c:1,e:"ACON (2025): summarize → find errors → analyze failure → improve guidelines → repeat until stable at ~95% performance."},
+{q:"When does DCPO context rewriting trigger?",o:["Every message","Every 5-10 turns or when token usage approaches 80% of limit","Only at start","Never"],c:1,e:"Periodic (5-10 turns) or when approaching limits — keeps prompt manageable while preserving key details."},
+{q:"What is 'adaptive prompting'?",o:["Same prompt every time","Dynamically adjusting compression, injecting memory, switching instruction style based on situation","Only short prompts","Model fine-tuning"],c:1,e:"Adapts to context: increase compression when tokens run low, inject memory when needed, switch detailed→concise as task clarifies."},
+{q:"What's the sliding window approach?",o:["A GUI framework","Keeps recent context while summarizing key info from earlier parts, with fixed-size buffer","Removes everything","Only for images"],c:1,e:"Maintains recent turns in a buffer + optionally summarizes earlier interactions — smarter than blind truncation."},
+];
+
+// ══════ INIT ══════
+const sections = document.querySelectorAll('section');
+const tocLinks = document.querySelectorAll('.toc-link');
+const progressFill = document.getElementById('progressFill');
+
+function updateActiveSection(){
+  let current = '';
+  let currentIndex = -1;
+  sections.forEach((s, i)=>{
+    const top = s.getBoundingClientRect().top;
+    if(top < 200){ current = s.id; currentIndex = i; }
+  });
+  tocLinks.forEach((l, i)=>{
+    const isActive = l.getAttribute('href') === '#'+current;
+    const isPast = currentIndex > -1 && i < currentIndex;
+    l.classList.toggle('active', isActive);
+    l.classList.toggle('past', isPast && !isActive);
+  });
+}
+
+window.addEventListener('load',()=>{
+  initH();
+  drawH();
+  resR();
+  resCv();
+  resCn();
+  resCk();
+  resRt();
+  resAc();
+  bQ('qz4',q4d);
+  bQ('qz5',q5d);
+  setTimeout(()=>{
+    startReact();
+    startCove();
+    startCon();
+    startCok();
+    startRet();
+    startAcon();
+  },1200);
+});
+
+window.addEventListener('resize',()=>{
+  initH();
+  resR();
+  resCv();
+  resCn();
+  resCk();
+  resRt();
+  resAc();
+});
+
+window.addEventListener('scroll',()=>{
+  updateActiveSection();
+  const h=document.documentElement;
+  if(progressFill) {
+    progressFill.style.width=(h.scrollTop/(h.scrollHeight-h.clientHeight))*100+'%';
+  }
+});
+updateActiveSection();
+</script>
+</body>
+</html>

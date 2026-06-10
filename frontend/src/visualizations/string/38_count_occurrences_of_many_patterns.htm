@@ -1,0 +1,609 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Count Occurrences of Many Patterns - Visualization</title>
+    <style>
+        :root {
+            --bg-page: #070b14;
+            --bg-surface: rgba(255, 255, 255, 0.045);
+            --bg-input: rgba(255, 255, 255, 0.04);
+            --border-main: rgba(255, 255, 255, 0.10);
+            --btn-bg: rgba(255, 255, 255, 0.05);
+            --btn-hover: rgba(255, 255, 255, 0.10);
+            --text-main: #e8eefb;
+            --text-dim: #8b98b3;
+            --accent-orange: #f5a524;   /* value in motion / window    */
+            --accent-blue:   #06b6d4;   /* scan cursor / chrome        */
+            --accent-green:  #22c55e;   /* match / done                */
+            --accent-red:    #f43f5e;   /* mismatch                    */
+            --accent-purple: #a855f7;   /* active pattern              */
+            --mono: ui-monospace, 'SF Mono', 'Cascadia Code', 'Courier New', monospace;
+            --sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+            --shell: 880px;
+        }
+
+        * { box-sizing: border-box; }
+        html, body { overflow-x: hidden; }
+        body {
+            background:
+                radial-gradient(1100px 600px at 15% -10%, rgba(168, 85, 247, 0.10), transparent 60%),
+                radial-gradient(900px 600px at 100% 10%, rgba(6, 182, 212, 0.10), transparent 55%),
+                linear-gradient(160deg, #070b14 0%, #0b1120 55%, #0a0f1c 100%);
+            background-attachment: fixed;
+            color: var(--text-main); font-family: var(--sans); margin: 0;
+            display: flex; flex-direction: column; align-items: center; min-height: 100vh;
+            padding-bottom: 48px; -webkit-font-smoothing: antialiased;
+        }
+        body::before, body::after { content: ''; position: fixed; border-radius: 50%; filter: blur(70px); pointer-events: none; z-index: 0; opacity: 0.45; }
+        body::before { width: 380px; height: 380px; top: 8%; left: -120px; background: radial-gradient(circle, rgba(168,85,247,0.30), transparent 70%); }
+        body::after  { width: 420px; height: 420px; bottom: 4%; right: -140px; background: radial-gradient(circle, rgba(6,182,212,0.22), transparent 70%); }
+        body > * { position: relative; z-index: 1; }
+
+        .input-bar {
+            width: 100%; background: rgba(10, 15, 28, 0.55);
+            backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+            padding: 14px 16px; display: flex; justify-content: center; align-items: center; gap: 10px;
+            border-bottom: 1px solid var(--border-main); flex-wrap: wrap; position: sticky; top: 0; z-index: 50;
+        }
+        label.ui-label, .ui-label { font-family: var(--mono); font-size: 13px; color: var(--text-dim); letter-spacing: 0.2px; }
+        input[type="text"] {
+            background: var(--bg-input); border: 1px solid var(--border-main); color: var(--text-main);
+            height: 34px; border-radius: 9px; padding: 0 12px; font-size: 13px; font-family: var(--mono);
+            transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+        }
+        #text-input { width: 170px; }
+        #patterns-input { width: 170px; }
+        input[type="text"]:focus { outline: none; border-color: var(--accent-purple); box-shadow: 0 0 0 3px rgba(168, 85, 247, 0.18); background: rgba(168, 85, 247, 0.06); }
+
+        button {
+            height: 34px; border-radius: 9px; padding: 0 14px; background: var(--btn-bg);
+            border: 1px solid var(--border-main); color: var(--text-main); font-size: 13px; font-weight: 600; cursor: pointer;
+            transition: transform 0.15s ease, background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+        }
+        button:hover { background: var(--btn-hover); border-color: rgba(6, 182, 212, 0.5); box-shadow: 0 0 18px rgba(6, 182, 212, 0.18); transform: translateY(-1px); }
+        button:active { transform: translateY(0); }
+        #play-btn { background: linear-gradient(135deg, rgba(6,182,212,0.22), rgba(6,182,212,0.10)); border-color: rgba(6, 182, 212, 0.45); color: #a5f3fc; min-width: 80px; }
+
+        .shell { width: var(--shell); max-width: 95%; margin: 24px auto 0; display: flex; flex-direction: column; gap: 16px; }
+
+        .title-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+        .title-row h1 { font-size: 18px; font-weight: 800; margin: 0; letter-spacing: 0.2px; }
+        .title-row .sub { color: var(--text-dim); font-weight: 500; font-size: 13px; }
+        .step-badge { font-family: var(--mono); font-size: 12px; font-weight: 700; color: #a5f3fc; background: rgba(6,182,212,0.12); border: 1px solid rgba(6,182,212,0.3); padding: 4px 10px; border-radius: 999px; white-space: nowrap; }
+        .progress-track { height: 4px; width: 100%; background: rgba(255,255,255,0.07); border-radius: 999px; overflow: hidden; margin-top: -6px; }
+        .progress-fill { height: 100%; width: 0%; border-radius: 999px; background: linear-gradient(90deg, var(--accent-blue), var(--accent-purple)); box-shadow: 0 0 12px rgba(6,182,212,0.5); transition: width 0.45s cubic-bezier(0.34,1.1,0.64,1); }
+
+        .narration { background: var(--bg-surface); border: 1px solid rgba(6,182,212,0.22); border-radius: 12px; padding: 12px 18px; font-family: var(--mono); font-size: 14px; line-height: 1.5; color: #cfe9f5; min-height: 48px; display: flex; align-items: center; gap: 10px; transition: border-color 0.3s, background 0.3s; }
+        .narration::before { content: '\25B8'; color: var(--accent-blue); font-size: 13px; }
+        .narration.done { border-color: rgba(34,197,94,0.4); background: rgba(34,197,94,0.06); }
+        .narration.done::before { content: '\2713'; color: var(--accent-green); }
+        .narration.miss { border-color: rgba(244,63,94,0.4); background: rgba(244,63,94,0.06); }
+        .narration.miss::before { content: '\2717'; color: var(--accent-red); }
+        .narration code { background: rgba(6,182,212,0.14); color: #7dd3fc; padding: 1px 6px; border-radius: 5px; font-size: 12.5px; }
+        .narration b { color: #fff; }
+
+        .stage-card { background: var(--bg-surface); border: 1px solid var(--border-main); border-radius: 18px; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); box-shadow: 0 12px 38px rgba(0,0,0,0.4); overflow: hidden; }
+        .stage-screen { position: relative; margin: 14px; border-radius: 14px; background: radial-gradient(700px 300px at 50% -10%, rgba(6,182,212,0.08), transparent 70%), #090d18; border: 1px solid rgba(255,255,255,0.06); }
+        .str-stage { position: relative; width: 100%; min-height: 260px; overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 22px; padding: 40px 18px 30px; }
+        .str-stage::-webkit-scrollbar { height: 7px; }
+        .str-stage::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 8px; }
+        .row-rail { position: relative; display: flex; gap: 10px; margin: 0 auto; }
+
+        /* char tile (the core string-domain unit) */
+        .ch { position: relative; display: flex; flex-direction: column; align-items: center; gap: 6px; will-change: transform; }
+        .ch .box {
+            min-width: 46px; height: 52px; padding: 0 6px; display: flex; align-items: center; justify-content: center;
+            border-radius: 13px; font-size: 21px; font-weight: 800; font-family: var(--mono);
+            border: 2px solid var(--border-main); background: rgba(255,255,255,0.05); color: var(--text-main);
+            transition: background 0.4s, border-color 0.4s, color 0.4s, box-shadow 0.4s, transform 0.4s cubic-bezier(.34,1.3,.64,1);
+        }
+        .ch .idx { font-size: 11px; color: var(--text-dim); font-family: var(--mono); }
+        .ch.cursor .box  { border-color: var(--accent-blue); background: rgba(6,182,212,0.14); color: #a5f3fc; box-shadow: 0 0 20px rgba(6,182,212,0.5), inset 0 0 12px rgba(6,182,212,0.12); }
+        .ch.window .box  { border-color: rgba(245,165,36,0.55); background: rgba(245,165,36,0.10); color: #ffe6b3; box-shadow: 0 0 16px rgba(245,165,36,0.28); }
+        .ch.matched .box { border-color: var(--accent-green); background: linear-gradient(180deg, rgba(47,224,143,0.9), rgba(33,194,117,0.9)); color: #06251a; box-shadow: 0 0 18px rgba(34,197,94,0.5); }
+        .ch.bad .box     { border-color: var(--accent-red); background: rgba(244,63,94,0.16); color: #fecdd3; box-shadow: 0 0 14px rgba(244,63,94,0.35); }
+        .ch.dim .box     { opacity: 0.42; }
+
+        /* gliding scan-cursor pill */
+        .ptr { position: absolute; left: 0; top: 0; display: flex; flex-direction: column; align-items: center; opacity: 0; pointer-events: none; z-index: 6; will-change: transform; }
+        .ptr.above { bottom: 100%; margin-bottom: 6px; }
+        .ptr .tag { font-family: var(--mono); font-size: 11px; font-weight: 800; padding: 3px 9px; border-radius: 8px; white-space: nowrap; }
+        .ptr .stalk { width: 2px; height: 14px; }
+        .ptr.p-blue   .tag { background: var(--accent-blue);   color: #04222a; box-shadow: 0 0 14px rgba(6,182,212,0.6); }  .ptr.p-blue .stalk { background: var(--accent-blue); }
+        .ptr.p-orange .tag { background: var(--accent-orange); color: #3a2400; box-shadow: 0 0 14px rgba(245,165,36,0.6); } .ptr.p-orange .stalk { background: var(--accent-orange); }
+
+        /* pattern chips with live count badges */
+        .chips-wrap { display: flex; flex-direction: column; align-items: center; gap: 8px; width: 100%; }
+        .chips-label { font-family: var(--mono); font-size: 11px; color: var(--text-dim); letter-spacing: 1px; text-transform: uppercase; }
+        .chips-rail { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; }
+        .chip {
+            display: inline-flex; align-items: center; gap: 9px; font-family: var(--mono); font-size: 14px; font-weight: 700;
+            background: rgba(255,255,255,0.04); border: 1px solid var(--border-main); border-radius: 999px; padding: 6px 7px 6px 14px;
+            color: var(--text-dim); transition: background 0.35s, border-color 0.35s, color 0.35s, box-shadow 0.35s, transform 0.35s cubic-bezier(.34,1.3,.64,1);
+        }
+        .chip.active { color: #e9d5ff; border-color: var(--accent-purple); background: rgba(168,85,247,0.12); box-shadow: 0 0 20px rgba(168,85,247,0.4); transform: translateY(-2px); }
+        .chip.done   { color: #bbf7d0; border-color: rgba(34,197,94,0.45); background: rgba(34,197,94,0.08); }
+        .chip .badge {
+            min-width: 26px; height: 26px; padding: 0 7px; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center;
+            font-size: 13px; font-weight: 800; background: rgba(255,255,255,0.08); color: var(--text-main); border: 1px solid var(--border-main);
+            transition: background 0.3s, color 0.3s, box-shadow 0.3s, transform 0.3s cubic-bezier(.34,1.5,.64,1);
+        }
+        .chip.active .badge { background: rgba(168,85,247,0.22); color: #f3e8ff; }
+        .chip .badge.bump { background: var(--accent-green); color: #052b16; box-shadow: 0 0 16px rgba(34,197,94,0.6); }
+
+        .action-stage { position: relative; min-height: 96px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; }
+        .float-tile { padding: 0 12px; min-width: 56px; height: 56px; border-radius: 13px; display: flex; align-items: center; justify-content: center; font-family: var(--mono); font-size: 22px; font-weight: 800; border: 2px solid var(--accent-orange); background: rgba(245,165,36,0.16); color: #ffd591; box-shadow: 0 0 22px rgba(245,165,36,0.5); opacity: 0; transform: scale(.5); transition: opacity .25s, transform .4s cubic-bezier(.34,1.5,.64,1); }
+        .float-tile.show { opacity: 1; transform: scale(1); }
+        .action-word { font-family: var(--mono); font-weight: 800; font-size: 18px; letter-spacing: 0.4px; min-height: 22px; text-align: center; transition: color 0.3s; }
+        #confetti { position: absolute; inset: 0; overflow: visible; pointer-events: none; }
+        .confetti-piece { position: absolute; top: 0; left: 50%; width: 8px; height: 13px; border-radius: 2px; opacity: 0; animation: confettiFall ease-out forwards; }
+
+        .controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: center; }
+        .controls .kbd-hint { font-size: 11px; color: var(--text-dim); font-family: var(--mono); margin-left: 4px; }
+        .kbd { background: rgba(255,255,255,0.07); border: 1px solid var(--border-main); border-radius: 5px; padding: 1px 6px; font-size: 10px; }
+        input[type="range"] { accent-color: var(--accent-blue); width: 110px; cursor: pointer; }
+
+        .details-toggle { align-self: center; height: 32px; padding: 0 16px; border-radius: 999px; cursor: pointer; background: rgba(255,255,255,0.04); border: 1px solid var(--border-main); color: var(--text-dim); font-family: var(--mono); font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; gap: 8px; transition: color 0.2s, border-color 0.2s, background 0.2s; }
+        .details-toggle:hover { color: var(--text-main); border-color: rgba(6,182,212,0.4); background: rgba(6,182,212,0.06); }
+        .details-toggle .chev { transition: transform 0.3s ease; }
+        .details-wrap.open .details-toggle .chev { transform: rotate(180deg); }
+        .details-body { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.4s ease; }
+        .details-wrap.open .details-body { grid-template-rows: 1fr; }
+        .details-inner { overflow: hidden; min-height: 0; }
+        .details-grid { display: flex; flex-direction: column; gap: 14px; padding-top: 14px; }
+
+        .panel-card { background: var(--bg-surface); border: 1px solid var(--border-main); border-radius: 16px; backdrop-filter: blur(10px); box-shadow: 0 8px 30px rgba(0,0,0,0.35); }
+        .panel-head { display: flex; align-items: center; gap: 8px; padding: 11px 16px; border-bottom: 1px solid var(--border-main); font-size: 11px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; color: var(--text-dim); }
+        .panel-head .pip { width: 7px; height: 7px; border-radius: 50%; background: var(--accent-blue); box-shadow: 0 0 8px var(--accent-blue); }
+        .code-body { padding: 12px 6px 14px; font-family: var(--mono); font-size: 12.5px; line-height: 1.7; }
+        .code-line { display: flex; gap: 12px; padding: 1px 16px; border-left: 2px solid transparent; transition: background 0.3s, border-color 0.3s; white-space: pre; }
+        .code-line .lno { color: #4b5772; width: 16px; text-align: right; user-select: none; }
+        .code-line .src { color: #c4cee0; }
+        .code-line .kw { color: #c792ea; }
+        .code-line .fn { color: #82aaff; }
+        .code-line.active { background: rgba(6,182,212,0.12); border-left-color: var(--accent-blue); }
+        .code-line.active .src, .code-line.active .lno { color: #e8eefb; }
+
+        .state-strip { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 0 2px; }
+        .pill { display: inline-flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 12px; color: var(--text-dim); background: rgba(255,255,255,0.04); border: 1px solid var(--border-main); border-radius: 999px; padding: 4px 11px; }
+        .pill b { color: var(--text-main); font-weight: 800; }
+        .pill.p b { color: var(--accent-purple); } .pill.i b { color: var(--accent-blue); } .pill.c b { color: var(--accent-green); }
+
+        .log-panel { border-radius: 14px; padding: 12px 16px; height: 110px; overflow-y: auto; font-family: var(--mono); font-size: 12.5px; line-height: 1.5; background: var(--bg-surface); border: 1px solid var(--border-main); }
+        .log-panel::-webkit-scrollbar { width: 8px; }
+        .log-panel::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 8px; }
+
+        @keyframes confettiFall { 0%{ opacity:1; transform: translate(-50%, 0) rotate(0deg); } 100%{ opacity:0; transform: translate(calc(-50% + var(--x)), 220px) rotate(var(--rot)); } }
+        @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; } }
+    </style>
+</head>
+<body>
+
+    <div class="input-bar">
+        <label class="ui-label">text =</label>
+        <input type="text" id="text-input" placeholder="ababa" maxlength="22">
+        <label class="ui-label">patterns =</label>
+        <input type="text" id="patterns-input" placeholder="aba,b" maxlength="40">
+        <button onclick="loadCustom()">Load</button>
+        <span class="ui-label" style="opacity:.5">|</span>
+        <button onclick="loadExample(0)">"ababa" &middot; aba,b</button>
+        <button onclick="loadExample(1)">"hello" &middot; he,ll,x</button>
+    </div>
+
+    <div class="shell">
+        <div class="title-row">
+            <h1>Count Occurrences of Many Patterns <span class="sub">&middot; scan each pattern across the text &middot; O(n &middot; &Sigma;m) time</span></h1>
+            <span class="step-badge" id="step-badge">Step 1 / 1</span>
+        </div>
+        <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+
+        <div class="narration" id="main-panel">&mdash;</div>
+
+        <div class="stage-card">
+            <div class="stage-screen">
+                <div class="str-stage" id="str-stage">
+                    <div class="row-rail" id="row-rail"></div>
+                    <div class="chips-wrap">
+                        <div class="chips-label">patterns &middot; live counts</div>
+                        <div class="chips-rail" id="chips-rail"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="action-stage">
+            <div id="confetti"></div>
+            <div class="float-tile" id="float-tile"></div>
+            <div class="action-word" id="action-word"></div>
+        </div>
+
+        <div class="controls">
+            <button onclick="resetSim()">&#8634; Reset</button>
+            <button onclick="prevStep()">&#8592; Back</button>
+            <button onclick="togglePlay()" id="play-btn">Play</button>
+            <button onclick="nextStep()">Next &#8594;</button>
+            <span class="ui-label" style="margin-left:6px; font-size:11px">Speed</span>
+            <input type="range" id="speed" min="0" max="2" value="1">
+            <span class="kbd-hint"><span class="kbd">&#8592;</span> <span class="kbd">&#8594;</span> step &middot; <span class="kbd">space</span> play</span>
+        </div>
+
+        <div class="details-wrap" id="details-wrap">
+            <button class="details-toggle" onclick="toggleDetails()" aria-expanded="false">
+                <span id="details-label">Show code, state &amp; log</span> <span class="chev">&#9662;</span>
+            </button>
+            <div class="details-body">
+                <div class="details-inner">
+                    <div class="details-grid">
+                        <div class="state-strip">
+                            <span class="pill p">pattern <b id="st-pattern">&mdash;</b></span>
+                            <span class="pill i">i <b id="st-i">&mdash;</b></span>
+                            <span class="pill c">count <b id="st-count">0</b></span>
+                            <span class="pill">text <b id="st-text">&mdash;</b></span>
+                        </div>
+                        <div class="panel-card">
+                            <div class="panel-head"><span class="pip"></span> Algorithm</div>
+                            <div class="code-body" id="code-panel"></div>
+                        </div>
+                        <div class="log-panel" id="log"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        'use strict';
+
+        // ───────── Motion engine (spring + FLIP, zero deps) ─────────
+        const REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        const FRAME = 1000 / 60;
+        function sampleSpring(stiffness, damping, mass) {
+            const dt = 1 / 60; let x = 1, v = 0; const out = [];
+            for (let i = 0; i < 240; i++) { const a = (-stiffness * x - damping * v) / mass; v += a * dt; x += v * dt; out.push(1 - x); if (Math.abs(x) < 0.0015 && Math.abs(v) < 0.0015) break; }
+            out.push(1); return out;
+        }
+        const SPRING_POS = sampleSpring(320, 30, 1);
+        const SPRING_POP = sampleSpring(520, 17, 1);
+        const durOf = (a) => a.length * FRAME;
+        const Motion = {
+            flip(el, dx, dy) {
+                if (REDUCED || (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5)) return;
+                const kf = SPRING_POS.map(p => ({ transform: `translate(${(dx * (1 - p)).toFixed(2)}px, ${(dy * (1 - p)).toFixed(2)}px)` }));
+                el.animate(kf, { duration: durOf(SPRING_POS), easing: 'linear' });
+            },
+            glide(el, x) {
+                const prev = el._x; el.style.opacity = '1';
+                const commit = `translateX(${x.toFixed(2)}px) translateX(-50%)`;
+                if (REDUCED || prev == null || Math.abs(x - prev) < 0.5) { el._x = x; el.style.transform = commit; return; }
+                const dx = x - prev;
+                const kf = SPRING_POS.map(p => ({ transform: `translateX(${(prev + dx * p).toFixed(2)}px) translateX(-50%)` }));
+                el.animate(kf, { duration: durOf(SPRING_POS), easing: 'linear' });
+                el._x = x; el.style.transform = commit;
+            },
+            pop(el) {
+                if (REDUCED) { el.style.opacity = '1'; el.style.transform = 'scale(1)'; return; }
+                const kf = SPRING_POP.map(p => ({ opacity: Math.min(1, p * 2).toFixed(3), transform: `scale(${(0.5 + 0.5 * p).toFixed(3)})` }));
+                el.animate(kf, { duration: durOf(SPRING_POP), easing: 'linear', fill: 'forwards' });
+            },
+            bump(el) {
+                if (REDUCED) return;
+                el.animate(SPRING_POP.map(p => ({ transform: `scale(${(1 + 0.5 * (1 - Math.abs(1 - p))).toFixed(3)})` })), { duration: durOf(SPRING_POP), easing: 'linear' });
+            },
+        };
+
+        // ───────── State ─────────
+        let currentText = "ababa";
+        let currentPatterns = ["aba", "b"];
+        let steps = [];
+        let stepIdx = 0;
+        let timer = null;
+        let confettiArmed = true;
+        const delays = [1500, 760, 360];
+        const tileEls = {};   // 'i' -> .ch element  (keyed by text position)
+        const ptrEls = {};    // pointer name -> pill element
+        const chipEls = {};   // 'p' -> chip element
+        let lastBadge = {};   // 'p' -> last rendered count (to detect bumps)
+
+        const CODE = [
+            [['kw','def '],['fn','count_all'],['src','(text, patterns):']],
+            [['src','  counts = {}']],
+            [['kw','  for '],['src','p in patterns:']],
+            [['src','    m, c = len(p), 0']],
+            [['kw','    for '],['src','i in range(len(text) - m + 1):']],
+            [['kw','      if '],['src','text[i:i+m] == p:']],
+            [['src','        c += 1']],
+            [['src','    counts[p] = c']],
+            [['kw','  return '],['src','counts']],
+        ];
+        function buildCodePanel() {
+            const panel = document.getElementById('code-panel'); panel.innerHTML = '';
+            CODE.forEach((tokens, i) => {
+                const line = document.createElement('div'); line.className = 'code-line'; line.dataset.line = i;
+                const lno = document.createElement('span'); lno.className = 'lno'; lno.textContent = i + 1; line.appendChild(lno);
+                const src = document.createElement('span');
+                tokens.forEach(([cls, txt]) => { const s = document.createElement('span'); s.className = cls; s.textContent = txt; src.appendChild(s); });
+                line.appendChild(src); panel.appendChild(line);
+            });
+        }
+        function highlightCode(arr) { document.querySelectorAll('.code-line').forEach(el => el.classList.toggle('active', arr && arr.includes(+el.dataset.line))); }
+        function toggleDetails() {
+            const wrap = document.getElementById('details-wrap'); const open = wrap.classList.toggle('open');
+            wrap.querySelector('.details-toggle').setAttribute('aria-expanded', open ? 'true' : 'false');
+            document.getElementById('details-label').textContent = open ? 'Hide code, state & log' : 'Show code, state & log';
+        }
+
+        const esc = (s) => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+        // ───────── step generation ─────────
+        function generateSteps() {
+            steps = [];
+            const text = currentText;
+            const n = text.length;
+            const patterns = currentPatterns;
+            const counts = patterns.map(() => 0);
+
+            const snap = (extra) => Object.assign({
+                pIdx: -1, i: -1, m: 0, counts: [...counts],
+                states: text.split('').map(() => 'idle'), ptrs: [],
+                chipState: patterns.map(() => 'idle')
+            }, extra);
+
+            steps.push(snap({
+                code: [0, 1], action: 'START', actionColor: 'var(--accent-blue)',
+                panel: `Count how often each pattern occurs in <code>"${esc(text)}"</code>. We scan every pattern across the text and tally matches.`,
+                log: `init  text="${text}" (n=${n}), patterns=[${patterns.map(p=>'"'+p+'"').join(', ')}]`
+            }));
+
+            for (let pIdx = 0; pIdx < patterns.length; pIdx++) {
+                const p = patterns[pIdx];
+                const m = p.length;
+                let c = 0;
+                const chipDone = patterns.map((_, k) => k < pIdx ? 'done' : 'idle');
+
+                // pick up this pattern
+                steps.push(snap({
+                    pIdx, m, code: [2, 3], action: 'PATTERN "' + p + '"', actionColor: 'var(--accent-purple)',
+                    chipState: chipDone.map((s, k) => k === pIdx ? 'active' : s),
+                    tile: p,
+                    panel: `Now scanning pattern <code>"${esc(p)}"</code> (length ${m}). Slide a window of ${m} char${m===1?'':'s'} across the text.`,
+                    log: `pattern "${p}" (m=${m})  scan i = 0 .. ${n - m}`
+                }));
+
+                if (m === 0 || m > n) {
+                    counts[pIdx] = 0;
+                    steps.push(snap({
+                        pIdx, m, code: [7], action: 'count = 0', actionColor: 'var(--accent-orange)',
+                        chipState: chipDone.map((s, k) => k === pIdx ? 'done' : s),
+                        panel: `Pattern <code>"${esc(p)}"</code> ${m===0?'is empty':'is longer than the text'} &#8594; <b>0</b> occurrences.`,
+                        log: `  "${p}" too long / empty  count = 0`
+                    }));
+                    continue;
+                }
+
+                for (let i = 0; i <= n - m; i++) {
+                    let isMatch = true;
+                    for (let j = 0; j < m; j++) { if (text[i + j] !== p[j]) { isMatch = false; break; } }
+                    const win = text.substring(i, i + m);
+
+                    // examine window at i
+                    steps.push(snap({
+                        pIdx, m, i, code: [4, 5], action: 'window [' + i + ':' + (i + m) + ']', actionColor: 'var(--accent-orange)',
+                        chipState: chipDone.map((s, k) => k === pIdx ? 'active' : s),
+                        tile: win,
+                        states: text.split('').map((_, k) => (k === i ? 'cursor' : (k > i && k < i + m ? 'window' : 'idle'))),
+                        ptrs: [{ name: 'i', i: i, pos: 'above', color: 'blue' }],
+                        panel: `Compare window <code>"${esc(win)}"</code> at i=${i} with pattern <code>"${esc(p)}"</code>.`,
+                        log: `  i=${i}  "${win}" vs "${p}"`
+                    }));
+
+                    if (isMatch) {
+                        c++; counts[pIdx] = c;
+                        steps.push(snap({
+                            pIdx, m, i, code: [6], action: '&#10003; MATCH  count = ' + c, actionColor: 'var(--accent-green)',
+                            chipState: chipDone.map((s, k) => k === pIdx ? 'active' : s),
+                            bumpChip: pIdx, tile: win,
+                            states: text.split('').map((_, k) => (k >= i && k < i + m ? 'matched' : 'idle')),
+                            ptrs: [{ name: 'i', i: i, pos: 'above', color: 'blue' }],
+                            panel: `Match! <code>"${esc(win)}"</code> equals <code>"${esc(p)}"</code> &#8594; bump count of <b>"${esc(p)}"</b> to <b>${c}</b>.`,
+                            log: `  i=${i}  MATCH  "${p}" count -> ${c}`
+                        }));
+                    } else {
+                        const bad = [];
+                        for (let j = 0; j < m; j++) { if (text[i + j] !== p[j]) { bad.push(i + j); break; } }
+                        steps.push(snap({
+                            pIdx, m, i, code: [5], action: '&#10007; no match', actionColor: 'var(--accent-red)', miss: true,
+                            chipState: chipDone.map((s, k) => k === pIdx ? 'active' : s),
+                            states: text.split('').map((_, k) => (bad.includes(k) ? 'bad' : (k >= i && k < i + m ? 'window' : 'idle'))),
+                            ptrs: [{ name: 'i', i: i, pos: 'above', color: 'blue' }],
+                            panel: `No match: <code>"${esc(win)}"</code> &ne; <code>"${esc(p)}"</code>. Slide the window forward.`,
+                            log: `  i=${i}  no match`
+                        }));
+                    }
+                }
+
+                // pattern finished
+                steps.push(snap({
+                    pIdx, m, code: [7], action: '"' + p + '" = ' + c, actionColor: 'var(--accent-green)',
+                    chipState: patterns.map((_, k) => k <= pIdx ? 'done' : 'idle'),
+                    panel: `Finished pattern <code>"${esc(p)}"</code> &#8594; <b>${c}</b> occurrence${c===1?'':'s'} in the text.`,
+                    log: `  "${p}" final count = ${c}`
+                }));
+            }
+
+            const resultStr = '{ ' + patterns.map((p, k) => '"' + esc(p) + '": ' + counts[k]).join(', ') + ' }';
+            steps.push(snap({
+                complete: true, confetti: true, code: [8], action: '&#10003; DONE', actionColor: 'var(--accent-green)',
+                chipState: patterns.map(() => 'done'),
+                states: text.split('').map(() => 'idle'),
+                result: resultStr,
+                panel: `All patterns scanned. Final counts: <code>${resultStr}</code>.`,
+                log: `done  ${resultStr}`
+            }));
+        }
+
+        // ───────── render (persistent DOM + FLIP) ─────────
+        function tileCenterX(i) {
+            const el = tileEls[i]; if (!el) return 0;
+            return el.offsetLeft + el.offsetWidth / 2;
+        }
+
+        function renderStep(idx) {
+            stepIdx = idx; const step = steps[idx]; if (!step) return;
+            const rail = document.getElementById('row-rail');
+            const chars = currentText.split('');
+            const n = chars.length;
+
+            // reconcile char tiles (keyed by position)
+            const used = new Set();
+            for (let i = 0; i < n; i++) {
+                used.add(String(i));
+                let el = tileEls[i];
+                if (!el) {
+                    el = document.createElement('div'); el.className = 'ch';
+                    el.innerHTML = `<div class="box"></div><div class="idx"></div>`;
+                    tileEls[i] = el;
+                }
+                el.querySelector('.box').textContent = chars[i];
+                el.querySelector('.idx').textContent = i;
+                el.className = 'ch ' + (step.states[i] || 'idle');
+                rail.appendChild(el);
+            }
+            Object.keys(tileEls).forEach(k => { if (!used.has(k)) { tileEls[k].remove(); delete tileEls[k]; } });
+
+            // scan-cursor pill (reconcile by name; glide to tile centre)
+            const wantPtr = {}; (step.ptrs || []).forEach(p => wantPtr[p.name] = p);
+            Object.keys(ptrEls).forEach(name => { if (!wantPtr[name]) { ptrEls[name].style.opacity = '0'; ptrEls[name]._x = null; } });
+            (step.ptrs || []).forEach(p => {
+                let pill = ptrEls[p.name];
+                if (!pill) {
+                    pill = document.createElement('div');
+                    pill.innerHTML = `<div class="tag"></div><div class="stalk"></div>`;
+                    rail.appendChild(pill); ptrEls[p.name] = pill;
+                }
+                pill.className = 'ptr ' + p.pos + ' p-' + p.color;
+                pill.querySelector('.tag').textContent = p.name;
+                if (p.i == null || !tileEls[p.i]) { pill.style.opacity = '0'; pill._x = null; return; }
+                Motion.glide(pill, tileCenterX(p.i));
+            });
+
+            // pattern chips with live count badges
+            const chipsRail = document.getElementById('chips-rail');
+            const usedChips = new Set();
+            for (let p = 0; p < currentPatterns.length; p++) {
+                usedChips.add(String(p));
+                let chip = chipEls[p];
+                if (!chip) {
+                    chip = document.createElement('div');
+                    chip.innerHTML = `<span class="lbl"></span><span class="badge"></span>`;
+                    chipEls[p] = chip;
+                }
+                chip.className = 'chip ' + (step.chipState[p] || 'idle');
+                chip.querySelector('.lbl').textContent = '"' + currentPatterns[p] + '"';
+                const badge = chip.querySelector('.badge');
+                const cval = step.counts[p];
+                badge.textContent = cval;
+                // bump animation only when this step caused this chip's count to rise
+                badge.classList.remove('bump');
+                if (step.bumpChip === p) { badge.classList.add('bump'); Motion.bump(badge); }
+                chipsRail.appendChild(chip);
+            }
+            Object.keys(chipEls).forEach(k => { if (!usedChips.has(k)) { chipEls[k].remove(); delete chipEls[k]; } });
+
+            // floating tile (window / pattern in motion)
+            const ft = document.getElementById('float-tile');
+            if (step.tile != null && step.tile !== '') { ft.textContent = step.tile; ft.classList.add('show'); Motion.pop(ft); }
+            else ft.classList.remove('show');
+
+            // narration / action / chrome
+            const mp = document.getElementById('main-panel');
+            mp.innerHTML = step.panel || '&mdash;';
+            mp.classList.toggle('done', !!step.complete);
+            mp.classList.toggle('miss', !!step.miss && !step.complete);
+            const aw = document.getElementById('action-word'); aw.innerHTML = step.action || ''; aw.style.color = step.actionColor || 'var(--text-dim)';
+            highlightCode(step.code);
+
+            if (step.confetti) { if (confettiArmed) { fireConfetti(); confettiArmed = false; } } else confettiArmed = true;
+
+            document.getElementById('st-pattern').textContent = step.pIdx >= 0 ? '"' + currentPatterns[step.pIdx] + '"' : '—';
+            document.getElementById('st-i').textContent = step.i >= 0 ? step.i : '—';
+            document.getElementById('st-count').textContent = step.pIdx >= 0 ? step.counts[step.pIdx] : '0';
+            document.getElementById('st-text').textContent = '"' + currentText + '"';
+
+            document.getElementById('step-badge').textContent = `Step ${idx + 1} / ${steps.length}`;
+            document.getElementById('progress-fill').style.width = `${(idx / Math.max(1, steps.length - 1)) * 100}%`;
+
+            const logEl = document.getElementById('log');
+            logEl.innerHTML = steps.slice(0, idx + 1).map(s => `<div style="margin:3px 0;white-space:pre-wrap;">${esc(s.log)}</div>`).join('');
+            logEl.scrollTop = logEl.scrollHeight;
+        }
+
+        function fireConfetti() {
+            const host = document.getElementById('confetti'); if (!host || REDUCED) return;
+            const colors = ['#22c55e', '#06b6d4', '#a855f7', '#f5a524', '#f43f5e'];
+            for (let i = 0; i < 38; i++) {
+                const p = document.createElement('div'); p.className = 'confetti-piece';
+                p.style.setProperty('--x', ((Math.random() * 2 - 1) * 220) + 'px');
+                p.style.setProperty('--rot', ((Math.random() * 720 - 360)) + 'deg');
+                p.style.background = colors[i % colors.length];
+                p.style.animationDuration = (0.9 + Math.random() * 0.8) + 's';
+                p.style.animationDelay = (Math.random() * 0.15) + 's';
+                host.appendChild(p); setTimeout(() => p.remove(), 1900);
+            }
+        }
+
+        // ───────── controls ─────────
+        function nextStep() { if (stepIdx < steps.length - 1) renderStep(stepIdx + 1); else pause(); }
+        function prevStep() { if (stepIdx > 0) renderStep(stepIdx - 1); }
+        function resetSim() { pause(); renderStep(0); }
+        function togglePlay() {
+            const btn = document.getElementById('play-btn');
+            if (timer) { pause(); return; }
+            btn.textContent = 'Pause';
+            if (stepIdx >= steps.length - 1) renderStep(0);
+            timer = setInterval(() => { if (stepIdx < steps.length - 1) nextStep(); else pause(); }, delays[document.getElementById('speed').value]);
+        }
+        function pause() { clearInterval(timer); timer = null; document.getElementById('play-btn').textContent = 'Play'; }
+
+        function clearDom() {
+            Object.keys(tileEls).forEach(k => { tileEls[k].remove(); delete tileEls[k]; });
+            Object.keys(ptrEls).forEach(k => { ptrEls[k].remove(); delete ptrEls[k]; });
+            Object.keys(chipEls).forEach(k => { chipEls[k].remove(); delete chipEls[k]; });
+            confettiArmed = true;
+        }
+        function load(text, patterns) {
+            pause(); currentText = text; currentPatterns = patterns; clearDom(); generateSteps(); renderStep(0);
+        }
+        function loadCustom() {
+            const t = (document.getElementById('text-input').value || '').slice(0, 22);
+            const praw = (document.getElementById('patterns-input').value || '').slice(0, 40);
+            const ps = praw.split(',').map(s => s.trim()).filter(s => s.length).slice(0, 5);
+            if (t.length && ps.length) load(t, ps);
+        }
+        const EXAMPLES = [
+            { text: 'ababa', patterns: ['aba', 'b'] },
+            { text: 'hello', patterns: ['he', 'll', 'x'] },
+        ];
+        function loadExample(n) {
+            const ex = EXAMPLES[n];
+            document.getElementById('text-input').value = ex.text;
+            document.getElementById('patterns-input').value = ex.patterns.join(',');
+            load(ex.text, ex.patterns);
+        }
+
+        document.addEventListener('keydown', (e) => {
+            const tag = (e.target.tagName || '').toLowerCase(); if (tag === 'input' || tag === 'textarea') return;
+            if (e.key === 'ArrowRight') { e.preventDefault(); pause(); nextStep(); }
+            else if (e.key === 'ArrowLeft') { e.preventDefault(); pause(); prevStep(); }
+            else if (e.key === ' ') { e.preventDefault(); togglePlay(); }
+        });
+        document.getElementById('text-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') loadCustom(); });
+        document.getElementById('patterns-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') loadCustom(); });
+        window.addEventListener('resize', () => renderStep(stepIdx));
+
+        buildCodePanel();
+        window.onload = () => loadExample(0);
+    </script>
+</body>
+</html>

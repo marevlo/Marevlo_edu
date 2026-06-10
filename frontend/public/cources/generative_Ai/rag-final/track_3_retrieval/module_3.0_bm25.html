@@ -1,0 +1,2382 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>RAG Academy • Module 3.0 — BM25 & Sparse Retrieval</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  if (typeof console !== 'undefined') {
+    const origWarn = console.warn;
+    console.warn = function(...args) {
+      if (args[0] && typeof args[0] === 'string' && args[0].includes('cdn.tailwindcss.com')) return;
+      origWarn.apply(console, args);
+    };
+  }
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700;800;900&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+<style>
+  :root {
+    --bg-deep: #02030a;
+    --bg-mid: #060818;
+    --bg-card: rgba(12, 16, 38, 0.6);
+    --neon-cyan: #00f0ff;
+    --neon-blue: #4d8eff;
+    --neon-purple: #b86bff;
+    --neon-pink: #ff4dcf;
+    --neon-amber: #ffb84d;
+    --neon-green: #4dffb8;
+    --text-primary: #e8efff;
+    --text-secondary: #8a96b8;
+    --border-glow: rgba(0, 240, 255, 0.25);
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    font-family: 'Inter', sans-serif;
+    background: var(--bg-deep);
+    color: var(--text-primary);
+    overflow-x: hidden;
+    min-height: 100vh;
+  }
+
+  .font-display { font-family: 'Orbitron', sans-serif; letter-spacing: 0.02em; }
+  .font-mono { font-family: 'JetBrains Mono', monospace; }
+
+  /* ===== STARFIELD ===== */
+  #starfield { position: fixed; inset: 0; z-index: 0; pointer-events: none; }
+  .nebula {
+    position: fixed; border-radius: 50%; filter: blur(120px);
+    opacity: 0.35; pointer-events: none; z-index: 0;
+  }
+  .nebula-1 { top: -10%; left: -5%; width: 50vw; height: 50vw; background: radial-gradient(circle, #4d8eff, transparent 70%); animation: drift1 22s ease-in-out infinite; }
+  .nebula-2 { top: 30%; right: -10%; width: 45vw; height: 45vw; background: radial-gradient(circle, #b86bff, transparent 70%); animation: drift2 28s ease-in-out infinite; }
+  .nebula-3 { bottom: -10%; left: 20%; width: 40vw; height: 40vw; background: radial-gradient(circle, #00f0ff, transparent 70%); animation: drift3 25s ease-in-out infinite; opacity: 0.22; }
+  @keyframes drift1 { 0%,100% { transform: translate(0,0); } 50% { transform: translate(40px, 60px); } }
+  @keyframes drift2 { 0%,100% { transform: translate(0,0); } 50% { transform: translate(-50px, 40px); } }
+  @keyframes drift3 { 0%,100% { transform: translate(0,0); } 50% { transform: translate(30px, -50px); } }
+
+  /* ===== NAV ===== */
+  .top-nav {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 50;
+    backdrop-filter: blur(20px); background: rgba(2, 3, 10, 0.7);
+    border-bottom: 1px solid rgba(0, 240, 255, 0.15);
+  }
+  .nav-logo {
+    background: linear-gradient(135deg, var(--neon-cyan), var(--neon-purple));
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+
+  /* ===== HOLO CARDS ===== */
+  .holo-card {
+    background: linear-gradient(135deg, rgba(12, 16, 38, 0.7), rgba(20, 12, 50, 0.5));
+    border: 1px solid rgba(0, 240, 255, 0.18);
+    border-radius: 18px;
+    backdrop-filter: blur(14px);
+    position: relative; overflow: hidden;
+    transition: all 0.4s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  .holo-card::before {
+    content: ''; position: absolute; inset: 0;
+    background: linear-gradient(135deg, transparent 40%, rgba(0, 240, 255, 0.08) 50%, transparent 60%);
+    transform: translateX(-100%); transition: transform 0.8s ease;
+    pointer-events: none;
+  }
+  .holo-card:hover::before { transform: translateX(100%); }
+  .holo-card:hover {
+    border-color: rgba(0, 240, 255, 0.5);
+    box-shadow: 0 0 40px rgba(0, 240, 255, 0.15), inset 0 0 30px rgba(77, 142, 255, 0.05);
+    transform: translateY(-4px);
+  }
+
+  /* ===== GRADIENTS ===== */
+  .gradient-cyan { background: linear-gradient(135deg, #00f0ff, #4d8eff); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .gradient-purple { background: linear-gradient(135deg, #b86bff, #ff4dcf); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .gradient-amber { background: linear-gradient(135deg, #ffb84d, #ff4dcf); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .gradient-green { background: linear-gradient(135deg, #4dffb8, #00f0ff); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .gradient-multi { background: linear-gradient(135deg, #00f0ff 0%, #4d8eff 35%, #b86bff 70%, #ff4dcf 100%); -webkit-background-clip: text; background-clip: text; color: transparent; }
+
+  /* ===== BUTTONS ===== */
+  .btn-primary {
+    background: linear-gradient(135deg, #00f0ff, #4d8eff);
+    color: #02030a; font-weight: 700;
+    padding: 14px 28px; border-radius: 12px; border: none;
+    position: relative; overflow: hidden;
+    transition: all 0.3s ease; cursor: pointer;
+    box-shadow: 0 0 30px rgba(0, 240, 255, 0.35);
+  }
+  .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 0 50px rgba(0, 240, 255, 0.6); }
+  .btn-ghost {
+    background: rgba(12, 16, 38, 0.5);
+    border: 1px solid rgba(0, 240, 255, 0.3);
+    color: var(--text-primary); font-weight: 600;
+    padding: 14px 28px; border-radius: 12px;
+    transition: all 0.3s ease; cursor: pointer;
+  }
+  .btn-ghost:hover { border-color: var(--neon-cyan); background: rgba(0, 240, 255, 0.08); }
+
+  /* ===== HERO ===== */
+  .hero-title { font-size: clamp(2.5rem, 7vw, 6rem); line-height: 0.95; font-weight: 900; }
+  .scan-line {
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--neon-cyan), transparent);
+    animation: scan 4s linear infinite;
+  }
+  @keyframes scan { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }
+
+  /* ===== PILL ===== */
+  .pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 6px 14px; border-radius: 999px;
+    font-size: 0.75rem; font-weight: 600;
+    letter-spacing: 0.08em; text-transform: uppercase;
+    border: 1px solid rgba(0, 240, 255, 0.3);
+    background: rgba(0, 240, 255, 0.06);
+    color: var(--neon-cyan);
+  }
+  .pill-green { border-color: rgba(77, 255, 184, 0.3); background: rgba(77, 255, 184, 0.06); color: var(--neon-green); }
+  .pill-pink { border-color: rgba(255, 77, 207, 0.3); background: rgba(255, 77, 207, 0.06); color: var(--neon-pink); }
+  .pill-amber { border-color: rgba(255, 184, 77, 0.3); background: rgba(255, 184, 77, 0.06); color: var(--neon-amber); }
+  .pill-purple { border-color: rgba(184, 107, 255, 0.3); background: rgba(184, 107, 255, 0.06); color: var(--neon-purple); }
+
+  /* ===== CODE ===== */
+  .code-block {
+    background: rgba(2, 3, 10, 0.8);
+    border: 1px solid rgba(0, 240, 255, 0.2);
+    border-radius: 14px;
+    padding: 24px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.82rem; line-height: 1.7;
+    overflow-x: auto; position: relative;
+  }
+  .code-block::before {
+    content: ''; position: absolute;
+    top: 0; left: 0; right: 0; height: 1px;
+    background: linear-gradient(90deg, transparent, var(--neon-cyan), transparent);
+  }
+  .code-block pre { margin: 0; }
+  .tok-keyword { color: #ff4dcf; }
+  .tok-string { color: #4dffb8; }
+  .tok-fn { color: #00f0ff; }
+  .tok-comment { color: #5a6788; font-style: italic; }
+  .tok-num { color: #ffb84d; }
+  .tok-var { color: #e8efff; }
+  .tok-key { color: #b86bff; }
+  .tok-bool { color: #ff4dcf; font-weight: 600; }
+  .tok-type { color: #4d8eff; font-style: italic; }
+
+  .float-y { animation: floaty 6s ease-in-out infinite; }
+  @keyframes floaty { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-12px); } }
+
+  /* ===== REVEAL ===== */
+  .reveal { transition: opacity 1s cubic-bezier(0.2, 0.8, 0.2, 1), transform 1s cubic-bezier(0.2, 0.8, 0.2, 1); }
+  .js-reveal .reveal { opacity: 0; transform: translateY(40px); }
+  .js-reveal .reveal.in { opacity: 1; transform: translateY(0); }
+
+  /* ===== PROGRESS ===== */
+  .progress-bar { height: 6px; background: rgba(0, 240, 255, 0.1); border-radius: 999px; overflow: hidden; position: relative; }
+  .progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--neon-cyan), var(--neon-purple), var(--neon-pink));
+    border-radius: 999px;
+    transition: width 1.5s cubic-bezier(0.2, 0.8, 0.2, 1);
+    position: relative;
+  }
+  .progress-fill::after {
+    content: ''; position: absolute; inset: 0;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
+    animation: shimmer 2s linear infinite;
+  }
+  @keyframes shimmer { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }
+
+  /* ===== CHECKPOINT ===== */
+  .checkpoint-glow {
+    background: radial-gradient(circle at center, rgba(0, 240, 255, 0.12), transparent 70%);
+    border: 1px solid rgba(0, 240, 255, 0.3);
+  }
+
+  /* ===== SIDE NAV ===== */
+  .side-dots {
+    position: fixed; right: 24px; top: 50%;
+    transform: translateY(-50%); z-index: 40;
+    display: flex; flex-direction: column; gap: 14px;
+  }
+  @media (max-width: 768px) { .side-dots { display: none; } }
+  .dot {
+    width: 10px; height: 10px; border-radius: 50%;
+    background: rgba(0, 240, 255, 0.2);
+    border: 1px solid rgba(0, 240, 255, 0.4);
+    transition: all 0.3s ease; cursor: pointer;
+  }
+  .dot.active { background: var(--neon-cyan); box-shadow: 0 0 15px var(--neon-cyan); transform: scale(1.3); }
+
+  /* ===== SCROLLBAR ===== */
+  ::-webkit-scrollbar { width: 10px; }
+  ::-webkit-scrollbar-track { background: var(--bg-deep); }
+  ::-webkit-scrollbar-thumb { background: linear-gradient(180deg, var(--neon-cyan), var(--neon-purple)); border-radius: 10px; }
+
+  /* ===== HOLO BORDER ===== */
+  .holo-border { position: relative; }
+  .holo-border::after {
+    content: ''; position: absolute; inset: -1px; border-radius: inherit;
+    padding: 1px;
+    background: linear-gradient(135deg, var(--neon-cyan), transparent 40%, transparent 60%, var(--neon-purple));
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor; mask-composite: exclude;
+    pointer-events: none; opacity: 0.6;
+  }
+
+  /* ===== GRID FLOOR ===== */
+  .grid-floor {
+    position: absolute; bottom: 0; left: 0; right: 0; height: 30vh;
+    background-image:
+      linear-gradient(rgba(0, 240, 255, 0.15) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0, 240, 255, 0.15) 1px, transparent 1px);
+    background-size: 50px 50px;
+    transform: perspective(500px) rotateX(60deg);
+    transform-origin: bottom;
+    opacity: 0.4;
+    mask-image: linear-gradient(180deg, transparent, black 50%);
+    -webkit-mask-image: linear-gradient(180deg, transparent, black 50%);
+  }
+
+  /* ===== CALLOUT ===== */
+  .callout {
+    background: linear-gradient(135deg, rgba(255, 184, 77, 0.08), rgba(255, 77, 207, 0.04));
+    border-left: 3px solid var(--neon-amber);
+    border-radius: 8px;
+    padding: 16px 20px;
+  }
+  .callout-cyan {
+    background: linear-gradient(135deg, rgba(0, 240, 255, 0.08), rgba(77, 142, 255, 0.04));
+    border-left: 3px solid var(--neon-cyan);
+    border-radius: 8px; padding: 16px 20px;
+  }
+  .callout-green {
+    background: linear-gradient(135deg, rgba(77, 255, 184, 0.08), rgba(0, 240, 255, 0.04));
+    border-left: 3px solid var(--neon-green);
+    border-radius: 8px; padding: 16px 20px;
+  }
+  .callout-pink {
+    background: linear-gradient(135deg, rgba(255, 77, 207, 0.08), rgba(184, 107, 255, 0.04));
+    border-left: 3px solid var(--neon-pink);
+    border-radius: 8px; padding: 16px 20px;
+  }
+
+  /* ===== STAT NUM ===== */
+  .stat-num {
+    font-family: 'Orbitron', sans-serif;
+    font-weight: 800; font-size: 2.4rem;
+    background: linear-gradient(135deg, #00f0ff, #b86bff);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+
+  /* ===== TAB ===== */
+  .tab-btn {
+    padding: 10px 20px;
+    border-radius: 10px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.82rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    border: 1px solid rgba(0, 240, 255, 0.2);
+    background: rgba(12, 16, 38, 0.5);
+    color: var(--text-secondary);
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .tab-btn:hover { border-color: var(--neon-cyan); color: var(--text-primary); }
+  .tab-btn.active {
+    background: linear-gradient(135deg, var(--neon-cyan), var(--neon-purple));
+    color: #02030a;
+    border-color: transparent;
+    box-shadow: 0 0 25px rgba(0, 240, 255, 0.4);
+  }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; animation: fadeUp 0.5s ease; }
+  @keyframes fadeUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+  /* ===== COPY ===== */
+  .copy-btn {
+    position: absolute;
+    top: 12px; right: 12px;
+    background: rgba(0, 240, 255, 0.1);
+    border: 1px solid rgba(0, 240, 255, 0.3);
+    color: var(--neon-cyan);
+    padding: 4px 10px;
+    border-radius: 6px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.7rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    z-index: 2;
+  }
+  .copy-btn:hover { background: rgba(0, 240, 255, 0.2); }
+  .copy-btn.copied { background: var(--neon-green); color: #02030a; border-color: var(--neon-green); }
+
+  /* ===== TOKEN CHIP ===== */
+  .token-chip {
+    display: inline-block;
+    padding: 6px 12px;
+    border-radius: 8px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.8rem;
+    margin: 4px;
+    border: 1px solid rgba(0, 240, 255, 0.3);
+    background: rgba(0, 240, 255, 0.08);
+    color: #aae8ff;
+    transition: all 0.3s ease;
+  }
+  .token-chip.removed {
+    text-decoration: line-through;
+    opacity: 0.4;
+    border-color: rgba(138, 150, 184, 0.3);
+    background: rgba(138, 150, 184, 0.05);
+    color: var(--text-secondary);
+  }
+  .token-chip.stem {
+    border-color: rgba(184, 107, 255, 0.4);
+    background: rgba(184, 107, 255, 0.12);
+    color: var(--neon-purple);
+  }
+
+  /* ===== INVERTED INDEX TABLE ===== */
+  .index-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.82rem;
+  }
+  .index-table th {
+    text-align: left;
+    padding: 12px 14px;
+    background: rgba(0, 240, 255, 0.06);
+    border-bottom: 1px solid rgba(0, 240, 255, 0.2);
+    color: var(--neon-cyan);
+    font-family: 'Orbitron', sans-serif;
+    font-size: 0.7rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+  .index-table th:first-child { border-top-left-radius: 10px; }
+  .index-table th:last-child { border-top-right-radius: 10px; }
+  .index-table td {
+    padding: 12px 14px;
+    border-bottom: 1px solid rgba(0, 240, 255, 0.08);
+    color: var(--text-primary);
+  }
+  .index-table tr:last-child td { border-bottom: none; }
+  .index-table tr:hover td { background: rgba(0, 240, 255, 0.03); }
+
+  /* ===== FORMULA BOX ===== */
+  .formula-box {
+    background: linear-gradient(135deg, rgba(2, 3, 10, 0.9), rgba(20, 12, 50, 0.6));
+    border: 1px solid rgba(184, 107, 255, 0.3);
+    border-radius: 14px;
+    padding: 28px;
+    text-align: center;
+    font-family: 'JetBrains Mono', monospace;
+    position: relative;
+    overflow: hidden;
+  }
+  .formula-box::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0; height: 2px;
+    background: linear-gradient(90deg, transparent, var(--neon-purple), transparent);
+  }
+  .formula-symbol {
+    font-size: 1.5rem;
+    color: var(--neon-cyan);
+    font-weight: 600;
+  }
+  .formula-var {
+    color: var(--neon-cyan);
+    font-style: italic;
+  }
+  .formula-num {
+    color: var(--neon-amber);
+  }
+
+  /* ===== SLIDER ===== */
+  .slider-card {
+    background: rgba(2, 3, 10, 0.5);
+    border: 1px solid rgba(0, 240, 255, 0.15);
+    border-radius: 10px;
+    padding: 14px;
+  }
+  input[type="range"] {
+    -webkit-appearance: none; appearance: none;
+    width: 100%; height: 6px;
+    background: rgba(0, 240, 255, 0.1);
+    border-radius: 999px;
+    outline: none;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none;
+    width: 20px; height: 20px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--neon-cyan), var(--neon-purple));
+    cursor: pointer;
+    box-shadow: 0 0 15px rgba(0, 240, 255, 0.6);
+    transition: transform 0.2s ease;
+  }
+  input[type="range"]::-webkit-slider-thumb:hover { transform: scale(1.2); }
+  input[type="range"]::-moz-range-thumb {
+    width: 20px; height: 20px; border-radius: 50%; border: none;
+    background: linear-gradient(135deg, var(--neon-cyan), var(--neon-purple));
+    cursor: pointer;
+    box-shadow: 0 0 15px rgba(0, 240, 255, 0.6);
+  }
+
+  /* ===== DOC RESULT BAR ===== */
+  .doc-result {
+    background: rgba(2, 3, 10, 0.5);
+    border: 1px solid rgba(0, 240, 255, 0.15);
+    border-radius: 10px;
+    padding: 12px 16px;
+    margin-bottom: 8px;
+    transition: all 0.3s ease;
+  }
+  .doc-result:hover { border-color: rgba(0, 240, 255, 0.45); transform: translateX(4px); }
+  .score-bar {
+    height: 6px;
+    background: rgba(0, 240, 255, 0.1);
+    border-radius: 999px;
+    overflow: hidden;
+    margin-top: 6px;
+  }
+  .score-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--neon-cyan), var(--neon-purple));
+    transition: width 0.6s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+
+  /* ===== STEP CARD (pipeline) ===== */
+  .step-card {
+    position: relative;
+    background: rgba(12, 16, 38, 0.7);
+    border: 1px solid rgba(0, 240, 255, 0.2);
+    border-radius: 14px;
+    padding: 20px 22px;
+    transition: all 0.3s ease;
+  }
+  .step-card:hover {
+    border-color: var(--neon-cyan);
+    transform: translateY(-3px);
+    box-shadow: 0 0 25px rgba(0, 240, 255, 0.2);
+  }
+  .step-card .step-num {
+    position: absolute;
+    top: -12px; left: 18px;
+    background: linear-gradient(135deg, var(--neon-cyan), var(--neon-purple));
+    color: #02030a;
+    font-family: 'Orbitron', sans-serif;
+    font-weight: 800;
+    font-size: 0.7rem;
+    padding: 3px 10px;
+    border-radius: 999px;
+    box-shadow: 0 0 15px rgba(0, 240, 255, 0.5);
+    letter-spacing: 0.08em;
+  }
+
+  /* ===== QUIZ ===== */
+  .quiz-option {
+    background: rgba(12, 16, 38, 0.6);
+    border: 1px solid rgba(0, 240, 255, 0.2);
+    border-radius: 12px;
+    padding: 14px 18px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    display: flex; align-items: center; gap: 12px;
+    text-align: left;
+    width: 100%;
+    font-family: inherit;
+    color: var(--text-primary);
+  }
+  .quiz-option:hover:not(.locked) {
+    border-color: var(--neon-cyan);
+    background: rgba(0, 240, 255, 0.06);
+    transform: translateX(4px);
+  }
+  .quiz-option.correct {
+    border-color: var(--neon-green);
+    background: rgba(77, 255, 184, 0.1);
+    box-shadow: 0 0 20px rgba(77, 255, 184, 0.3);
+  }
+  .quiz-option.wrong {
+    border-color: var(--neon-pink);
+    background: rgba(255, 77, 207, 0.1);
+  }
+  .quiz-marker {
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    border: 1px solid rgba(0, 240, 255, 0.3);
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Orbitron', sans-serif;
+    font-size: 0.8rem;
+    color: var(--neon-cyan);
+    flex-shrink: 0;
+  }
+  .quiz-option.correct .quiz-marker { background: var(--neon-green); border-color: var(--neon-green); color: #02030a; }
+  .quiz-option.wrong .quiz-marker { background: var(--neon-pink); border-color: var(--neon-pink); color: #02030a; }
+
+  /* ===== CHART ===== */
+  .chart-wrapper {
+    position: relative;
+    width: 100%;
+    height: 280px;
+  }
+  #tfChart, #idfChart { max-height: 280px !important; display: block !important; }
+
+  /* ===== WHEN-TO-USE CARDS ===== */
+  .win-card {
+    background: rgba(12, 16, 38, 0.7);
+    border: 1px solid rgba(77, 255, 184, 0.3);
+    border-radius: 14px;
+    padding: 18px;
+    transition: all 0.3s ease;
+  }
+  .win-card:hover { border-color: var(--neon-green); transform: translateY(-3px); box-shadow: 0 0 20px rgba(77, 255, 184, 0.15); }
+  .lose-card {
+    background: rgba(12, 16, 38, 0.7);
+    border: 1px solid rgba(255, 77, 207, 0.3);
+    border-radius: 14px;
+    padding: 18px;
+    transition: all 0.3s ease;
+  }
+  .lose-card:hover { border-color: var(--neon-pink); transform: translateY(-3px); box-shadow: 0 0 20px rgba(255, 77, 207, 0.15); }
+
+
+
+  /* ===== LEARN & PRACTICE CARDS ===== */
+  .resource-stack {
+    max-width: 860px;
+    margin: 0 auto;
+    display: grid;
+    gap: 14px;
+  }
+  .resource-card {
+    background: linear-gradient(135deg, rgba(6, 8, 24, 0.92), rgba(10, 12, 34, 0.86));
+    border: 1px solid rgba(0, 240, 255, 0.32);
+    border-radius: 16px;
+    padding: 20px;
+    box-shadow: 0 0 28px rgba(0, 240, 255, 0.08);
+  }
+  .resource-card.repo {
+    border-color: rgba(255, 77, 207, 0.35);
+    box-shadow: 0 0 28px rgba(255, 77, 207, 0.08);
+  }
+  .resource-icon {
+    width: 34px;
+    height: 34px;
+    border-radius: 10px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid rgba(0, 240, 255, 0.4);
+    background: rgba(0, 240, 255, 0.08);
+    color: var(--neon-cyan);
+    flex-shrink: 0;
+  }
+  .resource-card.repo .resource-icon {
+    border-color: rgba(255, 77, 207, 0.45);
+    background: rgba(255, 77, 207, 0.1);
+    color: var(--neon-pink);
+  }
+  .resource-cta {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 12px;
+    padding: 10px 18px;
+    border-radius: 10px;
+    border: 1px solid rgba(0, 240, 255, 0.55);
+    color: var(--neon-cyan);
+    font-family: 'Orbitron', sans-serif;
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    background: rgba(0, 240, 255, 0.06);
+    transition: all 0.25s ease;
+  }
+  .resource-cta:hover {
+    background: rgba(0, 240, 255, 0.12);
+    box-shadow: 0 0 20px rgba(0, 240, 255, 0.22);
+  }
+  .resource-card.repo .resource-cta {
+    border-color: rgba(255, 77, 207, 0.55);
+    color: var(--neon-pink);
+    background: rgba(255, 77, 207, 0.08);
+  }
+  .resource-card.repo .resource-cta:hover {
+    background: rgba(255, 77, 207, 0.15);
+    box-shadow: 0 0 20px rgba(255, 77, 207, 0.24);
+  }
+
+</style>
+</head>
+
+<body>
+
+<!-- Nebula backgrounds -->
+<div class="nebula nebula-1"></div>
+<div class="nebula nebula-2"></div>
+<div class="nebula nebula-3"></div>
+
+<!-- Starfield Canvas -->
+<canvas id="starfield"></canvas>
+
+<!-- TOP NAV -->
+<nav class="top-nav">
+  <div class="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
+    <div class="flex items-center gap-3">
+      <div class="w-10 h-10 rounded-xl flex items-center justify-center" style="background: linear-gradient(135deg, #00f0ff, #b86bff); box-shadow: 0 0 20px rgba(0,240,255,0.5);">
+        <i data-lucide="search" class="w-5 h-5 text-black"></i>
+      </div>
+      <div>
+        <div class="font-display font-bold text-lg nav-logo">RAG ACADEMY</div>
+        <div class="text-[10px] text-gray-400 tracking-widest -mt-1">TRACK 03 • MODULE 3.0</div>
+      </div>
+    </div>
+
+    <div class="hidden md:flex items-center gap-8 text-sm">
+      <a href="#hero" class="text-cyan-300 font-medium">Overview</a>
+      <a href="#why" class="text-gray-300 hover:text-cyan-300 transition">Why BM25</a>
+      <a href="#tokenize" class="text-gray-300 hover:text-cyan-300 transition">Tokenize</a>
+      <a href="#index" class="text-gray-300 hover:text-cyan-300 transition">Index</a>
+      <a href="#posting-lists" class="text-gray-300 hover:text-cyan-300 transition">Posting Lists</a>
+      <a href="#tfidf" class="text-gray-300 hover:text-cyan-300 transition">TF-IDF</a>
+      <a href="#formula" class="text-gray-300 hover:text-cyan-300 transition">Formula</a>
+      <a href="#worked-example" class="text-gray-300 hover:text-cyan-300 transition">Worked Ex.</a>
+      <a href="#playground" class="text-gray-300 hover:text-cyan-300 transition">Playground</a>
+      <a href="#vocab-mismatch" class="text-gray-300 hover:text-cyan-300 transition">Vocab Mismatch</a>
+      <a href="#splade" class="text-gray-300 hover:text-cyan-300 transition">SPLADE</a>
+      <a href="#checkpoint" class="text-gray-300 hover:text-cyan-300 transition">Checkpoint</a>
+    </div>
+
+    <div class="flex items-center gap-3">
+      <div class="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full" style="background: rgba(0,240,255,0.08); border: 1px solid rgba(0,240,255,0.25);">
+        <div class="w-2 h-2 rounded-full" style="background: #4dffb8; box-shadow: 0 0 8px #4dffb8;"></div>
+        <span class="text-xs font-mono text-cyan-200">CADET ONLINE</span>
+      </div>
+      <button class="btn-ghost text-sm py-2 px-4">Save Progress</button>
+    </div>
+  </div>
+  <div class="scan-line"></div>
+</nav>
+
+<!-- SIDE NAV DOTS -->
+<div class="side-dots" id="sideDots">
+  <div class="dot active" data-target="hero" title="Hero"></div>
+  <div class="dot" data-target="objectives" title="Objectives"></div>
+  <div class="dot" data-target="why" title="Why BM25"></div>
+  <div class="dot" data-target="tokenize" title="Tokenize"></div>
+  <div class="dot" data-target="index" title="Inverted Index"></div>
+  <div class="dot" data-target="posting-lists" title="Posting Lists"></div>
+  <div class="dot" data-target="tfidf" title="TF-IDF"></div>
+  <div class="dot" data-target="formula" title="Formula"></div>
+  <div class="dot" data-target="worked-example" title="Worked Example"></div>
+  <div class="dot" data-target="playground" title="Playground"></div>
+  <div class="dot" data-target="code" title="Code"></div>
+  <div class="dot" data-target="vocab-mismatch" title="Vocab Mismatch"></div>
+  <div class="dot" data-target="splade" title="SPLADE"></div>
+  <div class="dot" data-target="checkpoint" title="Checkpoint"></div>
+</div>
+
+<!-- ========== HERO ========== -->
+<section id="hero" class="relative min-h-screen flex items-center pt-32 pb-24 px-6">
+  <div class="grid-floor"></div>
+
+  <div class="max-w-7xl mx-auto w-full grid lg:grid-cols-2 gap-16 items-center relative z-10">
+    <div class="reveal">
+      <div class="flex items-center gap-3 mb-6">
+        <span class="pill"><i data-lucide="search" class="w-3 h-3"></i> Track 3 · Module 3.0</span>
+        <span class="text-xs text-gray-400 font-mono">EST. 50 MIN</span>
+      </div>
+
+      <h1 class="hero-title font-display mb-6">
+        <span class="block text-white">BM25 &amp;</span>
+        <span class="block gradient-multi">Sparse Retrieval</span>
+      </h1>
+
+      <p class="text-lg md:text-xl text-gray-300 leading-relaxed mb-8 max-w-xl">
+        Before embeddings ruled, search ran on <span class="text-cyan-300 font-semibold">keywords</span>.
+        Twenty-five years later, BM25 is still the silent hero behind
+        <span class="text-purple-300 font-semibold">Google, Elasticsearch, Lucene</span> — and every
+        <span class="text-pink-300 font-semibold">production-grade hybrid RAG</span>. Master it cold.
+      </p>
+
+      <div class="flex flex-wrap gap-4 mb-12">
+        <button class="btn-primary flex items-center gap-2" onclick="document.getElementById('objectives').scrollIntoView({behavior:'smooth'})">
+          <i data-lucide="play" class="w-4 h-4"></i> Begin Mission
+        </button>
+        <button class="btn-ghost flex items-center gap-2" onclick="document.getElementById('playground').scrollIntoView({behavior:'smooth'})">
+          <i data-lucide="zap" class="w-4 h-4"></i> Jump to Playground
+        </button>
+      </div>
+
+      <div class="grid grid-cols-4 gap-3">
+        <div class="holo-card p-4 text-center">
+          <div class="stat-num text-2xl">25</div>
+          <div class="text-[10px] text-gray-400 uppercase tracking-wider mt-1">Years Old</div>
+        </div>
+        <div class="holo-card p-4 text-center">
+          <div class="stat-num text-2xl">~2ms</div>
+          <div class="text-[10px] text-gray-400 uppercase tracking-wider mt-1">Per Query</div>
+        </div>
+        <div class="holo-card p-4 text-center">
+          <div class="stat-num text-2xl">0$</div>
+          <div class="text-[10px] text-gray-400 uppercase tracking-wider mt-1">GPU Needed</div>
+        </div>
+        <div class="holo-card p-4 text-center">
+          <div class="stat-num text-2xl">2</div>
+          <div class="text-[10px] text-gray-400 uppercase tracking-wider mt-1">Knobs · k₁ &amp; b</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT — RANKED RESULTS -->
+    <div class="reveal">
+      <div class="holo-card p-6 holo-border float-y">
+        <div class="flex items-center justify-between mb-4">
+          <div>
+            <div class="font-mono text-xs text-cyan-300 tracking-widest">QUERY</div>
+            <div class="font-mono text-cyan-200 text-sm mt-1">"refund policy travel"</div>
+          </div>
+          <span class="pill pill-green text-[10px]"><i data-lucide="zap" class="w-3 h-3"></i> LIVE</span>
+        </div>
+
+        <div class="space-y-2">
+          <div class="doc-result">
+            <div class="flex justify-between items-center text-sm">
+              <span class="text-gray-300 font-mono text-xs">doc_847 · travel-faq.md</span>
+              <span class="text-cyan-300 font-mono font-semibold">8.92</span>
+            </div>
+            <div class="score-bar"><div class="score-fill" style="width: 92%"></div></div>
+          </div>
+          <div class="doc-result">
+            <div class="flex justify-between items-center text-sm">
+              <span class="text-gray-300 font-mono text-xs">doc_213 · refund-terms.md</span>
+              <span class="text-cyan-300 font-mono font-semibold">7.41</span>
+            </div>
+            <div class="score-bar"><div class="score-fill" style="width: 76%"></div></div>
+          </div>
+          <div class="doc-result">
+            <div class="flex justify-between items-center text-sm">
+              <span class="text-gray-300 font-mono text-xs">doc_159 · support-kb.md</span>
+              <span class="text-cyan-300 font-mono font-semibold">5.18</span>
+            </div>
+            <div class="score-bar"><div class="score-fill" style="width: 53%"></div></div>
+          </div>
+          <div class="doc-result">
+            <div class="flex justify-between items-center text-sm">
+              <span class="text-gray-300 font-mono text-xs">doc_604 · policies.md</span>
+              <span class="text-cyan-300 font-mono font-semibold">3.07</span>
+            </div>
+            <div class="score-bar"><div class="score-fill" style="width: 31%"></div></div>
+          </div>
+          <div class="doc-result">
+            <div class="flex justify-between items-center text-sm">
+              <span class="text-gray-300 font-mono text-xs">doc_022 · homepage.md</span>
+              <span class="text-cyan-300 font-mono font-semibold">1.24</span>
+            </div>
+            <div class="score-bar"><div class="score-fill" style="width: 13%"></div></div>
+          </div>
+        </div>
+
+        <div class="mt-4 pt-4 border-t border-cyan-500/10 flex justify-between text-xs font-mono text-gray-500">
+          <span>scanned: 1M docs</span>
+          <span class="text-cyan-300">latency: 1.8ms</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========== OBJECTIVES ========== -->
+<section id="objectives" class="relative py-24 px-6 z-10">
+  <div class="max-w-7xl mx-auto">
+    <div class="text-center mb-16 reveal">
+      <span class="pill mb-4"><i data-lucide="target" class="w-3 h-3"></i> Mission Objectives</span>
+      <h2 class="font-display text-4xl md:text-5xl font-bold mt-4">
+        What You'll <span class="gradient-cyan">Master</span>
+      </h2>
+      <p class="text-gray-400 mt-4 max-w-3xl mx-auto">By the end you'll build, tune, and reason about BM25 from first principles — and know when to reach for it over (and alongside) embeddings.</p>
+    </div>
+
+    <div class="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div class="holo-card p-6 reveal">
+        <div class="w-12 h-12 rounded-xl flex items-center justify-center mb-4" style="background: rgba(0, 240, 255, 0.15);">
+          <i data-lucide="scissors" class="w-6 h-6" style="color: #00f0ff;"></i>
+        </div>
+        <h3 class="font-display font-bold text-lg mb-2">Text → Tokens</h3>
+        <p class="text-sm text-gray-400 leading-relaxed">Tokenize, lowercase, strip stopwords, stem — the four-step pipeline every sparse engine runs.</p>
+      </div>
+
+      <div class="holo-card p-6 reveal">
+        <div class="w-12 h-12 rounded-xl flex items-center justify-center mb-4" style="background: rgba(184, 107, 255, 0.15);">
+          <i data-lucide="database" class="w-6 h-6" style="color: #b86bff;"></i>
+        </div>
+        <h3 class="font-display font-bold text-lg mb-2">Inverted Index</h3>
+        <p class="text-sm text-gray-400 leading-relaxed">The data structure behind 25 years of fast search — and why it scales to billions of docs.</p>
+      </div>
+
+      <div class="holo-card p-6 reveal">
+        <div class="w-12 h-12 rounded-xl flex items-center justify-center mb-4" style="background: rgba(77, 142, 255, 0.15);">
+          <i data-lucide="function-square" class="w-6 h-6" style="color: #4d8eff;"></i>
+        </div>
+        <h3 class="font-display font-bold text-lg mb-2">The BM25 Formula</h3>
+        <p class="text-sm text-gray-400 leading-relaxed">TF saturation, IDF weighting, length normalization — every term, no math anxiety.</p>
+      </div>
+
+      <div class="holo-card p-6 reveal">
+        <div class="w-12 h-12 rounded-xl flex items-center justify-center mb-4" style="background: rgba(255, 184, 77, 0.15);">
+          <i data-lucide="sliders-horizontal" class="w-6 h-6" style="color: #ffb84d;"></i>
+        </div>
+        <h3 class="font-display font-bold text-lg mb-2">Tune k₁ &amp; b</h3>
+        <p class="text-sm text-gray-400 leading-relaxed">Two knobs control everything. Live playground to feel exactly what each does.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========== WHY BM25 ========== -->
+<section id="why" class="relative py-24 px-6 z-10">
+  <div class="max-w-7xl mx-auto">
+    <div class="text-center mb-16 reveal">
+      <span class="pill mb-4"><i data-lucide="trending-up" class="w-3 h-3"></i> Why It Still Wins</span>
+      <h2 class="font-display text-4xl md:text-5xl font-bold mt-4">
+        Sparse <span class="gradient-cyan">Beats Dense</span> More Often Than You'd Think
+      </h2>
+      <p class="text-gray-400 mt-4 max-w-3xl mx-auto">Every "RAG is just embeddings" tutorial skips this lesson. The strongest production systems blend both — and many lean harder on sparse than you'd expect.</p>
+    </div>
+
+    <div class="grid md:grid-cols-2 gap-8">
+      <div class="lose-card reveal">
+        <div class="flex items-center gap-3 mb-6">
+          <div class="w-12 h-12 rounded-xl flex items-center justify-center" style="background: rgba(255, 77, 207, 0.15);">
+            <i data-lucide="alert-triangle" class="w-6 h-6" style="color: #ff4dcf;"></i>
+          </div>
+          <div>
+            <div class="text-xs text-pink-300 uppercase tracking-wider">Dense Retrieval Fails</div>
+            <h4 class="font-display font-bold text-xl">When Embeddings Stumble</h4>
+          </div>
+        </div>
+        <ul class="space-y-3 text-sm">
+          <li class="flex items-start gap-2 text-gray-300"><i data-lucide="x-circle" class="w-4 h-4 text-pink-400 mt-0.5 flex-shrink-0"></i> <span><strong class="text-white">Rare terms:</strong> SKU codes, error messages, drug names — embeddings flatten them into noise.</span></li>
+          <li class="flex items-start gap-2 text-gray-300"><i data-lucide="x-circle" class="w-4 h-4 text-pink-400 mt-0.5 flex-shrink-0"></i> <span><strong class="text-white">Exact match:</strong> Looking for "<code class="font-mono text-pink-200">CVE-2024-31082</code>"? Dense retrieval returns loosely related vulnerabilities.</span></li>
+          <li class="flex items-start gap-2 text-gray-300"><i data-lucide="x-circle" class="w-4 h-4 text-pink-400 mt-0.5 flex-shrink-0"></i> <span><strong class="text-white">Domain drift:</strong> Generic embeddings know "doctor" but not "ICD-10 J45.909".</span></li>
+          <li class="flex items-start gap-2 text-gray-300"><i data-lucide="x-circle" class="w-4 h-4 text-pink-400 mt-0.5 flex-shrink-0"></i> <span><strong class="text-white">Acronyms &amp; jargon:</strong> Internal terms like "PR-7842" carry zero semantic signal.</span></li>
+          <li class="flex items-start gap-2 text-gray-300"><i data-lucide="x-circle" class="w-4 h-4 text-pink-400 mt-0.5 flex-shrink-0"></i> <span><strong class="text-white">Cost &amp; latency:</strong> Embedding 10M docs costs real money. BM25 builds for free.</span></li>
+        </ul>
+      </div>
+
+      <div class="win-card reveal">
+        <div class="flex items-center gap-3 mb-6">
+          <div class="w-12 h-12 rounded-xl flex items-center justify-center" style="background: rgba(77, 255, 184, 0.15);">
+            <i data-lucide="shield-check" class="w-6 h-6" style="color: #4dffb8;"></i>
+          </div>
+          <div>
+            <div class="text-xs text-green-300 uppercase tracking-wider">BM25 Shines</div>
+            <h4 class="font-display font-bold text-xl">Where Sparse Wins</h4>
+          </div>
+        </div>
+        <ul class="space-y-3 text-sm">
+          <li class="flex items-start gap-2 text-gray-300"><i data-lucide="check-circle-2" class="w-4 h-4 text-green-400 mt-0.5 flex-shrink-0"></i> <span><strong class="text-white">Lexical precision:</strong> Exact tokens, exact match, every time.</span></li>
+          <li class="flex items-start gap-2 text-gray-300"><i data-lucide="check-circle-2" class="w-4 h-4 text-green-400 mt-0.5 flex-shrink-0"></i> <span><strong class="text-white">Interpretable:</strong> You can <em>read</em> the score breakdown — no black box.</span></li>
+          <li class="flex items-start gap-2 text-gray-300"><i data-lucide="check-circle-2" class="w-4 h-4 text-green-400 mt-0.5 flex-shrink-0"></i> <span><strong class="text-white">CPU-fast:</strong> Sub-millisecond retrieval over millions of docs.</span></li>
+          <li class="flex items-start gap-2 text-gray-300"><i data-lucide="check-circle-2" class="w-4 h-4 text-green-400 mt-0.5 flex-shrink-0"></i> <span><strong class="text-white">Zero training:</strong> Plug in a corpus, get a ranker. No model, no GPU, no warm-up.</span></li>
+          <li class="flex items-start gap-2 text-gray-300"><i data-lucide="check-circle-2" class="w-4 h-4 text-green-400 mt-0.5 flex-shrink-0"></i> <span><strong class="text-white">Hybrid backbone:</strong> Pairs with dense via RRF for state-of-the-art results (Module 3.2).</span></li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="callout mt-10 reveal text-sm text-gray-300">
+      <strong class="text-amber-300">⚡ Industry secret:</strong> Most enterprise RAG systems and code-search engines run hybrid by default — and a surprising number of them treat BM25 as the <em>primary</em> retriever, with dense as the rescue net. The reverse is much rarer.
+    </div>
+  </div>
+</section>
+
+<!-- ========== TOKENIZE ========== -->
+<section id="tokenize" class="relative py-24 px-6 z-10">
+  <div class="max-w-7xl mx-auto">
+    <div class="text-center mb-16 reveal">
+      <span class="pill mb-4"><i data-lucide="scissors" class="w-3 h-3"></i> Step 1 of 4</span>
+      <h2 class="font-display text-4xl md:text-5xl font-bold mt-4">
+        From <span class="gradient-cyan">Text → Tokens</span>
+      </h2>
+      <p class="text-gray-400 mt-4 max-w-3xl mx-auto">Before scoring, you have to slice. Four small operations turn a paragraph into the bag of terms BM25 actually works on.</p>
+    </div>
+
+    <div class="space-y-6 reveal max-w-4xl mx-auto mb-12">
+
+      <div class="step-card">
+        <div class="step-num">STEP 01 · TOKENIZE</div>
+        <p class="text-sm text-gray-300 leading-relaxed mt-3">Break text into tokens — usually words, sometimes subwords. The simplest tokenizers split on whitespace and punctuation; production tokenizers (Lucene's StandardAnalyzer, ICU) handle Unicode, CJK, and mixed scripts.</p>
+        <div class="mt-3 font-mono text-xs text-gray-400">
+          <span class="text-cyan-300">in:</span> "The Refund Policy applies to travel purchases."<br>
+          <span class="text-cyan-300">out:</span> <span class="token-chip" style="padding: 2px 8px; font-size: 0.7rem;">The</span><span class="token-chip" style="padding: 2px 8px; font-size: 0.7rem;">Refund</span><span class="token-chip" style="padding: 2px 8px; font-size: 0.7rem;">Policy</span><span class="token-chip" style="padding: 2px 8px; font-size: 0.7rem;">applies</span><span class="token-chip" style="padding: 2px 8px; font-size: 0.7rem;">to</span><span class="token-chip" style="padding: 2px 8px; font-size: 0.7rem;">travel</span><span class="token-chip" style="padding: 2px 8px; font-size: 0.7rem;">purchases</span>
+        </div>
+      </div>
+
+      <div class="step-card">
+        <div class="step-num">STEP 02 · LOWERCASE</div>
+        <p class="text-sm text-gray-300 leading-relaxed mt-3">Fold case so "<em>Refund</em>" and "<em>refund</em>" match. Almost universal for English. Skip it only when case carries meaning — code search, gene names, acronyms in specific domains.</p>
+        <div class="mt-3 font-mono text-xs text-gray-400">
+          <span class="text-cyan-300">out:</span> <span class="token-chip" style="padding: 2px 8px; font-size: 0.7rem;">the</span><span class="token-chip" style="padding: 2px 8px; font-size: 0.7rem;">refund</span><span class="token-chip" style="padding: 2px 8px; font-size: 0.7rem;">policy</span><span class="token-chip" style="padding: 2px 8px; font-size: 0.7rem;">applies</span><span class="token-chip" style="padding: 2px 8px; font-size: 0.7rem;">to</span><span class="token-chip" style="padding: 2px 8px; font-size: 0.7rem;">travel</span><span class="token-chip" style="padding: 2px 8px; font-size: 0.7rem;">purchases</span>
+        </div>
+      </div>
+
+      <div class="step-card">
+        <div class="step-num">STEP 03 · STOPWORDS</div>
+        <p class="text-sm text-gray-300 leading-relaxed mt-3">Drop high-frequency words that carry little signal — "<em>the, of, and, to, is</em>". BM25 already down-weights common terms via IDF, so this step matters less than it used to. Many modern engines skip it.</p>
+        <div class="mt-3 font-mono text-xs text-gray-400">
+          <span class="text-cyan-300">out:</span> <span class="token-chip removed" style="padding: 2px 8px; font-size: 0.7rem;">the</span><span class="token-chip" style="padding: 2px 8px; font-size: 0.7rem;">refund</span><span class="token-chip" style="padding: 2px 8px; font-size: 0.7rem;">policy</span><span class="token-chip" style="padding: 2px 8px; font-size: 0.7rem;">applies</span><span class="token-chip removed" style="padding: 2px 8px; font-size: 0.7rem;">to</span><span class="token-chip" style="padding: 2px 8px; font-size: 0.7rem;">travel</span><span class="token-chip" style="padding: 2px 8px; font-size: 0.7rem;">purchases</span>
+        </div>
+      </div>
+
+      <div class="step-card">
+        <div class="step-num">STEP 04 · STEM</div>
+        <p class="text-sm text-gray-300 leading-relaxed mt-3">Reduce words to their stem so "<em>purchases</em>", "<em>purchased</em>", "<em>purchasing</em>" all collapse to "<em>purchas</em>". Porter and Snowball are the classics. Lemmatization is the smarter cousin — slower, more accurate, requires a dictionary.</p>
+        <div class="mt-3 font-mono text-xs text-gray-400">
+          <span class="text-cyan-300">out:</span> <span class="token-chip stem" style="padding: 2px 8px; font-size: 0.7rem;">refund</span><span class="token-chip stem" style="padding: 2px 8px; font-size: 0.7rem;">polici</span><span class="token-chip stem" style="padding: 2px 8px; font-size: 0.7rem;">appli</span><span class="token-chip stem" style="padding: 2px 8px; font-size: 0.7rem;">travel</span><span class="token-chip stem" style="padding: 2px 8px; font-size: 0.7rem;">purchas</span>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="callout-cyan reveal text-sm text-gray-300">
+      <strong class="text-cyan-300">⚡ Critical rule:</strong> Apply the <em>same</em> tokenization pipeline to indexing <em>and</em> queries. Stemming the docs but not the query is the #1 reason "<em>BM25 isn't matching obvious things</em>". The query and index must speak the same tokens.
+    </div>
+  </div>
+</section>
+
+<!-- ========== INVERTED INDEX ========== -->
+<section id="index" class="relative py-24 px-6 z-10">
+  <div class="max-w-7xl mx-auto">
+    <div class="text-center mb-16 reveal">
+      <span class="pill mb-4"><i data-lucide="database" class="w-3 h-3"></i> Step 2 of 4</span>
+      <h2 class="font-display text-4xl md:text-5xl font-bold mt-4">
+        The <span class="gradient-purple">Inverted Index</span>
+      </h2>
+      <p class="text-gray-400 mt-4 max-w-3xl mx-auto">The data structure that makes "search 1M documents in 2ms" possible. Once you understand it, every search engine on Earth makes sense.</p>
+    </div>
+
+    <div class="grid lg:grid-cols-2 gap-8 items-stretch reveal">
+      <div class="space-y-4">
+        <div class="holo-card p-6">
+          <h3 class="font-display font-bold text-lg mb-3 text-white flex items-center gap-2">
+            <i data-lucide="git-pull-request" class="w-5 h-5 text-cyan-400"></i>
+            Flip the question around
+          </h3>
+          <p class="text-sm text-gray-300 leading-relaxed">A <strong class="text-white">forward index</strong> answers "what's in doc 847?" — useful for displaying but useless for search. An <strong class="text-white">inverted index</strong> answers "which docs contain the token 'refund'?" — and you can answer it in O(1).</p>
+        </div>
+
+        <div class="holo-card p-6">
+          <h3 class="font-display font-bold text-lg mb-3 text-white flex items-center gap-2">
+            <i data-lucide="layers" class="w-5 h-5 text-purple-400"></i>
+            One token → posting list
+          </h3>
+          <p class="text-sm text-gray-300 leading-relaxed">For each unique token in the corpus, store a <strong class="text-white">posting list</strong>: the doc IDs containing that token, plus their term frequencies. To run a query, look up each query token's posting list, intersect/union, score.</p>
+        </div>
+
+        <div class="holo-card p-6">
+          <h3 class="font-display font-bold text-lg mb-3 text-white flex items-center gap-2">
+            <i data-lucide="rocket" class="w-5 h-5 text-pink-400"></i>
+            Why it's blazingly fast
+          </h3>
+          <p class="text-sm text-gray-300 leading-relaxed">Only documents containing at least one query token get scored — usually a tiny fraction of the corpus. Posting lists are typically compressed (variable-byte / Frame-of-Reference) so they fit in CPU cache and disk reads are minimal.</p>
+        </div>
+      </div>
+
+      <div class="holo-card p-6 relative">
+        <div class="font-mono text-xs text-cyan-300 tracking-widest mb-4">INVERTED INDEX · 3 DOCUMENTS</div>
+
+        <div class="space-y-2 mb-4 font-mono text-xs">
+          <div class="flex gap-2"><span class="text-cyan-300 w-12">doc_1:</span><span class="text-gray-400">"refund travel insurance"</span></div>
+          <div class="flex gap-2"><span class="text-cyan-300 w-12">doc_2:</span><span class="text-gray-400">"travel policy and rules"</span></div>
+          <div class="flex gap-2"><span class="text-cyan-300 w-12">doc_3:</span><span class="text-gray-400">"refund refund refund issues"</span></div>
+        </div>
+
+        <div class="flex items-center justify-center my-3">
+          <i data-lucide="arrow-down" class="w-5 h-5 text-cyan-400"></i>
+        </div>
+
+        <table class="index-table">
+          <thead>
+            <tr><th>Token</th><th>DF</th><th>Posting List · (docID, TF)</th></tr>
+          </thead>
+          <tbody>
+            <tr><td class="text-cyan-300">refund</td><td class="text-amber-300">2</td><td><span class="text-gray-300">[(1,1), (3,3)]</span></td></tr>
+            <tr><td class="text-cyan-300">travel</td><td class="text-amber-300">2</td><td><span class="text-gray-300">[(1,1), (2,1)]</span></td></tr>
+            <tr><td class="text-cyan-300">insurance</td><td class="text-amber-300">1</td><td><span class="text-gray-300">[(1,1)]</span></td></tr>
+            <tr><td class="text-cyan-300">policy</td><td class="text-amber-300">1</td><td><span class="text-gray-300">[(2,1)]</span></td></tr>
+            <tr><td class="text-cyan-300">rules</td><td class="text-amber-300">1</td><td><span class="text-gray-300">[(2,1)]</span></td></tr>
+            <tr><td class="text-cyan-300">issues</td><td class="text-amber-300">1</td><td><span class="text-gray-300">[(3,1)]</span></td></tr>
+          </tbody>
+        </table>
+
+        <div class="callout-cyan mt-5 text-xs text-gray-300">
+          <strong class="text-cyan-300">⚡ Query "refund travel":</strong> look up <em>refund</em> → [1, 3], look up <em>travel</em> → [1, 2]. Score each candidate doc using BM25 on the matching tokens. Doc_1 has both tokens — it's almost certainly the top hit.
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========== POSTING LISTS DEEP DIVE ========== -->
+<section id="posting-lists" class="relative py-24 px-6 z-10">
+  <div class="max-w-7xl mx-auto">
+    <div class="text-center mb-16 reveal">
+      <span class="pill mb-4"><i data-lucide="list-tree" class="w-3 h-3"></i> Deep Dive</span>
+      <h2 class="font-display text-4xl md:text-5xl font-bold mt-4">
+        Inside a <span class="gradient-purple">Posting List</span>
+      </h2>
+      <p class="text-gray-400 mt-4 max-w-3xl mx-auto">The inverted index is the map. The posting list is the territory. Here's exactly what's stored, how it's compressed, and how a query intersects two lists in O(min(|A|,|B|)).</p>
+    </div>
+
+    <div class="grid lg:grid-cols-2 gap-8 reveal mb-12">
+      <div class="holo-card p-6">
+        <h3 class="font-display font-bold text-lg mb-3 text-white flex items-center gap-2">
+          <i data-lucide="layers-3" class="w-5 h-5 text-cyan-400"></i>
+          What's actually stored per term
+        </h3>
+        <p class="text-sm text-gray-300 leading-relaxed mb-4">A posting list isn't just doc IDs. Each entry carries everything BM25 (and phrase search, highlighting, faceting) needs to score and reconstruct.</p>
+        <div class="font-mono text-xs space-y-2 text-gray-300 bg-black/30 p-4 rounded-lg border border-cyan-500/20">
+          <div><span class="text-cyan-300">term</span>: <span class="text-amber-300">"refund"</span></div>
+          <div><span class="text-cyan-300">df</span>: <span class="text-amber-300">2</span> &nbsp;<span class="text-gray-500"># in N=3 docs</span></div>
+          <div><span class="text-cyan-300">postings</span>: [</div>
+          <div class="pl-4"><span class="text-purple-300">{doc:1, tf:1, len:3, positions:[0]}</span>,</div>
+          <div class="pl-4"><span class="text-purple-300">{doc:3, tf:3, len:4, positions:[0,1,2]}</span></div>
+          <div>]</div>
+        </div>
+        <p class="text-xs text-gray-500 mt-3 leading-relaxed">Positions enable phrase queries ("<em>refund policy</em>") and proximity boosts. Lengths feed BM25's normalization.</p>
+      </div>
+
+      <div class="holo-card p-6">
+        <h3 class="font-display font-bold text-lg mb-3 text-white flex items-center gap-2">
+          <i data-lucide="zap" class="w-5 h-5 text-purple-400"></i>
+          Posting list intersection — O(min(|A|,|B|))
+        </h3>
+        <p class="text-sm text-gray-300 leading-relaxed mb-4">Both lists are sorted by doc ID. Walk them with two pointers — advance the smaller — match in linear time, no random reads.</p>
+        <pre class="font-mono text-xs text-gray-300 bg-black/30 p-4 rounded-lg border border-purple-500/20 overflow-x-auto">A = [1, 3, 7, 11, 14]   <span class="text-gray-500"># "refund"</span>
+B = [3, 4, 7, 9, 14]    <span class="text-gray-500"># "travel"</span>
+
+i=j=0
+A[0]=1 &lt; B[0]=3        → i++
+A[1]=3 == B[0]=3       → MATCH, i++ j++
+A[2]=7 &gt; B[1]=4        → j++
+A[2]=7 == B[2]=7       → MATCH, i++ j++
+A[3]=11 &gt; B[3]=9       → j++
+A[3]=11 &gt; B[4]=14      → j++ (end)
+
+intersect = [3, 7, 14]</pre>
+      </div>
+    </div>
+
+    <div class="grid md:grid-cols-3 gap-6 reveal mb-10">
+      <div class="holo-card p-6">
+        <div class="text-xs text-amber-300 uppercase tracking-wider mb-2">Compression 1</div>
+        <h4 class="font-display font-bold text-base text-white mb-2">Delta (gap) encoding</h4>
+        <p class="text-xs text-gray-400 leading-relaxed mb-3">Store gaps between sorted doc IDs, not the IDs themselves. Smaller numbers compress better.</p>
+        <div class="font-mono text-xs text-gray-300">[1, 3, 7, 11, 14] → [1, 2, 4, 4, 3]</div>
+      </div>
+      <div class="holo-card p-6">
+        <div class="text-xs text-amber-300 uppercase tracking-wider mb-2">Compression 2</div>
+        <h4 class="font-display font-bold text-base text-white mb-2">Variable-byte</h4>
+        <p class="text-xs text-gray-400 leading-relaxed mb-3">7 bits payload + 1 continuation bit per byte. Small numbers fit in 1 byte; large in 2-5.</p>
+        <div class="font-mono text-xs text-gray-300">2 → 0x02 &nbsp; 200 → 0xC8 0x01</div>
+      </div>
+      <div class="holo-card p-6">
+        <div class="text-xs text-amber-300 uppercase tracking-wider mb-2">Compression 3</div>
+        <h4 class="font-display font-bold text-base text-white mb-2">Skip pointers</h4>
+        <p class="text-xs text-gray-400 leading-relaxed mb-3">Insert sparse "skip ahead" pointers every √n entries so intersection can jump past large gaps.</p>
+        <div class="font-mono text-xs text-gray-300">walk → match → skip → walk</div>
+      </div>
+    </div>
+
+    <div class="callout-cyan reveal text-sm text-gray-300">
+      <strong class="text-cyan-300">⚡ Why this matters:</strong> Lucene's segment files (<code class="font-mono">.doc</code>, <code class="font-mono">.pos</code>, <code class="font-mono">.tim</code>) are just compressed posting lists. When you query Elasticsearch, you're walking these lists with skip pointers. "Sub-millisecond search over a billion docs" is literally just clever bit-packing of integers.
+    </div>
+  </div>
+</section>
+
+<!-- ========== TF-IDF DERIVATION ========== -->
+<section id="tfidf" class="relative py-24 px-6 z-10">
+  <div class="max-w-7xl mx-auto">
+    <div class="text-center mb-16 reveal">
+      <span class="pill mb-4"><i data-lucide="git-fork" class="w-3 h-3"></i> Prequel to BM25</span>
+      <h2 class="font-display text-4xl md:text-5xl font-bold mt-4">
+        From <span class="gradient-cyan">TF-IDF</span> to BM25
+      </h2>
+      <p class="text-gray-400 mt-4 max-w-3xl mx-auto">BM25 didn't appear from nowhere. It's a careful patching of two flaws in TF-IDF. Derive it from scratch and BM25 stops being a formula you memorize — it becomes one you'd <em>invent</em>.</p>
+    </div>
+
+    <div class="space-y-6 reveal max-w-4xl mx-auto mb-12">
+
+      <div class="step-card">
+        <div class="step-num">STEP 01 · TERM FREQUENCY (TF)</div>
+        <p class="text-sm text-gray-300 leading-relaxed mt-3 mb-3">Start naive: count how often a query term appears in a document. More mentions of <em>refund</em> → more about refunds.</p>
+        <div class="formula-box my-3">
+          <div class="text-lg text-white" style="line-height: 2;">
+            <span class="formula-var">tf(t, D)</span> = count of <span class="formula-var">t</span> in <span class="formula-var">D</span>
+          </div>
+        </div>
+        <p class="text-xs text-gray-500 leading-relaxed"><strong class="text-pink-300">Problem:</strong> linear growth. A doc that says "refund" 100 times scores 100× a doc that says it once. That's wrong — diminishing returns kick in after the first few mentions.</p>
+      </div>
+
+      <div class="step-card">
+        <div class="step-num">STEP 02 · INVERSE DOCUMENT FREQUENCY (IDF)</div>
+        <p class="text-sm text-gray-300 leading-relaxed mt-3 mb-3">"<em>The</em>" appears in every doc — useless signal. "<em>CVE-2024-31082</em>" appears in 3 docs — gold. Weight each term by how <em>rare</em> it is.</p>
+        <div class="formula-box my-3">
+          <div class="text-lg text-white" style="line-height: 2;">
+            <span class="formula-var">idf(t)</span> = log(<span class="formula-var">N</span> / <span class="formula-var">df(t)</span>)
+          </div>
+          <div class="text-xs text-gray-500 mt-2 font-mono">N = total docs · df(t) = docs containing t</div>
+        </div>
+        <p class="text-xs text-gray-500 leading-relaxed">Log dampens the weight — without it, ultra-rare terms (df=1) would crush everything else.</p>
+      </div>
+
+      <div class="step-card">
+        <div class="step-num">STEP 03 · COMBINE — TF · IDF</div>
+        <p class="text-sm text-gray-300 leading-relaxed mt-3 mb-3">Multiply per-term, sum over the query. This is classical TF-IDF — the formula that powered every search engine for ~30 years.</p>
+        <div class="formula-box my-3">
+          <div class="text-lg text-white" style="line-height: 2;">
+            <span class="formula-symbol">score(D, Q) = ∑</span><sub class="formula-var">t ∈ Q</sub>&nbsp;
+            <span class="formula-var">tf(t, D)</span> <span class="formula-symbol">·</span> <span class="formula-var">idf(t)</span>
+          </div>
+        </div>
+        <p class="text-xs text-gray-500 leading-relaxed"><strong class="text-pink-300">Two remaining flaws:</strong> (1) TF still grows linearly — no saturation. (2) A 10,000-word doc has more chances to mention any term — long docs unfairly win.</p>
+      </div>
+
+      <div class="step-card">
+        <div class="step-num">STEP 04 · PATCH 1 — SATURATE THE TF</div>
+        <p class="text-sm text-gray-300 leading-relaxed mt-3 mb-3">Replace <code class="font-mono">tf</code> with <code class="font-mono">tf · (k₁+1) / (tf + k₁)</code>. As tf→∞, this approaches <code class="font-mono">k₁+1</code> — a ceiling. <code class="font-mono">k₁</code> controls how fast we hit it.</p>
+        <div class="formula-box my-3">
+          <div class="text-lg text-white" style="line-height: 2;">
+            <span class="formula-var">tf_sat</span> = <span style="display:inline-block;text-align:center;">
+              <span style="display:block;border-bottom:1px solid var(--neon-purple);padding-bottom:2px;"><span class="formula-var">tf</span> · (<span class="formula-num">k₁</span>+1)</span>
+              <span style="display:block;padding-top:2px;"><span class="formula-var">tf</span> + <span class="formula-num">k₁</span></span>
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <div class="step-card">
+        <div class="step-num">STEP 05 · PATCH 2 — LENGTH NORMALIZE</div>
+        <p class="text-sm text-gray-300 leading-relaxed mt-3 mb-3">Penalize long docs. Replace <code class="font-mono">k₁</code> in the denominator with <code class="font-mono">k₁ · (1 − b + b · |D|/avgdl)</code>. When the doc is longer than average, the denominator inflates, dampening the score.</p>
+        <p class="text-xs text-gray-500 leading-relaxed"><strong class="text-cyan-300">Result:</strong> we just derived BM25. The "intimidating" formula is TF-IDF + two well-motivated patches.</p>
+      </div>
+
+    </div>
+
+    <div class="callout-cyan reveal text-sm text-gray-300">
+      <strong class="text-cyan-300">⚡ Why bother deriving it?</strong> Because when BM25 misbehaves — a long doc dominating, a stopword sneaking through — you'll know <em>which patch</em> to adjust. Tuning <code class="font-mono">k₁</code> is "loosen the saturation." Tuning <code class="font-mono">b</code> is "loosen the length penalty." Memorized formulas can't tell you that.
+    </div>
+  </div>
+</section>
+
+<!-- ========== FORMULA ========== -->
+<section id="formula" class="relative py-24 px-6 z-10">
+  <div class="max-w-7xl mx-auto">
+    <div class="text-center mb-16 reveal">
+      <span class="pill mb-4"><i data-lucide="function-square" class="w-3 h-3"></i> Step 3 of 4</span>
+      <h2 class="font-display text-4xl md:text-5xl font-bold mt-4">
+        The <span class="gradient-purple">BM25 Formula</span> — Decoded
+      </h2>
+      <p class="text-gray-400 mt-4 max-w-3xl mx-auto">Looks intimidating. Three intuitions. Two knobs. Below: the formula, then each piece in plain English.</p>
+    </div>
+
+    <div class="formula-box reveal mb-12 max-w-3xl mx-auto">
+      <div class="text-sm text-gray-500 mb-3 tracking-widest">BM25 SCORE OF DOCUMENT D FOR QUERY Q</div>
+      <div class="text-lg md:text-xl text-white" style="line-height: 2.4;">
+        <span class="formula-symbol">score(D, Q) = ∑</span><sub class="formula-var">t ∈ Q</sub> &nbsp;
+        <span class="formula-var">IDF(t)</span> <span class="formula-symbol">·</span>
+        <span style="display: inline-block; vertical-align: middle; text-align: center; margin: 0 8px;">
+          <span style="display: block; border-bottom: 1px solid var(--neon-purple); padding-bottom: 2px;">
+            <span class="formula-var">tf(t,D)</span> <span class="formula-symbol">·</span> (<span class="formula-num">k₁</span>+1)
+          </span>
+          <span style="display: block; padding-top: 2px;">
+            <span class="formula-var">tf(t,D)</span> + <span class="formula-num">k₁</span> · (1 − <span class="formula-num">b</span> + <span class="formula-num">b</span> · <span class="formula-var">|D|/avgdl</span>)
+          </span>
+        </span>
+      </div>
+      <div class="text-xs text-gray-500 mt-4 font-mono">
+        sum over query terms · IDF weight · saturated TF · length-normalized
+      </div>
+    </div>
+
+    <div class="grid lg:grid-cols-3 gap-6 reveal mb-12">
+
+      <div class="holo-card p-6">
+        <div class="flex items-center gap-3 mb-3">
+          <div class="w-10 h-10 rounded-xl flex items-center justify-center" style="background: rgba(0, 240, 255, 0.15);">
+            <i data-lucide="trending-up" class="w-5 h-5" style="color: #00f0ff;"></i>
+          </div>
+          <div>
+            <div class="text-xs text-cyan-300 uppercase tracking-wider">Idea 1</div>
+            <h4 class="font-display font-bold text-base text-white">TF Saturation</h4>
+          </div>
+        </div>
+        <p class="text-sm text-gray-300 leading-relaxed mb-3">"The 50th mention of <em>refund</em> matters less than the 2nd." BM25 caps how much repetition rewards a doc — controlled by <span class="formula-num font-mono">k₁</span>.</p>
+        <div class="chart-wrapper" style="height: 200px;"><canvas id="tfChart"></canvas></div>
+      </div>
+
+      <div class="holo-card p-6">
+        <div class="flex items-center gap-3 mb-3">
+          <div class="w-10 h-10 rounded-xl flex items-center justify-center" style="background: rgba(184, 107, 255, 0.15);">
+            <i data-lucide="trending-down" class="w-5 h-5" style="color: #b86bff;"></i>
+          </div>
+          <div>
+            <div class="text-xs text-purple-300 uppercase tracking-wider">Idea 2</div>
+            <h4 class="font-display font-bold text-base text-white">IDF Weighting</h4>
+          </div>
+        </div>
+        <p class="text-sm text-gray-300 leading-relaxed mb-3">"<em>The</em> is everywhere; <em>CVE-2024</em> isn't." Rare terms get a higher weight. IDF = <span class="font-mono text-cyan-300 text-xs">log((N − df + 0.5) / (df + 0.5) + 1)</span>.</p>
+        <div class="chart-wrapper" style="height: 200px;"><canvas id="idfChart"></canvas></div>
+      </div>
+
+      <div class="holo-card p-6">
+        <div class="flex items-center gap-3 mb-3">
+          <div class="w-10 h-10 rounded-xl flex items-center justify-center" style="background: rgba(255, 184, 77, 0.15);">
+            <i data-lucide="ruler" class="w-5 h-5" style="color: #ffb84d;"></i>
+          </div>
+          <div>
+            <div class="text-xs text-amber-300 uppercase tracking-wider">Idea 3</div>
+            <h4 class="font-display font-bold text-base text-white">Length Normalization</h4>
+          </div>
+        </div>
+        <p class="text-sm text-gray-300 leading-relaxed">"A long doc has more chances to hit a term by accident." Compare each doc's length to the corpus average, controlled by <span class="formula-num font-mono">b</span>.</p>
+        <div class="mt-3 space-y-2 font-mono text-xs">
+          <div class="flex justify-between text-gray-400"><span><span class="formula-num">b</span> = 0</span><span>No normalization (long docs win)</span></div>
+          <div class="flex justify-between text-gray-400"><span><span class="formula-num">b</span> = 0.75</span><span>Default (sensible balance)</span></div>
+          <div class="flex justify-between text-gray-400"><span><span class="formula-num">b</span> = 1</span><span>Full normalization</span></div>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="grid md:grid-cols-2 gap-6 reveal">
+      <div class="callout-cyan text-sm text-gray-300">
+        <strong class="text-cyan-300">⚡ Default knobs:</strong> <span class="formula-num font-mono">k₁ = 1.2</span> and <span class="formula-num font-mono">b = 0.75</span>. These work astonishingly well across almost every English corpus. Don't change them until you've measured.
+      </div>
+      <div class="callout text-sm text-gray-300">
+        <strong class="text-amber-300">⚡ When to tune:</strong> Increase <span class="formula-num font-mono">k₁</span> (1.5-2.0) for long docs where repetition is meaningful. Lower <span class="formula-num font-mono">b</span> (0.4-0.6) for short, uniform-length docs (titles, FAQs).
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========== WORKED EXAMPLE — BM25 ON 4 DOCS ========== -->
+<section id="worked-example" class="relative py-24 px-6 z-10">
+  <div class="max-w-7xl mx-auto">
+    <div class="text-center mb-16 reveal">
+      <span class="pill mb-4"><i data-lucide="calculator" class="w-3 h-3"></i> Hands-On Math</span>
+      <h2 class="font-display text-4xl md:text-5xl font-bold mt-4">
+        Worked Example — <span class="gradient-cyan">BM25 on 4 Docs</span>
+      </h2>
+      <p class="text-gray-400 mt-4 max-w-3xl mx-auto">Plug real numbers into the formula. Four documents, one query, every term computed by hand. After this, BM25 is no longer a black box.</p>
+    </div>
+
+    <div class="grid lg:grid-cols-2 gap-8 reveal mb-10">
+      <div class="holo-card p-6">
+        <div class="font-mono text-xs text-cyan-300 tracking-widest mb-4">SETUP — CORPUS</div>
+        <table class="index-table">
+          <thead><tr><th>Doc</th><th>Text</th><th>|D| tokens</th></tr></thead>
+          <tbody>
+            <tr><td class="text-cyan-300">D1</td><td class="text-gray-300">"refund travel insurance"</td><td class="text-amber-300">3</td></tr>
+            <tr><td class="text-cyan-300">D2</td><td class="text-gray-300">"travel policy and rules"</td><td class="text-amber-300">4</td></tr>
+            <tr><td class="text-cyan-300">D3</td><td class="text-gray-300">"refund refund refund refund issues claims"</td><td class="text-amber-300">6</td></tr>
+            <tr><td class="text-cyan-300">D4</td><td class="text-gray-300">"travel agency contact info phone"</td><td class="text-amber-300">5</td></tr>
+          </tbody>
+        </table>
+        <div class="mt-4 grid grid-cols-3 gap-3 text-center">
+          <div class="bg-black/30 rounded-lg p-3 border border-cyan-500/20">
+            <div class="text-[10px] text-gray-500 font-mono">N</div>
+            <div class="text-cyan-300 font-mono font-bold">4</div>
+          </div>
+          <div class="bg-black/30 rounded-lg p-3 border border-cyan-500/20">
+            <div class="text-[10px] text-gray-500 font-mono">avgdl</div>
+            <div class="text-cyan-300 font-mono font-bold">4.5</div>
+          </div>
+          <div class="bg-black/30 rounded-lg p-3 border border-cyan-500/20">
+            <div class="text-[10px] text-gray-500 font-mono">k₁, b</div>
+            <div class="text-cyan-300 font-mono font-bold">1.2, 0.75</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="holo-card p-6">
+        <div class="font-mono text-xs text-purple-300 tracking-widest mb-4">QUERY: "refund travel"</div>
+        <p class="text-sm text-gray-300 mb-4">Compute IDF for each query term using <code class="font-mono text-xs">idf(t) = log((N − df + 0.5)/(df + 0.5) + 1)</code>:</p>
+        <div class="font-mono text-xs space-y-2 text-gray-300 bg-black/30 p-4 rounded-lg border border-purple-500/20">
+          <div><span class="text-purple-300">df(refund)</span> = 2 &nbsp;<span class="text-gray-500"># in D1, D3</span></div>
+          <div><span class="text-purple-300">idf(refund)</span> = log((4 − 2 + 0.5)/(2 + 0.5) + 1) = log(2) ≈ <span class="text-amber-300">0.693</span></div>
+          <div class="mt-3"><span class="text-purple-300">df(travel)</span> = 3 &nbsp;<span class="text-gray-500"># in D1, D2, D4</span></div>
+          <div><span class="text-purple-300">idf(travel)</span> = log((4 − 3 + 0.5)/(3 + 0.5) + 1) = log(1.428) ≈ <span class="text-amber-300">0.357</span></div>
+        </div>
+        <p class="text-xs text-gray-500 mt-3 leading-relaxed">"<em>refund</em>" is rarer → carries roughly 2× the weight of "<em>travel</em>".</p>
+      </div>
+    </div>
+
+    <div class="holo-card p-6 reveal mb-10">
+      <div class="font-mono text-xs text-cyan-300 tracking-widest mb-4">PER-DOC SCORING — EVERY ARITHMETIC STEP</div>
+      <div class="overflow-x-auto">
+      <table class="index-table" style="font-size: 0.78rem;">
+        <thead><tr><th>Doc</th><th>tf(refund)</th><th>tf(travel)</th><th>|D|/avgdl</th><th>Norm = 1 − b + b·|D|/avgdl</th><th>refund contrib</th><th>travel contrib</th><th class="text-amber-300">Total</th></tr></thead>
+        <tbody>
+          <tr>
+            <td class="text-cyan-300">D1</td>
+            <td>1</td><td>1</td>
+            <td>3/4.5 = 0.667</td>
+            <td>1 − 0.75 + 0.75·0.667 = 0.750</td>
+            <td>0.693 · (1·2.2)/(1 + 1.2·0.750) = <span class="text-cyan-300">0.802</span></td>
+            <td>0.357 · (1·2.2)/(1 + 1.2·0.750) = <span class="text-cyan-300">0.413</span></td>
+            <td class="text-amber-300 font-bold">1.215</td>
+          </tr>
+          <tr>
+            <td class="text-cyan-300">D2</td>
+            <td>0</td><td>1</td>
+            <td>4/4.5 = 0.889</td>
+            <td>1 − 0.75 + 0.75·0.889 = 0.917</td>
+            <td>0</td>
+            <td>0.357 · (1·2.2)/(1 + 1.2·0.917) = <span class="text-cyan-300">0.376</span></td>
+            <td class="text-amber-300 font-bold">0.376</td>
+          </tr>
+          <tr>
+            <td class="text-cyan-300">D3</td>
+            <td>4</td><td>0</td>
+            <td>6/4.5 = 1.333</td>
+            <td>1 − 0.75 + 0.75·1.333 = 1.250</td>
+            <td>0.693 · (4·2.2)/(4 + 1.2·1.250) = <span class="text-cyan-300">1.121</span></td>
+            <td>0</td>
+            <td class="text-amber-300 font-bold">1.121</td>
+          </tr>
+          <tr>
+            <td class="text-cyan-300">D4</td>
+            <td>0</td><td>1</td>
+            <td>5/4.5 = 1.111</td>
+            <td>1 − 0.75 + 0.75·1.111 = 1.083</td>
+            <td>0</td>
+            <td>0.357 · (1·2.2)/(1 + 1.2·1.083) = <span class="text-cyan-300">0.342</span></td>
+            <td class="text-amber-300 font-bold">0.342</td>
+          </tr>
+        </tbody>
+      </table>
+      </div>
+    </div>
+
+    <div class="grid md:grid-cols-2 gap-6 reveal">
+      <div class="win-card">
+        <h4 class="font-display font-bold text-base text-white mb-3">Final Ranking</h4>
+        <ol class="space-y-2 text-sm text-gray-300 font-mono">
+          <li>🥇 <span class="text-cyan-300">D1</span> — 1.215 &nbsp;<span class="text-gray-500">(both terms, short doc)</span></li>
+          <li>🥈 <span class="text-cyan-300">D3</span> — 1.121 &nbsp;<span class="text-gray-500">(4× refund, saturated + long-doc penalty)</span></li>
+          <li>🥉 <span class="text-cyan-300">D2</span> — 0.376 &nbsp;<span class="text-gray-500">(travel only)</span></li>
+          <li>4️⃣ <span class="text-cyan-300">D4</span> — 0.342 &nbsp;<span class="text-gray-500">(travel only, longer doc)</span></li>
+        </ol>
+      </div>
+      <div class="callout-cyan text-sm text-gray-300">
+        <strong class="text-cyan-300">⚡ Notice three things:</strong>
+        <ul class="mt-2 space-y-2 text-xs">
+          <li>• <strong>D3 with 4 "refund"s loses to D1 with 1.</strong> Length penalty + TF saturation working together.</li>
+          <li>• <strong>D2 beats D4</strong> despite both having only "travel" — D4 is longer.</li>
+          <li>• <strong>"refund" contributes ~2× "travel"</strong> in any doc — pure IDF.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========== PLAYGROUND ========== -->
+<section id="playground" class="relative py-24 px-6 z-10">
+  <div class="max-w-7xl mx-auto">
+    <div class="text-center mb-12 reveal">
+      <span class="pill mb-4"><i data-lucide="zap" class="w-3 h-3"></i> Hands-On</span>
+      <h2 class="font-display text-4xl md:text-5xl font-bold mt-4">
+        Live <span class="gradient-cyan">BM25 Playground</span>
+      </h2>
+      <p class="text-gray-400 mt-4 max-w-3xl mx-auto">A real BM25 implementation running in your browser. Edit the query, drag the sliders, watch ranks shift.</p>
+    </div>
+
+    <div class="reveal grid lg:grid-cols-3 gap-6">
+      <div class="space-y-5">
+        <div class="holo-card p-5">
+          <div class="font-mono text-xs text-cyan-300 tracking-widest mb-3">QUERY</div>
+          <input type="text" id="queryInput" value="refund travel"
+                 style="width: 100%; padding: 12px 14px; background: rgba(2,3,10,0.7); border: 1px solid rgba(0,240,255,0.3); border-radius: 10px; color: var(--text-primary); font-family: 'JetBrains Mono', monospace; font-size: 0.85rem; outline: none;">
+          <div class="mt-3 text-[10px] text-gray-500 font-mono tracking-widest">TRY: <span class="text-cyan-300 cursor-pointer" data-q="refund travel">refund travel</span> · <span class="text-cyan-300 cursor-pointer" data-q="warranty claim">warranty claim</span> · <span class="text-cyan-300 cursor-pointer" data-q="shipping international">shipping international</span> · <span class="text-cyan-300 cursor-pointer" data-q="cancel order">cancel order</span></div>
+        </div>
+
+        <div class="slider-card">
+          <div class="flex justify-between mb-2 text-xs font-mono">
+            <span class="text-gray-400">k₁ <span class="text-gray-600">(TF saturation)</span></span>
+            <span class="text-cyan-300 font-bold" id="k1Val">1.2</span>
+          </div>
+          <input type="range" id="k1Slider" min="0" max="3" step="0.1" value="1.2">
+          <div class="flex justify-between text-[10px] text-gray-600 font-mono mt-1">
+            <span>0 · linear</span><span>3 · no saturation</span>
+          </div>
+        </div>
+
+        <div class="slider-card">
+          <div class="flex justify-between mb-2 text-xs font-mono">
+            <span class="text-gray-400">b <span class="text-gray-600">(length norm)</span></span>
+            <span class="text-cyan-300 font-bold" id="bVal">0.75</span>
+          </div>
+          <input type="range" id="bSlider" min="0" max="1" step="0.05" value="0.75">
+          <div class="flex justify-between text-[10px] text-gray-600 font-mono mt-1">
+            <span>0 · no norm</span><span>1 · full norm</span>
+          </div>
+        </div>
+
+        <button class="btn-ghost text-xs py-2 px-4 w-full" id="resetDefaults">
+          <i data-lucide="rotate-cw" class="w-3 h-3 inline mr-1"></i> Reset to defaults (1.2 / 0.75)
+        </button>
+      </div>
+
+      <div class="lg:col-span-2 space-y-5">
+        <div class="holo-card p-5">
+          <div class="flex items-center justify-between mb-4">
+            <div class="font-mono text-xs text-cyan-300 tracking-widest">RANKED RESULTS</div>
+            <span class="text-xs font-mono text-gray-500" id="resultStats">— hits</span>
+          </div>
+          <div id="results" class="space-y-2 min-h-[200px]"></div>
+        </div>
+
+        <div class="grid grid-cols-3 gap-3">
+          <div class="holo-card p-4 text-center">
+            <div class="font-mono text-[10px] text-gray-500 tracking-widest mb-1">CORPUS</div>
+            <div class="stat-num text-xl" id="statN">10</div>
+            <div class="text-[10px] text-gray-400 mt-1">docs</div>
+          </div>
+          <div class="holo-card p-4 text-center">
+            <div class="font-mono text-[10px] text-gray-500 tracking-widest mb-1">AVG LENGTH</div>
+            <div class="stat-num text-xl" id="statAvgdl">—</div>
+            <div class="text-[10px] text-gray-400 mt-1">tokens</div>
+          </div>
+          <div class="holo-card p-4 text-center">
+            <div class="font-mono text-[10px] text-gray-500 tracking-widest mb-1">VOCAB</div>
+            <div class="stat-num text-xl" id="statVocab">—</div>
+            <div class="text-[10px] text-gray-400 mt-1">tokens</div>
+          </div>
+        </div>
+
+        <div class="callout-cyan text-xs text-gray-300">
+          <strong class="text-cyan-300">⚡ Notice:</strong> drag <span class="font-mono">k₁</span> to 0 — long docs with many mentions dominate. Drag <span class="font-mono">b</span> to 0 — long docs get rewarded for sheer length. The defaults exist because they balance both forces.
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========== CODE ========== -->
+<section id="code" class="relative py-24 px-6 z-10">
+  <div class="max-w-7xl mx-auto">
+    <div class="text-center mb-16 reveal">
+      <span class="pill mb-4"><i data-lucide="code-2" class="w-3 h-3"></i> Step 4 of 4</span>
+      <h2 class="font-display text-4xl md:text-5xl font-bold mt-4">
+        BM25 in <span class="gradient-cyan">Python</span> — Three Stacks
+      </h2>
+      <p class="text-gray-400 mt-4 max-w-3xl mx-auto">Same idea, three weights. Use the lightest one that fits your scale.</p>
+    </div>
+
+    <div class="flex flex-wrap justify-center gap-3 mb-8 reveal">
+      <button class="tab-btn active" data-stack="rank_bm25"><i data-lucide="package" class="w-4 h-4"></i> rank_bm25 (toy/local)</button>
+      <button class="tab-btn" data-stack="bm25s"><i data-lucide="zap" class="w-4 h-4"></i> bm25s (fast Python)</button>
+      <button class="tab-btn" data-stack="elastic"><i data-lucide="server" class="w-4 h-4"></i> Elasticsearch (production)</button>
+    </div>
+
+    <div class="reveal">
+
+      <div class="tab-panel active" id="stack-rank_bm25">
+        <div class="grid lg:grid-cols-3 gap-6">
+          <div class="lg:col-span-2">
+            <div class="code-block relative">
+              <button class="copy-btn" data-target="code-rank">COPY</button>
+<pre id="code-rank"><span class="tok-keyword">from</span> <span class="tok-var">rank_bm25</span> <span class="tok-keyword">import</span> <span class="tok-type">BM25Okapi</span>
+<span class="tok-keyword">import</span> <span class="tok-var">re</span>
+
+<span class="tok-keyword">def</span> <span class="tok-fn">tokenize</span>(<span class="tok-var">text</span>):
+    <span class="tok-keyword">return</span> <span class="tok-var">re</span>.<span class="tok-fn">findall</span>(<span class="tok-string">r"\w+"</span>, <span class="tok-var">text</span>.<span class="tok-fn">lower</span>())
+
+<span class="tok-comment"># 1. tokenize the corpus</span>
+<span class="tok-var">corpus</span> = [<span class="tok-string">"Refund policy for travel purchases."</span>,
+          <span class="tok-string">"Shipping is free for orders over $50."</span>,
+          <span class="tok-string">"Warranty covers manufacturing defects for one year."</span>]
+<span class="tok-var">tokenized</span> = [<span class="tok-fn">tokenize</span>(<span class="tok-var">d</span>) <span class="tok-keyword">for</span> <span class="tok-var">d</span> <span class="tok-keyword">in</span> <span class="tok-var">corpus</span>]
+
+<span class="tok-comment"># 2. build the index (k1 and b are the knobs)</span>
+<span class="tok-var">bm25</span> = <span class="tok-type">BM25Okapi</span>(<span class="tok-var">tokenized</span>, <span class="tok-var">k1</span>=<span class="tok-num">1.2</span>, <span class="tok-var">b</span>=<span class="tok-num">0.75</span>)
+
+<span class="tok-comment"># 3. score a query against every doc</span>
+<span class="tok-var">scores</span> = <span class="tok-var">bm25</span>.<span class="tok-fn">get_scores</span>(<span class="tok-fn">tokenize</span>(<span class="tok-string">"refund travel"</span>))
+<span class="tok-comment"># → [2.31, 0.0, 0.0]</span>
+
+<span class="tok-comment"># 4. top-K</span>
+<span class="tok-var">top</span> = <span class="tok-fn">sorted</span>(<span class="tok-fn">zip</span>(<span class="tok-var">scores</span>, <span class="tok-var">corpus</span>), <span class="tok-var">reverse</span>=<span class="tok-bool">True</span>)[:<span class="tok-num">5</span>]</pre>
+            </div>
+          </div>
+          <div class="space-y-3">
+            <div class="holo-card p-5">
+              <h4 class="font-display font-bold text-base text-white mb-2">When to use</h4>
+              <ul class="space-y-2 text-sm text-gray-300">
+                <li class="flex gap-2"><i data-lucide="check" class="w-4 h-4 text-green-400 mt-0.5 flex-shrink-0"></i> Notebooks, demos, prototypes</li>
+                <li class="flex gap-2"><i data-lucide="check" class="w-4 h-4 text-green-400 mt-0.5 flex-shrink-0"></i> &lt; 100k documents</li>
+                <li class="flex gap-2"><i data-lucide="x" class="w-4 h-4 text-pink-400 mt-0.5 flex-shrink-0"></i> Slow on big corpora</li>
+                <li class="flex gap-2"><i data-lucide="x" class="w-4 h-4 text-pink-400 mt-0.5 flex-shrink-0"></i> No persistence</li>
+              </ul>
+            </div>
+            <div class="callout text-xs text-gray-300">
+              <strong class="text-amber-300">⚡ Quick start:</strong> <code class="font-mono">pip install rank-bm25</code>. Easiest possible BM25 in Python — 5 lines and you're scoring.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="tab-panel" id="stack-bm25s">
+        <div class="grid lg:grid-cols-3 gap-6">
+          <div class="lg:col-span-2">
+            <div class="code-block relative">
+              <button class="copy-btn" data-target="code-bm25s">COPY</button>
+<pre id="code-bm25s"><span class="tok-keyword">import</span> <span class="tok-var">bm25s</span>
+
+<span class="tok-comment"># 1. tokenize (bm25s has a built-in tokenizer with stopwords + stemming)</span>
+<span class="tok-var">corpus</span> = [<span class="tok-string">"Refund policy for travel purchases."</span>, ...]
+<span class="tok-var">tokens</span> = <span class="tok-var">bm25s</span>.<span class="tok-fn">tokenize</span>(<span class="tok-var">corpus</span>, <span class="tok-var">stopwords</span>=<span class="tok-string">"en"</span>, <span class="tok-var">stemmer</span>=<span class="tok-string">"english"</span>)
+
+<span class="tok-comment"># 2. build &amp; index (uses scipy sparse matrices — fast)</span>
+<span class="tok-var">retriever</span> = <span class="tok-var">bm25s</span>.<span class="tok-type">BM25</span>(<span class="tok-var">k1</span>=<span class="tok-num">1.2</span>, <span class="tok-var">b</span>=<span class="tok-num">0.75</span>)
+<span class="tok-var">retriever</span>.<span class="tok-fn">index</span>(<span class="tok-var">tokens</span>)
+
+<span class="tok-comment"># 3. retrieve top-K — returns (doc_ids, scores)</span>
+<span class="tok-var">query_tokens</span> = <span class="tok-var">bm25s</span>.<span class="tok-fn">tokenize</span>(<span class="tok-string">"refund travel"</span>, <span class="tok-var">stopwords</span>=<span class="tok-string">"en"</span>, <span class="tok-var">stemmer</span>=<span class="tok-string">"english"</span>)
+<span class="tok-var">ids</span>, <span class="tok-var">scores</span> = <span class="tok-var">retriever</span>.<span class="tok-fn">retrieve</span>(<span class="tok-var">query_tokens</span>, <span class="tok-var">k</span>=<span class="tok-num">5</span>)
+
+<span class="tok-comment"># 4. persist + reload</span>
+<span class="tok-var">retriever</span>.<span class="tok-fn">save</span>(<span class="tok-string">"./bm25_index"</span>)
+<span class="tok-var">retriever</span> = <span class="tok-var">bm25s</span>.<span class="tok-type">BM25</span>.<span class="tok-fn">load</span>(<span class="tok-string">"./bm25_index"</span>)</pre>
+            </div>
+          </div>
+          <div class="space-y-3">
+            <div class="holo-card p-5">
+              <h4 class="font-display font-bold text-base text-white mb-2">When to use</h4>
+              <ul class="space-y-2 text-sm text-gray-300">
+                <li class="flex gap-2"><i data-lucide="check" class="w-4 h-4 text-green-400 mt-0.5 flex-shrink-0"></i> 100k–10M documents</li>
+                <li class="flex gap-2"><i data-lucide="check" class="w-4 h-4 text-green-400 mt-0.5 flex-shrink-0"></i> Local-first RAG apps</li>
+                <li class="flex gap-2"><i data-lucide="check" class="w-4 h-4 text-green-400 mt-0.5 flex-shrink-0"></i> ~100x faster than rank_bm25</li>
+                <li class="flex gap-2"><i data-lucide="check" class="w-4 h-4 text-green-400 mt-0.5 flex-shrink-0"></i> Built-in stemming + stopwords</li>
+              </ul>
+            </div>
+            <div class="callout-cyan text-xs text-gray-300">
+              <strong class="text-cyan-300">⚡ Sweet spot:</strong> If you're not on Elasticsearch already and your corpus fits in RAM, <code class="font-mono">bm25s</code> is the right default.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="tab-panel" id="stack-elastic">
+        <div class="grid lg:grid-cols-3 gap-6">
+          <div class="lg:col-span-2">
+            <div class="code-block relative">
+              <button class="copy-btn" data-target="code-elastic">COPY</button>
+<pre id="code-elastic"><span class="tok-keyword">from</span> <span class="tok-var">elasticsearch</span> <span class="tok-keyword">import</span> <span class="tok-type">Elasticsearch</span>
+
+<span class="tok-var">es</span> = <span class="tok-type">Elasticsearch</span>(<span class="tok-string">"https://localhost:9200"</span>)
+
+<span class="tok-comment"># 1. define an index with BM25 similarity (default since 5.0)</span>
+<span class="tok-var">es</span>.<span class="tok-var">indices</span>.<span class="tok-fn">create</span>(<span class="tok-var">index</span>=<span class="tok-string">"rag-chunks"</span>, <span class="tok-var">body</span>={
+    <span class="tok-string">"settings"</span>: {
+        <span class="tok-string">"index"</span>: {<span class="tok-string">"similarity"</span>: {<span class="tok-string">"default"</span>: {
+            <span class="tok-string">"type"</span>: <span class="tok-string">"BM25"</span>, <span class="tok-string">"k1"</span>: <span class="tok-num">1.2</span>, <span class="tok-string">"b"</span>: <span class="tok-num">0.75</span>
+        }}},
+        <span class="tok-string">"analysis"</span>: {<span class="tok-string">"analyzer"</span>: {<span class="tok-string">"default"</span>: {
+            <span class="tok-string">"tokenizer"</span>: <span class="tok-string">"standard"</span>,
+            <span class="tok-string">"filter"</span>: [<span class="tok-string">"lowercase"</span>, <span class="tok-string">"stop"</span>, <span class="tok-string">"snowball"</span>]
+        }}}
+    },
+    <span class="tok-string">"mappings"</span>: {<span class="tok-string">"properties"</span>: {<span class="tok-string">"text"</span>: {<span class="tok-string">"type"</span>: <span class="tok-string">"text"</span>}}}
+})
+
+<span class="tok-comment"># 2. index documents (use bulk for real corpora)</span>
+<span class="tok-var">es</span>.<span class="tok-fn">index</span>(<span class="tok-var">index</span>=<span class="tok-string">"rag-chunks"</span>, <span class="tok-var">id</span>=<span class="tok-string">"doc_847"</span>, <span class="tok-var">document</span>={
+    <span class="tok-string">"text"</span>: <span class="tok-string">"Refund policy for travel purchases ..."</span>
+})
+
+<span class="tok-comment"># 3. query — multi-shard, distributed, sub-10ms even at scale</span>
+<span class="tok-var">res</span> = <span class="tok-var">es</span>.<span class="tok-fn">search</span>(<span class="tok-var">index</span>=<span class="tok-string">"rag-chunks"</span>, <span class="tok-var">query</span>={
+    <span class="tok-string">"match"</span>: {<span class="tok-string">"text"</span>: <span class="tok-string">"refund travel"</span>}
+}, <span class="tok-var">size</span>=<span class="tok-num">10</span>)</pre>
+            </div>
+          </div>
+          <div class="space-y-3">
+            <div class="holo-card p-5">
+              <h4 class="font-display font-bold text-base text-white mb-2">When to use</h4>
+              <ul class="space-y-2 text-sm text-gray-300">
+                <li class="flex gap-2"><i data-lucide="check" class="w-4 h-4 text-green-400 mt-0.5 flex-shrink-0"></i> 10M+ documents</li>
+                <li class="flex gap-2"><i data-lucide="check" class="w-4 h-4 text-green-400 mt-0.5 flex-shrink-0"></i> Multi-node, multi-shard scale</li>
+                <li class="flex gap-2"><i data-lucide="check" class="w-4 h-4 text-green-400 mt-0.5 flex-shrink-0"></i> Filters, aggregations, faceting</li>
+                <li class="flex gap-2"><i data-lucide="check" class="w-4 h-4 text-green-400 mt-0.5 flex-shrink-0"></i> Production tooling &amp; ops story</li>
+              </ul>
+            </div>
+            <div class="callout text-xs text-gray-300">
+              <strong class="text-amber-300">⚡ Alternatives:</strong> OpenSearch (Elasticsearch fork), Vespa (more powerful, steeper curve), Tantivy (Rust, embeddable). All speak the same BM25.
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ========== VOCABULARY MISMATCH ========== -->
+<section id="vocab-mismatch" class="relative py-24 px-6 z-10">
+  <div class="max-w-7xl mx-auto">
+    <div class="text-center mb-16 reveal">
+      <span class="pill mb-4"><i data-lucide="git-compare" class="w-3 h-3"></i> A Named Problem</span>
+      <h2 class="font-display text-4xl md:text-5xl font-bold mt-4">
+        The <span class="gradient-pink">Vocabulary Mismatch</span> Problem
+      </h2>
+      <p class="text-gray-400 mt-4 max-w-3xl mx-auto">Sparse retrieval's Achilles heel — and the formal name for the gap that dense and learned-sparse methods exist to close.</p>
+    </div>
+
+    <div class="grid lg:grid-cols-2 gap-8 reveal mb-10">
+      <div class="lose-card">
+        <div class="text-xs text-pink-300 uppercase tracking-wider mb-2">Definition</div>
+        <h3 class="font-display font-bold text-xl mb-3 text-white">Same meaning, different words</h3>
+        <p class="text-sm text-gray-300 leading-relaxed mb-4">When a user's query and the relevant document express the same concept using <em>different surface tokens</em>, sparse retrieval scores them at zero — the index sees no shared term.</p>
+        <div class="bg-black/30 p-4 rounded-lg border border-pink-500/20 space-y-3 font-mono text-xs">
+          <div>
+            <span class="text-pink-300">QUERY:</span> <span class="text-gray-300">"how do I get my money back"</span>
+          </div>
+          <div>
+            <span class="text-pink-300">DOC:</span> <span class="text-gray-300">"our refund policy permits reimbursement within 30 days"</span>
+          </div>
+          <div class="text-amber-300 pt-2 border-t border-pink-500/10">BM25 score: 0.0 &nbsp;<span class="text-gray-500">(no shared tokens)</span></div>
+        </div>
+      </div>
+
+      <div class="holo-card p-6">
+        <div class="text-xs text-cyan-300 uppercase tracking-wider mb-2">Why It Happens</div>
+        <h3 class="font-display font-bold text-xl mb-3 text-white">Three flavors</h3>
+        <ul class="space-y-3 text-sm text-gray-300">
+          <li class="flex items-start gap-2"><i data-lucide="languages" class="w-4 h-4 text-cyan-400 mt-0.5 flex-shrink-0"></i> <span><strong class="text-white">Synonymy:</strong> "<em>refund</em>" vs "<em>reimbursement</em>" vs "<em>money back</em>" — distinct tokens, identical meaning.</span></li>
+          <li class="flex items-start gap-2"><i data-lucide="arrow-right-left" class="w-4 h-4 text-cyan-400 mt-0.5 flex-shrink-0"></i> <span><strong class="text-white">Paraphrase:</strong> Whole-phrase rewrites — "<em>how do I cancel</em>" vs "<em>termination procedure</em>".</span></li>
+          <li class="flex items-start gap-2"><i data-lucide="quote" class="w-4 h-4 text-cyan-400 mt-0.5 flex-shrink-0"></i> <span><strong class="text-white">Register shift:</strong> Conversational query vs formal documentation. Customers talk; docs declaim.</span></li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="grid md:grid-cols-3 gap-6 reveal mb-8">
+      <div class="holo-card p-6">
+        <div class="text-xs text-purple-300 uppercase tracking-wider mb-2">Fix 1</div>
+        <h4 class="font-display font-bold text-base text-white mb-2">Query expansion</h4>
+        <p class="text-xs text-gray-400 leading-relaxed">Use a thesaurus or LLM to add synonyms before BM25. Cheap but brittle — synonyms aren't always exchangeable.</p>
+      </div>
+      <div class="holo-card p-6">
+        <div class="text-xs text-purple-300 uppercase tracking-wider mb-2">Fix 2</div>
+        <h4 class="font-display font-bold text-base text-white mb-2">Dense retrieval (Module 3.1)</h4>
+        <p class="text-xs text-gray-400 leading-relaxed">Embed query and docs into a shared semantic space. "<em>Money back</em>" and "<em>refund</em>" land near each other geometrically.</p>
+      </div>
+      <div class="holo-card p-6">
+        <div class="text-xs text-purple-300 uppercase tracking-wider mb-2">Fix 3</div>
+        <h4 class="font-display font-bold text-base text-white mb-2">Learned sparse (next ↓)</h4>
+        <p class="text-xs text-gray-400 leading-relaxed">SPLADE expands each doc/query with predicted related terms, then runs BM25-style scoring. Best of both worlds.</p>
+      </div>
+    </div>
+
+    <div class="callout reveal text-sm text-gray-300">
+      <strong class="text-amber-300">⚡ The honest takeaway:</strong> vocabulary mismatch is why "<em>BM25 only</em>" isn't enough for natural-language Q&amp;A — and why hybrid retrieval (BM25 + dense) became the default. Sparse owns exact-match; dense owns paraphrase. You almost always want both.
+    </div>
+  </div>
+</section>
+
+<!-- ========== SPLADE ========== -->
+<section id="splade" class="relative py-24 px-6 z-10">
+  <div class="max-w-7xl mx-auto">
+    <div class="text-center mb-16 reveal">
+      <span class="pill mb-4"><i data-lucide="sparkles" class="w-3 h-3"></i> Beyond BM25</span>
+      <h2 class="font-display text-4xl md:text-5xl font-bold mt-4">
+        <span class="gradient-purple">SPLADE</span> — Learned Sparse Retrieval
+      </h2>
+      <p class="text-gray-400 mt-4 max-w-3xl mx-auto">What if the inverted index stored not just words, but a model's predictions about what words <em>should</em> be there? That's SPLADE — and it sits in the same engine as BM25, no GPU at query time.</p>
+    </div>
+
+    <div class="grid lg:grid-cols-2 gap-8 reveal mb-10">
+      <div class="holo-card p-6">
+        <h3 class="font-display font-bold text-lg mb-3 text-white flex items-center gap-2">
+          <i data-lucide="brain-circuit" class="w-5 h-5 text-purple-400"></i>
+          The big idea
+        </h3>
+        <p class="text-sm text-gray-300 leading-relaxed mb-3">SPLADE runs each document (and query) through a masked-language-model head over BERT's vocabulary (~30k tokens). The output is a <strong class="text-white">sparse vector</strong>: most entries are zero, a few hundred are non-zero, each representing a vocabulary token plus an importance weight.</p>
+        <p class="text-sm text-gray-300 leading-relaxed">Crucially, many non-zero entries are tokens that <em>never appeared in the original text</em> — the model expands the doc with semantically related terms. "<em>refund</em>" pulls in "<em>reimbursement, return, money</em>" with learned weights.</p>
+      </div>
+
+      <div class="formula-box">
+        <div class="text-sm text-gray-500 mb-3 tracking-widest">SPLADE WEIGHT FOR TOKEN j IN DOC d</div>
+        <div class="text-lg text-white mb-4" style="line-height: 2.4;">
+          <span class="formula-var">w<sub>j</sub></span> = <span class="formula-symbol">∑</span><sub class="formula-var">i ∈ d</sub> log(1 + ReLU(<span class="formula-var">S<sub>ij</sub></span>))
+        </div>
+        <div class="text-xs text-gray-500 mt-2 font-mono leading-relaxed">
+          S<sub>ij</sub> = MLM logit for vocab token j at position i<br>
+          ReLU keeps only "this token belongs here" signal<br>
+          log(1+·) saturates large activations (echoes BM25!)<br>
+          ∑ over positions = max-pool of evidence
+        </div>
+        <div class="text-xs text-amber-300 mt-3">+ FLOPS regularizer during training → enforces sparsity</div>
+      </div>
+    </div>
+
+    <div class="grid lg:grid-cols-3 gap-6 reveal mb-10">
+
+      <div class="step-card">
+        <div class="step-num">STEP 01 · ENCODE</div>
+        <p class="text-sm text-gray-300 leading-relaxed mt-3">Run doc through SPLADE encoder (a BERT variant). Output: ~150 non-zero weights over the BERT vocabulary.</p>
+        <div class="mt-3 font-mono text-xs text-gray-400 bg-black/30 p-3 rounded">
+          <div>"refund policy" →</div>
+          <div class="text-purple-300 mt-1">{refund:2.3, policy:1.8,</div>
+          <div class="text-purple-300">reimbursement:1.2, return:0.9,</div>
+          <div class="text-purple-300">money:0.6, ...}</div>
+        </div>
+      </div>
+
+      <div class="step-card">
+        <div class="step-num">STEP 02 · INDEX</div>
+        <p class="text-sm text-gray-300 leading-relaxed mt-3">Store the sparse vector in a standard inverted index. Each non-zero token becomes a posting list entry with its learned weight as TF.</p>
+        <p class="text-xs text-gray-500 mt-3">Same data structure as BM25 — Lucene/Elasticsearch can serve SPLADE directly via term-impact scoring.</p>
+      </div>
+
+      <div class="step-card">
+        <div class="step-num">STEP 03 · QUERY</div>
+        <p class="text-sm text-gray-300 leading-relaxed mt-3">Encode the query the same way. Score = dot product of query &amp; doc sparse vectors — looks up posting lists, sums weighted contributions.</p>
+        <p class="text-xs text-gray-500 mt-3">~10–30ms query latency on millions of docs. No GPU at serve time.</p>
+      </div>
+
+    </div>
+
+    <div class="grid lg:grid-cols-2 gap-8 reveal mb-10">
+      <div>
+        <div class="text-xs text-cyan-300 uppercase tracking-wider mb-3">Production Code · pyserini</div>
+        <div class="code-block relative">
+          <button class="copy-btn" data-target="code-splade">COPY</button>
+<pre id="code-splade"><span class="tok-keyword">from</span> <span class="tok-var">pyserini.encode</span> <span class="tok-keyword">import</span> <span class="tok-type">SpladeQueryEncoder</span>
+<span class="tok-keyword">from</span> <span class="tok-var">pyserini.search.lucene</span> <span class="tok-keyword">import</span> <span class="tok-type">LuceneImpactSearcher</span>
+
+<span class="tok-comment"># 1. load the SPLADE encoder + a pre-built sparse index</span>
+<span class="tok-var">encoder</span> = <span class="tok-type">SpladeQueryEncoder</span>(<span class="tok-string">"naver/splade-cocondenser-ensembledistil"</span>)
+<span class="tok-var">searcher</span> = <span class="tok-type">LuceneImpactSearcher</span>.<span class="tok-fn">from_prebuilt_index</span>(
+    <span class="tok-string">"msmarco-v1-passage-splade-pp-ed"</span>, <span class="tok-var">encoder</span>
+)
+
+<span class="tok-comment"># 2. encode + retrieve — same API shape as BM25</span>
+<span class="tok-var">hits</span> = <span class="tok-var">searcher</span>.<span class="tok-fn">search</span>(<span class="tok-string">"how do I get my money back"</span>, <span class="tok-var">k</span>=<span class="tok-num">10</span>)
+
+<span class="tok-comment"># 3. inspect — note expansion to "refund", "reimbursement"</span>
+<span class="tok-keyword">for</span> <span class="tok-var">h</span> <span class="tok-keyword">in</span> <span class="tok-var">hits</span>:
+    <span class="tok-fn">print</span>(<span class="tok-var">h</span>.<span class="tok-var">docid</span>, <span class="tok-var">h</span>.<span class="tok-var">score</span>, <span class="tok-var">h</span>.<span class="tok-var">raw</span>[:<span class="tok-num">80</span>])</pre>
+        </div>
+      </div>
+
+      <div class="space-y-4">
+        <div class="holo-card p-5">
+          <h4 class="font-display font-bold text-base text-white mb-2">When SPLADE wins</h4>
+          <ul class="space-y-2 text-sm text-gray-300">
+            <li class="flex gap-2"><i data-lucide="check" class="w-4 h-4 text-green-400 mt-0.5 flex-shrink-0"></i> You want dense-style recall on existing Lucene infra.</li>
+            <li class="flex gap-2"><i data-lucide="check" class="w-4 h-4 text-green-400 mt-0.5 flex-shrink-0"></i> No GPU budget at serve time.</li>
+            <li class="flex gap-2"><i data-lucide="check" class="w-4 h-4 text-green-400 mt-0.5 flex-shrink-0"></i> You want interpretable scores (you can read the expanded terms).</li>
+          </ul>
+        </div>
+        <div class="holo-card p-5">
+          <h4 class="font-display font-bold text-base text-white mb-2">When to skip</h4>
+          <ul class="space-y-2 text-sm text-gray-300">
+            <li class="flex gap-2"><i data-lucide="x" class="w-4 h-4 text-pink-400 mt-0.5 flex-shrink-0"></i> Indexing time is 5–10× BM25 (GPU pass per doc).</li>
+            <li class="flex gap-2"><i data-lucide="x" class="w-4 h-4 text-pink-400 mt-0.5 flex-shrink-0"></i> Domain shift hurts — SPLADE is pre-trained on MS MARCO.</li>
+            <li class="flex gap-2"><i data-lucide="x" class="w-4 h-4 text-pink-400 mt-0.5 flex-shrink-0"></i> If you already run a dense retriever + reranker, gains are marginal.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <div class="callout-cyan reveal text-sm text-gray-300">
+      <strong class="text-cyan-300">⚡ The unifying picture:</strong> BM25 = hand-engineered sparse vectors. SPLADE = learned sparse vectors. Dense retrieval = learned dense vectors. ColBERT = learned dense token-level vectors. All four ride the same conceptual rail; they just differ in <em>where</em> the learning happens.
+    </div>
+  </div>
+</section>
+
+<!-- ========== QUIZ ========== -->
+<section id="quiz" class="relative py-24 px-6 z-10">
+  <div class="max-w-5xl mx-auto">
+    <div class="text-center mb-12 reveal">
+      <span class="pill mb-4"><i data-lucide="brain" class="w-3 h-3"></i> Self-Check</span>
+      <h2 class="font-display text-4xl md:text-5xl font-bold mt-4">
+        Three Quick <span class="gradient-purple">Questions</span>
+      </h2>
+      <p class="text-gray-400 mt-4">Cement the BM25 instincts before moving on to dense.</p>
+    </div>
+
+    <div class="space-y-8">
+      <div class="holo-card p-6 reveal" data-quiz="0">
+        <div class="font-mono text-xs text-cyan-300 mb-2">QUESTION 01</div>
+        <h3 class="font-display font-bold text-lg mb-4 text-white">A user types "CVE-2024-31082" into your search bar. Which retriever is most likely to nail it on the first hit?</h3>
+        <div class="space-y-2">
+          <button class="quiz-option" data-correct="false">
+            <div class="quiz-marker">A</div>
+            <span>Dense retrieval with a 1024-dim embedding model</span>
+          </button>
+          <button class="quiz-option" data-correct="true">
+            <div class="quiz-marker">B</div>
+            <span>BM25 — exact lexical match wins for rare tokens</span>
+          </button>
+          <button class="quiz-option" data-correct="false">
+            <div class="quiz-marker">C</div>
+            <span>Cross-encoder reranker on top of dense</span>
+          </button>
+          <button class="quiz-option" data-correct="false">
+            <div class="quiz-marker">D</div>
+            <span>LLM-based query rewriting</span>
+          </button>
+        </div>
+        <div class="hidden mt-4 callout-cyan text-sm text-gray-300" data-explain>
+          <strong class="text-cyan-300">Correct.</strong> Rare, structured identifiers carry zero semantic signal — embeddings blur them. BM25's IDF gives a huge weight to such terms, and exact-token matching surfaces the right doc instantly.
+        </div>
+      </div>
+
+      <div class="holo-card p-6 reveal" data-quiz="1">
+        <div class="font-mono text-xs text-cyan-300 mb-2">QUESTION 02</div>
+        <h3 class="font-display font-bold text-lg mb-4 text-white">In the BM25 formula, what does the <code class="font-mono">k₁</code> parameter primarily control?</h3>
+        <div class="space-y-2">
+          <button class="quiz-option" data-correct="false">
+            <div class="quiz-marker">A</div>
+            <span>The IDF weighting curve</span>
+          </button>
+          <button class="quiz-option" data-correct="true">
+            <div class="quiz-marker">B</div>
+            <span>How quickly term-frequency contribution saturates</span>
+          </button>
+          <button class="quiz-option" data-correct="false">
+            <div class="quiz-marker">C</div>
+            <span>Length normalization aggressiveness</span>
+          </button>
+          <button class="quiz-option" data-correct="false">
+            <div class="quiz-marker">D</div>
+            <span>The number of results returned (top-K)</span>
+          </button>
+        </div>
+        <div class="hidden mt-4 callout-cyan text-sm text-gray-300" data-explain>
+          <strong class="text-cyan-300">Correct.</strong> <code class="font-mono">k₁</code> sets how aggressively repeated mentions of a term stop adding value. Length normalization is <code class="font-mono">b</code>'s job.
+        </div>
+      </div>
+
+      <div class="holo-card p-6 reveal" data-quiz="2">
+        <div class="font-mono text-xs text-cyan-300 mb-2">QUESTION 03</div>
+        <h3 class="font-display font-bold text-lg mb-4 text-white">You stemmed your corpus at index time but forgot to stem the query. What happens?</h3>
+        <div class="space-y-2">
+          <button class="quiz-option" data-correct="false">
+            <div class="quiz-marker">A</div>
+            <span>Stemming auto-applies — nothing to worry about</span>
+          </button>
+          <button class="quiz-option" data-correct="false">
+            <div class="quiz-marker">B</div>
+            <span>Scores get higher because terms match more loosely</span>
+          </button>
+          <button class="quiz-option" data-correct="true">
+            <div class="quiz-marker">C</div>
+            <span>"Obvious" matches start missing — query and index speak different tokens</span>
+          </button>
+          <button class="quiz-option" data-correct="false">
+            <div class="quiz-marker">D</div>
+            <span>BM25 throws an error</span>
+          </button>
+        </div>
+        <div class="hidden mt-4 callout-cyan text-sm text-gray-300" data-explain>
+          <strong class="text-cyan-300">Correct.</strong> The query "<em>purchases</em>" never matches the indexed token "<em>purchas</em>". Always apply the exact same tokenization pipeline to docs and queries — this is the #1 BM25 debugging tip.
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========== CHECKPOINT ========== -->
+
+<!-- RESOURCE SECTION -->
+<section class="relative py-16 px-6 z-10">
+  <div class="max-w-7xl mx-auto">
+    <div class="text-center mb-12 reveal">
+      <span class="pill mb-4"><i data-lucide="book" class="w-3 h-3"></i> Continue Learning</span>
+      <h3 class="font-display text-4xl md:text-5xl font-bold mt-4">Learn &amp; <span class="gradient-purple">Practice</span></h3>
+      <p class="text-gray-400 mt-2">Explore curated resources and practice with real code</p>
+    </div>
+
+    <div class="resource-stack mb-12">
+      <article class="resource-card">
+        <div class="flex items-start gap-3">
+          <div class="resource-icon">
+            <i data-lucide="lightbulb" class="w-4 h-4"></i>
+          </div>
+          <div class="min-w-0 flex-1">
+            <h4 class="font-display text-2xl font-bold leading-none">Progressive Article</h4>
+            <p class="text-xs text-gray-400 mt-1">Stuck? Start here - beginner-friendly explanation</p>
+            <p class="text-lg font-semibold mt-4 text-cyan-300">BM25 for Developers: A Guide to Smarter Keyword Search</p>
+            <a href="https://medium.com/@kimdoil1211/bm25-for-developers-a-guide-to-smarter-keyword-search-e6d83e8c8c8c" target="_blank" rel="noopener noreferrer" class="resource-cta" title="BM25 for Developers: A Guide to Smarter Keyword Search">
+              <i data-lucide="external-link" class="w-4 h-4"></i> Read Article
+            </a>
+          </div>
+        </div>
+      </article>
+      <article class="resource-card">
+        <div class="flex items-start gap-3">
+          <div class="resource-icon">
+            <i data-lucide="file-text" class="w-4 h-4"></i>
+          </div>
+          <div class="min-w-0 flex-1">
+            <h4 class="font-display text-2xl font-bold leading-none">Canonical Article</h4>
+            <p class="text-xs text-gray-400 mt-1">Authoritative source - official docs or research</p>
+            <p class="text-lg font-semibold mt-4 text-cyan-300">Elastic - Practical BM25 Part 2</p>
+            <a href="https://www.elastic.co/blog/practical-bm25-part-2-the-bm25-algorithm-and-its-variables" target="_blank" rel="noopener noreferrer" class="resource-cta" title="Elastic - Practical BM25 Part 2">
+              <i data-lucide="external-link" class="w-4 h-4"></i> Read Canonical
+            </a>
+          </div>
+        </div>
+      </article>
+      <article class="resource-card repo">
+        <div class="flex items-start gap-3">
+          <div class="resource-icon">
+            <i data-lucide="github" class="w-4 h-4"></i>
+          </div>
+          <div class="min-w-0 flex-1">
+            <h4 class="font-display text-2xl font-bold leading-none">GitHub Repository</h4>
+            <p class="text-xs text-gray-400 mt-1">Hands-on - reference implementation & examples</p>
+            <p class="text-lg font-semibold mt-4 text-pink-400">rank_bm25</p>
+            <a href="https://github.com/dorianbrown/rank_bm25" target="_blank" rel="noopener noreferrer" class="resource-cta" title="rank_bm25">
+              <i data-lucide="external-link" class="w-4 h-4"></i> Explore Repo
+            </a>
+          </div>
+        </div>
+      </article>
+      <article class="resource-card repo">
+        <div class="flex items-start gap-3">
+          <div class="resource-icon">
+            <i data-lucide="github" class="w-4 h-4"></i>
+          </div>
+          <div class="min-w-0 flex-1">
+            <h4 class="font-display text-2xl font-bold leading-none">GitHub Repository</h4>
+            <p class="text-xs text-gray-400 mt-1">Hands-on - reference implementation & examples</p>
+            <p class="text-lg font-semibold mt-4 text-pink-400">Pyserini</p>
+            <a href="https://github.com/castorini/pyserini" target="_blank" rel="noopener noreferrer" class="resource-cta" title="Pyserini">
+              <i data-lucide="external-link" class="w-4 h-4"></i> Explore Repo
+            </a>
+          </div>
+        </div>
+      </article>
+    </div>
+  </div>
+</section>
+
+<section id="checkpoint" class="relative py-24 px-6 z-10">
+  <div class="max-w-5xl mx-auto">
+    <div class="checkpoint-glow holo-card p-10 md:p-16 reveal text-center">
+      <div class="inline-flex items-center justify-center w-20 h-20 rounded-full mb-6" style="background: linear-gradient(135deg, #00f0ff, #b86bff); box-shadow: 0 0 60px rgba(0,240,255,0.5);">
+        <i data-lucide="flag" class="w-9 h-9 text-black"></i>
+      </div>
+
+      <span class="pill mb-4"><i data-lucide="check-circle" class="w-3 h-3"></i> Module 3.0 · Checkpoint</span>
+      <h2 class="font-display text-3xl md:text-5xl font-bold mt-4 mb-4">
+        <span class="gradient-multi">Mission 3.0 Complete</span>
+      </h2>
+      <p class="text-gray-300 max-w-2xl mx-auto mb-8">You now wield BM25 from first principles — tokenization pipeline, inverted index, scoring formula, and the two knobs that tune everything.</p>
+
+      <div class="grid md:grid-cols-3 gap-4 text-left mb-10">
+        <div class="holo-card p-5">
+          <div class="font-mono text-xs text-cyan-300 mb-2">CHECK 01</div>
+          <p class="text-sm text-gray-300">Can you explain the <span class="text-cyan-300 font-semibold">four tokenization steps</span> and why query and index must use the same pipeline?</p>
+        </div>
+        <div class="holo-card p-5">
+          <div class="font-mono text-xs text-purple-300 mb-2">CHECK 02</div>
+          <p class="text-sm text-gray-300">Can you describe the <span class="text-purple-300 font-semibold">three intuitions</span> in BM25: TF saturation, IDF weighting, length normalization?</p>
+        </div>
+        <div class="holo-card p-5">
+          <div class="font-mono text-xs text-pink-300 mb-2">CHECK 03</div>
+          <p class="text-sm text-gray-300">Can you state when <span class="text-pink-300 font-semibold">sparse beats dense</span> — and why most production stacks use both?</p>
+        </div>
+      </div>
+
+      <div class="flex flex-wrap gap-4 justify-center mb-8">
+        <button class="btn-primary flex items-center gap-2" onclick="completeModule()">
+          <i data-lucide="check" class="w-4 h-4"></i> Mark Module Complete
+        </button>
+        <button class="btn-ghost flex items-center gap-2">
+          <i data-lucide="arrow-right" class="w-4 h-4"></i> Module 3.1 · Dense Retrieval
+        </button>
+      </div>
+
+      <div class="max-w-md mx-auto">
+        <div class="flex justify-between text-xs text-gray-400 mb-2 font-mono">
+          <span>COURSE PROGRESS</span>
+          <span id="progressText">— / 38 modules</span>
+        </div>
+        <div class="progress-bar"><div class="progress-fill" id="courseProgress" style="width: 0%;"></div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer class="relative py-12 px-6 z-10 border-t border-cyan-500/10">
+  <div class="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4 text-sm text-gray-500">
+    <div class="flex items-center gap-3">
+      <i data-lucide="orbit" class="w-4 h-4 text-cyan-400"></i>
+      <span class="font-display tracking-wider">RAG ACADEMY · GENAI GALAXY</span>
+    </div>
+    <div class="font-mono text-xs">v1.0.0 · Module 3.0 · Stardate 2026.05</div>
+  </div>
+</footer>
+
+<!-- ============== SCRIPTS ============== -->
+<script>
+  function safeCreateIcons() {
+    try {
+      if (typeof lucide !== 'undefined' && lucide.createIcons) lucide.createIcons();
+    } catch (e) { console.warn('Lucide init skipped:', e); }
+  }
+  safeCreateIcons();
+
+  // ===== STARFIELD =====
+  const canvas = document.getElementById('starfield');
+  const ctx = canvas.getContext('2d');
+  let stars = [];
+  function resizeCanvas() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; initStars(); }
+  function initStars() {
+    stars = [];
+    const count = Math.floor((canvas.width * canvas.height) / 8000);
+    for (let i = 0; i < count; i++) {
+      stars.push({ x: Math.random() * canvas.width, y: Math.random() * canvas.height, z: Math.random() * 1.5 + 0.3, size: Math.random() * 1.5, twinkle: Math.random() * Math.PI * 2 });
+    }
+  }
+  function drawStars() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const now = Date.now() * 0.001;
+    stars.forEach(s => {
+      const alpha = 0.4 + 0.6 * Math.abs(Math.sin(s.twinkle + now * s.z));
+      ctx.beginPath();
+      ctx.fillStyle = `rgba(${180 + s.z*30}, ${220 + s.z*20}, 255, ${alpha})`;
+      ctx.arc(s.x, s.y, s.size * s.z, 0, Math.PI * 2);
+      ctx.fill();
+      s.y += s.z * 0.08;
+      if (s.y > canvas.height) { s.y = 0; s.x = Math.random() * canvas.width; }
+    });
+    requestAnimationFrame(drawStars);
+  }
+  window.addEventListener('resize', resizeCanvas);
+  resizeCanvas();
+  drawStars();
+
+  // ===== REVEAL =====
+  document.documentElement.classList.add('js-reveal');
+  const revealEls = document.querySelectorAll('.reveal');
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) { entry.target.classList.add('in'); observer.unobserve(entry.target); }
+    });
+  }, { threshold: 0.05, rootMargin: '0px 0px -50px 0px' });
+  revealEls.forEach(el => observer.observe(el));
+  function revealVisibleNow() {
+    revealEls.forEach(el => {
+      const rect = el.getBoundingClientRect();
+      if (rect.top < window.innerHeight && rect.bottom > 0) el.classList.add('in');
+    });
+  }
+  revealVisibleNow();
+  setTimeout(revealVisibleNow, 100);
+  setTimeout(revealVisibleNow, 500);
+  setTimeout(() => { revealEls.forEach(el => el.classList.add('in')); }, 2000);
+
+  // ===== COPY =====
+  document.querySelectorAll('.copy-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const targetId = btn.dataset.target;
+      const target = document.getElementById(targetId);
+      if (!target) return;
+      const text = target.innerText;
+      const fallbackCopy = () => {
+        const ta = document.createElement('textarea');
+        ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+        document.body.appendChild(ta); ta.select();
+        try { document.execCommand('copy'); } catch(e) {}
+        document.body.removeChild(ta);
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).catch(fallbackCopy);
+      } else { fallbackCopy(); }
+      const original = btn.textContent;
+      btn.textContent = 'COPIED!';
+      btn.classList.add('copied');
+      setTimeout(() => { btn.textContent = original; btn.classList.remove('copied'); }, 1500);
+    });
+  });
+
+  // ===== STACK TABS =====
+  document.querySelectorAll('[data-stack]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('[data-stack]').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      document.querySelectorAll('[id^="stack-"]').forEach(p => p.classList.remove('active'));
+      document.getElementById('stack-' + btn.dataset.stack).classList.add('active');
+      setTimeout(safeCreateIcons, 50);
+    });
+  });
+
+  // ===== QUIZ =====
+  document.querySelectorAll('[data-quiz]').forEach(card => {
+    const options = card.querySelectorAll('.quiz-option');
+    options.forEach(opt => {
+      opt.addEventListener('click', () => {
+        if (card.dataset.answered === 'true') return;
+        const correct = opt.dataset.correct === 'true';
+        if (correct) {
+          opt.classList.add('correct');
+        } else {
+          opt.classList.add('wrong');
+          card.querySelectorAll('.quiz-option').forEach(o => {
+            if (o.dataset.correct === 'true') o.classList.add('correct');
+          });
+        }
+        card.querySelectorAll('.quiz-option').forEach(o => o.classList.add('locked'));
+        card.dataset.answered = 'true';
+        const explain = card.querySelector('[data-explain]');
+        if (explain) explain.classList.remove('hidden');
+      });
+    });
+  });
+
+  // ===== SIDE NAV =====
+  const sections = ['hero','objectives','why','tokenize','index','formula','playground','code','checkpoint'];
+  const dots = document.querySelectorAll('.dot');
+  dots.forEach(dot => {
+    dot.addEventListener('click', () => {
+      document.getElementById(dot.dataset.target).scrollIntoView({ behavior: 'smooth' });
+    });
+  });
+  window.addEventListener('scroll', () => {
+    const scrollPos = window.scrollY + window.innerHeight / 2;
+    sections.forEach((id, i) => {
+      const el = document.getElementById(id);
+      if (el && el.offsetTop <= scrollPos && el.offsetTop + el.offsetHeight > scrollPos) {
+        dots.forEach(d => d.classList.remove('active'));
+        dots[i]?.classList.add('active');
+      }
+    });
+  });
+
+  // ===== TF SATURATION CHART =====
+  function tfContribution(tf, k1) { return (tf * (k1 + 1)) / (tf + k1); }
+  const tfCtx = document.getElementById('tfChart').getContext('2d');
+  const tfLabels = Array.from({length: 30}, (_, i) => i);
+  new Chart(tfCtx, {
+    type: 'line',
+    data: {
+      labels: tfLabels,
+      datasets: [
+        { label: 'k₁ = 0.5', data: tfLabels.map(tf => tfContribution(tf, 0.5)), borderColor: '#4dffb8', backgroundColor: 'transparent', tension: 0.3, borderWidth: 2, pointRadius: 0 },
+        { label: 'k₁ = 1.2', data: tfLabels.map(tf => tfContribution(tf, 1.2)), borderColor: '#00f0ff', backgroundColor: 'transparent', tension: 0.3, borderWidth: 2.5, pointRadius: 0 },
+        { label: 'k₁ = 2.5', data: tfLabels.map(tf => tfContribution(tf, 2.5)), borderColor: '#ffb84d', backgroundColor: 'transparent', tension: 0.3, borderWidth: 2, pointRadius: 0 }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { labels: { color: '#8a96b8', font: { family: 'Inter', size: 10 }, usePointStyle: true, padding: 8, boxWidth: 8 } } },
+      scales: {
+        x: { grid: { color: 'rgba(0, 240, 255, 0.05)' }, ticks: { color: '#5a6788', font: { size: 9, family: 'JetBrains Mono' } }, title: { display: true, text: 'term frequency', color: '#5a6788', font: { size: 9 } } },
+        y: { grid: { color: 'rgba(0, 240, 255, 0.05)' }, ticks: { color: '#5a6788', font: { size: 9, family: 'JetBrains Mono' } } }
+      }
+    }
+  });
+
+  // ===== IDF CHART =====
+  function idf(df, N) { return Math.log(((N - df + 0.5) / (df + 0.5)) + 1); }
+  const idfCtx = document.getElementById('idfChart').getContext('2d');
+  const N = 1000;
+  const dfLabels = [1, 5, 10, 25, 50, 100, 250, 500, 750, 999];
+  new Chart(idfCtx, {
+    type: 'line',
+    data: {
+      labels: dfLabels,
+      datasets: [
+        { label: 'N = 1000', data: dfLabels.map(df => idf(df, N)), borderColor: '#b86bff', backgroundColor: 'rgba(184, 107, 255, 0.15)', tension: 0.3, borderWidth: 2.5, pointRadius: 3, pointBackgroundColor: '#b86bff', fill: true }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { labels: { color: '#8a96b8', font: { family: 'Inter', size: 10 }, usePointStyle: true, padding: 8, boxWidth: 8 } } },
+      scales: {
+        x: { grid: { color: 'rgba(184, 107, 255, 0.05)' }, ticks: { color: '#5a6788', font: { size: 9, family: 'JetBrains Mono' } }, title: { display: true, text: 'docs containing term', color: '#5a6788', font: { size: 9 } } },
+        y: { grid: { color: 'rgba(184, 107, 255, 0.05)' }, ticks: { color: '#5a6788', font: { size: 9, family: 'JetBrains Mono' } } }
+      }
+    }
+  });
+
+  // ===== BM25 PLAYGROUND =====
+  const CORPUS = [
+    { id: 'doc_847', name: 'travel-faq.md',      text: 'refund policy for travel purchases applies to international flights hotels and rental cars within thirty days of purchase' },
+    { id: 'doc_213', name: 'refund-terms.md',    text: 'refunds are issued to the original payment method within five business days after approval' },
+    { id: 'doc_159', name: 'support-kb.md',      text: 'contact support for help with refund issues or travel reservation changes our team responds within one business day' },
+    { id: 'doc_604', name: 'cancel-policy.md',   text: 'cancel any order before shipment to receive a full refund cancellations after shipment are subject to return policy' },
+    { id: 'doc_022', name: 'homepage.md',        text: 'welcome to our store explore travel deals warranty information and shipping options' },
+    { id: 'doc_311', name: 'shipping-intl.md',   text: 'international shipping available to most countries delivery times vary from seven to fourteen business days' },
+    { id: 'doc_502', name: 'warranty-claim.md',  text: 'submit a warranty claim with your order number and proof of purchase warranty covers manufacturing defects for one year' },
+    { id: 'doc_710', name: 'travel-deals.md',    text: 'travel travel travel best deals on flights and hotels updated weekly book early for the best prices' },
+    { id: 'doc_088', name: 'refund-long.md',     text: 'comprehensive refund refund refund and refund policy covering all scenarios including travel cancellations defective products warranty returns and accidental purchases reach out to support for assistance with any refund request our refund team will respond within one business day to process your refund' },
+    { id: 'doc_445', name: 'order-status.md',    text: 'check the status of your order using the tracking link in your confirmation email contact support for any issues' }
+  ];
+
+  function tokenize(text) {
+    return text.toLowerCase().match(/\w+/g) || [];
+  }
+
+  const tokenized = CORPUS.map(d => tokenize(d.text));
+  const docLengths = tokenized.map(t => t.length);
+  const avgdl = docLengths.reduce((a,b) => a+b, 0) / docLengths.length;
+  const N_docs = CORPUS.length;
+
+  const tfDocs = tokenized.map(tokens => {
+    const tf = {};
+    for (const t of tokens) tf[t] = (tf[t] || 0) + 1;
+    return tf;
+  });
+
+  const df = {};
+  tfDocs.forEach(tf => {
+    for (const t of Object.keys(tf)) df[t] = (df[t] || 0) + 1;
+  });
+
+  function bm25Score(queryTokens, docIdx, k1, b) {
+    let score = 0;
+    const tf = tfDocs[docIdx];
+    const dl = docLengths[docIdx];
+    for (const term of queryTokens) {
+      if (!tf[term]) continue;
+      const termTf = tf[term];
+      const termDf = df[term] || 0;
+      const idf = Math.log(((N_docs - termDf + 0.5) / (termDf + 0.5)) + 1);
+      const numerator = termTf * (k1 + 1);
+      const denominator = termTf + k1 * (1 - b + b * (dl / avgdl));
+      score += idf * (numerator / denominator);
+    }
+    return score;
+  }
+
+  function runQuery() {
+    const queryRaw = document.getElementById('queryInput').value;
+    const k1 = parseFloat(document.getElementById('k1Slider').value);
+    const b = parseFloat(document.getElementById('bSlider').value);
+    document.getElementById('k1Val').textContent = k1.toFixed(2);
+    document.getElementById('bVal').textContent = b.toFixed(2);
+
+    const qTokens = tokenize(queryRaw);
+    const scored = CORPUS.map((doc, idx) => ({
+      doc,
+      score: bm25Score(qTokens, idx, k1, b)
+    })).filter(r => r.score > 0).sort((a,b) => b.score - a.score);
+
+    const resultsEl = document.getElementById('results');
+    const stats = document.getElementById('resultStats');
+
+    if (scored.length === 0) {
+      resultsEl.innerHTML = '<div class="text-gray-500 text-sm font-mono text-center py-12">No matches. Try one of the example queries above.</div>';
+      stats.textContent = '0 hits';
+      return;
+    }
+
+    const maxScore = scored[0].score;
+    stats.textContent = `${scored.length} hit${scored.length>1?'s':''}`;
+    resultsEl.innerHTML = scored.slice(0, 10).map(r => {
+      const pct = Math.min(100, (r.score / maxScore) * 100);
+      return `
+        <div class="doc-result">
+          <div class="flex justify-between items-center text-sm">
+            <span class="text-gray-300 font-mono text-xs">${r.doc.id} · ${r.doc.name}</span>
+            <span class="text-cyan-300 font-mono font-semibold">${r.score.toFixed(2)}</span>
+          </div>
+          <div class="score-bar"><div class="score-fill" style="width: ${pct}%"></div></div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  document.getElementById('statN').textContent = N_docs;
+  document.getElementById('statAvgdl').textContent = avgdl.toFixed(1);
+  document.getElementById('statVocab').textContent = Object.keys(df).length;
+
+  document.getElementById('queryInput').addEventListener('input', runQuery);
+  document.getElementById('k1Slider').addEventListener('input', runQuery);
+  document.getElementById('bSlider').addEventListener('input', runQuery);
+  document.getElementById('resetDefaults').addEventListener('click', () => {
+    document.getElementById('k1Slider').value = 1.2;
+    document.getElementById('bSlider').value = 0.75;
+    runQuery();
+  });
+  document.querySelectorAll('[data-q]').forEach(el => {
+    el.addEventListener('click', () => {
+      document.getElementById('queryInput').value = el.dataset.q;
+      runQuery();
+    });
+  });
+  runQuery();
+
+  // ===== COMPLETION =====
+  function completeModule() {
+    try {
+      const saved = JSON.parse(localStorage.getItem('rag_academy_progress') || '{}');
+      const completed = new Set(saved.completed || []);
+      completed.add('3.0');
+      localStorage.setItem('rag_academy_progress', JSON.stringify({
+        completed: Array.from(completed),
+        lastModule: '3.0'
+      }));
+      updateProgress();
+    } catch(e) {}
+
+    const burst = document.createElement('div');
+    burst.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);font-family:Orbitron,sans-serif;font-size:2rem;font-weight:900;color:#00f0ff;text-shadow:0 0 30px #00f0ff;z-index:9999;pointer-events:none;opacity:0;transition:all 0.8s ease;';
+    burst.textContent = '✦ MISSION COMPLETE ✦';
+    document.body.appendChild(burst);
+    requestAnimationFrame(() => {
+      burst.style.opacity = '1';
+      burst.style.transform = 'translate(-50%, -50%) scale(1.2)';
+    });
+    setTimeout(() => { burst.style.opacity = '0'; setTimeout(() => burst.remove(), 800); }, 1800);
+  }
+  window.completeModule = completeModule;
+
+  function updateProgress() {
+    try {
+      const saved = JSON.parse(localStorage.getItem('rag_academy_progress') || '{}');
+      if (saved.completed && Array.isArray(saved.completed)) {
+        const count = saved.completed.length;
+        const pct = Math.round((count / 38) * 100);
+        const fill = document.getElementById('courseProgress');
+        const txt = document.getElementById('progressText');
+        if (fill && txt) {
+          fill.style.width = pct + '%';
+          txt.textContent = `${count} / 38 modules ${saved.completed.includes('3.0') ? '✓' : ''}`;
+        }
+      }
+    } catch(e) {}
+  }
+  updateProgress();
+</script>
+
+</body>
+</html>

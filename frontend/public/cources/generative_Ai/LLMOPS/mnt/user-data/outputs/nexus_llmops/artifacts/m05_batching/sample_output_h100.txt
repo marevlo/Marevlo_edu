@@ -1,0 +1,250 @@
+═══════════════════════════════════════════════════════════════════════════════
+Reference outputs for M5 batching & scheduling artifact scripts
+═══════════════════════════════════════════════════════════════════════════════
+
+Use this file when you don't have GPU access or a real decoding log. The
+numbers are what correct output looks like for representative production
+scenarios. Actual numbers will vary ±5-15% depending on workload, but the
+shape of the answer should match.
+
+───────────────────────────────────────────────────────────────────────────────
+SCENARIO 1 · batching_throughput_model.py for Llama-3-70B-FP8 on H200
+───────────────────────────────────────────────────────────────────────────────
+
+Command:
+  python batching_throughput_model.py --model llama-3-70b-fp8 \
+      --hardware h200 --tpot-ms 15 --mean-context-tokens 2000
+
+Expected output:
+
+  ════════════════════════════════════════════════════════════════════════════
+   BATCHING THROUGHPUT MODEL
+  ════════════════════════════════════════════════════════════════════════════
+   Model:  llama-3-70b-fp8  (weights 37.0 GB, KV 160 KB/token)
+   HW:     h200  (4400 GB/s effective HBM BW)
+   Context: 2,000 tokens mean  Launch: graphs  TPOT SLO: 15.0 ms
+  ════════════════════════════════════════════════════════════════════════════
+
+   batch    step_ms   TPOT/req     throughput      kv_gb      SLO
+   ---------------------------------------------------------------
+       1      8.83 ms     8.83 ms        113 tok/s      0.3 GB        ✓
+       2      8.90 ms     8.90 ms        225 tok/s      0.6 GB        ✓
+       4      9.04 ms     9.04 ms        443 tok/s      1.2 GB        ✓
+       8      9.31 ms     9.31 ms        859 tok/s      2.4 GB        ✓
+      16      9.87 ms     9.87 ms      1,621 tok/s      4.9 GB        ✓
+      32     10.98 ms    10.98 ms      2,915 tok/s      9.8 GB        ✓
+      64     13.20 ms    13.20 ms      4,849 tok/s     19.5 GB        ✓
+      96     15.42 ms    15.42 ms      6,227 tok/s     29.3 GB   ✗ MISS
+     128     17.64 ms    17.64 ms      7,257 tok/s     39.1 GB   ✗ MISS
+     192     22.08 ms    22.08 ms      8,697 tok/s     58.6 GB   ✗ MISS
+     256     26.51 ms    26.51 ms      9,655 tok/s     78.1 GB   ✗ MISS
+
+  ────────────────────────────────────────────────────────────────────────────
+   VERDICT
+  ────────────────────────────────────────────────────────────────────────────
+   Peak throughput:       9,655 tok/s at batch=256 (TPOT 26.5 ms)
+   Knee (90% of peak):    8,697 tok/s at batch=192 (TPOT 22.1 ms)
+   SLO-compliant best:    4,849 tok/s at batch=64 (TPOT 13.2 ms, SLO 15.0 ms)
+
+   Ship batch=64. At this batch you hit the TPOT SLO.
+   Going higher (to knee at batch=192) gains 79% throughput
+   but blows the 15.0 ms SLO.
+
+INTERPRETATION
+  batch=64 is the Nexus v5 production choice. The lesson: peak-throughput
+  batch is ALWAYS above SLO-compliant batch for decode-bound workloads.
+  Shipping at peak would give 2x throughput but 2x TPOT — catastrophic for
+  interactive SLO. Use the SLO-compliant recommendation, not the peak.
+
+
+───────────────────────────────────────────────────────────────────────────────
+SCENARIO 2 · speculative_decoding_calculator.py at Nexus v5 parameters
+───────────────────────────────────────────────────────────────────────────────
+
+Command:
+  python speculative_decoding_calculator.py --alpha 0.85 --k 5 \
+      --draft-ms 1.2 --target-ms 12
+
+Expected key output:
+
+    Configuration:
+      α (acceptance rate):  0.85
+      K (speculation len):  5
+      Draft model step:     1.2 ms
+      Target model step:    12.0 ms
+
+    Derived:
+      E[tokens per big pass]:    4.15
+      Iteration time:            18.00 ms
+      Effective TPOT:            4.33 ms
+      Baseline (no speculation): 12.00 ms
+      Speedup:                   2.77×
+      Cost multiplier (vs baseline): 0.36×
+
+   VERDICT
+   ✓ Deploy speculation. At α=0.85, K=5, the configuration delivers
+     2.77× effective throughput per big-model pass.
+     On a per-token cost basis: 64% cheaper.
+
+INTERPRETATION
+  The 4.15 tokens-per-pass is what the M5 course content calls "3.1 tokens
+  per big pass" for a slightly different config. The ratio 2.77× is what
+  Nexus v5 observed in production. This number is the headline deliverable
+  of speculative decoding — all other metrics flow from it.
+
+
+───────────────────────────────────────────────────────────────────────────────
+SCENARIO 3 · speculative_decoding_calculator.py α-sweep showing sensitivity
+───────────────────────────────────────────────────────────────────────────────
+
+Command:
+  python speculative_decoding_calculator.py --alpha-sweep --k 5 \
+      --draft-ms 1.2 --target-ms 12
+
+Expected output:
+
+       α   E[tokens/iter]    iter ms   eff TPOT    speedup
+     ------------------------------------------------------
+     0.50           1.97      18.00      9.14      1.31×
+     0.60           2.38      18.00      7.55      1.59×
+     0.65           2.64      18.00      6.81      1.76×
+     0.70           2.94      18.00      6.12      1.96×
+     0.75           3.29      18.00      5.47      2.19×
+     0.80           3.69      18.00      4.88      2.46×
+     0.85           4.15      18.00      4.33      2.77×
+     0.90           4.69      18.00      3.84      3.12×
+     0.95           5.30      18.00      3.40      3.53×
+
+   VERDICT
+   Sensitivity: α drop from 0.85 → 0.60 reduces speedup by 43%.
+   Monitor α with alarm threshold: alarm if α < 0.70 for 1h sustained.
+
+INTERPRETATION
+  This sweep is why the alarm threshold is 0.70, not 0.50. At α=0.70 you've
+  already lost 29% of the speedup relative to α=0.85. If you wait until
+  α=0.50 to alarm, you've lost 53% and cost-per-token has visibly moved.
+  The rule: alarm early (0.70), fix before it gets worse.
+
+
+───────────────────────────────────────────────────────────────────────────────
+SCENARIO 4 · scheduler_simulator.py on mixed workload near capacity
+───────────────────────────────────────────────────────────────────────────────
+
+Command:
+  python scheduler_simulator.py --arrival-rate 750 --duration-s 60 \
+      --policy-compare fifo,sjf,edf,priority
+
+Expected output:
+
+   policy       TTFT p50     TTFT p99   TTFT p99.9    overall   interact   standard      batch
+   ---------- ---------- ------------ ------------ ---------- ---------- ---------- ----------
+   fifo           8943ms      18432ms      18732ms      3.8%      1.2%      3.9%     21.3%
+   sjf              58ms      14235ms      15891ms     93.5%    100.0%     97.1%     45.0%
+   edf            2876ms       9132ms       9843ms     52.4%     56.4%     55.1%      9.4%
+   priority         57ms      13056ms      13898ms     91.4%    100.0%    100.0%     15.7%
+
+   VERDICT
+   Ship priority.
+     Interactive SLO compliance: 100.0%
+     Overall SLO compliance:     91.4%
+     vs FIFO: interactive +98.8 pp, batch -5.6 pp.
+
+INTERPRETATION
+  FIFO at 75% load is catastrophic — 3.8% overall SLO compliance means
+  the scheduler is the bottleneck, not the hardware. Priority fixes
+  interactive immediately. SJF is close but sorts by output length which
+  is often unknown a priori. EDF is a balanced compromise.
+
+  The real-world lesson: vLLM's FIFO default is fine for homogeneous
+  traffic (all-chat or all-batch), but mixed-SLO workloads NEED priority
+  or EDF. Changing this one setting can improve interactive SLO by 95+ pp.
+
+
+───────────────────────────────────────────────────────────────────────────────
+SCENARIO 5 · draft_model_acceptance_tracker.py demo showing 60-day drift
+───────────────────────────────────────────────────────────────────────────────
+
+Command:
+  python draft_model_acceptance_tracker.py --demo
+
+Expected output (key portion):
+
+   window start            count     mean α      p10 α      p90 α     flag
+   --------------------  --------  ---------  ---------  ---------  --------
+   2026-01-15               1,400      0.837      0.784      0.890        ✓
+   2026-01-22               1,399      0.814      0.761      0.864        ✓
+   2026-01-29               1,400      0.787      0.734      0.840        ✓
+   2026-02-05               1,400      0.762      0.707      0.815        ✓
+   2026-02-12               1,400      0.736      0.685      0.787        ✓
+   2026-02-19               1,400      0.711      0.658      0.761        ✓
+   2026-02-26               1,400      0.687      0.634      0.738    ⚠ LOW
+   2026-03-05               1,400      0.658      0.608      0.710    ⚠ LOW
+
+   VERDICT
+   ✗ DRIFT DETECTED. α has dropped 0.197 over the log period.
+     Speedup dropped from 2.68× → 1.73×
+     Cost-per-token is +56% higher than when α was 0.84.
+
+     FIX: Retrain the draft model on recent traffic (rolling 7-14 day window).
+
+INTERPRETATION
+  This is exactly the M8 war story #6 scenario reproduced in data. The
+  drift is gradual — 0.84 → 0.64 over 8 weeks. Each week's drop is too
+  small to alarm. But the cumulative cost impact is +56% per-token. That's
+  a seven-figure annual bill on a large deployment. This is why weekly
+  draft-model retraining exists — the drift catches up to you faster than
+  point-in-time alarms catch it.
+
+
+───────────────────────────────────────────────────────────────────────────────
+SCENARIO 6 · break_speculation_acceptance.py drift fraction sweep
+───────────────────────────────────────────────────────────────────────────────
+
+Command:
+  python break_speculation_acceptance.py --drift-fraction-sweep
+
+Expected output:
+
+      drift %      agg α    speedup     cost/tok    cost vs day 1
+     ---------- ---------- ---------- ------------ ------------------
+           0%      0.852      2.79×      0.359              +0%
+          10%      0.828      2.63×      0.380              +6%
+          20%      0.806      2.48×      0.403             +12%
+          30%      0.781      2.34×      0.428             +19%
+          40%      0.759      2.22×      0.450             +26%
+          50%      0.735      2.09×      0.478             +34%
+          60%      0.713      1.98×      0.505             +41%
+          70%      0.691      1.88×      0.532             +49%
+          80%      0.668      1.77×      0.565             +58%
+          90%      0.645      1.68×      0.596             +67%
+         100%      0.622      1.58×      0.632             +77%
+
+   INTERPRETATION
+   At day 1 (drift=0%), speedup is 2.79× and that's your baseline cost.
+   By the time drift reaches 50%, aggregate α drops ~0.74,
+   speedup drops to 2.09×,
+   and per-token cost is visibly higher than baseline.
+   The drift is SLOW. It won't fire an alarm. It just makes your bill creep up.
+
+
+───────────────────────────────────────────────────────────────────────────────
+WHAT THESE OUTPUTS TELL YOU ABOUT YOUR DEPLOYMENT
+───────────────────────────────────────────────────────────────────────────────
+
+1. Before deploying: run batching_throughput_model.py and
+   speculative_decoding_calculator.py. The first tells you max_num_seqs
+   for your SLO, the second tells you whether speculation is worth it.
+   Both answers go in the config and the RFC.
+
+2. When picking a scheduler: run scheduler_simulator.py on a
+   representative arrival rate. If your workload is mixed-SLO and your
+   arrival rate is >70% of capacity, you need priority or EDF — FIFO
+   will fail under load.
+
+3. After deploying speculation: run draft_model_acceptance_tracker.py
+   weekly on production decoding logs. Any drift >0.05 over a 4-week
+   window means retraining is overdue.
+
+4. When cost-per-token rises unexplainably: first check acceptance rate
+   α with the tracker. It's the most common silent cost regression and
+   the fix (weekly retraining) is cheap.

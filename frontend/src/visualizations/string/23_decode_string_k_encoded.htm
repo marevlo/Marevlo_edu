@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Decode String (k-encoded) - Visualization</title>
+    <style>
+        :root {
+            --bg-page: #070b14;
+            --bg-surface: rgba(255, 255, 255, 0.045);
+            --bg-input: rgba(255, 255, 255, 0.04);
+            --border-main: rgba(255, 255, 255, 0.10);
+            --btn-bg: rgba(255, 255, 255, 0.05);
+            --btn-hover: rgba(255, 255, 255, 0.10);
+            --text-main: #e8eefb;
+            --text-dim: #8b98b3;
+            --accent-orange: #f5a524;   /* repeat count / multiply        */
+            --accent-blue:   #06b6d4;    /* cursor / chrome                */
+            --accent-green:  #22c55e;    /* committed / result             */
+            --accent-red:    #f43f5e;    /* error                          */
+            --accent-purple: #a855f7;    /* stack frame / push-pop         */
+            --mono: ui-monospace, 'SF Mono', 'Cascadia Code', 'Courier New', monospace;
+            --sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+            --shell: 900px;
+        }
+
+        * { box-sizing: border-box; }
+        html, body { overflow-x: hidden; }
+        body {
+            background:
+                radial-gradient(1100px 600px at 15% -10%, rgba(168, 85, 247, 0.10), transparent 60%),
+                radial-gradient(900px 600px at 100% 10%, rgba(6, 182, 212, 0.10), transparent 55%),
+                linear-gradient(160deg, #070b14 0%, #0b1120 55%, #0a0f1c 100%);
+            background-attachment: fixed;
+            color: var(--text-main); font-family: var(--sans); margin: 0;
+            display: flex; flex-direction: column; align-items: center; min-height: 100vh;
+            padding-bottom: 48px; -webkit-font-smoothing: antialiased;
+        }
+        body::before, body::after { content: ''; position: fixed; border-radius: 50%; filter: blur(70px); pointer-events: none; z-index: 0; opacity: 0.45; }
+        body::before { width: 380px; height: 380px; top: 8%; left: -120px; background: radial-gradient(circle, rgba(168,85,247,0.30), transparent 70%); }
+        body::after  { width: 420px; height: 420px; bottom: 4%; right: -140px; background: radial-gradient(circle, rgba(6,182,212,0.22), transparent 70%); }
+        body > * { position: relative; z-index: 1; }
+
+        .input-bar {
+            width: 100%; background: rgba(10, 15, 28, 0.55);
+            backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+            padding: 14px 16px; display: flex; justify-content: center; align-items: center; gap: 10px;
+            border-bottom: 1px solid var(--border-main); flex-wrap: wrap; position: sticky; top: 0; z-index: 50;
+        }
+        label.ui-label, .ui-label { font-family: var(--mono); font-size: 13px; color: var(--text-dim); letter-spacing: 0.2px; }
+        input[type="text"] {
+            background: var(--bg-input); border: 1px solid var(--border-main); color: var(--text-main);
+            height: 34px; border-radius: 9px; padding: 0 12px; font-size: 13px; font-family: var(--mono); width: 180px;
+            transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+        }
+        input[type="text"]:focus { outline: none; border-color: var(--accent-purple); box-shadow: 0 0 0 3px rgba(168, 85, 247, 0.18); background: rgba(168, 85, 247, 0.06); }
+
+        button {
+            height: 34px; border-radius: 9px; padding: 0 14px; background: var(--btn-bg);
+            border: 1px solid var(--border-main); color: var(--text-main); font-size: 13px; font-weight: 600; cursor: pointer;
+            transition: transform 0.15s ease, background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+        }
+        button:hover { background: var(--btn-hover); border-color: rgba(168, 85, 247, 0.5); box-shadow: 0 0 18px rgba(168, 85, 247, 0.18); transform: translateY(-1px); }
+        button:active { transform: translateY(0); }
+        #play-btn { background: linear-gradient(135deg, rgba(168,85,247,0.22), rgba(168,85,247,0.10)); border-color: rgba(168, 85, 247, 0.45); color: #e9d5ff; min-width: 80px; }
+
+        .shell { width: var(--shell); max-width: 95%; margin: 24px auto 0; display: flex; flex-direction: column; gap: 16px; }
+
+        .title-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+        .title-row h1 { font-size: 18px; font-weight: 800; margin: 0; letter-spacing: 0.2px; }
+        .title-row .sub { color: var(--text-dim); font-weight: 500; font-size: 13px; }
+        .step-badge { font-family: var(--mono); font-size: 12px; font-weight: 700; color: #e9d5ff; background: rgba(168,85,247,0.12); border: 1px solid rgba(168,85,247,0.3); padding: 4px 10px; border-radius: 999px; white-space: nowrap; }
+        .progress-track { height: 4px; width: 100%; background: rgba(255,255,255,0.07); border-radius: 999px; overflow: hidden; margin-top: -6px; }
+        .progress-fill { height: 100%; width: 0%; border-radius: 999px; background: linear-gradient(90deg, var(--accent-purple), var(--accent-blue)); box-shadow: 0 0 12px rgba(168,85,247,0.5); transition: width 0.45s cubic-bezier(0.34,1.1,0.64,1); }
+
+        .narration { background: var(--bg-surface); border: 1px solid rgba(168,85,247,0.22); border-radius: 12px; padding: 12px 18px; font-family: var(--mono); font-size: 14px; line-height: 1.5; color: #ede9fe; min-height: 48px; display: flex; align-items: center; gap: 10px; transition: border-color 0.3s, background 0.3s; }
+        .narration::before { content: '\25B8'; color: var(--accent-purple); font-size: 13px; }
+        .narration.done { border-color: rgba(34,197,94,0.4); background: rgba(34,197,94,0.06); }
+        .narration.done::before { content: '\2713'; color: var(--accent-green); }
+        .narration code { background: rgba(168,85,247,0.14); color: #d8b4fe; padding: 1px 6px; border-radius: 5px; font-size: 12.5px; }
+        .narration b { color: #fff; }
+
+        .stage-card { background: var(--bg-surface); border: 1px solid var(--border-main); border-radius: 18px; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); box-shadow: 0 12px 38px rgba(0,0,0,0.4); overflow: hidden; }
+        .stage-screen { position: relative; margin: 14px; border-radius: 14px; background: radial-gradient(700px 300px at 50% -10%, rgba(168,85,247,0.08), transparent 70%), #090d18; border: 1px solid rgba(255,255,255,0.06); padding: 26px 18px 22px; }
+
+        /* input char-row with cursor */
+        .row-wrap { position: relative; display: flex; justify-content: center; margin-bottom: 26px; }
+        .row-rail { position: relative; display: flex; gap: 7px; flex-wrap: wrap; justify-content: center; }
+        .ch { position: relative; display: flex; flex-direction: column; align-items: center; gap: 5px; }
+        .ch .box {
+            min-width: 38px; height: 44px; padding: 0 5px; display: flex; align-items: center; justify-content: center;
+            border-radius: 11px; font-size: 19px; font-weight: 800; font-family: var(--mono);
+            border: 2px solid var(--border-main); background: rgba(255,255,255,0.05); color: var(--text-main);
+            transition: background 0.35s, border-color 0.35s, color 0.35s, box-shadow 0.35s, transform 0.3s; }
+        .ch .idx { font-size: 10px; color: var(--text-dim); font-family: var(--mono); }
+        .ch.done .box  { opacity: 0.42; }
+        .ch.cursor .box { border-color: var(--accent-blue); background: rgba(6,182,212,0.16); color: #a5f3fc; box-shadow: 0 0 20px rgba(6,182,212,0.5); transform: translateY(-3px) scale(1.06); }
+        .ch.bracket .box { color: var(--accent-purple); }
+        .ch.digit .box { color: var(--accent-orange); }
+
+        /* the two work areas */
+        .work { display: flex; gap: 18px; align-items: flex-end; justify-content: center; min-height: 200px; }
+        .col { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+        .col-label { font-family: var(--mono); font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--text-dim); }
+        .stack-box { width: 220px; min-height: 168px; border: 1px dashed var(--border-main); border-radius: 14px; padding: 10px; display: flex; flex-direction: column-reverse; gap: 8px; justify-content: flex-start; background: rgba(255,255,255,0.02); }
+        .frame { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 9px 12px; border-radius: 10px;
+            border: 2px solid var(--accent-purple); background: rgba(168,85,247,0.14); color: #e9d5ff; font-family: var(--mono); font-weight: 700; font-size: 13px; will-change: transform; }
+        .frame .cnt { color: var(--accent-orange); font-weight: 800; }
+        .frame.top { box-shadow: 0 0 18px rgba(168,85,247,0.45); border-color: #c084fc; }
+        .stack-empty { color: var(--text-dim); font-family: var(--mono); font-size: 12px; align-self: center; margin: auto; }
+
+        .buf-box { min-width: 200px; min-height: 64px; max-width: 360px; border: 2px solid rgba(6,182,212,0.4); border-radius: 12px; padding: 10px 14px; display: flex; flex-wrap: wrap; gap: 4px; align-items: center; justify-content: center; background: rgba(6,182,212,0.06); font-family: var(--mono); }
+        .buf-ch { min-width: 26px; height: 32px; padding: 0 4px; display: flex; align-items: center; justify-content: center; border-radius: 7px; background: rgba(255,255,255,0.06); border: 1px solid var(--border-main); font-size: 16px; font-weight: 800; }
+        .buf-ch.fresh { border-color: var(--accent-green); background: rgba(34,197,94,0.16); color: #bbf7d0; }
+        .buf-empty { color: var(--text-dim); font-size: 13px; }
+        .numchip { font-family: var(--mono); font-size: 13px; font-weight: 800; padding: 6px 12px; border-radius: 9px; border: 2px solid var(--accent-orange); background: rgba(245,165,36,0.14); color: #ffd591; }
+        .numchip.zero { opacity: 0.4; border-style: dashed; }
+
+        .action-stage { position: relative; min-height: 78px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; }
+        .result-track { display: flex; gap: 5px; align-items: center; flex-wrap: wrap; justify-content: center; min-height: 32px; }
+        .res-tile { min-width: 26px; height: 32px; padding: 0 4px; border-radius: 7px; display: flex; align-items: center; justify-content: center; font-family: var(--mono); font-size: 16px; font-weight: 800; border: 2px solid var(--accent-green); background: linear-gradient(180deg, rgba(47,224,143,0.9), rgba(33,194,117,0.9)); color: #06251a; box-shadow: 0 0 12px rgba(34,197,94,0.35); }
+        .action-word { font-family: var(--mono); font-weight: 800; font-size: 18px; letter-spacing: 0.4px; min-height: 22px; text-align: center; transition: color 0.3s; }
+        #confetti { position: absolute; inset: 0; overflow: visible; pointer-events: none; }
+        .confetti-piece { position: absolute; top: 0; left: 50%; width: 8px; height: 13px; border-radius: 2px; opacity: 0; animation: confettiFall ease-out forwards; }
+
+        .controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: center; }
+        .controls .kbd-hint { font-size: 11px; color: var(--text-dim); font-family: var(--mono); margin-left: 4px; }
+        .kbd { background: rgba(255,255,255,0.07); border: 1px solid var(--border-main); border-radius: 5px; padding: 1px 6px; font-size: 10px; }
+        input[type="range"] { accent-color: var(--accent-purple); width: 110px; cursor: pointer; }
+
+        .details-toggle { align-self: center; height: 32px; padding: 0 16px; border-radius: 999px; cursor: pointer; background: rgba(255,255,255,0.04); border: 1px solid var(--border-main); color: var(--text-dim); font-family: var(--mono); font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; gap: 8px; transition: color 0.2s, border-color 0.2s, background 0.2s; }
+        .details-toggle:hover { color: var(--text-main); border-color: rgba(168,85,247,0.4); background: rgba(168,85,247,0.06); }
+        .details-toggle .chev { transition: transform 0.3s ease; }
+        .details-wrap.open .details-toggle .chev { transform: rotate(180deg); }
+        .details-body { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.4s ease; }
+        .details-wrap.open .details-body { grid-template-rows: 1fr; }
+        .details-inner { overflow: hidden; min-height: 0; }
+        .details-grid { display: flex; flex-direction: column; gap: 14px; padding-top: 14px; }
+
+        .panel-card { background: var(--bg-surface); border: 1px solid var(--border-main); border-radius: 16px; backdrop-filter: blur(10px); box-shadow: 0 8px 30px rgba(0,0,0,0.35); }
+        .panel-head { display: flex; align-items: center; gap: 8px; padding: 11px 16px; border-bottom: 1px solid var(--border-main); font-size: 11px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; color: var(--text-dim); }
+        .panel-head .pip { width: 7px; height: 7px; border-radius: 50%; background: var(--accent-purple); box-shadow: 0 0 8px var(--accent-purple); }
+        .code-body { padding: 12px 6px 14px; font-family: var(--mono); font-size: 12.5px; line-height: 1.7; }
+        .code-line { display: flex; gap: 12px; padding: 1px 16px; border-left: 2px solid transparent; transition: background 0.3s, border-color 0.3s; white-space: pre; }
+        .code-line .lno { color: #4b5772; width: 16px; text-align: right; user-select: none; }
+        .code-line .src { color: #c4cee0; }
+        .code-line .kw { color: #c792ea; }
+        .code-line .fn { color: #82aaff; }
+        .code-line.active { background: rgba(168,85,247,0.12); border-left-color: var(--accent-purple); }
+        .code-line.active .src, .code-line.active .lno { color: #e8eefb; }
+
+        .log-panel { border-radius: 14px; padding: 12px 16px; height: 110px; overflow-y: auto; font-family: var(--mono); font-size: 12.5px; line-height: 1.5; background: var(--bg-surface); border: 1px solid var(--border-main); }
+        .log-panel::-webkit-scrollbar { width: 8px; }
+        .log-panel::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 8px; }
+
+        @keyframes confettiFall { 0%{ opacity:1; transform: translate(-50%, 0) rotate(0deg); } 100%{ opacity:0; transform: translate(calc(-50% + var(--x)), 220px) rotate(var(--rot)); } }
+        @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; } }
+    </style>
+</head>
+<body>
+
+    <div class="input-bar">
+        <label class="ui-label">s =</label>
+        <input type="text" id="str-input" placeholder="3[a2[c]]" maxlength="28">
+        <button onclick="loadCustom()">Decode</button>
+        <span class="ui-label" style="opacity:.5">|</span>
+        <button onclick="loadExample(0)">3[a2[c]]</button>
+        <button onclick="loadExample(1)">2[abc]3[cd]ef</button>
+    </div>
+
+    <div class="shell">
+        <div class="title-row">
+            <h1>Decode String <span class="sub">&middot; k[encoded] &middot; one stack of (string, count) frames &middot; O(output)</span></h1>
+            <span class="step-badge" id="step-badge">Step 1 / 1</span>
+        </div>
+        <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+
+        <div class="narration" id="main-panel">&mdash;</div>
+
+        <div class="stage-card">
+            <div class="stage-screen">
+                <div class="row-wrap"><div class="row-rail" id="row-rail"></div></div>
+                <div class="work">
+                    <div class="col">
+                        <div class="col-label">stack (top &#8593;)</div>
+                        <div class="stack-box" id="stack-box"></div>
+                    </div>
+                    <div class="col">
+                        <div class="col-label">cur &times; <span id="numlabel">count</span></div>
+                        <div class="numchip zero" id="numchip">k = 0</div>
+                        <div class="buf-box" id="buf-box"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="action-stage">
+            <div id="confetti"></div>
+            <div class="result-track" id="result-track"></div>
+            <div class="action-word" id="action-word"></div>
+        </div>
+
+        <div class="controls">
+            <button onclick="resetSim()">&#8634; Reset</button>
+            <button onclick="prevStep()">&#8592; Back</button>
+            <button onclick="togglePlay()" id="play-btn">Play</button>
+            <button onclick="nextStep()">Next &#8594;</button>
+            <span class="ui-label" style="margin-left:6px; font-size:11px">Speed</span>
+            <input type="range" id="speed" min="0" max="2" value="1">
+            <span class="kbd-hint"><span class="kbd">&#8592;</span> <span class="kbd">&#8594;</span> step &middot; <span class="kbd">space</span> play</span>
+        </div>
+
+        <div class="details-wrap" id="details-wrap">
+            <button class="details-toggle" onclick="toggleDetails()" aria-expanded="false">
+                <span id="details-label">Show code &amp; log</span> <span class="chev">&#9662;</span>
+            </button>
+            <div class="details-body">
+                <div class="details-inner">
+                    <div class="details-grid">
+                        <div class="panel-card">
+                            <div class="panel-head"><span class="pip"></span> Algorithm</div>
+                            <div class="code-body" id="code-panel"></div>
+                        </div>
+                        <div class="log-panel" id="log"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        'use strict';
+
+        // ───────── Motion engine ─────────
+        const REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        const FRAME = 1000 / 60;
+        function sampleSpring(stiffness, damping, mass) {
+            const dt = 1 / 60; let x = 1, v = 0; const out = [];
+            for (let i = 0; i < 240; i++) { const a = (-stiffness * x - damping * v) / mass; v += a * dt; x += v * dt; out.push(1 - x); if (Math.abs(x) < 0.0015 && Math.abs(v) < 0.0015) break; }
+            out.push(1); return out;
+        }
+        const SPRING_POP = sampleSpring(520, 17, 1);
+        const durOf = (a) => a.length * FRAME;
+        const Motion = {
+            pop(el) {
+                if (REDUCED) return;
+                const kf = SPRING_POP.map(p => ({ opacity: Math.min(1, p * 2).toFixed(3), transform: `scale(${(0.4 + 0.6 * p).toFixed(3)}) translateY(${(12 * (1 - p)).toFixed(1)}px)` }));
+                el.animate(kf, { duration: durOf(SPRING_POP), easing: 'linear', fill: 'backwards' });
+            },
+        };
+
+        // ───────── State ─────────
+        let currentS = "3[a2[c]]";
+        let steps = [];
+        let stepIdx = 0;
+        let timer = null;
+        let confettiArmed = true;
+        const delays = [1450, 760, 360];
+        const chEls = {};      // input char tiles 'i'
+        const frameEls = {};   // stack frames 'depth'
+
+        const CODE = [
+            [['kw','def '],['fn','decode'],['src','(s):']],
+            [['src','  stack, cur, k = [], "", 0']],
+            [['kw','  for '],['src','ch in s:']],
+            [['kw','    if '],['src','ch.isdigit(): k = k*10 + int(ch)']],
+            [['kw','    elif '],['src','ch == "[": stack.push((cur,k)); cur,k = "",0']],
+            [['kw','    elif '],['src','ch == "]": (prev,n)=stack.pop(); cur = prev + cur*n']],
+            [['kw','    else'],['src',': cur += ch']],
+            [['kw','  return '],['src','cur']],
+        ];
+        function buildCodePanel() {
+            const panel = document.getElementById('code-panel'); panel.innerHTML = '';
+            CODE.forEach((tokens, i) => {
+                const line = document.createElement('div'); line.className = 'code-line'; line.dataset.line = i;
+                const lno = document.createElement('span'); lno.className = 'lno'; lno.textContent = i + 1; line.appendChild(lno);
+                const src = document.createElement('span');
+                tokens.forEach(([cls, txt]) => { const s = document.createElement('span'); s.className = cls; s.textContent = txt; src.appendChild(s); });
+                line.appendChild(src); panel.appendChild(line);
+            });
+        }
+        function highlightCode(arr) { document.querySelectorAll('.code-line').forEach(el => el.classList.toggle('active', arr && arr.includes(+el.dataset.line))); }
+        function toggleDetails() {
+            const wrap = document.getElementById('details-wrap'); const open = wrap.classList.toggle('open');
+            wrap.querySelector('.details-toggle').setAttribute('aria-expanded', open ? 'true' : 'false');
+            document.getElementById('details-label').textContent = open ? 'Hide code & log' : 'Show code & log';
+        }
+
+        // ───────── step generation ─────────
+        function generateSteps() {
+            steps = [];
+            const s = currentS, n = s.length;
+            let stack = [], cur = "", k = 0;
+            const snap = (i, extra) => Object.assign({
+                cursor: i, cur, k, stack: stack.map(f => ({ str: f.str, num: f.num })),
+                freshBuf: -1, freshFrame: -1
+            }, extra);
+
+            steps.push(snap(-1, {
+                code: [0, 1], action: 'START', actionColor: 'var(--accent-purple)',
+                panel: `Decode <code>"${s}"</code>. Scan left&#8594;right. Keep a running string <code>cur</code> and number <code>k</code>; on <code>[</code> push them, on <code>]</code> pop &amp; repeat.`,
+                log: `init  s = "${s}"`
+            }));
+
+            for (let i = 0; i < n; i++) {
+                const ch = s[i];
+                if (ch >= '0' && ch <= '9') {
+                    k = k * 10 + (+ch);
+                    steps.push(snap(i, { k, code: [3], action: `k = ${k}`, actionColor: 'var(--accent-orange)',
+                        panel: `<code>'${ch}'</code> is a digit &#8594; build the repeat count: <code>k = ${k}</code>.`,
+                        log: `'${ch}' digit  k=${k}` }));
+                } else if (ch === '[') {
+                    stack.push({ str: cur, num: k });
+                    const depth = stack.length - 1;
+                    const pushed = { str: cur, num: k };
+                    cur = ""; k = 0;
+                    steps.push(snap(i, { code: [4], action: 'PUSH (cur, k)', actionColor: 'var(--accent-purple)', freshFrame: depth,
+                        panel: `<code>'['</code> &#8594; <b>push</b> <code>("${pushed.str}", ${pushed.num})</code> onto the stack, then reset <code>cur=""</code>, <code>k=0</code> to start the inner group.`,
+                        log: `'[' push ("${pushed.str}", ${pushed.num})` }));
+                } else if (ch === ']') {
+                    const top = stack.pop();
+                    const inner = cur;
+                    cur = top.str + cur.repeat(top.num);
+                    steps.push(snap(i, { code: [5], action: `cur = "${top.str}" + "${inner}"×${top.num}`, actionColor: 'var(--accent-green)',
+                        panel: `<code>']'</code> &#8594; <b>pop</b> <code>("${top.str}", ${top.num})</code> and build <code>cur = "${top.str}" + "${inner}"&times;${top.num} = "${cur}"</code>.`,
+                        log: `']' pop  cur="${cur}"` }));
+                } else {
+                    cur += ch;
+                    steps.push(snap(i, { code: [6], action: `cur += '${ch}'`, actionColor: 'var(--accent-blue)', freshBuf: cur.length - 1,
+                        panel: `<code>'${ch}'</code> is a letter &#8594; append to the current string: <code>cur = "${cur}"</code>.`,
+                        log: `'${ch}' letter  cur="${cur}"` }));
+                }
+            }
+
+            steps.push(snap(n, { complete: true, confetti: true, code: [7], action: `✓ "${cur}"`, actionColor: 'var(--accent-green)', result: cur,
+                panel: `Scan complete &#8594; decoded string is <code>"${cur}"</code> (length ${cur.length}).`,
+                log: `done  result = "${cur}"` }));
+        }
+
+        // ───────── render (persistent DOM) ─────────
+        function renderStep(idx) {
+            stepIdx = idx; const step = steps[idx]; if (!step) return;
+
+            // input char-row
+            const rail = document.getElementById('row-rail');
+            const used = new Set();
+            [...currentS].forEach((ch, i) => {
+                used.add(String(i));
+                let el = chEls[i];
+                if (!el) { el = document.createElement('div'); el.className = 'ch'; el.innerHTML = `<div class="box"></div><div class="idx"></div>`; chEls[i] = el; }
+                el.querySelector('.box').textContent = ch;
+                el.querySelector('.idx').textContent = i;
+                const isDigit = ch >= '0' && ch <= '9', isBracket = ch === '[' || ch === ']';
+                let cls = 'ch';
+                if (i < step.cursor) cls += ' done';
+                if (i === step.cursor) cls += ' cursor';
+                if (isDigit) cls += ' digit'; else if (isBracket) cls += ' bracket';
+                el.className = cls;
+                rail.appendChild(el);
+            });
+            Object.keys(chEls).forEach(k => { if (!used.has(k)) { chEls[k].remove(); delete chEls[k]; } });
+
+            // stack frames (bottom = depth 0; column-reverse renders depth 0 at bottom)
+            const box = document.getElementById('stack-box');
+            const usedF = new Set();
+            if (step.stack.length === 0) {
+                box.querySelectorAll('.frame').forEach(f => f.remove());
+                Object.keys(frameEls).forEach(k => delete frameEls[k]);
+                if (!box.querySelector('.stack-empty')) { const e = document.createElement('div'); e.className = 'stack-empty'; e.textContent = 'empty'; box.appendChild(e); }
+            } else {
+                const emp = box.querySelector('.stack-empty'); if (emp) emp.remove();
+                step.stack.forEach((f, d) => {
+                    usedF.add(String(d));
+                    let el = frameEls[d];
+                    const fresh = !el;
+                    if (!el) { el = document.createElement('div'); el.className = 'frame'; frameEls[d] = el; }
+                    el.innerHTML = `<span>"${f.str}"</span><span class="cnt">&times; ${f.num}</span>`;
+                    el.className = 'frame' + (d === step.stack.length - 1 ? ' top' : '');
+                    box.appendChild(el);
+                    if (fresh || step.freshFrame === d) Motion.pop(el);
+                });
+                Object.keys(frameEls).forEach(k => { if (!usedF.has(k)) { frameEls[k].remove(); delete frameEls[k]; } });
+            }
+
+            // number chip
+            const nc = document.getElementById('numchip');
+            nc.textContent = 'k = ' + step.k;
+            nc.className = 'numchip' + (step.k === 0 ? ' zero' : '');
+
+            // current buffer
+            const buf = document.getElementById('buf-box'); buf.innerHTML = '';
+            if (!step.cur) { const e = document.createElement('div'); e.className = 'buf-empty'; e.textContent = 'cur = ""'; buf.appendChild(e); }
+            else [...step.cur].forEach((c, i) => { const t = document.createElement('div'); t.className = 'buf-ch' + (i === step.freshBuf ? ' fresh' : ''); t.textContent = c; buf.appendChild(t); if (i === step.freshBuf) Motion.pop(t); });
+
+            // result track (final)
+            const rt = document.getElementById('result-track'); rt.innerHTML = '';
+            if (step.complete && step.result) [...step.result].forEach(c => { const t = document.createElement('div'); t.className = 'res-tile'; t.textContent = c; rt.appendChild(t); });
+
+            // narration / action / chrome
+            const mp = document.getElementById('main-panel');
+            mp.innerHTML = step.panel || '&mdash;';
+            mp.classList.toggle('done', !!step.complete);
+            const aw = document.getElementById('action-word'); aw.textContent = step.action || ''; aw.style.color = step.actionColor || 'var(--text-dim)';
+            highlightCode(step.code);
+
+            if (step.confetti) { if (confettiArmed) { fireConfetti(); confettiArmed = false; } } else confettiArmed = true;
+
+            document.getElementById('step-badge').textContent = `Step ${idx + 1} / ${steps.length}`;
+            document.getElementById('progress-fill').style.width = `${(idx / Math.max(1, steps.length - 1)) * 100}%`;
+
+            const logEl = document.getElementById('log');
+            logEl.innerHTML = steps.slice(0, idx + 1).map(s => `<div style="margin:3px 0;white-space:pre-wrap;">${s.log}</div>`).join('');
+            logEl.scrollTop = logEl.scrollHeight;
+        }
+
+        function fireConfetti() {
+            const host = document.getElementById('confetti'); if (!host || REDUCED) return;
+            const colors = ['#22c55e', '#06b6d4', '#a855f7', '#f5a524', '#f43f5e'];
+            for (let i = 0; i < 38; i++) {
+                const p = document.createElement('div'); p.className = 'confetti-piece';
+                p.style.setProperty('--x', ((Math.random() * 2 - 1) * 220) + 'px');
+                p.style.setProperty('--rot', ((Math.random() * 720 - 360)) + 'deg');
+                p.style.background = colors[i % colors.length];
+                p.style.animationDuration = (0.9 + Math.random() * 0.8) + 's';
+                p.style.animationDelay = (Math.random() * 0.15) + 's';
+                host.appendChild(p); setTimeout(() => p.remove(), 1900);
+            }
+        }
+
+        // ───────── controls ─────────
+        function nextStep() { if (stepIdx < steps.length - 1) renderStep(stepIdx + 1); else pause(); }
+        function prevStep() { if (stepIdx > 0) renderStep(stepIdx - 1); }
+        function resetSim() { pause(); renderStep(0); }
+        function togglePlay() {
+            const btn = document.getElementById('play-btn');
+            if (timer) { pause(); return; }
+            btn.textContent = 'Pause';
+            if (stepIdx >= steps.length - 1) renderStep(0);
+            timer = setInterval(() => { if (stepIdx < steps.length - 1) nextStep(); else pause(); }, delays[document.getElementById('speed').value]);
+        }
+        function pause() { clearInterval(timer); timer = null; document.getElementById('play-btn').textContent = 'Play'; }
+
+        function clearDom() {
+            Object.keys(chEls).forEach(k => { chEls[k].remove(); delete chEls[k]; });
+            Object.keys(frameEls).forEach(k => { frameEls[k].remove(); delete frameEls[k]; });
+            document.getElementById('stack-box').innerHTML = ''; confettiArmed = true;
+        }
+        function loadString(s) { pause(); currentS = s; clearDom(); generateSteps(); renderStep(0); }
+        function loadCustom() { const v = (document.getElementById('str-input').value || '').slice(0, 28); if (v.length) loadString(v); }
+        function loadExample(n) { const ex = ['3[a2[c]]', '2[abc]3[cd]ef'][n]; document.getElementById('str-input').value = ex; loadString(ex); }
+
+        document.addEventListener('keydown', (e) => {
+            const tag = (e.target.tagName || '').toLowerCase(); if (tag === 'input' || tag === 'textarea') return;
+            if (e.key === 'ArrowRight') { e.preventDefault(); pause(); nextStep(); }
+            else if (e.key === 'ArrowLeft') { e.preventDefault(); pause(); prevStep(); }
+            else if (e.key === ' ') { e.preventDefault(); togglePlay(); }
+        });
+        document.getElementById('str-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') loadCustom(); });
+
+        buildCodePanel();
+        window.onload = () => loadExample(0);
+    </script>
+</body>
+</html>

@@ -1,0 +1,647 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Matchsticks to Square</title>
+    <style>
+        :root {
+            --bg-page: #070b14;
+            --bg-surface: rgba(255, 255, 255, 0.045);
+            --bg-input: rgba(255, 255, 255, 0.04);
+            --border-main: rgba(255, 255, 255, 0.10);
+            --btn-bg: rgba(255, 255, 255, 0.05);
+            --btn-hover: rgba(255, 255, 255, 0.10);
+            --text-main: #e8eefb;
+            --text-dim: #8b98b3;
+            --accent-orange: #f5a524;   /* current matchstick / active try */
+            --accent-blue:   #06b6d4;   /* side bins / structure            */
+            --accent-green:  #22c55e;   /* placed / side complete / success */
+            --accent-red:    #f43f5e;   /* overflow / prune / backtrack     */
+            --accent-purple: #a855f7;   /* root / recursion frame           */
+            --mono: ui-monospace, 'SF Mono', 'Cascadia Code', 'Courier New', monospace;
+            --sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+            --shell: 980px;
+        }
+
+        * { box-sizing: border-box; }
+        html, body { overflow-x: hidden; }
+        body {
+            background:
+                radial-gradient(1100px 600px at 15% -10%, rgba(168, 85, 247, 0.12), transparent 60%),
+                radial-gradient(900px 600px at 100% 10%, rgba(6, 182, 212, 0.10), transparent 55%),
+                linear-gradient(160deg, #070b14 0%, #0b1120 55%, #0a0f1c 100%);
+            background-attachment: fixed;
+            color: var(--text-main); font-family: var(--sans); margin: 0;
+            display: flex; flex-direction: column; align-items: center; min-height: 100vh;
+            padding-bottom: 48px; -webkit-font-smoothing: antialiased;
+        }
+        body::before, body::after { content: ''; position: fixed; border-radius: 50%; filter: blur(70px); pointer-events: none; z-index: 0; opacity: 0.45; }
+        body::before { width: 380px; height: 380px; top: 8%; left: -120px; background: radial-gradient(circle, rgba(168,85,247,0.30), transparent 70%); }
+        body::after  { width: 420px; height: 420px; bottom: 4%; right: -140px; background: radial-gradient(circle, rgba(6,182,212,0.22), transparent 70%); }
+        body > * { position: relative; z-index: 1; }
+
+        .input-bar {
+            width: 100%; background: rgba(10, 15, 28, 0.55);
+            backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+            padding: 14px 16px; display: flex; justify-content: center; align-items: center; gap: 10px;
+            border-bottom: 1px solid var(--border-main); flex-wrap: wrap; position: sticky; top: 0; z-index: 50;
+        }
+        label.ui-label, .ui-label { font-family: var(--mono); font-size: 13px; color: var(--text-dim); letter-spacing: 0.2px; }
+        input[type="text"] {
+            background: var(--bg-input); border: 1px solid var(--border-main); color: var(--text-main);
+            height: 34px; border-radius: 9px; padding: 0 12px; font-size: 13px; font-family: var(--mono); width: 220px;
+            transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+        }
+        input[type="text"]:focus { outline: none; border-color: var(--accent-purple); box-shadow: 0 0 0 3px rgba(168, 85, 247, 0.18); background: rgba(168, 85, 247, 0.06); }
+
+        button {
+            height: 34px; border-radius: 9px; padding: 0 14px; background: var(--btn-bg);
+            border: 1px solid var(--border-main); color: var(--text-main); font-size: 13px; font-weight: 600; cursor: pointer;
+            transition: transform 0.15s ease, background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+        }
+        button:hover { background: var(--btn-hover); border-color: rgba(168, 85, 247, 0.5); box-shadow: 0 0 18px rgba(168, 85, 247, 0.18); transform: translateY(-1px); }
+        button:active { transform: translateY(0); }
+        #play-btn { background: linear-gradient(135deg, rgba(168,85,247,0.22), rgba(168,85,247,0.10)); border-color: rgba(168, 85, 247, 0.45); color: #e9d5ff; min-width: 80px; }
+
+        .shell { width: var(--shell); max-width: 95%; margin: 24px auto 0; display: flex; flex-direction: column; gap: 16px; }
+
+        .title-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+        .title-row h1 { font-size: 18px; font-weight: 800; margin: 0; letter-spacing: 0.2px; }
+        .title-row .sub { color: var(--text-dim); font-weight: 500; font-size: 13px; }
+        .step-badge { font-family: var(--mono); font-size: 12px; font-weight: 700; color: #e9d5ff; background: rgba(168,85,247,0.12); border: 1px solid rgba(168,85,247,0.3); padding: 4px 10px; border-radius: 999px; white-space: nowrap; }
+        .progress-track { height: 4px; width: 100%; background: rgba(255,255,255,0.07); border-radius: 999px; overflow: hidden; margin-top: -6px; }
+        .progress-fill { height: 100%; width: 0%; border-radius: 999px; background: linear-gradient(90deg, var(--accent-purple), var(--accent-blue)); box-shadow: 0 0 12px rgba(168,85,247,0.5); transition: width 0.45s cubic-bezier(0.34,1.1,0.64,1); }
+
+        .narration { background: var(--bg-surface); border: 1px solid rgba(168,85,247,0.22); border-radius: 12px; padding: 12px 18px; font-family: var(--mono); font-size: 14px; line-height: 1.5; color: #ede9fe; min-height: 48px; display: flex; align-items: center; gap: 10px; transition: border-color 0.3s, background 0.3s; }
+        .narration::before { content: '\25B8'; color: var(--accent-purple); font-size: 13px; }
+        .narration.done { border-color: rgba(34,197,94,0.4); background: rgba(34,197,94,0.06); }
+        .narration.done::before { content: '\2713'; color: var(--accent-green); }
+        .narration.miss { border-color: rgba(244,63,94,0.4); background: rgba(244,63,94,0.06); }
+        .narration.miss::before { content: '\2717'; color: var(--accent-red); }
+        .narration code { background: rgba(168,85,247,0.14); color: #d8b4fe; padding: 1px 6px; border-radius: 5px; font-size: 12.5px; }
+        .narration b { color: #fff; }
+
+        .stage-card { background: var(--bg-surface); border: 1px solid var(--border-main); border-radius: 18px; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); box-shadow: 0 12px 38px rgba(0,0,0,0.4); overflow: hidden; }
+        .stage-screen { position: relative; margin: 14px; border-radius: 14px; background: radial-gradient(700px 300px at 50% -10%, rgba(168,85,247,0.08), transparent 70%), #090d18; border: 1px solid rgba(255,255,255,0.06); padding: 20px 22px; }
+
+        /* matchstick rail */
+        .rail-label { font-family: var(--mono); font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--text-dim); margin-bottom: 10px; display: flex; align-items: center; gap: 8px; }
+        .rail-label .pip { width: 7px; height: 7px; border-radius: 50%; background: var(--accent-orange); box-shadow: 0 0 8px var(--accent-orange); }
+        .stick-rail { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; min-height: 46px; }
+        .stick {
+            position: relative; min-width: 42px; height: 42px; padding: 0 10px; display: inline-flex; align-items: center; justify-content: center;
+            border-radius: 10px; font-family: var(--mono); font-weight: 800; font-size: 15px;
+            border: 2px solid var(--border-main); background: rgba(255,255,255,0.05); color: var(--text-main);
+            will-change: transform, opacity; transition: background 0.35s, border-color 0.35s, color 0.35s, box-shadow 0.35s, opacity 0.35s;
+        }
+        .stick .sidx { position: absolute; top: -8px; right: -6px; font-size: 9px; font-weight: 700; color: #06251a; background: var(--accent-green); border-radius: 6px; padding: 1px 4px; line-height: 1.2; opacity: 0; transform: scale(.4); transition: opacity .3s, transform .3s cubic-bezier(.34,1.5,.64,1); }
+        .stick.placed { border-color: var(--accent-green); background: linear-gradient(180deg, rgba(34,197,94,0.30), rgba(34,197,94,0.12)); color: #bbf7d0; }
+        .stick.placed .sidx { opacity: 1; transform: scale(1); }
+        .stick.current { border-color: var(--accent-orange); box-shadow: 0 0 18px rgba(245,165,36,0.5); color: #fff; background: linear-gradient(180deg, rgba(245,165,36,0.28), rgba(245,165,36,0.10)); }
+        .stick.reject { border-color: var(--accent-red); box-shadow: 0 0 16px rgba(244,63,94,0.4); color: #fecdd3; }
+        .stick.pending { opacity: 0.5; }
+
+        /* the four side bins */
+        .bins-label { margin-top: 22px; }
+        .bins-label .pip { background: var(--accent-blue); box-shadow: 0 0 8px var(--accent-blue); }
+        .bins { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+        .bin { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+        .bin-head { font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--text-dim); }
+        .bin-col {
+            position: relative; width: 100%; max-width: 150px; height: 200px; border-radius: 12px;
+            background: rgba(255,255,255,0.03); border: 2px solid var(--border-main);
+            display: flex; flex-direction: column-reverse; justify-content: flex-start; align-items: stretch;
+            padding: 5px; gap: 4px; overflow: hidden; transition: border-color 0.35s, box-shadow 0.35s, background 0.35s;
+        }
+        .bin-col .target-line { position: absolute; left: 0; right: 0; height: 0; border-top: 2px dashed rgba(34,197,94,0.55); z-index: 3; pointer-events: none; }
+        .bin-col .target-line::after { content: 'target'; position: absolute; right: 4px; top: -14px; font-family: var(--mono); font-size: 9px; color: rgba(34,197,94,0.85); }
+        .bin-col.active { border-color: var(--accent-orange); box-shadow: 0 0 20px rgba(245,165,36,0.35); background: rgba(245,165,36,0.05); }
+        .bin-col.overflow { border-color: var(--accent-red); box-shadow: 0 0 20px rgba(244,63,94,0.4); background: rgba(244,63,94,0.07); }
+        .bin-col.complete { border-color: var(--accent-green); box-shadow: 0 0 22px rgba(34,197,94,0.45); background: rgba(34,197,94,0.07); }
+        .seg {
+            border-radius: 7px; min-height: 16px; display: flex; align-items: center; justify-content: center;
+            font-family: var(--mono); font-weight: 800; font-size: 13px; color: #06251a;
+            background: linear-gradient(180deg, #34d27f, #22c275); border: 1px solid rgba(34,197,94,0.6);
+            will-change: transform, opacity;
+        }
+        .seg.ghost { background: linear-gradient(180deg, rgba(244,63,94,0.55), rgba(244,63,94,0.35)); border-color: rgba(244,63,94,0.7); color: #fff; }
+        .bin-foot { font-family: var(--mono); font-size: 13px; font-weight: 800; }
+        .bin-foot .cur { color: var(--text-main); }
+        .bin-foot .tgt { color: var(--text-dim); }
+        .bin.is-complete .bin-foot .cur { color: var(--accent-green); }
+        .bin.is-active .bin-head { color: var(--accent-orange); }
+
+        .controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: center; }
+        .controls .kbd-hint { font-size: 11px; color: var(--text-dim); font-family: var(--mono); margin-left: 4px; }
+        .kbd { background: rgba(255,255,255,0.07); border: 1px solid var(--border-main); border-radius: 5px; padding: 1px 6px; font-size: 10px; }
+        input[type="range"] { accent-color: var(--accent-purple); width: 110px; cursor: pointer; }
+        #confetti { position: fixed; left: 0; right: 0; top: 30%; height: 0; overflow: visible; pointer-events: none; z-index: 60; }
+        .confetti-piece { position: absolute; top: 0; left: 50%; width: 8px; height: 13px; border-radius: 2px; opacity: 0; animation: confettiFall ease-out forwards; }
+
+        .details-toggle { align-self: center; height: 32px; padding: 0 16px; border-radius: 999px; cursor: pointer; background: rgba(255,255,255,0.04); border: 1px solid var(--border-main); color: var(--text-dim); font-family: var(--mono); font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; gap: 8px; transition: color 0.2s, border-color 0.2s, background 0.2s; }
+        .details-toggle:hover { color: var(--text-main); border-color: rgba(168,85,247,0.4); background: rgba(168,85,247,0.06); }
+        .details-toggle .chev { transition: transform 0.3s ease; }
+        .details-wrap.open .details-toggle .chev { transform: rotate(180deg); }
+        .details-body { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.4s ease; }
+        .details-wrap.open .details-body { grid-template-rows: 1fr; }
+        .details-inner { overflow: hidden; min-height: 0; }
+        .details-grid { display: flex; flex-direction: column; gap: 14px; padding-top: 14px; }
+
+        .panel-card { background: var(--bg-surface); border: 1px solid var(--border-main); border-radius: 16px; backdrop-filter: blur(10px); box-shadow: 0 8px 30px rgba(0,0,0,0.35); }
+        .panel-head { display: flex; align-items: center; gap: 8px; padding: 11px 16px; border-bottom: 1px solid var(--border-main); font-size: 11px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; color: var(--text-dim); }
+        .panel-head .pip { width: 7px; height: 7px; border-radius: 50%; background: var(--accent-purple); box-shadow: 0 0 8px var(--accent-purple); }
+        .pills { display: flex; flex-wrap: wrap; gap: 8px; padding: 12px 16px; }
+        .pill { font-family: var(--mono); font-size: 12px; padding: 4px 10px; border-radius: 8px; border: 1px solid var(--border-main); background: rgba(255,255,255,0.04); color: var(--text-dim); }
+        .pill b { color: var(--text-main); font-weight: 800; }
+        .code-body { padding: 12px 6px 14px; font-family: var(--mono); font-size: 12.5px; line-height: 1.7; }
+        .code-line { display: flex; gap: 12px; padding: 1px 16px; border-left: 2px solid transparent; transition: background 0.3s, border-color 0.3s; white-space: pre; }
+        .code-line .lno { color: #4b5772; width: 16px; text-align: right; user-select: none; }
+        .code-line .src { color: #c4cee0; }
+        .code-line .kw { color: #c792ea; }
+        .code-line .fn { color: #82aaff; }
+        .code-line.active { background: rgba(168,85,247,0.12); border-left-color: var(--accent-purple); }
+        .code-line.active .src, .code-line.active .lno { color: #e8eefb; }
+
+        .log-panel { border-radius: 14px; padding: 12px 16px; height: 130px; overflow-y: auto; font-family: var(--mono); font-size: 12.5px; line-height: 1.5; background: var(--bg-surface); border: 1px solid var(--border-main); }
+        .log-panel::-webkit-scrollbar { width: 8px; }
+        .log-panel::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 8px; }
+
+        @keyframes confettiFall { 0%{ opacity:1; transform: translate(-50%, 0) rotate(0deg); } 100%{ opacity:0; transform: translate(calc(-50% + var(--x)), 240px) rotate(var(--rot)); } }
+        @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; } }
+    </style>
+</head>
+<body>
+
+    <div class="input-bar">
+        <label class="ui-label">matchsticks =</label>
+        <input type="text" id="match-input" placeholder="1,1,2,2,2">
+        <button onclick="loadCustom()">Build</button>
+        <span class="ui-label" style="opacity:.5">|</span>
+        <button onclick="loadExample(0)">Ex 1 (true)</button>
+        <button onclick="loadExample(1)">Ex 2 (false)</button>
+    </div>
+
+    <div class="shell">
+        <div class="title-row">
+            <h1>Matchsticks to Square <span class="sub">&middot; backtracking &middot; place each stick on one of 4 sides, each must equal perimeter/4</span></h1>
+            <span class="step-badge" id="step-badge">Step 1 / 1</span>
+        </div>
+        <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+
+        <div class="narration" id="main-panel">&mdash;</div>
+
+        <div class="stage-card">
+            <div class="stage-screen">
+                <div class="rail-label"><span class="pip"></span> Matchsticks <span style="font-weight:500;text-transform:none;letter-spacing:0;color:var(--text-dim)">(sorted descending)</span></div>
+                <div class="stick-rail" id="stick-rail"></div>
+
+                <div class="rail-label bins-label"><span class="pip"></span> Four sides &mdash; each must reach <span id="target-inline" style="color:var(--accent-green);font-weight:800">&mdash;</span></div>
+                <div class="bins" id="bins"></div>
+            </div>
+        </div>
+
+        <div class="controls">
+            <button onclick="resetSim()">&#8634; Reset</button>
+            <button onclick="prevStep()">&#8592; Back</button>
+            <button onclick="togglePlay()" id="play-btn">Play</button>
+            <button onclick="nextStep()">Next &#8594;</button>
+            <span class="ui-label" style="margin-left:6px; font-size:11px">Speed</span>
+            <input type="range" id="speed" min="0" max="2" value="1">
+            <span class="kbd-hint"><span class="kbd">&#8592;</span> <span class="kbd">&#8594;</span> step &middot; <span class="kbd">space</span> play</span>
+        </div>
+
+        <div class="details-wrap" id="details-wrap">
+            <button class="details-toggle" onclick="toggleDetails()" aria-expanded="false">
+                <span id="details-label">Show code &amp; log</span> <span class="chev">&#9662;</span>
+            </button>
+            <div class="details-body">
+                <div class="details-inner">
+                    <div class="details-grid">
+                        <div class="panel-card">
+                            <div class="panel-head"><span class="pip"></span> Algorithm</div>
+                            <div class="code-body" id="code-panel"></div>
+                            <div class="pills" id="state-pills"></div>
+                        </div>
+                        <div class="log-panel" id="log"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div id="confetti"></div>
+
+    <script>
+        'use strict';
+
+        // ───────── Motion engine ─────────
+        const REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        const FRAME = 1000 / 60;
+        function sampleSpring(stiffness, damping, mass) {
+            const dt = 1 / 60; let x = 1, v = 0; const out = [];
+            for (let i = 0; i < 240; i++) { const a = (-stiffness * x - damping * v) / mass; v += a * dt; x += v * dt; out.push(1 - x); if (Math.abs(x) < 0.0015 && Math.abs(v) < 0.0015) break; }
+            out.push(1); return out;
+        }
+        const SPRING_POP = sampleSpring(520, 17, 1);
+        const durOf = (a) => a.length * FRAME;
+        const Motion = {
+            pop(el) {
+                if (REDUCED) { el.style.opacity = '1'; return; }
+                const base = el.style.transform.replace(/ scale\([^)]*\)/, '');
+                const kf = SPRING_POP.map(p => ({ opacity: Math.min(1, p * 2).toFixed(3), transform: `${base} scale(${(0.3 + 0.7 * p).toFixed(3)})` }));
+                const a = el.animate(kf, { duration: durOf(SPRING_POP), easing: 'linear' });
+                a.onfinish = () => { el.style.transform = base; el.style.opacity = '1'; };
+            },
+            grow(el) {
+                if (REDUCED) { el.style.opacity = '1'; return; }
+                const kf = SPRING_POP.map(p => ({ opacity: Math.min(1, p * 2).toFixed(3), transform: `scaleY(${(0.1 + 0.9 * p).toFixed(3)})` }));
+                el.style.transformOrigin = 'bottom';
+                const a = el.animate(kf, { duration: durOf(SPRING_POP), easing: 'linear' });
+                a.onfinish = () => { el.style.transform = ''; el.style.opacity = '1'; };
+            },
+        };
+
+        // ───────── State ─────────
+        let matchsticks = [];     // sorted descending working copy
+        let target = 0;
+        let N = 0;
+        let steps = [];
+        let stepIdx = 0;
+        let timer = null;
+        let confettiArmed = true;
+        const delays = [1150, 580, 270];
+        const stickEls = {};      // key 's:i'
+        const binEls = {};        // key 'bin:i'  -> {col, segs:{}, foot, head, wrap}
+        const SIDE_NAMES = ['0', '1', '2', '3'];
+
+        // ───────── synced code panel ─────────
+        const CODE = [
+            [['kw','def '],['fn','canForm'],['src','(m):']],
+            [['kw','  if '],['src','sum(m) % 4: return False']],
+            [['src','  target = sum(m) // 4']],
+            [['kw','  if '],['src','max(m) > target: return False']],
+            [['src','  m.sort(reverse=True)']],
+            [['src','  sides = [0,0,0,0]']],
+            [['kw','  def '],['fn','bt'],['src','(i):']],
+            [['kw','    if '],['src','i == len(m): return all(s==target)']],
+            [['kw','    for '],['src','k in range(4):']],
+            [['kw','      if '],['src','sides[k] + m[i] <= target:']],
+            [['src','        sides[k] += m[i]']],
+            [['kw','        if '],['fn','bt'],['src','(i+1): return True']],
+            [['src','        sides[k] -= m[i]']],
+            [['kw','      if '],['src','sides[k] == 0: break']],
+            [['kw','    return '],['src','False']],
+            [['kw','  return '],['fn','bt'],['src','(0)']],
+        ];
+        function buildCodePanel() {
+            const panel = document.getElementById('code-panel'); panel.innerHTML = '';
+            CODE.forEach((tokens, i) => {
+                const line = document.createElement('div'); line.className = 'code-line'; line.dataset.line = i;
+                const lno = document.createElement('span'); lno.className = 'lno'; lno.textContent = i + 1; line.appendChild(lno);
+                const src = document.createElement('span');
+                tokens.forEach(([cls, txt]) => { const s = document.createElement('span'); s.className = cls; s.textContent = txt; src.appendChild(s); });
+                line.appendChild(src); panel.appendChild(line);
+            });
+        }
+        function highlightCode(arr) { document.querySelectorAll('.code-line').forEach(el => el.classList.toggle('active', arr && arr.includes(+el.dataset.line))); }
+        function toggleDetails() {
+            const wrap = document.getElementById('details-wrap'); const open = wrap.classList.toggle('open');
+            wrap.querySelector('.details-toggle').setAttribute('aria-expanded', open ? 'true' : 'false');
+            document.getElementById('details-label').textContent = open ? 'Hide code & log' : 'Show code & log';
+        }
+
+        // ───────── trace the REAL algorithm into immutable per-step snapshots ─────────
+        // each step snapshot: {sides[4], placement[N], cur, activeSide, kind, ghost, code, panel, log, done, ok, complete, miss, confetti}
+        function generateSteps() {
+            steps = [];
+            const total = matchsticks.reduce((a, b) => a + b, 0);
+            N = matchsticks.length;
+
+            // pre-check 1: divisibility
+            if (total % 4 !== 0) {
+                steps.push({
+                    sides: [0, 0, 0, 0], placement: new Array(N).fill(-1), cur: -1, kind: 'reject',
+                    code: [1], done: true, ok: false, miss: true,
+                    panel: `Perimeter <code>${total}</code> is not divisible by 4 &#8594; the four sides cannot be equal. <b>Cannot form a square.</b>`,
+                    log: `sum = ${total}, ${total} % 4 != 0  ->  false`,
+                });
+                target = 0;
+                return false;
+            }
+            target = total / 4;
+
+            // pre-check 2: a stick longer than a side
+            const tooLong = matchsticks.find(m => m > target);
+            if (tooLong !== undefined) {
+                steps.push({
+                    sides: [0, 0, 0, 0], placement: new Array(N).fill(-1), cur: -1, kind: 'reject',
+                    code: [2, 3], done: true, ok: false, miss: true,
+                    panel: `Side length = perimeter/4 = <code>${target}</code>, but a matchstick of length <code>${tooLong}</code> &gt; ${target} can never fit. <b>Cannot form a square.</b>`,
+                    log: `target = ${target}, stick ${tooLong} > ${target}  ->  false`,
+                });
+                return false;
+            }
+
+            // sort descending (mutates working copy)
+            matchsticks.sort((a, b) => b - a);
+
+            const sides = [0, 0, 0, 0];
+            const placement = new Array(N).fill(-1);
+
+            steps.push({
+                sides: [0, 0, 0, 0], placement: placement.slice(), cur: -1, kind: 'intro',
+                code: [2, 4, 5],
+                panel: `Perimeter <code>${total}</code> &#247; 4 &#8594; each side must total <b>${target}</b>. Sort sticks descending to <code>[${matchsticks.join(',')}]</code> so big ones placed first prune faster. Place stick 0.`,
+                log: `target = ${target}, sorted = [${matchsticks.join(',')}]`,
+            });
+
+            const snap = (over) => ({ sides: sides.slice(), placement: placement.slice() });
+
+            function bt(idx) {
+                if (idx === N) {
+                    const success = sides.every(s => s === target);
+                    const s = snap();
+                    steps.push({
+                        ...s, cur: idx, kind: 'base', activeSide: -1,
+                        code: [7],
+                        complete: success, miss: !success, confetti: success,
+                        panel: success
+                            ? `All ${N} sticks placed and every side equals <b>${target}</b> &#8594; <b>square formed!</b>`
+                            : `All sticks placed but the sides are <code>[${sides.join(',')}]</code> &#8800; ${target} on each &#8594; not a square on this branch.`,
+                        log: success ? `i == ${N}: all sides == ${target}  ->  TRUE` : `i == ${N}: sides [${sides.join(',')}] != ${target}`,
+                    });
+                    return success;
+                }
+                const len = matchsticks[idx];
+                steps.push({
+                    ...snap(), cur: idx, kind: 'call', activeSide: -1,
+                    code: [8],
+                    panel: `<code>bt(${idx})</code>: try placing stick <code>${len}</code> on a side where it still fits (&le; ${target} - current).`,
+                    log: `bt(${idx})  place stick ${len}`,
+                });
+                for (let k = 0; k < 4; k++) {
+                    if (sides[k] + len > target) {
+                        steps.push({
+                            ...snap(), cur: idx, kind: 'overflow', activeSide: k, ghost: { side: k, len },
+                            code: [9],
+                            miss: false,
+                            panel: `Stick <code>${len}</code> on side ${k}: ${sides[k]} + ${len} = ${sides[k] + len} &gt; ${target} &#8594; <b>overflow</b>, skip this side.`,
+                            log: `  side ${k}: ${sides[k]}+${len} > ${target}  prune`,
+                        });
+                        continue;
+                    }
+                    // place
+                    sides[k] += len; placement[idx] = k;
+                    const nowComplete = sides[k] === target;
+                    steps.push({
+                        ...snap(), cur: idx, kind: 'assign', activeSide: k,
+                        code: [9, 10],
+                        panel: `Place stick <code>${len}</code> on side ${k} &#8594; side ${k} = <b>${sides[k]}</b>${nowComplete ? ` (full!)` : ` / ${target}`}. Recurse to stick ${idx + 1}.`,
+                        log: `  side ${k} += ${len}  -> ${sides[k]}`,
+                    });
+                    if (bt(idx + 1)) return true;
+                    // undo
+                    sides[k] -= len; placement[idx] = -1;
+                    steps.push({
+                        ...snap(), cur: idx, kind: 'undo', activeSide: k, ghost: { side: k, len },
+                        code: [11, 12],
+                        miss: false,
+                        panel: `That branch failed &#8594; <b>backtrack</b>: remove stick <code>${len}</code> from side ${k}, side ${k} back to ${sides[k]}.`,
+                        log: `  undo side ${k} -= ${len}  -> ${sides[k]}`,
+                    });
+                    if (sides[k] === 0) {
+                        steps.push({
+                            ...snap(), cur: idx, kind: 'prune', activeSide: k,
+                            code: [13],
+                            panel: `Side ${k} is empty &#8594; trying stick <code>${len}</code> on any other empty side is symmetric, so <b>stop</b> (prune duplicate empties).`,
+                            log: `  side ${k} == 0  break (dedupe empties)`,
+                        });
+                        break;
+                    }
+                }
+                return false;
+            }
+
+            const result = bt(0);
+
+            steps.push({
+                sides: result ? sides.slice() : new Array(4).fill(0),
+                placement: result ? placement.slice() : new Array(N).fill(-1),
+                cur: -1, kind: 'final', activeSide: -1,
+                code: [15], done: true, ok: result, complete: result, miss: !result, confetti: result,
+                panel: result
+                    ? `Search complete &#8594; the sticks split into four sides of <b>${target}</b> each. <b>canFormSquare = true.</b>`
+                    : `Every assignment exhausted without four equal sides of ${target}. <b>canFormSquare = false.</b>`,
+                log: `return ${result ? 'True' : 'False'}`,
+            });
+            return result;
+        }
+
+        // ───────── build static skeleton once per input-load ─────────
+        function buildSkeleton() {
+            // sticks
+            const rail = document.getElementById('stick-rail'); rail.innerHTML = '';
+            for (const k of Object.keys(stickEls)) delete stickEls[k];
+            matchsticks.forEach((len, i) => {
+                const el = document.createElement('div'); el.className = 'stick pending'; el.dataset.k = i;
+                el.innerHTML = `${len}<span class="sidx" data-role="sidx"></span>`;
+                rail.appendChild(el); stickEls['s:' + i] = el;
+            });
+            // four bins
+            const bins = document.getElementById('bins'); bins.innerHTML = '';
+            for (const k of Object.keys(binEls)) delete binEls[k];
+            for (let i = 0; i < 4; i++) {
+                const wrap = document.createElement('div'); wrap.className = 'bin';
+                const head = document.createElement('div'); head.className = 'bin-head'; head.textContent = 'side ' + SIDE_NAMES[i];
+                const col = document.createElement('div'); col.className = 'bin-col';
+                const tline = document.createElement('div'); tline.className = 'target-line';
+                col.appendChild(tline);
+                const foot = document.createElement('div'); foot.className = 'bin-foot';
+                wrap.appendChild(head); wrap.appendChild(col); wrap.appendChild(foot); bins.appendChild(wrap);
+                binEls['bin:' + i] = { wrap, head, col, foot, tline, segs: {} };
+            }
+            document.getElementById('target-inline').textContent = target > 0 ? target : '—';
+        }
+
+        // segment pixel height inside a 200px column (5px pad top+bottom)
+        function segHeight(len) {
+            if (target <= 0) return 16;
+            const usable = 200 - 10 - 4; // padding + a little breathing room
+            return Math.max(16, (len / target) * usable);
+        }
+
+        // ───────── render — PURE function of steps[idx], persistent-DOM reconciliation ─────────
+        function renderStep(idx) {
+            stepIdx = idx; const step = steps[idx]; if (!step) return;
+
+            // sticks
+            matchsticks.forEach((len, i) => {
+                const el = stickEls['s:' + i]; if (!el) return;
+                const placedSide = step.placement ? step.placement[i] : -1;
+                const isCur = step.cur === i;
+                const isReject = (step.kind === 'overflow' || step.kind === 'undo' || step.kind === 'prune') && isCur;
+                let cls = 'stick';
+                if (placedSide >= 0) cls += ' placed';
+                if (isCur && step.kind === 'assign') cls += ' current';
+                else if (isReject) cls += ' reject';
+                else if (isCur) cls += ' current';
+                if (placedSide < 0 && !isCur) cls += ' pending';
+                if (el.className !== cls) el.className = cls;
+                const sidx = el.querySelector('[data-role="sidx"]');
+                sidx.textContent = placedSide >= 0 ? SIDE_NAMES[placedSide] : '';
+            });
+
+            // four bins
+            const sides = step.sides || [0, 0, 0, 0];
+            for (let i = 0; i < 4; i++) {
+                const bin = binEls['bin:' + i]; if (!bin) continue;
+                // target line position
+                bin.tline.style.bottom = (5 + segHeight(target) - 1) + 'px';
+                // which sticks live on this side, in placement order (stable id by stick index)
+                const onSide = [];
+                if (step.placement) step.placement.forEach((s, si) => { if (s === i) onSide.push(si); });
+
+                const usedKeys = new Set();
+                onSide.forEach(si => {
+                    const key = 'seg:' + si;
+                    usedKeys.add(key);
+                    let seg = bin.segs[key]; const fresh = !seg;
+                    if (!seg) {
+                        seg = document.createElement('div'); seg.className = 'seg';
+                        // insert before footer-less: column is column-reverse, append puts new at bottom-of-stack visually top; order by index
+                        bin.col.appendChild(seg); bin.segs[key] = seg;
+                    }
+                    seg.textContent = matchsticks[si];
+                    seg.style.height = segHeight(matchsticks[si]) + 'px';
+                    if (fresh) Motion.grow(seg);
+                });
+                // ghost overflow segment (transient) keyed 'ghost'
+                const ghostKey = 'ghost';
+                const showGhost = step.ghost && step.ghost.side === i && (step.kind === 'overflow');
+                if (showGhost) {
+                    usedKeys.add(ghostKey);
+                    let g = bin.segs[ghostKey]; const fresh = !g;
+                    if (!g) { g = document.createElement('div'); g.className = 'seg ghost'; bin.col.appendChild(g); bin.segs[ghostKey] = g; }
+                    g.textContent = '+' + step.ghost.len;
+                    g.style.height = segHeight(step.ghost.len) + 'px';
+                    if (fresh) Motion.grow(g);
+                }
+                // reap removed segments (backtrack / branch change)
+                Object.keys(bin.segs).forEach(k => {
+                    if (!usedKeys.has(k)) { bin.segs[k].remove(); delete bin.segs[k]; }
+                });
+
+                // bin classes / footer
+                const isComplete = sides[i] === target && target > 0;
+                const isActive = step.activeSide === i;
+                const isOverflow = isActive && step.kind === 'overflow';
+                bin.col.className = 'bin-col'
+                    + (isOverflow ? ' overflow' : '')
+                    + (isComplete && !isOverflow ? ' complete' : '')
+                    + (isActive && !isOverflow && !isComplete ? ' active' : '');
+                bin.wrap.className = 'bin'
+                    + (isComplete ? ' is-complete' : '')
+                    + (isActive ? ' is-active' : '');
+                bin.foot.innerHTML = `<span class="cur">${sides[i]}</span><span class="tgt"> / ${target || '—'}</span>`;
+            }
+
+            // narration
+            const mp = document.getElementById('main-panel');
+            mp.innerHTML = step.panel || '&mdash;';
+            mp.classList.toggle('done', !!step.complete);
+            mp.classList.toggle('miss', !!step.miss && !step.complete);
+
+            // code
+            highlightCode(step.code);
+
+            // state pills
+            renderPills(step);
+
+            // confetti on success
+            if (step.confetti) { if (confettiArmed) { fireConfetti(); confettiArmed = false; } } else confettiArmed = true;
+
+            // badge + progress
+            document.getElementById('step-badge').textContent = `Step ${idx + 1} / ${steps.length}`;
+            document.getElementById('progress-fill').style.width = `${(idx / Math.max(1, steps.length - 1)) * 100}%`;
+
+            // log
+            const logEl = document.getElementById('log');
+            logEl.innerHTML = steps.slice(0, idx + 1).map(s => `<div style="margin:3px 0;white-space:pre-wrap;">${s.log}</div>`).join('');
+            logEl.scrollTop = logEl.scrollHeight;
+        }
+
+        function renderPills(step) {
+            const host = document.getElementById('state-pills'); if (!host) return;
+            const placedCount = step.placement ? step.placement.filter(p => p >= 0).length : 0;
+            const sides = step.sides || [0, 0, 0, 0];
+            const pills = [
+                `target = <b>${target || '—'}</b>`,
+                `stick i = <b>${step.cur >= 0 && step.cur < N ? step.cur : '—'}</b>`,
+                `placed = <b>${placedCount}/${N}</b>`,
+                `sides = <b>[${sides.join(',')}]</b>`,
+            ];
+            host.innerHTML = pills.map(p => `<span class="pill">${p}</span>`).join('');
+        }
+
+        function fireConfetti() {
+            const host = document.getElementById('confetti'); if (!host || REDUCED) return;
+            const colors = ['#22c55e', '#06b6d4', '#a855f7', '#f5a524', '#f43f5e'];
+            for (let i = 0; i < 36; i++) {
+                const p = document.createElement('div'); p.className = 'confetti-piece';
+                p.style.setProperty('--x', ((Math.random() * 2 - 1) * 260) + 'px');
+                p.style.setProperty('--rot', ((Math.random() * 720 - 360)) + 'deg');
+                p.style.background = colors[i % colors.length];
+                p.style.animationDuration = (0.9 + Math.random() * 0.8) + 's';
+                p.style.animationDelay = (Math.random() * 0.15) + 's';
+                host.appendChild(p); setTimeout(() => p.remove(), 1900);
+            }
+        }
+
+        // ───────── controls ─────────
+        function nextStep() { if (stepIdx < steps.length - 1) renderStep(stepIdx + 1); else pause(); }
+        function prevStep() { if (stepIdx > 0) renderStep(stepIdx - 1); }
+        function resetSim() { pause(); renderStep(0); }
+        function togglePlay() {
+            const btn = document.getElementById('play-btn');
+            if (timer) { pause(); return; }
+            btn.textContent = 'Pause';
+            if (stepIdx >= steps.length - 1) renderStep(0);
+            timer = setInterval(() => { if (stepIdx < steps.length - 1) nextStep(); else pause(); }, delays[document.getElementById('speed').value]);
+        }
+        function pause() { clearInterval(timer); timer = null; document.getElementById('play-btn').textContent = 'Play'; }
+
+        function loadFrom(arr) {
+            pause();
+            matchsticks = arr.filter(x => Number.isFinite(x) && x > 0);
+            if (matchsticks.length === 0) matchsticks = [1, 1, 2, 2, 2];
+            confettiArmed = true;
+            generateSteps();          // sorts matchsticks in place, sets target/N
+            buildSkeleton();          // static DOM rebuilt once per input-load
+            renderStep(0);
+        }
+        function loadCustom() {
+            const raw = document.getElementById('match-input').value.trim();
+            const arr = raw.split(',').map(s => parseInt(s.trim(), 10));
+            loadFrom(arr);
+        }
+        function loadExample(ex) {
+            const arr = ex === 0 ? [1, 1, 2, 2, 2] : [3, 3, 3, 3, 4];
+            document.getElementById('match-input').value = arr.join(',');
+            loadFrom(arr);
+        }
+
+        document.addEventListener('keydown', (e) => {
+            const tag = (e.target.tagName || '').toLowerCase(); if (tag === 'input' || tag === 'textarea') return;
+            if (e.key === 'ArrowRight') { e.preventDefault(); pause(); nextStep(); }
+            else if (e.key === 'ArrowLeft') { e.preventDefault(); pause(); prevStep(); }
+            else if (e.key === ' ') { e.preventDefault(); togglePlay(); }
+        });
+        document.getElementById('match-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') loadCustom(); });
+
+        let _rsT; window.addEventListener('resize', () => { clearTimeout(_rsT); _rsT = setTimeout(() => renderStep(stepIdx), 120); });
+
+        buildCodePanel();
+        window.onload = () => loadExample(0);
+    </script>
+</body>
+</html>

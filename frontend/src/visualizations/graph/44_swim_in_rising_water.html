@@ -1,0 +1,579 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Swim in Rising Water (Dijkstra) - Visualization</title>
+    <style>
+        :root {
+            --bg-page: #000000;
+            --bg-surface: #161b22;
+            --bg-input: #000000;
+            --border-main: #30363d;
+            --btn-bg: #21262d;
+            --btn-hover: #2d333b;
+            --text-main: #c9d1d9;
+            --text-dim: #8b949e;
+            --text-log: #58a6ff;
+            --accent-orange: #e3b341;
+            --accent-blue: #388bfd;
+            --accent-green: #3fb950;
+            --accent-red: #f85149;
+            --accent-purple: #a371f7;
+            
+            --cell-dry: #3a3221;
+            --cell-dry-text: #cda85e;
+            --cell-water: #0d2a4a;
+            --cell-water-text: #58a6ff;
+            --cell-frontier: #2a200a;
+            --cell-frontier-text: #e3b341;
+        }
+
+        * { box-sizing: border-box; }
+        body {
+            background-color: var(--bg-page);
+            color: var(--text-main);
+            font-family: system-ui, -apple-system, sans-serif;
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            padding-bottom: 40px;
+        }
+
+        /* ROW 1: INPUT BAR */
+        .input-bar {
+            width: 100%;
+            background-color: var(--bg-surface);
+            padding: 12px 16px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 8px;
+            border-bottom: 1px solid var(--border-main);
+            flex-wrap: wrap;
+        }
+        label.ui-label { font-family: 'Courier New', monospace; font-size: 13px; color: var(--text-dim); }
+        input[type="text"] {
+            background: var(--bg-input);
+            border: 1px solid var(--border-main);
+            color: var(--text-main);
+            height: 32px;
+            border-radius: 6px;
+            padding: 0 10px;
+            font-size: 13px;
+        }
+        .large-input { width: 450px; font-family: monospace; font-size: 12px;}
+
+        button {
+            height: 32px; border-radius: 6px; padding: 0 14px; background: var(--btn-bg);
+            border: 1px solid var(--border-main); color: var(--text-main); font-size: 13px; cursor: pointer;
+            transition: background 0.2s ease;
+        }
+        button:hover { background: var(--btn-hover); }
+
+        /* ROW 2: GRAPH AREA & ARRAYS */
+        .visual-container { margin-top: 20px; display: flex; align-items: flex-start; gap: 30px; width: 100%; justify-content: center; flex-wrap: wrap; }
+        
+        .graph-area {
+            background: var(--bg-surface);
+            border: 1px solid var(--border-main);
+            border-radius: 8px;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 350px;
+            min-width: 400px;
+            position: relative;
+        }
+
+        #grid-container {
+            display: grid;
+            gap: 4px;
+        }
+
+        .grid-cell {
+            width: 50px;
+            height: 50px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            font-weight: bold;
+            border-radius: 6px;
+            font-family: 'Courier New', monospace;
+            transition: all 0.3s ease;
+            position: relative;
+            border: 2px solid transparent;
+        }
+
+        .cell-dry { background: var(--cell-dry); color: var(--cell-dry-text); border-color: #55482e; }
+        .cell-frontier { background: var(--cell-frontier); color: var(--cell-frontier-text); border-color: var(--accent-orange); }
+        .cell-water { background: var(--cell-water); color: var(--cell-water-text); border-color: var(--accent-blue); }
+
+        .grid-cell.active-node { transform: scale(1.15); box-shadow: 0 0 15px var(--accent-blue); border-color: var(--accent-blue); z-index: 3; }
+        .grid-cell.neighbor-node { transform: scale(1.1); box-shadow: 0 0 12px var(--accent-purple); border-color: var(--accent-purple); z-index: 2; }
+        .grid-cell.path-node { background: #0f2a1a; color: var(--accent-green); border-color: var(--accent-green); box-shadow: 0 0 15px var(--accent-green); transform: scale(1.1); z-index: 4; }
+
+        .arrays-col { display: flex; flex-direction: column; gap: 16px; min-width: 320px; max-width: 400px; }
+        
+        .array-section { display: flex; flex-direction: column; gap: 8px; background: var(--bg-surface); padding: 12px; border-radius: 8px; border: 1px solid var(--border-main); min-height: 100px;}
+        .stats-row { display: flex; justify-content: space-between; font-family: monospace; font-size: 14px; margin-bottom: 4px; border-bottom: 1px solid var(--border-main); padding-bottom: 4px;}
+        .stats-val { font-weight: bold; color: var(--text-main); font-size: 16px;}
+        
+        .tiles-wrapper { display: flex; gap: 8px; flex-wrap: wrap; align-content: flex-start;}
+        .tile {
+            height: 32px; display: flex; align-items: center; justify-content: center; padding: 0 8px;
+            border-radius: 4px; font-size: 13px; font-weight: bold; font-family: 'Courier New', monospace;
+            transition: all 0.3s ease; background: #21262d; border: 1px solid var(--border-main);
+            color: var(--text-main);
+        }
+        .tile.pq-tile { background: #0d213f; border-color: var(--accent-blue); color: var(--accent-blue); }
+        .tile.pq-tile.pushing { animation: pushAnim 0.3s ease; }
+        .tile.pq-tile.popping { transform: scale(1.1); opacity: 0; }
+
+        @keyframes pushAnim { 0%{transform:scale(0.5); opacity:0;} 100%{transform:scale(1); opacity:1;} }
+
+        /* ROW 3: PANEL */
+        .action-panel {
+            margin-top: 14px; background: var(--bg-surface); border: 1px solid var(--border-main);
+            border-radius: 6px; padding: 12px 20px; width: 750px; text-align: center; font-family: monospace; min-height: 80px;
+            display: flex; flex-direction: column; justify-content: center; font-size: 14px; line-height: 1.5;
+        }
+
+        /* ROW 4: INFO PANEL */
+        .info-panel { margin-top: 10px; display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; width: 750px;}
+        .info-cell {
+            background: var(--bg-surface); border: 1px solid var(--border-main); border-radius: 6px;
+            padding: 8px 14px; display: flex; flex-direction: column; align-items: center; min-width: 120px; gap: 4px; flex: 1;
+        }
+        .info-label { font-size: 11px; color: var(--text-dim); }
+        .info-value { font-family: monospace; font-size: 15px; font-weight: 700; text-align: center;}
+
+        /* ROW 5: RESULT DISPLAY */
+        .result-display { margin-top: 10px; display: flex; flex-direction: column; align-items: center; }
+        #res-val { font-size: 28px; color: var(--text-dim); font-family: monospace; transition: all 0.3s; font-weight: bold; margin-top: 4px; }
+        .pop { animation: popAnim 400ms ease; color: var(--accent-green) !important; text-shadow: 0 0 15px var(--accent-green); transform: scale(1.1); }
+
+        @keyframes popAnim { 0%{transform:scale(1)} 50%{transform:scale(1.2)} 100%{transform:scale(1.1)} }
+
+        /* ROW 6: STATUS BAR */
+        .status-bar { margin-top: 8px; font-size: 13px; color: var(--text-dim); height: 1.2em; text-align: center; width: 600px;}
+
+        /* ROW 7: CONTROLS */
+        .controls { margin-top: 24px; display: flex; align-items: center; gap: 8px; }
+        input[type="range"] { accent-color: var(--accent-blue); width: 100px; cursor: pointer; }
+
+        /* ROW 8: LEGEND */
+        .legend { margin-top: 12px; display: flex; gap: 16px; flex-wrap: wrap; justify-content: center; max-width: 800px; }
+        .legend-item { display: flex; align-items: center; font-size: 12px; color: var(--text-dim); }
+        .dot { width: 12px; height: 12px; border-radius: 2px; margin-right: 6px; display: inline-block; border: 1px solid var(--border-main);}
+
+        /* ROW 9: LOG PANEL */
+        .log-panel {
+            margin-top: 12px; background: var(--bg-page); border: 1px solid var(--border-main);
+            border-radius: 6px; padding: 12px 16px; width: 750px; max-width: 90%; height: 130px;
+            overflow-y: auto; font-family: 'Courier New', monospace; font-size: 13px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="input-bar">
+        <label class="ui-label">grid =</label>
+        <input type="text" id="g-input" class="large-input" placeholder="[[0,2],[1,3]]">
+        <button onclick="loadCustom()">Load</button>
+        <button onclick="loadExample('[[0,2],[1,3]]')">Ex 1</button>
+        <button onclick="loadExample('[[0,1,2,3,4],[24,23,22,21,5],[12,13,14,15,16],[11,17,18,19,20],[10,9,8,7,6]]')">Ex 2</button>
+    </div>
+
+    <div class="visual-container">
+        <div class="graph-area">
+            <div id="grid-container"></div>
+        </div>
+        <div class="arrays-col">
+            <div class="array-section">
+                <div class="ui-label" style="color: var(--accent-orange); text-align:center;">Dijkstra / Water Status</div>
+                <div class="stats-row"><span>Current Water Level:</span> <span class="stats-val" id="stat-level" style="color:var(--accent-blue)">0</span></div>
+            </div>
+            
+            <div class="array-section">
+                <div class="ui-label" style="color: var(--accent-blue);">Priority Queue (Min-Heap):</div>
+                <div class="tiles-wrapper" id="pq-tiles"></div>
+                <div style="font-size: 10px; color: var(--text-dim); margin-top: 4px;">Format: [max_elevation, r, c]</div>
+            </div>
+            
+            <div class="result-display">
+                <span class="ui-label">minimum time to reach end =</span>
+                <span id="res-val">—</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="action-panel" id="main-panel">—</div>
+
+    <div class="info-panel">
+        <div class="info-cell">
+            <span class="info-label">Popped Cell (t, r, c)</span>
+            <span class="info-value" id="val-u" style="color: var(--accent-blue);">—</span>
+        </div>
+        <div class="info-cell">
+            <span class="info-label">Checking Neighbor</span>
+            <span class="info-value" id="val-v" style="color: var(--accent-purple);">—</span>
+        </div>
+        <div class="info-cell">
+            <span class="info-label">New Required Level</span>
+            <span class="info-value" id="val-req" style="color: var(--text-main);">—</span>
+        </div>
+    </div>
+
+    <div class="status-bar" id="status-text"></div>
+
+    <div class="controls">
+        <button onclick="reset()">↺ Reset</button>
+        <button onclick="back()">← Back</button>
+        <button onclick="togglePlay()" id="play-btn">Play</button>
+        <button onclick="next()">Next →</button>
+        <div class="controls" style="margin-top:0">
+            <span class="ui-label" style="margin-right:4px; font-size:11px">Speed</span>
+            <input type="range" id="speed-slider" min="0" max="2" value="1">
+        </div>
+    </div>
+
+    <div class="legend">
+        <div class="legend-item"><span class="dot" style="background:var(--cell-dry); border-color:#55482e;"></span> Unvisited / Dry</div>
+        <div class="legend-item"><span class="dot" style="background:var(--cell-frontier); border-color:var(--accent-orange)"></span> In Queue (Frontier)</div>
+        <div class="legend-item"><span class="dot" style="background:var(--cell-water); border-color:var(--accent-blue)"></span> Submerged (Visited)</div>
+        <div class="legend-item"><span class="dot" style="background:transparent; border:2px solid var(--accent-blue)"></span> Popped Cell</div>
+        <div class="legend-item"><span class="dot" style="background:transparent; border:2px solid var(--accent-purple)"></span> Neighbor Check</div>
+        <div class="legend-item"><span class="dot" style="background:#0f2a1a; border-color:var(--accent-green)"></span> Final Path</div>
+    </div>
+
+    <div class="log-panel" id="log"></div>
+
+    <script>
+        let grid = [[0,2],[1,3]];
+        let N = 2;
+        
+        let steps = [];
+        let stepIndex = 0;
+        let timer = null;
+        const delays = [2000, 1000, 400]; 
+
+        function init() { 
+            loadExample('[[0,2],[1,3]]'); 
+        }
+
+        function loadExample(jsonStr) {
+            document.getElementById('g-input').value = jsonStr;
+            parseAndGenerate();
+        }
+
+        function loadCustom() {
+            parseAndGenerate();
+        }
+
+        function parseAndGenerate() {
+            try {
+                const valStr = document.getElementById('g-input').value;
+                grid = JSON.parse(valStr);
+                if (!Array.isArray(grid) || !Array.isArray(grid[0])) throw "Must be a 2D array";
+                N = grid.length;
+                for (let i=0; i<N; i++) {
+                    if (grid[i].length !== N) throw "Grid must be NxN";
+                }
+                
+                buildGridDom();
+                generateSteps();
+                reset();
+            } catch(e) {
+                alert("Invalid format. Expected an NxN 2D JSON array.");
+            }
+        }
+
+        function buildGridDom() {
+            const container = document.getElementById('grid-container');
+            container.innerHTML = '';
+            // Scale cell size based on N to fit area
+            let cellSize = N <= 3 ? 60 : (N <= 5 ? 40 : 30);
+            let fontSize = N <= 3 ? 18 : (N <= 5 ? 14 : 11);
+            
+            container.style.gridTemplateColumns = `repeat(${N}, ${cellSize}px)`;
+            
+            for(let r = 0; r < N; r++) {
+                for(let c = 0; c < N; c++) {
+                    const cell = document.createElement('div');
+                    cell.className = 'grid-cell';
+                    cell.style.width = `${cellSize}px`;
+                    cell.style.height = `${cellSize}px`;
+                    cell.style.fontSize = `${fontSize}px`;
+                    cell.id = `cell-${r}-${c}`;
+                    container.appendChild(cell);
+                }
+            }
+        }
+
+        function clonePQ(pq) {
+            return pq.map(item => ({...item}));
+        }
+
+        function generateSteps() {
+            steps = [];
+            
+            let pq = [];
+            let visited = Array.from({length: N}, () => new Array(N).fill(false));
+            let inQueue = Array.from({length: N}, () => new Array(N).fill(false));
+            let parent = Array.from({length: N}, () => new Array(N).fill(null));
+            
+            let currentWaterLevel = 0;
+
+            pq.push({t: grid[0][0], r: 0, c: 0});
+            inQueue[0][0] = true;
+
+            steps.push({
+                type: 'init',
+                pq: clonePQ(pq), visited: visited.map(row => [...row]), inQueue: inQueue.map(row => [...row]), path: [],
+                u: null, v: null, reqT: null, waterLevel: currentWaterLevel, popped: null, pushed: null,
+                panel: `<b>Dijkstra's on Grid</b><br>We want to find a path from <code>(0,0)</code> to <code>(${N-1},${N-1})</code> minimizing the maximum elevation encountered.<br>Initialize Priority Queue with start cell <code>[${grid[0][0]}, 0, 0]</code>.`,
+                statusText: `Initialization complete.`,
+                log: `Initialized N=${N} grid. Pushed start (0,0) to PQ.`
+            });
+
+            let dirs = [[-1,0], [1,0], [0,-1], [0,1]];
+            let found = false;
+
+            while (pq.length > 0 && !found) {
+                pq.sort((a, b) => a.t - b.t);
+                let curr = pq.shift();
+                
+                visited[curr.r][curr.c] = true;
+                inQueue[curr.r][curr.c] = false;
+                
+                currentWaterLevel = Math.max(currentWaterLevel, curr.t);
+
+                steps.push({
+                    type: 'pop',
+                    pq: clonePQ(pq), visited: visited.map(row => [...row]), inQueue: inQueue.map(row => [...row]), path: [],
+                    u: {r: curr.r, c: curr.c}, v: null, reqT: null, waterLevel: currentWaterLevel, popped: curr, pushed: null,
+                    panel: `<b>Pop Min-Heap:</b> Extract cell <code>(${curr.r}, ${curr.c})</code> with required elevation <b>${curr.t}</b>.<br>Update global water level to <b>${currentWaterLevel}</b>.`,
+                    statusText: `Processing (${curr.r}, ${curr.c})...`,
+                    log: `\nPopped (${curr.r}, ${curr.c}) at elevation ${curr.t}. Water level = ${currentWaterLevel}.`
+                });
+
+                if (curr.r === N - 1 && curr.c === N - 1) {
+                    found = true;
+                    
+                    let path = [];
+                    let pr = curr.r, pc = curr.c;
+                    while(pr !== null && pc !== null) {
+                        path.push({r: pr, c: pc});
+                        let p = parent[pr][pc];
+                        if (p) {
+                            pr = p.r; pc = p.c;
+                        } else break;
+                    }
+
+                    steps.push({
+                        type: 'final',
+                        pq: clonePQ(pq), visited: visited.map(row => [...row]), inQueue: inQueue.map(row => [...row]), path: path,
+                        u: {r: curr.r, c: curr.c}, v: null, reqT: null, waterLevel: currentWaterLevel, popped: null, pushed: null,
+                        panel: `<b style="color:var(--accent-green); font-size:16px;">Destination Reached!</b><br>We successfully reached <code>(${N-1}, ${N-1})</code>.<br>The minimum time/elevation required is <b>${currentWaterLevel}</b>.`,
+                        complete: true, result: currentWaterLevel,
+                        statusText: `Algorithm Complete!`,
+                        log: `Destination reached! Final answer = ${currentWaterLevel}.`,
+                        logColor: 'var(--accent-green)'
+                    });
+                    break;
+                }
+
+                for (let [dr, dc] of dirs) {
+                    let nr = curr.r + dr;
+                    let nc = curr.c + dc;
+
+                    if (nr >= 0 && nr < N && nc >= 0 && nc < N && !visited[nr][nc] && !inQueue[nr][nc]) {
+                        
+                        let nElevation = grid[nr][nc];
+                        let requiredTime = Math.max(currentWaterLevel, nElevation);
+                        
+                        steps.push({
+                            type: 'check',
+                            pq: clonePQ(pq), visited: visited.map(row => [...row]), inQueue: inQueue.map(row => [...row]), path: [],
+                            u: {r: curr.r, c: curr.c}, v: {r: nr, c: nc}, reqT: requiredTime, waterLevel: currentWaterLevel, popped: null, pushed: null,
+                            panel: `Evaluating neighbor <code>(${nr}, ${nc})</code>. Its elevation is <b>${nElevation}</b>.<br>Path max elevation so far is <b>${currentWaterLevel}</b>.<br>Required level to cross this edge = <code>max(${currentWaterLevel}, ${nElevation}) = <b>${requiredTime}</b></code>.`,
+                            statusText: `Checking neighbor (${nr}, ${nc})...`,
+                            log: `  Check neighbor (${nr}, ${nc}) elevation ${nElevation}. Req level = ${requiredTime}.`
+                        });
+
+                        inQueue[nr][nc] = true;
+                        parent[nr][nc] = {r: curr.r, c: curr.c};
+                        let pushItem = {t: requiredTime, r: nr, c: nc};
+                        pq.push(pushItem);
+
+                        steps.push({
+                            type: 'push',
+                            pq: clonePQ(pq), visited: visited.map(row => [...row]), inQueue: inQueue.map(row => [...row]), path: [],
+                            u: {r: curr.r, c: curr.c}, v: {r: nr, c: nc}, reqT: requiredTime, waterLevel: currentWaterLevel, popped: null, pushed: pushItem,
+                            panel: `Enqueue state: <code>[${requiredTime}, ${nr}, ${nc}]</code>.<br>Cell added to the frontier.`,
+                            statusText: `Enqueued neighbor (${nr}, ${nc}).`,
+                            log: `    -> Enqueued [${requiredTime}, ${nr}, ${nc}].`,
+                            logColor: 'var(--accent-orange)'
+                        });
+                    }
+                }
+            }
+        }
+
+        function renderPQ(step) {
+            const container = document.getElementById('pq-tiles');
+            container.innerHTML = '';
+            
+            if (step.pq.length === 0 && !step.popped) {
+                container.innerHTML = '<span style="color:var(--text-dim); font-size:13px; font-family:monospace; margin-top:8px;">{ empty }</span>';
+                return;
+            }
+
+            if (step.popped !== null && step.type === 'pop') {
+                const popTile = document.createElement('div');
+                popTile.className = `tile pq-tile popping`;
+                popTile.innerText = `[${step.popped.t}, ${step.popped.r}, ${step.popped.c}]`;
+                container.appendChild(popTile);
+            }
+
+            // visually sort for stability
+            let dispPq = [...step.pq].sort((a,b) => a.t - b.t);
+
+            dispPq.forEach(item => {
+                const tile = document.createElement('div');
+                tile.className = 'tile pq-tile';
+                tile.innerText = `[${item.t}, ${item.r}, ${item.c}]`;
+                
+                if (step.pushed && step.pushed.r === item.r && step.pushed.c === item.c && step.pushed.t === item.t) {
+                    tile.classList.add('pushing');
+                }
+                container.appendChild(tile);
+            });
+        }
+
+        function renderStep(idx) {
+            const step = steps[idx];
+            if (!step) return;
+
+            // Determine if a cell is part of the final path
+            let isPathCell = (r, c) => {
+                if (!step.path) return false;
+                return step.path.some(p => p.r === r && p.c === c);
+            };
+
+            // Render Grid Nodes
+            for(let r=0; r<N; r++){
+                for(let c=0; c<N; c++){
+                    let cell = document.getElementById(`cell-${r}-${c}`);
+                    if(!cell) continue;
+
+                    let val = grid[r][c];
+                    let isVis = step.visited[r][c];
+                    let isInQ = step.inQueue[r][c];
+                    
+                    cell.className = 'grid-cell';
+                    if (isPathCell(r,c)) {
+                        cell.classList.add('path-node');
+                    } else if (isVis) {
+                        cell.classList.add('cell-water');
+                    } else if (isInQ) {
+                        cell.classList.add('cell-frontier');
+                    } else {
+                        cell.classList.add('cell-dry');
+                    }
+
+                    cell.innerText = val;
+
+                    // Action overlays
+                    if (step.u && step.u.r === r && step.u.c === c && !step.complete) {
+                        cell.classList.add('active-node');
+                    }
+                    if (step.v && step.v.r === r && step.v.c === c) {
+                        cell.classList.add('neighbor-node');
+                    }
+                }
+            }
+
+            renderPQ(step);
+
+            // Update Stats
+            document.getElementById('stat-level').innerText = step.waterLevel;
+
+            // Update Info Panel
+            document.getElementById('main-panel').innerHTML = step.panel;
+            
+            document.getElementById('val-u').innerText = step.u !== null ? `(${step.waterLevel}, ${step.u.r}, ${step.u.c})` : '—';
+            document.getElementById('val-v').innerText = step.v !== null ? `(${step.v.r}, ${step.v.c})` : '—';
+            document.getElementById('val-req').innerText = step.reqT !== null ? step.reqT : '—';
+
+            const resVal = document.getElementById('res-val');
+            resVal.innerText = step.complete ? step.result : '—';
+            if (step.complete) {
+                resVal.classList.add('pop');
+            } else {
+                resVal.classList.remove('pop');
+            }
+
+            document.getElementById('status-text').innerText = step.statusText;
+
+            // Update Log
+            const logPanel = document.getElementById('log');
+            logPanel.innerHTML = '';
+            for (let k = 0; k <= idx; k++) {
+                if (steps[k].log) {
+                    const line = document.createElement('div');
+                    line.style.marginBottom = '2px';
+                    line.style.whiteSpace = 'pre-wrap';
+                    if (steps[k].logColor) line.style.color = steps[k].logColor;
+                    line.innerText = steps[k].log;
+                    logPanel.appendChild(line);
+                }
+            }
+            logPanel.scrollTop = logPanel.scrollHeight;
+        }
+
+        function next() {
+            if (stepIndex < steps.length - 1) {
+                stepIndex++;
+                renderStep(stepIndex);
+            } else pause();
+        }
+
+        function back() {
+            if (stepIndex > 0) {
+                stepIndex--;
+                renderStep(stepIndex);
+            }
+        }
+
+        function reset() {
+            pause();
+            stepIndex = 0;
+            renderStep(0);
+        }
+
+        function togglePlay() {
+            const btn = document.getElementById('play-btn');
+            if (timer) pause();
+            else {
+                btn.innerText = 'Pause';
+                if (stepIndex >= steps.length - 1) stepIndex = 0;
+                timer = setInterval(next, delays[document.getElementById('speed-slider').value]);
+            }
+        }
+
+        function pause() {
+            clearInterval(timer);
+            timer = null;
+            document.getElementById('play-btn').innerText = 'Play';
+        }
+
+        window.onload = () => { setTimeout(init, 100); };
+    </script>
+</body>
+</html>

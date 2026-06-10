@@ -1,0 +1,614 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Linear Search vs Binary Search</title>
+    <style>
+        :root {
+            --bg-page: #070b14;
+            --bg-surface: rgba(255, 255, 255, 0.045);
+            --bg-input: rgba(255, 255, 255, 0.04);
+            --border-main: rgba(255, 255, 255, 0.10);
+            --btn-bg: rgba(255, 255, 255, 0.05);
+            --btn-hover: rgba(255, 255, 255, 0.10);
+            --text-main: #e8eefb;
+            --text-dim: #8b98b3;
+            --accent-orange: #f5a524;   /* binary mid probe / scan cursor */
+            --accent-blue:   #06b6d4;    /* hi bound / chrome             */
+            --accent-green:  #22c55e;    /* found                         */
+            --accent-red:    #f43f5e;    /* eliminated / not found        */
+            --accent-purple: #a855f7;    /* lo bound                      */
+            --mono: ui-monospace, 'SF Mono', 'Cascadia Code', 'Courier New', monospace;
+            --sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+            --shell: 900px;
+        }
+
+        * { box-sizing: border-box; }
+        html, body { overflow-x: hidden; }
+        body {
+            background:
+                radial-gradient(1100px 600px at 15% -10%, rgba(6, 182, 212, 0.10), transparent 60%),
+                radial-gradient(900px 600px at 100% 10%, rgba(168, 85, 247, 0.10), transparent 55%),
+                linear-gradient(160deg, #070b14 0%, #0b1120 55%, #0a0f1c 100%);
+            background-attachment: fixed;
+            color: var(--text-main); font-family: var(--sans); margin: 0;
+            display: flex; flex-direction: column; align-items: center; min-height: 100vh;
+            padding-bottom: 48px; -webkit-font-smoothing: antialiased;
+        }
+        body::before, body::after { content: ''; position: fixed; border-radius: 50%; filter: blur(70px); pointer-events: none; z-index: 0; opacity: 0.45; }
+        body::before { width: 380px; height: 380px; top: 8%; left: -120px; background: radial-gradient(circle, rgba(6,182,212,0.30), transparent 70%); }
+        body::after  { width: 420px; height: 420px; bottom: 4%; right: -140px; background: radial-gradient(circle, rgba(168,85,247,0.22), transparent 70%); }
+        body > * { position: relative; z-index: 1; }
+
+        .input-bar {
+            width: 100%; background: rgba(10, 15, 28, 0.55);
+            backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+            padding: 14px 16px; display: flex; justify-content: center; align-items: center; gap: 10px;
+            border-bottom: 1px solid var(--border-main); flex-wrap: wrap; position: sticky; top: 0; z-index: 50;
+        }
+        label.ui-label, .ui-label { font-family: var(--mono); font-size: 13px; color: var(--text-dim); letter-spacing: 0.2px; }
+        input[type="text"], input[type="number"] {
+            background: var(--bg-input); border: 1px solid var(--border-main); color: var(--text-main);
+            height: 34px; border-radius: 9px; padding: 0 12px; font-size: 13px; font-family: var(--mono);
+            transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+        }
+        .arr-input { width: 240px; } .val-input { width: 80px; }
+        input:focus { outline: none; border-color: var(--accent-blue); box-shadow: 0 0 0 3px rgba(6,182,212,0.18); background: rgba(6,182,212,0.06); }
+
+        button {
+            height: 34px; border-radius: 9px; padding: 0 14px; background: var(--btn-bg);
+            border: 1px solid var(--border-main); color: var(--text-main); font-size: 13px; font-weight: 600; cursor: pointer;
+            transition: transform 0.15s ease, background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+        }
+        button:hover { background: var(--btn-hover); border-color: rgba(6, 182, 212, 0.5); box-shadow: 0 0 18px rgba(6, 182, 212, 0.18); transform: translateY(-1px); }
+        button:active { transform: translateY(0); }
+        #play-btn { background: linear-gradient(135deg, rgba(6,182,212,0.22), rgba(6,182,212,0.10)); border-color: rgba(6, 182, 212, 0.45); color: #a5f3fc; min-width: 80px; }
+
+        .shell { width: var(--shell); max-width: 95%; margin: 24px auto 0; display: flex; flex-direction: column; gap: 16px; }
+
+        .title-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+        .title-row h1 { font-size: 18px; font-weight: 800; margin: 0; letter-spacing: 0.2px; }
+        .title-row .sub { color: var(--text-dim); font-weight: 500; font-size: 13px; }
+        .step-badge { font-family: var(--mono); font-size: 12px; font-weight: 700; color: #a5f3fc; background: rgba(6,182,212,0.12); border: 1px solid rgba(6,182,212,0.3); padding: 4px 10px; border-radius: 999px; white-space: nowrap; }
+        .progress-track { height: 4px; width: 100%; background: rgba(255,255,255,0.07); border-radius: 999px; overflow: hidden; margin-top: -6px; }
+        .progress-fill { height: 100%; width: 0%; border-radius: 999px; background: linear-gradient(90deg, var(--accent-blue), var(--accent-purple)); box-shadow: 0 0 12px rgba(6,182,212,0.5); transition: width 0.45s cubic-bezier(0.34,1.1,0.64,1); }
+
+        .narration { background: var(--bg-surface); border: 1px solid rgba(6,182,212,0.22); border-radius: 12px; padding: 12px 18px; font-family: var(--mono); font-size: 14px; line-height: 1.5; color: #cfe9f5; min-height: 48px; display: flex; align-items: center; gap: 10px; transition: border-color 0.3s, background 0.3s; }
+        .narration::before { content: '\25B8'; color: var(--accent-blue); font-size: 13px; }
+        .narration.done { border-color: rgba(34,197,94,0.4); background: rgba(34,197,94,0.06); }
+        .narration.done::before { content: '\2713'; color: var(--accent-green); }
+        .narration.miss { border-color: rgba(244,63,94,0.4); background: rgba(244,63,94,0.06); }
+        .narration.miss::before { content: '\2717'; color: var(--accent-red); }
+        .narration code { background: rgba(6,182,212,0.14); color: #7dd3fc; padding: 1px 6px; border-radius: 5px; font-size: 12.5px; }
+        .narration b { color: #fff; }
+
+        .stage-card { background: var(--bg-surface); border: 1px solid var(--border-main); border-radius: 18px; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); box-shadow: 0 12px 38px rgba(0,0,0,0.4); overflow: hidden; }
+        .stage-screen { position: relative; margin: 14px; border-radius: 14px; background: radial-gradient(700px 360px at 50% -10%, rgba(6,182,212,0.08), transparent 70%), #090d18; padding: 30px 24px 34px; border: 1px solid rgba(255,255,255,0.06); display: flex; flex-direction: column; align-items: center; gap: 30px; overflow-x: auto; min-height: 220px; }
+
+        /* one search lane (linear or binary) */
+        .lane { width: 100%; max-width: 100%; }
+        .lane-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 26px; padding: 0 2px; }
+        .lane-name { font-family: var(--mono); font-size: 13px; font-weight: 800; letter-spacing: 0.4px; display: inline-flex; align-items: center; gap: 8px; }
+        .lane-name .badge { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px; }
+        .lane.linear .lane-name .badge { color: #ffd591; background: rgba(245,165,36,0.14); border: 1px solid rgba(245,165,36,0.4); }
+        .lane.binary .lane-name .badge { color: #a5f3fc; background: rgba(6,182,212,0.14); border: 1px solid rgba(6,182,212,0.4); }
+        .lane-name .big-o { color: var(--text-dim); font-weight: 600; }
+        .cmp-counter { font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--text-dim); background: rgba(255,255,255,0.04); border: 1px solid var(--border-main); padding: 4px 12px; border-radius: 999px; transition: color 0.3s, border-color 0.3s, box-shadow 0.3s, background 0.3s; white-space: nowrap; }
+        .cmp-counter b { font-size: 14px; }
+        .lane.linear .cmp-counter.hot { color: #ffd591; border-color: rgba(245,165,36,0.5); background: rgba(245,165,36,0.08); box-shadow: 0 0 14px rgba(245,165,36,0.25); }
+        .lane.binary .cmp-counter.hot { color: #a5f3fc; border-color: rgba(6,182,212,0.5); background: rgba(6,182,212,0.08); box-shadow: 0 0 14px rgba(6,182,212,0.25); }
+
+        .arr-rail { position: relative; display: flex; gap: 9px; justify-content: center; min-width: max-content; }
+        .cell { width: 52px; height: 52px; border-radius: 13px; display: flex; align-items: center; justify-content: center; position: relative;
+            font-family: var(--mono); font-weight: 800; font-size: 19px; will-change: transform;
+            border: 2px solid var(--border-main); background: rgba(255,255,255,0.05); color: var(--text-main);
+            transition: background 0.35s, border-color 0.35s, color 0.35s, box-shadow 0.35s, transform 0.3s, opacity 0.35s; }
+        .cell.out { opacity: 0.3; }
+        .cell.range { border-color: rgba(6,182,212,0.4); background: rgba(6,182,212,0.06); }
+        .cell.probe { border-color: var(--accent-orange); background: rgba(245,165,36,0.16); color: #ffd591; box-shadow: 0 0 22px rgba(245,165,36,0.55); transform: translateY(-3px) scale(1.05); z-index: 3; }
+        .cell.found { border-color: var(--accent-green); background: linear-gradient(180deg, rgba(47,224,143,0.92), rgba(33,194,117,0.92)); color: #06251a; box-shadow: 0 0 20px rgba(34,197,94,0.5); }
+        .cell.eliminated { border-color: rgba(244,63,94,0.3); opacity: 0.25; }
+        .cell.scanned { opacity: 0.4; border-color: rgba(244,63,94,0.3); }
+        .cell .ci { position: absolute; top: -20px; left: 0; right: 0; text-align: center; font-size: 10px; color: var(--text-dim); font-weight: 700; }
+
+        /* gliding pointer pills */
+        .bptr { position: absolute; left: 0; display: flex; flex-direction: column; align-items: center; opacity: 0; pointer-events: none; will-change: transform; z-index: 6; }
+        .bptr.lo, .bptr.hi, .bptr.scan { bottom: 100%; margin-bottom: 7px; flex-direction: column-reverse; }
+        .bptr.mid { top: 100%; margin-top: 7px; }
+        .bptr .tag { font-family: var(--mono); font-size: 11px; font-weight: 800; padding: 3px 9px; border-radius: 8px; white-space: nowrap; }
+        .bptr .stalk { width: 2px; height: 14px; }
+        .bptr.lo   .tag { background: var(--accent-purple); color: #1a0533; box-shadow: 0 0 14px rgba(168,85,247,0.6); } .bptr.lo .stalk { background: var(--accent-purple); }
+        .bptr.hi   .tag { background: var(--accent-blue);   color: #04222a; box-shadow: 0 0 14px rgba(6,182,212,0.6); }  .bptr.hi .stalk { background: var(--accent-blue); }
+        .bptr.mid  .tag { background: var(--accent-orange); color: #3a2400; box-shadow: 0 0 14px rgba(245,165,36,0.6); } .bptr.mid .stalk { background: var(--accent-orange); }
+        .bptr.scan .tag { background: var(--accent-orange); color: #3a2400; box-shadow: 0 0 14px rgba(245,165,36,0.6); } .bptr.scan .stalk { background: var(--accent-orange); }
+
+        .action-stage { position: relative; min-height: 80px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; }
+        .action-word { font-family: var(--mono); font-weight: 800; font-size: 18px; letter-spacing: 0.4px; min-height: 22px; text-align: center; transition: color 0.3s; }
+        #confetti { position: absolute; inset: 0; overflow: visible; pointer-events: none; }
+        .confetti-piece { position: absolute; top: 0; left: 50%; width: 8px; height: 13px; border-radius: 2px; opacity: 0; animation: confettiFall ease-out forwards; }
+
+        .controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: center; }
+        .controls .kbd-hint { font-size: 11px; color: var(--text-dim); font-family: var(--mono); margin-left: 4px; }
+        .kbd { background: rgba(255,255,255,0.07); border: 1px solid var(--border-main); border-radius: 5px; padding: 1px 6px; font-size: 10px; }
+        input[type="range"] { accent-color: var(--accent-blue); width: 110px; cursor: pointer; }
+
+        .details-toggle { align-self: center; height: 32px; padding: 0 16px; border-radius: 999px; cursor: pointer; background: rgba(255,255,255,0.04); border: 1px solid var(--border-main); color: var(--text-dim); font-family: var(--mono); font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; gap: 8px; transition: color 0.2s, border-color 0.2s, background 0.2s; }
+        .details-toggle:hover { color: var(--text-main); border-color: rgba(6,182,212,0.4); background: rgba(6,182,212,0.06); }
+        .details-toggle .chev { transition: transform 0.3s ease; }
+        .details-wrap.open .details-toggle .chev { transform: rotate(180deg); }
+        .details-body { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.4s ease; }
+        .details-wrap.open .details-body { grid-template-rows: 1fr; }
+        .details-inner { overflow: hidden; min-height: 0; }
+        .details-grid { display: flex; flex-direction: column; gap: 14px; padding-top: 14px; }
+
+        .panel-card { background: var(--bg-surface); border: 1px solid var(--border-main); border-radius: 16px; backdrop-filter: blur(10px); box-shadow: 0 8px 30px rgba(0,0,0,0.35); }
+        .panel-head { display: flex; align-items: center; gap: 8px; padding: 11px 16px; border-bottom: 1px solid var(--border-main); font-size: 11px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; color: var(--text-dim); }
+        .panel-head .pip { width: 7px; height: 7px; border-radius: 50%; background: var(--accent-blue); box-shadow: 0 0 8px var(--accent-blue); }
+        .code-body { padding: 12px 6px 14px; font-family: var(--mono); font-size: 12.5px; line-height: 1.7; }
+        .code-line { display: flex; gap: 12px; padding: 1px 16px; border-left: 2px solid transparent; transition: background 0.3s, border-color 0.3s; white-space: pre; }
+        .code-line .lno { color: #4b5772; width: 16px; text-align: right; user-select: none; }
+        .code-line .src { color: #c4cee0; }
+        .code-line .kw { color: #c792ea; }
+        .code-line .fn { color: #82aaff; }
+        .code-line .cm { color: #5b6781; font-style: italic; }
+        .code-line.active { background: rgba(6,182,212,0.12); border-left-color: var(--accent-blue); }
+        .code-line.active .src, .code-line.active .lno { color: #e8eefb; }
+
+        .state-strip { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 0 2px; }
+        .pill { display: inline-flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 12px; color: var(--text-dim); background: rgba(255,255,255,0.04); border: 1px solid var(--border-main); border-radius: 999px; padding: 4px 11px; }
+        .pill b { color: var(--text-main); font-weight: 800; }
+        .pill.lo b { color: var(--accent-purple); } .pill.hi b { color: var(--accent-blue); } .pill.mid b { color: var(--accent-orange); } .pill.scan b { color: var(--accent-orange); }
+
+        .log-panel { border-radius: 14px; padding: 12px 16px; height: 110px; overflow-y: auto; font-family: var(--mono); font-size: 12.5px; line-height: 1.5; background: var(--bg-surface); border: 1px solid var(--border-main); }
+        .log-panel::-webkit-scrollbar { width: 8px; }
+        .log-panel::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 8px; }
+
+        @keyframes confettiFall { 0%{ opacity:1; transform: translate(-50%, 0) rotate(0deg); } 100%{ opacity:0; transform: translate(calc(-50% + var(--x)), 220px) rotate(var(--rot)); } }
+        @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; } }
+    </style>
+</head>
+<body>
+
+    <div class="input-bar">
+        <label class="ui-label">arr =</label>
+        <input type="text" id="arr-input" class="arr-input" placeholder="3, 7, 2, 9, 5">
+        <label class="ui-label">target =</label>
+        <input type="number" id="val-input" class="val-input" placeholder="9">
+        <button onclick="loadCustom()">Race</button>
+        <span class="ui-label" style="opacity:.5">|</span>
+        <button onclick="loadExample(0)">Ex 1</button>
+        <button onclick="loadExample(1)">Ex 2</button>
+    </div>
+
+    <div class="shell">
+        <div class="title-row">
+            <h1>Linear vs Binary Search <span class="sub">&middot; same sorted array &middot; race the comparison counters &middot; O(n) vs O(log n)</span></h1>
+            <span class="step-badge" id="step-badge">Step 1 / 1</span>
+        </div>
+        <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+
+        <div class="narration" id="main-panel">&mdash;</div>
+
+        <div class="stage-card">
+            <div class="stage-screen">
+                <div class="lane linear">
+                    <div class="lane-head">
+                        <span class="lane-name"><span class="badge">LINEAR</span> <span class="big-o">scan left &#8594; right &middot; O(n)</span></span>
+                        <span class="cmp-counter" id="lin-counter">comparisons <b>0</b></span>
+                    </div>
+                    <div class="arr-rail" id="lin-rail"></div>
+                </div>
+                <div class="lane binary">
+                    <div class="lane-head">
+                        <span class="lane-name"><span class="badge">BINARY</span> <span class="big-o">halve the space &middot; O(log n)</span></span>
+                        <span class="cmp-counter" id="bin-counter">comparisons <b>0</b></span>
+                    </div>
+                    <div class="arr-rail" id="bin-rail"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="action-stage">
+            <div id="confetti"></div>
+            <div class="action-word" id="action-word"></div>
+        </div>
+
+        <div class="controls">
+            <button onclick="resetSim()">&#8634; Reset</button>
+            <button onclick="prevStep()">&#8592; Back</button>
+            <button onclick="togglePlay()" id="play-btn">Play</button>
+            <button onclick="nextStep()">Next &#8594;</button>
+            <span class="ui-label" style="margin-left:6px; font-size:11px">Speed</span>
+            <input type="range" id="speed" min="0" max="2" value="1">
+            <span class="kbd-hint"><span class="kbd">&#8592;</span> <span class="kbd">&#8594;</span> step &middot; <span class="kbd">space</span> play</span>
+        </div>
+
+        <div class="details-wrap" id="details-wrap">
+            <button class="details-toggle" onclick="toggleDetails()" aria-expanded="false">
+                <span id="details-label">Show code, state &amp; log</span> <span class="chev">&#9662;</span>
+            </button>
+            <div class="details-body">
+                <div class="details-inner">
+                    <div class="details-grid">
+                        <div class="state-strip">
+                            <span class="pill scan">scan i <b id="st-scan">&mdash;</b></span>
+                            <span class="pill lo">lo <b id="st-lo">&mdash;</b></span>
+                            <span class="pill mid">mid <b id="st-mid">&mdash;</b></span>
+                            <span class="pill hi">hi <b id="st-hi">&mdash;</b></span>
+                            <span class="pill">target <b id="st-target">&mdash;</b></span>
+                            <span class="pill">linear cmp <b id="st-lin">0</b></span>
+                            <span class="pill">binary cmp <b id="st-bin">0</b></span>
+                        </div>
+                        <div class="panel-card">
+                            <div class="panel-head"><span class="pip"></span> <span id="code-title">Algorithm</span></div>
+                            <div class="code-body" id="code-panel"></div>
+                        </div>
+                        <div class="log-panel" id="log"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        'use strict';
+
+        // ───────── Motion engine ─────────
+        const REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        const FRAME = 1000 / 60;
+        function sampleSpring(stiffness, damping, mass) {
+            const dt = 1 / 60; let x = 1, v = 0; const out = [];
+            for (let i = 0; i < 240; i++) { const a = (-stiffness * x - damping * v) / mass; v += a * dt; x += v * dt; out.push(1 - x); if (Math.abs(x) < 0.0015 && Math.abs(v) < 0.0015) break; }
+            out.push(1); return out;
+        }
+        const SPRING_POS = sampleSpring(320, 30, 1);
+        const durOf = (a) => a.length * FRAME;
+        const Motion = {
+            glide(el, x) {
+                const prev = el._x; el.style.opacity = '1';
+                const commit = `translateX(${x.toFixed(2)}px) translateX(-50%)`;
+                if (REDUCED || prev == null || Math.abs(x - prev) < 0.5) { el._x = x; el.style.transform = commit; return; }
+                const dx = x - prev;
+                const kf = SPRING_POS.map(p => ({ transform: `translateX(${(prev + dx * p).toFixed(2)}px) translateX(-50%)` }));
+                el.animate(kf, { duration: durOf(SPRING_POS), easing: 'linear' });
+                el._x = x; el.style.transform = commit;
+            },
+        };
+
+        // ───────── State ─────────
+        let arr = [2, 3, 5, 7, 9];
+        let target = 9;
+        let steps = [];
+        let stepIdx = 0;
+        let timer = null;
+        let confettiArmed = true;
+        const delays = [1500, 800, 380];
+        // persistent DOM stores, per rail
+        const linCells = {}, binCells = {};
+        const linPtrs = {}, binPtrs = {};
+
+        const CODE = [
+            [['cm','# LINEAR  — check every cell, O(n)']],
+            [['kw','for '],['src','i in range(n):']],
+            [['kw','  if '],['src','a[i] == target: return i']],
+            [['cm','# BINARY  — sorted only, O(log n)']],
+            [['src','lo, hi = 0, n - 1']],
+            [['kw','while '],['src','lo <= hi:']],
+            [['src','  mid = (lo + hi) // 2']],
+            [['kw','  if '],['src','a[mid] == target: return mid']],
+            [['kw','  elif '],['src','a[mid] < target: lo = mid + 1']],
+            [['kw','  else'],['src',': hi = mid - 1']],
+        ];
+        function buildCodePanel() {
+            const panel = document.getElementById('code-panel'); panel.innerHTML = '';
+            CODE.forEach((tokens, i) => {
+                const line = document.createElement('div'); line.className = 'code-line'; line.dataset.line = i;
+                const lno = document.createElement('span'); lno.className = 'lno'; lno.textContent = i + 1; line.appendChild(lno);
+                const src = document.createElement('span');
+                tokens.forEach(([cls, txt]) => { const s = document.createElement('span'); s.className = cls; s.textContent = txt; src.appendChild(s); });
+                line.appendChild(src); panel.appendChild(line);
+            });
+        }
+        function highlightCode(a) { document.querySelectorAll('.code-line').forEach(el => el.classList.toggle('active', a && a.includes(+el.dataset.line))); }
+        function toggleDetails() {
+            const wrap = document.getElementById('details-wrap'); const open = wrap.classList.toggle('open');
+            wrap.querySelector('.details-toggle').setAttribute('aria-expanded', open ? 'true' : 'false');
+            document.getElementById('details-label').textContent = open ? 'Hide code, state & log' : 'Show code, state & log';
+        }
+
+        // ───────── step generation ─────────
+        // Each step is an immutable snapshot describing BOTH lanes.
+        // phase: 'intro' | 'linear' | 'binary' | 'verdict'
+        function generateSteps() {
+            steps = [];
+            const a = arr, n = a.length;
+            // base lane states carried forward
+            const baseLin = { scan: -1, linDone: [], linFound: -1, linCmp: 0 };
+            const baseBin = { lo: 0, hi: n - 1, mid: -1, binElim: [], binFound: -1, binCmp: 0 };
+
+            const snap = (extra) => Object.assign(
+                { arr: [...a],
+                  scan: -1, linDone: [], linFound: -1, linCmp: 0,
+                  lo: -1, hi: -1, mid: -1, binElim: [], binFound: -1, binCmp: 0 },
+                extra);
+
+            if (n === 0) {
+                steps.push(snap({ phase: 'verdict', code: [], action: 'EMPTY', actionColor: 'var(--accent-red)', miss: true,
+                    panel: `The array is empty &#8594; nothing to search. Both searches return <code>-1</code> immediately.`,
+                    log: `empty array -> -1` }));
+                return;
+            }
+
+            // ── intro ──
+            steps.push(snap({ phase: 'intro', lo: 0, hi: n - 1, code: [0, 3],
+                action: 'SAME ARRAY, SAME TARGET', actionColor: 'var(--accent-blue)',
+                panel: `Same <b>sorted</b> array of ${n} and target <code>${target}</code>. <b>Linear</b> scans every cell (O(n)); <b>binary</b> halves the search space (O(log n)). Watch the comparison counters race.`,
+                log: `race: target=${target}  n=${n}` }));
+
+            // ── LINEAR pass ──
+            let linCmp = 0, linFound = -1;
+            const linDone = [];
+            for (let i = 0; i < n; i++) {
+                linCmp++;
+                const hit = a[i] === target;
+                steps.push(snap({ phase: 'linear', code: [1, 2], scan: i, linDone: [...linDone], linCmp,
+                    lo: 0, hi: n - 1,   // binary lane untouched yet
+                    action: `linear: compare a[${i}] = ${a[i]}`, actionColor: 'var(--accent-orange)',
+                    panel: `<b>Linear</b> &middot; comparison <b>${linCmp}</b>: check <code>a[${i}] = ${a[i]}</code> against <code>${target}</code>. ${hit ? `<span style="color:var(--accent-green)">match!</span>` : `no match &#8594; step right.`}`,
+                    log: `linear cmp#${linCmp}  a[${i}]=${a[i]} vs ${target}${hit ? '  HIT' : ''}` }));
+                if (hit) { linFound = i; break; }
+                linDone.push(i);
+            }
+            // linear conclusion
+            if (linFound >= 0) {
+                steps.push(snap({ phase: 'linear', code: [2], scan: linFound, linDone: [...linDone], linFound, linCmp,
+                    lo: 0, hi: n - 1,
+                    action: `linear found at ${linFound} (${linCmp} comparisons)`, actionColor: 'var(--accent-green)',
+                    panel: `<b>Linear</b> found <code>${target}</code> at index <b>${linFound}</b> after <b>${linCmp}</b> comparison${linCmp === 1 ? '' : 's'}. In the worst case it would scan all <b>${n}</b>.`,
+                    log: `linear -> found ${linFound} in ${linCmp} cmp` }));
+            } else {
+                steps.push(snap({ phase: 'linear', code: [1], scan: -1, linDone: a.map((_, i) => i), linCmp,
+                    lo: 0, hi: n - 1,
+                    action: `linear: not found (${linCmp} comparisons)`, actionColor: 'var(--accent-red)', miss: true,
+                    panel: `<b>Linear</b> scanned all <b>${n}</b> cells &mdash; <code>${target}</code> is <span style="color:var(--accent-red)">not</span> here. That is <b>${linCmp}</b> comparisons, the O(n) worst case.`,
+                    log: `linear -> not found, ${linCmp} cmp` }));
+            }
+
+            // ── BINARY pass (linear lane now frozen at its result) ──
+            const linFrozen = (linFound >= 0)
+                ? { scan: linFound, linDone: [...linDone], linFound, linCmp }
+                : { scan: -1, linDone: a.map((_, i) => i), linFound: -1, linCmp };
+
+            let lo = 0, hi = n - 1, binCmp = 0, binFound = -1;
+            const binElim = [];
+            steps.push(snap(Object.assign({}, linFrozen, {
+                phase: 'binary', code: [4], lo, hi, binElim: [...binElim], binCmp,
+                action: 'binary: lo = 0, hi = ' + hi, actionColor: 'var(--accent-blue)',
+                panel: `Now <b>binary</b>. Because the array is sorted, start with <code>lo=0</code>, <code>hi=${hi}</code> &mdash; the whole array is the search space.`,
+                log: `binary init  lo=0 hi=${hi}` })));
+
+            while (lo <= hi) {
+                const mid = (lo + hi) >> 1;
+                binCmp++;
+                steps.push(snap(Object.assign({}, linFrozen, {
+                    phase: 'binary', code: [5, 6, 7], lo, hi, mid, binElim: [...binElim], binCmp,
+                    action: `binary: probe a[${mid}] = ${a[mid]}`, actionColor: 'var(--accent-orange)',
+                    panel: `<b>Binary</b> &middot; comparison <b>${binCmp}</b>: <code>mid = (lo+hi)/2 = ${mid}</code>. Compare <code>a[${mid}] = ${a[mid]}</code> with <code>${target}</code>.`,
+                    log: `binary cmp#${binCmp}  mid=${mid} a[${mid}]=${a[mid]} vs ${target}` })));
+                if (a[mid] === target) {
+                    binFound = mid;
+                    steps.push(snap(Object.assign({}, linFrozen, {
+                        phase: 'binary', code: [7], lo, hi, mid, binElim: [...binElim], binFound, binCmp,
+                        action: 'binary found at ' + mid + ' (' + binCmp + ' comparisons)', actionColor: 'var(--accent-green)',
+                        panel: `<code>a[${mid}] == ${target}</code> &#8594; <span style="color:var(--accent-green)">found</span> at index <b>${mid}</b> after just <b>${binCmp}</b> comparison${binCmp === 1 ? '' : 's'}.`,
+                        log: `binary -> found ${mid} in ${binCmp} cmp` })));
+                    break;
+                } else if (a[mid] < target) {
+                    for (let i = lo; i <= mid; i++) binElim.push(i);
+                    lo = mid + 1;
+                    steps.push(snap(Object.assign({}, linFrozen, {
+                        phase: 'binary', code: [8], lo, hi, mid: -1, binElim: [...binElim], binCmp,
+                        action: 'binary: go RIGHT', actionColor: 'var(--accent-purple)',
+                        panel: `<code>a[${mid}] = ${a[mid]} &lt; ${target}</code> &#8594; the target must be to the right. One comparison just discarded the whole left half. Move <code>lo = ${lo}</code>.`,
+                        log: `binary a[mid] < target -> lo=${lo}` })));
+                } else {
+                    for (let i = mid; i <= hi; i++) binElim.push(i);
+                    hi = mid - 1;
+                    steps.push(snap(Object.assign({}, linFrozen, {
+                        phase: 'binary', code: [9], lo, hi, mid: -1, binElim: [...binElim], binCmp,
+                        action: 'binary: go LEFT', actionColor: 'var(--accent-blue)',
+                        panel: `<code>a[${mid}] = ${a[mid]} &gt; ${target}</code> &#8594; the target must be to the left. Move <code>hi = ${hi}</code>, discarding the right half.`,
+                        log: `binary a[mid] > target -> hi=${hi}` })));
+                }
+            }
+            if (binFound < 0) {
+                steps.push(snap(Object.assign({}, linFrozen, {
+                    phase: 'binary', code: [5], lo, hi, mid: -1, binElim: a.map((_, i) => i), binCmp,
+                    action: 'binary: not found (' + binCmp + ' comparisons)', actionColor: 'var(--accent-red)', miss: true,
+                    panel: `<code>lo &gt; hi</code> &mdash; the search space is empty. <code>${target}</code> is <span style="color:var(--accent-red)">not</span> here. Binary used <b>${binCmp}</b> comparison${binCmp === 1 ? '' : 's'}.`,
+                    log: `binary -> not found, ${binCmp} cmp` })));
+            }
+
+            // ── verdict ──
+            const found = (binFound >= 0 || linFound >= 0);
+            const idx = binFound >= 0 ? binFound : linFound;
+            const winner = binCmp < linCmp ? 'Binary' : (binCmp > linCmp ? 'Linear' : 'a tie');
+            const verdictPanel = found
+                ? `<b>Both</b> reach index <b>${idx}</b> &mdash; but linear took <code>${linCmp}</code> comparison${linCmp === 1 ? '' : 's'} and binary took <code>${binCmp}</code>. ${winner === 'a tie' ? 'A tie this time' : `<b>${winner}</b> wins`}. The gap is O(n) vs O(log n) &mdash; it widens fast as n grows.`
+                : `<b>Neither</b> found <code>${target}</code>. Linear paid <code>${linCmp}</code> comparison${linCmp === 1 ? '' : 's'} (O(n)); binary paid only <code>${binCmp}</code> (O(log n)).`;
+            steps.push(snap(Object.assign({}, linFrozen, {
+                phase: 'verdict', code: [], lo: -1, hi: -1, mid: -1,
+                binElim: binFound >= 0 ? [...binElim] : a.map((_, i) => i),
+                binFound, binCmp,
+                action: found ? `LINEAR ${linCmp} cmp  vs  BINARY ${binCmp} cmp` : `not found — ${linCmp} vs ${binCmp} cmp`,
+                actionColor: found ? 'var(--accent-green)' : 'var(--accent-red)',
+                confetti: found, miss: !found, done: found,
+                panel: verdictPanel,
+                log: `verdict: linear ${linCmp} cmp, binary ${binCmp} cmp` })));
+        }
+
+        // ───────── render ─────────
+        function cellCenterX(cellMap, i) { const el = cellMap[i]; return el ? el.offsetLeft + el.offsetWidth / 2 : 0; }
+
+        function renderRail(railId, cellMap, step, mode) {
+            const rail = document.getElementById(railId);
+            const used = new Set();
+            for (let i = 0; i < step.arr.length; i++) {
+                used.add(String(i));
+                let el = cellMap[i];
+                if (!el) { el = document.createElement('div'); el.className = 'cell'; el.innerHTML = `<span class="ci"></span><span class="cv"></span>`; cellMap[i] = el; rail.appendChild(el); }
+                el.querySelector('.ci').textContent = i;
+                el.querySelector('.cv').textContent = step.arr[i];
+                let cls = 'cell';
+                if (mode === 'linear') {
+                    const scannedSet = new Set(step.linDone || []);
+                    if (step.linFound >= 0 && i === step.linFound) cls += ' found';
+                    else if (i === step.scan) cls += ' probe';
+                    else if (scannedSet.has(i)) cls += ' scanned';
+                } else {
+                    const elimSet = new Set(step.binElim || []);
+                    const active = step.lo >= 0 && step.hi >= 0;
+                    const inRange = active && i >= step.lo && i <= step.hi;
+                    if (step.binFound >= 0 && i === step.binFound) cls += ' found';
+                    else if (i === step.mid && step.mid >= 0) cls += ' probe';
+                    else if (elimSet.has(i)) cls += ' eliminated';
+                    else if (inRange) cls += ' range';
+                    else if (active && !inRange) cls += ' out';
+                }
+                el.className = cls;
+            }
+            Object.keys(cellMap).forEach(k => { if (!used.has(k)) { cellMap[k].remove(); delete cellMap[k]; } });
+        }
+
+        function renderStep(idx) {
+            stepIdx = idx; const step = steps[idx]; if (!step) return;
+
+            renderRail('lin-rail', linCells, step, 'linear');
+            renderRail('bin-rail', binCells, step, 'binary');
+
+            // linear pointer (scan cursor)
+            placePtr('lin-rail', linPtrs, linCells, 'scan', step.scan >= 0 ? step.scan : null);
+            // binary pointers
+            const binActive = step.lo >= 0 && step.hi >= 0 && step.lo <= step.hi;
+            placePtr('bin-rail', binPtrs, binCells, 'lo', binActive ? step.lo : null);
+            placePtr('bin-rail', binPtrs, binCells, 'hi', binActive ? step.hi : null);
+            placePtr('bin-rail', binPtrs, binCells, 'mid', step.mid >= 0 ? step.mid : null);
+
+            // counters
+            const linC = document.getElementById('lin-counter');
+            const binC = document.getElementById('bin-counter');
+            linC.innerHTML = `comparisons <b>${step.linCmp}</b>`;
+            binC.innerHTML = `comparisons <b>${step.binCmp}</b>`;
+            linC.classList.toggle('hot', step.phase === 'linear');
+            binC.classList.toggle('hot', step.phase === 'binary');
+
+            // narration
+            const mp = document.getElementById('main-panel');
+            mp.innerHTML = step.panel || '&mdash;';
+            mp.classList.toggle('done', !!step.done);
+            mp.classList.toggle('miss', !!step.miss);
+            const aw = document.getElementById('action-word'); aw.textContent = step.action || ''; aw.style.color = step.actionColor || 'var(--text-dim)';
+            highlightCode(step.code);
+
+            // code panel title hint
+            const ct = document.getElementById('code-title');
+            ct.textContent = step.phase === 'linear' ? 'Linear search' : step.phase === 'binary' ? 'Binary search' : 'Algorithm';
+
+            if (step.confetti) { if (confettiArmed) { fireConfetti(); confettiArmed = false; } } else confettiArmed = true;
+
+            // state strip
+            document.getElementById('st-scan').textContent = step.scan >= 0 ? step.scan : '—';
+            document.getElementById('st-lo').textContent = step.lo >= 0 ? step.lo : '—';
+            document.getElementById('st-hi').textContent = step.hi >= 0 ? step.hi : '—';
+            document.getElementById('st-mid').textContent = step.mid >= 0 ? step.mid : '—';
+            document.getElementById('st-target').textContent = target;
+            document.getElementById('st-lin').textContent = step.linCmp;
+            document.getElementById('st-bin').textContent = step.binCmp;
+
+            document.getElementById('step-badge').textContent = `Step ${idx + 1} / ${steps.length}`;
+            document.getElementById('progress-fill').style.width = `${(idx / Math.max(1, steps.length - 1)) * 100}%`;
+
+            const logEl = document.getElementById('log');
+            logEl.innerHTML = steps.slice(0, idx + 1).map(s => `<div style="margin:3px 0;white-space:pre-wrap;">${s.log}</div>`).join('');
+            logEl.scrollTop = logEl.scrollHeight;
+        }
+
+        function placePtr(railId, ptrMap, cellMap, name, i) {
+            let pill = ptrMap[name];
+            if (!pill) {
+                pill = document.createElement('div'); pill.className = 'bptr ' + name;
+                const label = (name === 'scan') ? 'i' : name;
+                pill.innerHTML = (name === 'mid')
+                    ? `<div class="stalk"></div><div class="tag">mid</div>`
+                    : `<div class="tag">${label}</div><div class="stalk"></div>`;
+                document.getElementById(railId).appendChild(pill); ptrMap[name] = pill;
+            }
+            if (i == null || !cellMap[i]) { pill.style.opacity = '0'; pill._x = null; return; }
+            Motion.glide(pill, cellCenterX(cellMap, i));
+        }
+
+        function fireConfetti() {
+            const host = document.getElementById('confetti'); if (!host || REDUCED) return;
+            const colors = ['#22c55e', '#06b6d4', '#a855f7', '#f5a524', '#f43f5e'];
+            for (let i = 0; i < 38; i++) {
+                const p = document.createElement('div'); p.className = 'confetti-piece';
+                p.style.setProperty('--x', ((Math.random() * 2 - 1) * 220) + 'px');
+                p.style.setProperty('--rot', ((Math.random() * 720 - 360)) + 'deg');
+                p.style.background = colors[i % colors.length];
+                p.style.animationDuration = (0.9 + Math.random() * 0.8) + 's';
+                p.style.animationDelay = (Math.random() * 0.15) + 's';
+                host.appendChild(p); setTimeout(() => p.remove(), 1900);
+            }
+        }
+
+        // ───────── controls ─────────
+        function nextStep() { if (stepIdx < steps.length - 1) renderStep(stepIdx + 1); else pause(); }
+        function prevStep() { if (stepIdx > 0) renderStep(stepIdx - 1); }
+        function resetSim() { pause(); renderStep(0); }
+        function togglePlay() {
+            const btn = document.getElementById('play-btn');
+            if (timer) { pause(); return; }
+            btn.textContent = 'Pause';
+            if (stepIdx >= steps.length - 1) renderStep(0);
+            timer = setInterval(() => { if (stepIdx < steps.length - 1) nextStep(); else pause(); }, delays[document.getElementById('speed').value]);
+        }
+        function pause() { clearInterval(timer); timer = null; document.getElementById('play-btn').textContent = 'Play'; }
+
+        function clearDom() {
+            [linCells, binCells, linPtrs, binPtrs].forEach(map => {
+                Object.keys(map).forEach(k => { map[k].remove(); delete map[k]; });
+            });
+            confettiArmed = true;
+        }
+        function loadData(a, t) { pause(); arr = a; target = t; clearDom(); generateSteps(); renderStep(0); }
+        function loadCustom() {
+            const raw = (document.getElementById('arr-input').value || '')
+                .replace(/[\[\]]/g, '').split(',').map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n));
+            const a = raw.slice(0, 12).sort((x, y) => x - y);   // binary needs sorted; both lanes share it
+            const t = parseInt(document.getElementById('val-input').value, 10);
+            if (a.length && !isNaN(t)) loadData(a, t);
+        }
+        function loadExample(n) {
+            // preserve the original examples (raw arrays + targets); sorted for the shared sorted array
+            const ex = [{ raw: [3, 7, 2, 9, 5], t: 9 }, { raw: [1, 4, 6, 8], t: 3 }][n];
+            const a = [...ex.raw].sort((x, y) => x - y);
+            document.getElementById('arr-input').value = a.join(', ');
+            document.getElementById('val-input').value = ex.t;
+            loadData(a, ex.t);
+        }
+
+        document.addEventListener('keydown', (e) => {
+            const tag = (e.target.tagName || '').toLowerCase(); if (tag === 'input' || tag === 'textarea') return;
+            if (e.key === 'ArrowRight') { e.preventDefault(); pause(); nextStep(); }
+            else if (e.key === 'ArrowLeft') { e.preventDefault(); pause(); prevStep(); }
+            else if (e.key === ' ') { e.preventDefault(); togglePlay(); }
+        });
+        ['arr-input', 'val-input'].forEach(id => document.getElementById(id).addEventListener('keydown', (e) => { if (e.key === 'Enter') loadCustom(); }));
+        window.addEventListener('resize', () => renderStep(stepIdx));
+
+        buildCodePanel();
+        window.onload = () => loadExample(0);
+    </script>
+</body>
+</html>

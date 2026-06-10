@@ -1,0 +1,145 @@
+# ═══════════════════════════════════════════════════════════════════════════
+# vllm_gqa_config.yaml
+#
+# Production vLLM config for a GQA-8 model (Llama-3-70B shape) with FP8 KV
+# cache and prefix caching enabled. Every line is annotated; the goal is
+# that a reader understands not just what each knob does but WHY this is
+# the value we set.
+#
+# Drop-in usage:
+#   vllm serve --model meta-llama/Meta-Llama-3-70B-Instruct \
+#              --config-file vllm_gqa_config.yaml
+#
+# For a different model, update `model` and `max_model_len`. Everything
+# else generalizes to any GQA Llama-style model.
+# ═══════════════════════════════════════════════════════════════════════════
+
+# ─── Model loading ──────────────────────────────────────────────────────────
+model: meta-llama/Meta-Llama-3-70B-Instruct
+# The tokenizer path. Usually the same as the model, but if you fine-tuned
+# with a modified tokenizer, point this at the fine-tune path instead.
+tokenizer: meta-llama/Meta-Llama-3-70B-Instruct
+# Revision pin. NEVER deploy without pinning a commit SHA. We've seen a
+# tokenizer patch shipped on main that changed byte-to-token boundaries,
+# silently collapsing prefix cache hit rate in production.
+revision: main  # production: pin to a SHA
+
+# ─── Quantization ───────────────────────────────────────────────────────────
+# AWQ for weights — 4-bit with per-group scale. For Llama-70B this takes
+# the weight footprint from ~147GB (FP16) to ~35GB. On a single H100 (80GB)
+# you then have ~45GB left for KV, which at GQA-8 + 8K ctx = ~18 concurrent
+# requests.
+quantization: awq
+# KV cache dtype. fp8_e4m3 halves KV memory (2.5GB → 1.25GB per req for
+# Llama-3-70B GQA-8 at 8K ctx), with <0.15 perplexity degradation in our
+# measurements. fp8_e5m2 has wider range but more quantization error near
+# zero; e4m3 is the default for KV.
+kv_cache_dtype: fp8_e4m3
+# Calibration set for FP8 scaling. Vitally important: the scale factors for
+# FP8 KV are calibrated from a sample of activations. Use YOUR production
+# traffic distribution, not the default calibration set, or you'll get
+# scale factors tuned for Wikipedia instead of your domain.
+calibrated_kv_scales_path: /models/nexus/kv_scales_fraud_detection.safetensors
+
+# ─── Attention / context ────────────────────────────────────────────────────
+# Max context length. Set to the actual max you serve, not the model's
+# training limit. Over-provisioning this just wastes the KV block pool
+# (vLLM pre-reserves blocks based on max_model_len).
+max_model_len: 8192
+# Block size for PagedAttention (tokens per block). 16 = tight packing,
+# high indirection overhead. 32 = the default sweet spot. 64 = less
+# indirection, more internal fragmentation for short requests.
+# For GQA-8 at 8K ctx, 32 is correct. Re-benchmark if you go to 128K ctx.
+block_size: 32
+
+# ─── Prefix caching (RadixAttention) ────────────────────────────────────────
+# Enable shared-prefix KV deduplication. Every request whose prompt starts
+# with the same N tokens shares the KV state for those N tokens. Huge win
+# for any workload with a stable system prompt.
+enable_prefix_caching: true
+# HOWEVER: this requires byte-stable prefixes. If your system prompt
+# contains a timestamp, the hit rate collapses to ~0%. See M7 war story #1.
+# Monitor nexus_radix_hit_rate in Prometheus; it should sit above 75% for
+# any production workload.
+
+# ─── Batching / scheduler ───────────────────────────────────────────────────
+# Max number of concurrent sequences the engine will run together. This is
+# the upper bound on effective batch size.
+max_num_seqs: 128
+# Max tokens across all concurrent sequences in a single step. For an 8K
+# max_model_len and batch=128 this should be at least 128*8192=1048576 in
+# theory, but in practice most requests are much shorter; 8192*4 gives a
+# good balance. Overshoot is wasted reservation; undershoot causes queueing.
+max_num_batched_tokens: 32768
+
+# ─── Disaggregated prefill (optional) ───────────────────────────────────────
+# In-process prefill and decode share the same GPU. For workloads where
+# prefill is long (> 4K input tokens typical), enable chunked prefill so
+# decode doesn't stall waiting for a large prefill to finish.
+enable_chunked_prefill: true
+# Chunk size. Larger = fewer chunks, better prefill throughput, worse
+# decode interference. 512 is a safe default; tune up if prefills are long
+# and TTFT is the bottleneck, tune down if TPOT jitter (p99.9 >> p99) is
+# the problem.
+max_num_batched_tokens_prefill_chunk: 512
+
+# ─── Parallelism ────────────────────────────────────────────────────────────
+# Tensor parallelism — how many GPUs to split each layer across. For AWQ
+# Llama-3-70B on H100 (80GB), TP=1 does not fit weights+activations+KV at
+# meaningful batch sizes. TP=2 is the minimum; TP=4 or TP=8 on one node
+# is common for full-context serving.
+tensor_parallel_size: 4
+# Pipeline parallelism is OFF by default. PP across nodes destroys decode
+# latency; only enable for a dedicated prefill cluster.
+pipeline_parallel_size: 1
+
+# ─── Scheduling policy ──────────────────────────────────────────────────────
+# fcfs is the default — FIFO. Fine for homogeneous workloads.
+# For mixed-SLO traffic (interactive + batch), switch to "priority" and
+# tag requests at the gateway. EDF (deadline-aware) is implemented as a
+# custom scheduler in vLLM; see the M5 artifact pack for the code.
+scheduling_policy: fcfs
+
+# ─── Observability ──────────────────────────────────────────────────────────
+# Expose Prometheus metrics on this endpoint. Scrape every 5s into your
+# time-series store. Top-row metrics to alert on:
+#   vllm:time_to_first_token_seconds         (TTFT — SLO signal)
+#   vllm:time_per_output_token_seconds       (TPOT — steady-state quality)
+#   vllm:gpu_cache_usage_perc                (KV pressure — capacity signal)
+#   vllm:num_preemptions_total               (preempt storms — a smell)
+#   vllm:prefix_cache_hit_rate               (byte-stability — leading indicator)
+enable_prometheus_metrics: true
+metrics_port: 8001
+
+# ─── Logging ────────────────────────────────────────────────────────────────
+# Request logging. Three-tier: always metadata, sampled full content.
+# Full prompt logging IS a GDPR surface — see M7.
+log_level: info
+log_requests: false  # production: false. Sample separately via the gateway.
+
+# ─── Engine-specific tuning ─────────────────────────────────────────────────
+# Gracefully drop requests that have been queued longer than this. Prevents
+# head-of-line blocking from very slow requests destroying tail latency.
+request_timeout_seconds: 60
+# Graph capture. CUDA graphs remove ~0.8ms of launch overhead per step.
+# For TPOT < 10ms this is a 10%+ throughput win.
+use_cuda_graphs: true
+# Graph capture sizes. Must cover your realistic batch sizes; a miss forces
+# an eager step (much slower). [1, 4, 8, 16, 32, 64, 128] covers the typical
+# distribution; add your expected sizes if they're different.
+cuda_graph_capture_sizes: [1, 4, 8, 16, 32, 64, 128]
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Pre-deploy verification (do these before promoting this config):
+#
+#   1. Dry-run the model load on a single GPU to confirm the AWQ weights
+#      actually load and match the reported parameter count.
+#   2. Run vllm's built-in latency benchmark at batch=1 to get the floor.
+#   3. Run throughput benchmark at batch=64 to get the ceiling.
+#   4. Verify kv_cache_dtype is taking effect: check GPU memory at steady
+#      state — KV should be ~half of what FP16 KV would be.
+#   5. Send 1000 requests with a stable system prompt and verify prefix
+#      cache hit rate rises to >80%.
+#
+# See operator_checklist.md for the full pre-deploy list.
+# ═══════════════════════════════════════════════════════════════════════════

@@ -1,0 +1,169 @@
+═══════════════════════════════════════════════════════════════════════════════
+Reference outputs for M7 production artifact scripts
+═══════════════════════════════════════════════════════════════════════════════
+
+Use this file as a reference for what each script outputs on representative
+production scenarios. Use when you don't have a real endpoint to test against,
+or as a sanity-check for numbers produced on your own runs.
+
+───────────────────────────────────────────────────────────────────────────────
+SCENARIO 1 · retry_storm_simulator.py --compare-mitigations
+───────────────────────────────────────────────────────────────────────────────
+
+Command:
+  python retry_storm_simulator.py --compare-mitigations
+
+Expected output (key portion):
+
+   scenario                                      peak ampl     recovery   SLO burn
+   ------------------------------------------ ------------ ------------ ----------
+   Naive retry (3 retries, no budget)               2.84×     107.5s      98.3%
+   With retry budget (10%)                          2.68×      -0.5s       8.3%
+   With jittered backoff                            4.55×     107.5s      95.0%
+   Budget + jitter (production baseline)            3.50×      -0.5s       8.3%
+
+   VERDICT
+   Naive retry amplifies traffic 2-3× during the blip and never
+   lets the system recover because retry load keeps overflowing capacity.
+   Jitter alone doesn't fix this — it spreads retries over time but
+   doesn't reduce total retry volume. The load-limiting mechanism is
+   the retry BUDGET, which caps retries as a % of successful traffic.
+
+INTERPRETATION
+  The critical row is "recovery": naive gets 107.5s elevated errors for a
+  10s upstream blip. Budget-equipped configurations recover within the blip
+  window itself (-0.5s means recovered before injection ended). This is
+  why every production config MUST include retry_budget at the proxy layer.
+
+
+───────────────────────────────────────────────────────────────────────────────
+SCENARIO 2 · load_shedding_calculator.py --arrival-rate-sweep
+───────────────────────────────────────────────────────────────────────────────
+
+Command:
+  python load_shedding_calculator.py --arrival-rate-sweep \
+      --capacity 1100 --slo-ttft-ms 250 --mean-service-ms 60
+
+Expected output:
+
+      arrival   ρ (util)     E[wait] ms     E[TTFT] ms      SLO
+    ---------- ---------- -------------- -------------- --------
+         550/s      0.500         37.5 ms         97.5 ms        ✓
+         770/s      0.700         87.5 ms        147.5 ms        ✓
+         880/s      0.800        150.0 ms        210.0 ms        ✓
+         990/s      0.900        337.5 ms        397.5 ms   ✗ miss
+        1045/s      0.950        712.5 ms        772.5 ms   ✗ miss
+        1100/s      1.000            ∞ ms            ∞ ms   ✗ miss
+
+   VERDICT
+   Shedding threshold: ρ* = 0.835
+   Equivalent arrival rate: 919 req/s
+   Start shedding ABOVE this arrival rate to keep TTFT ≤ SLO.
+
+INTERPRETATION
+  Kingman's formula makes the relationship between utilization and wait
+  nonlinear. At ρ=0.8, wait is 150ms; at ρ=0.9, it's 337ms (more than 2x
+  for only 10% more load). This is why you MUST shed at ρ ≈ 0.83 — waiting
+  until ρ=0.9 to react means SLO compliance is already broken.
+
+
+───────────────────────────────────────────────────────────────────────────────
+SCENARIO 3 · regional_failover_simulator.py --compare-health-checks
+───────────────────────────────────────────────────────────────────────────────
+
+Command:
+  python regional_failover_simulator.py --compare-health-checks
+
+Expected output:
+
+   detection window           failover time  outage drop %   recovery after
+   ------------------------ --------------- -------------- ----------------
+   10s window                           0s          0.0%             0s
+   30s window                           2s          0.2%             0s
+   60s window                           5s          0.6%             0s
+   120s window                          11s          1.2%             0s
+
+   VERDICT
+   Nexus v7 ships 30s detection window with 3-consecutive-failure
+   threshold. 10s is tempting but exposes to transient false positives
+   during deploys and network blips.
+
+INTERPRETATION
+  Each doubling of the health-check window roughly doubles the drop rate
+  during an outage. But shorter windows risk false positives during
+  transient issues (deploy rolling restarts, momentary network hiccups,
+  GC pauses). 30s is the production sweet spot for most workloads.
+
+
+───────────────────────────────────────────────────────────────────────────────
+SCENARIO 4 · chaos_test_harness.py --compare-scenarios
+───────────────────────────────────────────────────────────────────────────────
+
+Command:
+  python chaos_test_harness.py --endpoint http://staging/v1/completions \
+      --compare-scenarios --duration-s 30 --rps 20
+
+Expected output (against a production-ready endpoint):
+
+   scenario                 total    success %      SLO %     p50 ms     p99 ms
+   -------------------- -------- ------------ ---------- ---------- ----------
+   baseline                  600        100.0%      100.0%   42.1 ms   89.3 ms
+   latency_spike             600         99.5%       95.2%   52.6 ms  512.1 ms
+   error_burst               600         98.8%       98.3%   44.2 ms   91.5 ms
+
+   VERDICT
+   baseline            : (reference)
+   latency_spike       : SLO dropped -4.8 pp vs baseline
+   error_burst         : SLO dropped -1.7 pp vs baseline
+
+INTERPRETATION
+  Against a well-configured endpoint, the error_burst scenario should
+  barely move the SLO because retry budget + fast rejection keeps traffic
+  near baseline. The latency_spike will show SLO degradation proportional
+  to the fraction of requests affected — if it drops by more than 10pp,
+  the timeout policy is too loose or retry logic is too aggressive.
+
+  If your endpoint's results differ significantly from this shape, compare
+  config against envoy_production_filters.yaml and istio_traffic_policy.yaml.
+
+
+───────────────────────────────────────────────────────────────────────────────
+SCENARIO 5 · break_retry_storm.py (the full story)
+───────────────────────────────────────────────────────────────────────────────
+
+Command:
+  python break_retry_storm.py
+
+Expected output: wrapper around retry_storm_simulator.py showing:
+
+  1. The failing scenarios (naive retry)
+  2. The fixed scenarios (with budget + jitter)
+  3. The 3-line config diff (Envoy retry_policy change)
+  4. Monitoring rules to catch it BEFORE the next outage
+
+INTERPRETATION
+  This is the narrative version of the same simulation. Use when
+  introducing someone new to the retry-storm concept — it tells the
+  whole story (what breaks, why, how to fix, how to monitor) in one shot.
+
+
+───────────────────────────────────────────────────────────────────────────────
+WHAT THESE OUTPUTS TELL YOU ABOUT YOUR DEPLOYMENT
+───────────────────────────────────────────────────────────────────────────────
+
+1. Before deploying the gateway: run load_shedding_calculator.py with your
+   SLO and capacity. Configure local_rate_limit in Envoy at ρ* × capacity.
+   Verify by running chaos_test_harness.py and watching gateway shed
+   requests above that threshold.
+
+2. Before enabling retries: verify the Envoy/Istio config includes
+   retry_budget AND retry_back_off. Run break_retry_storm.py as a proof
+   that your current config avoids the bad-case pattern.
+
+3. Before multi-region deploy: run regional_failover_simulator.py with
+   your actual region count and traffic. Verify per-region capacity
+   sizing: each region should have (total_traffic / (N-1)) × 1.15 capacity.
+
+4. After any change to retry config, rate limit, or circuit breaker: run
+   chaos_test_harness.py as a smoke test against staging. The baseline vs
+   latency_spike vs error_burst comparison is your regression test.

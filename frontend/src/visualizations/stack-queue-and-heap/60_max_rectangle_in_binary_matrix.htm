@@ -1,0 +1,613 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Maximal Rectangle in a Binary Matrix</title>
+    <style>
+        :root {
+            --bg-page: #070b14;
+            --bg-surface: rgba(255, 255, 255, 0.045);
+            --bg-input: rgba(255, 255, 255, 0.04);
+            --border-main: rgba(255, 255, 255, 0.10);
+            --btn-bg: rgba(255, 255, 255, 0.05);
+            --btn-hover: rgba(255, 255, 255, 0.10);
+            --text-main: #e8eefb;
+            --text-dim: #8b98b3;
+            --accent-orange: #f5a524;   /* current row / scanning value   */
+            --accent-blue:   #06b6d4;   /* stack / chrome                 */
+            --accent-green:  #22c55e;   /* committed best / settled       */
+            --accent-red:    #f43f5e;   /* popped / resolved bar          */
+            --accent-purple: #a855f7;   /* current / peek                 */
+            --mono: ui-monospace, 'SF Mono', 'Cascadia Code', 'Courier New', monospace;
+            --sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+            --shell: 880px;
+        }
+
+        * { box-sizing: border-box; }
+        html, body { overflow-x: hidden; }
+        body {
+            background:
+                radial-gradient(1100px 600px at 15% -10%, rgba(6, 182, 212, 0.10), transparent 60%),
+                radial-gradient(900px 600px at 100% 10%, rgba(168, 85, 247, 0.10), transparent 55%),
+                linear-gradient(160deg, #070b14 0%, #0b1120 55%, #0a0f1c 100%);
+            background-attachment: fixed;
+            color: var(--text-main); font-family: var(--sans); margin: 0;
+            display: flex; flex-direction: column; align-items: center; min-height: 100vh;
+            padding-bottom: 48px; -webkit-font-smoothing: antialiased;
+        }
+        body::before, body::after { content: ''; position: fixed; border-radius: 50%; filter: blur(70px); pointer-events: none; z-index: 0; opacity: 0.45; }
+        body::before { width: 380px; height: 380px; top: 8%; left: -120px; background: radial-gradient(circle, rgba(6,182,212,0.30), transparent 70%); }
+        body::after  { width: 420px; height: 420px; bottom: 4%; right: -140px; background: radial-gradient(circle, rgba(168,85,247,0.22), transparent 70%); }
+        body > * { position: relative; z-index: 1; }
+
+        .input-bar {
+            width: 100%; background: rgba(10, 15, 28, 0.55);
+            backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+            padding: 14px 16px; display: flex; justify-content: center; align-items: center; gap: 10px;
+            border-bottom: 1px solid var(--border-main); flex-wrap: wrap; position: sticky; top: 0; z-index: 50;
+        }
+        label.ui-label, .ui-label { font-family: var(--mono); font-size: 13px; color: var(--text-dim); letter-spacing: 0.2px; }
+
+        button {
+            height: 34px; border-radius: 9px; padding: 0 14px; background: var(--btn-bg);
+            border: 1px solid var(--border-main); color: var(--text-main); font-size: 13px; font-weight: 600; cursor: pointer;
+            transition: transform 0.15s ease, background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+        }
+        button:hover { background: var(--btn-hover); border-color: rgba(6, 182, 212, 0.5); box-shadow: 0 0 18px rgba(6, 182, 212, 0.18); transform: translateY(-1px); }
+        button:active { transform: translateY(0); }
+        #play-btn { background: linear-gradient(135deg, rgba(6,182,212,0.22), rgba(6,182,212,0.10)); border-color: rgba(6, 182, 212, 0.45); color: #a5f3fc; min-width: 80px; }
+
+        .shell { width: var(--shell); max-width: 95%; margin: 24px auto 0; display: flex; flex-direction: column; gap: 16px; }
+
+        .title-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+        .title-row h1 { font-size: 18px; font-weight: 800; margin: 0; letter-spacing: 0.2px; }
+        .title-row .sub { color: var(--text-dim); font-weight: 500; font-size: 13px; }
+        .step-badge { font-family: var(--mono); font-size: 12px; font-weight: 700; color: #a5f3fc; background: rgba(6,182,212,0.12); border: 1px solid rgba(6,182,212,0.3); padding: 4px 10px; border-radius: 999px; white-space: nowrap; }
+        .progress-track { height: 4px; width: 100%; background: rgba(255,255,255,0.07); border-radius: 999px; overflow: hidden; margin-top: -6px; }
+        .progress-fill { height: 100%; width: 0%; border-radius: 999px; background: linear-gradient(90deg, var(--accent-blue), var(--accent-purple)); box-shadow: 0 0 12px rgba(6,182,212,0.5); transition: width 0.45s cubic-bezier(0.34,1.1,0.64,1); }
+
+        .op-feed { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+        .op-chip { font-family: var(--mono); font-size: 11px; font-weight: 700; padding: 4px 9px; border-radius: 8px; border: 1px solid var(--border-main); color: var(--text-dim); background: rgba(255,255,255,0.03); transition: all 0.3s; white-space: nowrap; }
+        .op-chip.done { opacity: 0.45; }
+        .op-chip.current { color: #fff; border-color: rgba(6,182,212,0.6); background: rgba(6,182,212,0.16); box-shadow: 0 0 12px rgba(6,182,212,0.3); }
+
+        .narration { background: var(--bg-surface); border: 1px solid rgba(6,182,212,0.22); border-radius: 12px; padding: 12px 18px; font-family: var(--mono); font-size: 14px; line-height: 1.5; color: #cfe9f5; min-height: 48px; display: flex; align-items: center; gap: 10px; transition: border-color 0.3s, background 0.3s; }
+        .narration::before { content: '\25B8'; color: var(--accent-blue); font-size: 13px; }
+        .narration.done { border-color: rgba(34,197,94,0.4); background: rgba(34,197,94,0.06); }
+        .narration.done::before { content: '\2713'; color: var(--accent-green); }
+        .narration.miss { border-color: rgba(244,63,94,0.4); background: rgba(244,63,94,0.06); }
+        .narration.miss::before { content: '\2717'; color: var(--accent-red); }
+        .narration code { background: rgba(6,182,212,0.14); color: #7dd3fc; padding: 1px 6px; border-radius: 5px; font-size: 12.5px; }
+        .narration b { color: #fff; }
+
+        .stage-card { background: var(--bg-surface); border: 1px solid var(--border-main); border-radius: 18px; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); box-shadow: 0 12px 38px rgba(0,0,0,0.4); overflow: hidden; }
+        .stage-screen { position: relative; margin: 14px; border-radius: 14px; background: radial-gradient(700px 300px at 50% -10%, rgba(6,182,212,0.08), transparent 70%), #090d18; border: 1px solid rgba(255,255,255,0.06); padding: 24px 18px; }
+
+        .stage-grid { display: flex; flex-wrap: wrap; gap: 28px; align-items: flex-start; justify-content: center; }
+        .col-block { display: flex; flex-direction: column; gap: 10px; align-items: center; }
+        .block-label { font-family: var(--mono); font-size: 10.5px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--text-dim); }
+
+        /* binary matrix grid */
+        .matrix { display: grid; gap: 5px; }
+        .mcell { width: 30px; height: 30px; border-radius: 7px; display: flex; align-items: center; justify-content: center;
+            font-family: var(--mono); font-weight: 800; font-size: 13px; border: 1.5px solid var(--border-main);
+            background: rgba(255,255,255,0.03); color: var(--text-dim);
+            transition: background 0.35s, border-color 0.35s, color 0.35s, box-shadow 0.35s, transform 0.3s; }
+        .mcell.one  { border-color: rgba(34,197,94,0.4); background: rgba(34,197,94,0.12); color: #d6ffe8; }
+        .mcell.zero { border-style: dashed; }
+        .mcell.activerow.one  { border-color: var(--accent-orange); background: rgba(245,165,36,0.18); color: #ffd591; box-shadow: 0 0 14px rgba(245,165,36,0.4); }
+        .mcell.activerow.zero { border-color: rgba(245,165,36,0.4); color: #ffd591; }
+        .mcell.best { border-color: var(--accent-green); background: rgba(34,197,94,0.30); color: #ffffff; box-shadow: 0 0 16px rgba(34,197,94,0.55); transform: scale(1.04); }
+
+        /* histogram bars for current row */
+        .histo { display: flex; align-items: flex-end; gap: 7px; height: 170px; padding: 0 4px; }
+        .bar-wrap { display: flex; flex-direction: column; align-items: center; gap: 5px; width: 30px; }
+        .bar { width: 30px; border-radius: 7px 7px 3px 3px; min-height: 4px; display: flex; align-items: flex-start; justify-content: center; padding-top: 3px;
+            font-family: var(--mono); font-weight: 800; font-size: 12px; color: #04222a;
+            border: 1.5px solid rgba(6,182,212,0.5); background: linear-gradient(180deg, rgba(6,182,212,0.55), rgba(6,182,212,0.22));
+            transition: height 0.35s cubic-bezier(.34,1.1,.64,1), background 0.3s, border-color 0.3s, box-shadow 0.3s, transform 0.3s; }
+        .bar.cursor { border-color: var(--accent-orange); background: linear-gradient(180deg, rgba(245,165,36,0.7), rgba(245,165,36,0.28)); box-shadow: 0 0 16px rgba(245,165,36,0.45); }
+        .bar.popping { border-color: var(--accent-red); background: linear-gradient(180deg, rgba(244,63,94,0.7), rgba(244,63,94,0.3)); box-shadow: 0 0 18px rgba(244,63,94,0.5); transform: scaleY(1.03); }
+        .bar.instack { border-color: var(--accent-purple); }
+        .bar.inbest { border-color: var(--accent-green); background: linear-gradient(180deg, rgba(34,197,94,0.7), rgba(34,197,94,0.3)); box-shadow: 0 0 14px rgba(34,197,94,0.45); }
+        .bar-idx { font-family: var(--mono); font-size: 10px; font-weight: 700; color: var(--text-dim); }
+        .bar.cursor + .bar-idx, .bar-wrap.curwrap .bar-idx { color: #ffd591; }
+
+        /* monotonic stack column (indices, top at the right) */
+        .mstack { display: flex; align-items: center; gap: 8px; min-height: 56px; padding: 6px 2px; flex-wrap: wrap; }
+        .stk-item { min-width: 38px; height: 44px; border-radius: 10px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
+            font-family: var(--mono); font-weight: 800; font-size: 15px; will-change: transform;
+            border: 2px solid var(--accent-blue); background: rgba(6,182,212,0.14); color: #a5f3fc; box-shadow: 0 0 14px rgba(6,182,212,0.3); }
+        .stk-item .sub { font-size: 9px; font-weight: 700; color: #7dd3fc; opacity: 0.8; }
+        .stk-item.top { border-color: var(--accent-purple); background: rgba(168,85,247,0.16); color: #e9d5ff; box-shadow: 0 0 18px rgba(168,85,247,0.45); }
+        .stk-empty { font-family: var(--mono); font-size: 12px; color: var(--text-dim); font-style: italic; }
+
+        .action-stage { position: relative; min-height: 84px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; }
+        .float-tile { padding: 8px 14px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-family: var(--mono); font-size: 16px; font-weight: 800; border: 2px solid var(--accent-orange); background: rgba(245,165,36,0.16); color: #ffd591; box-shadow: 0 0 22px rgba(245,165,36,0.5); opacity: 0; transform: scale(.5); transition: opacity .25s, transform .4s cubic-bezier(.34,1.5,.64,1); white-space: nowrap; }
+        .float-tile.show { opacity: 1; transform: scale(1); }
+        .action-word { font-family: var(--mono); font-weight: 800; font-size: 18px; letter-spacing: 0.4px; min-height: 22px; text-align: center; transition: color 0.3s; }
+        #confetti { position: absolute; inset: 0; overflow: visible; pointer-events: none; }
+        .confetti-piece { position: absolute; top: 0; left: 50%; width: 8px; height: 13px; border-radius: 2px; opacity: 0; animation: confettiFall ease-out forwards; }
+
+        .controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: center; }
+        .controls .kbd-hint { font-size: 11px; color: var(--text-dim); font-family: var(--mono); margin-left: 4px; }
+        .kbd { background: rgba(255,255,255,0.07); border: 1px solid var(--border-main); border-radius: 5px; padding: 1px 6px; font-size: 10px; }
+        input[type="range"] { accent-color: var(--accent-blue); width: 110px; cursor: pointer; }
+
+        .details-toggle { align-self: center; height: 32px; padding: 0 16px; border-radius: 999px; cursor: pointer; background: rgba(255,255,255,0.04); border: 1px solid var(--border-main); color: var(--text-dim); font-family: var(--mono); font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; gap: 8px; transition: color 0.2s, border-color 0.2s, background 0.2s; }
+        .details-toggle:hover { color: var(--text-main); border-color: rgba(6,182,212,0.4); background: rgba(6,182,212,0.06); }
+        .details-toggle .chev { transition: transform 0.3s ease; }
+        .details-wrap.open .details-toggle .chev { transform: rotate(180deg); }
+        .details-body { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.4s ease; }
+        .details-wrap.open .details-body { grid-template-rows: 1fr; }
+        .details-inner { overflow: hidden; min-height: 0; }
+        .details-grid { display: flex; flex-direction: column; gap: 14px; padding-top: 14px; }
+
+        .panel-card { background: var(--bg-surface); border: 1px solid var(--border-main); border-radius: 16px; backdrop-filter: blur(10px); box-shadow: 0 8px 30px rgba(0,0,0,0.35); }
+        .panel-head { display: flex; align-items: center; gap: 8px; padding: 11px 16px; border-bottom: 1px solid var(--border-main); font-size: 11px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; color: var(--text-dim); }
+        .panel-head .pip { width: 7px; height: 7px; border-radius: 50%; background: var(--accent-blue); box-shadow: 0 0 8px var(--accent-blue); }
+        .code-body { padding: 12px 6px 14px; font-family: var(--mono); font-size: 12.5px; line-height: 1.7; }
+        .code-line { display: flex; gap: 12px; padding: 1px 16px; border-left: 2px solid transparent; transition: background 0.3s, border-color 0.3s; white-space: pre; }
+        .code-line .lno { color: #4b5772; width: 16px; text-align: right; user-select: none; }
+        .code-line .src { color: #c4cee0; }
+        .code-line .kw { color: #c792ea; }
+        .code-line .fn { color: #82aaff; }
+        .code-line.active { background: rgba(6,182,212,0.12); border-left-color: var(--accent-blue); }
+        .code-line.active .src, .code-line.active .lno { color: #e8eefb; }
+
+        .state-strip { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 0 2px; }
+        .pill { display: inline-flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 12px; color: var(--text-dim); background: rgba(255,255,255,0.04); border: 1px solid var(--border-main); border-radius: 999px; padding: 4px 11px; }
+        .pill b { color: var(--text-main); font-weight: 800; }
+        .pill.r b { color: var(--accent-orange); } .pill.s b { color: var(--accent-green); } .pill.k b { color: var(--accent-blue); }
+
+        .log-panel { border-radius: 14px; padding: 12px 16px; height: 110px; overflow-y: auto; font-family: var(--mono); font-size: 12.5px; line-height: 1.5; background: var(--bg-surface); border: 1px solid var(--border-main); }
+        .log-panel::-webkit-scrollbar { width: 8px; }
+        .log-panel::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 8px; }
+
+        @keyframes confettiFall { 0%{ opacity:1; transform: translate(-50%, 0) rotate(0deg); } 100%{ opacity:0; transform: translate(calc(-50% + var(--x)), 220px) rotate(var(--rot)); } }
+        @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; } }
+    </style>
+</head>
+<body>
+
+    <div class="input-bar">
+        <label class="ui-label">Maximal rectangle of 1s</label>
+        <span class="ui-label" style="opacity:.5">|</span>
+        <button onclick="loadExample(0)">Example 1</button>
+        <button onclick="loadExample(1)">Example 2</button>
+        <button onclick="resetSim()">&#8634; Reset</button>
+    </div>
+
+    <div class="shell">
+        <div class="title-row">
+            <h1>Maximal Rectangle <span class="sub">&middot; binary matrix &middot; per-row histogram + largest-rectangle monotonic stack</span></h1>
+            <span class="step-badge" id="step-badge">Step 1 / 1</span>
+        </div>
+        <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+
+        <div class="op-feed" id="op-feed"></div>
+
+        <div class="narration" id="main-panel">&mdash;</div>
+
+        <div class="stage-card">
+            <div class="stage-screen">
+                <div class="stage-grid">
+                    <div class="col-block">
+                        <div class="block-label">Binary matrix</div>
+                        <div class="matrix" id="matrix-vis"></div>
+                    </div>
+                    <div class="col-block">
+                        <div class="block-label">Row histogram &middot; consecutive 1s</div>
+                        <div class="histo" id="histo-vis"></div>
+                        <div class="block-label" style="margin-top:6px">Monotonic stack &#8594; (top)</div>
+                        <div class="mstack" id="stack-vis"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="action-stage">
+            <div id="confetti"></div>
+            <div class="float-tile" id="float-tile"></div>
+            <div class="action-word" id="action-word"></div>
+        </div>
+
+        <div class="controls">
+            <button onclick="resetSim()">&#8634; Reset</button>
+            <button onclick="prevStep()">&#8592; Back</button>
+            <button onclick="togglePlay()" id="play-btn">Play</button>
+            <button onclick="nextStep()">Next &#8594;</button>
+            <span class="ui-label" style="margin-left:6px; font-size:11px">Speed</span>
+            <input type="range" id="speed" min="0" max="2" value="1">
+            <span class="kbd-hint"><span class="kbd">&#8592;</span> <span class="kbd">&#8594;</span> step &middot; <span class="kbd">space</span> play</span>
+        </div>
+
+        <div class="details-wrap" id="details-wrap">
+            <button class="details-toggle" onclick="toggleDetails()" aria-expanded="false">
+                <span id="details-label">Show code, state &amp; log</span> <span class="chev">&#9662;</span>
+            </button>
+            <div class="details-body">
+                <div class="details-inner">
+                    <div class="details-grid">
+                        <div class="state-strip">
+                            <span class="pill r">row <b id="st-row">-</b></span>
+                            <span class="pill k">stack <b id="st-stack">[]</b></span>
+                            <span class="pill s">max area <b id="st-max">0</b></span>
+                        </div>
+                        <div class="panel-card">
+                            <div class="panel-head"><span class="pip"></span> Algorithm</div>
+                            <div class="code-body" id="code-panel"></div>
+                        </div>
+                        <div class="log-panel" id="log"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        'use strict';
+
+        // ───────── Motion engine (spring, zero deps) ─────────
+        const REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        const FRAME = 1000 / 60;
+        function sampleSpring(stiffness, damping, mass) {
+            const dt = 1 / 60; let x = 1, v = 0; const out = [];
+            for (let i = 0; i < 240; i++) { const a = (-stiffness * x - damping * v) / mass; v += a * dt; x += v * dt; out.push(1 - x); if (Math.abs(x) < 0.0015 && Math.abs(v) < 0.0015) break; }
+            out.push(1); return out;
+        }
+        const SPRING_POS = sampleSpring(320, 30, 1);
+        const SPRING_POP = sampleSpring(520, 17, 1);
+        const durOf = (a) => a.length * FRAME;
+        const Motion = {
+            glide(el, y) {
+                const prev = el._y; el.style.opacity = '1';
+                const commit = `translateY(${y.toFixed(2)}px)`;
+                if (REDUCED || prev == null || Math.abs(y - prev) < 0.5) { el._y = y; el.style.transform = commit; return; }
+                const dy = y - prev;
+                const kf = SPRING_POS.map(p => ({ transform: `translateY(${(prev + dy * p).toFixed(2)}px)` }));
+                el.animate(kf, { duration: durOf(SPRING_POS), easing: 'linear' });
+                el._y = y; el.style.transform = commit;
+            },
+            pop(el, fromY) {
+                if (REDUCED) { el.style.opacity = '1'; return; }
+                const kf = SPRING_POP.map(p => ({ opacity: Math.min(1, p * 2).toFixed(3), transform: `translateY(${((fromY || -16) * (1 - p)).toFixed(2)}px) scale(${(0.4 + 0.6 * p).toFixed(3)})` }));
+                el.animate(kf, { duration: durOf(SPRING_POP), easing: 'linear', fill: 'backwards' });
+            },
+        };
+
+        // ───────── State ─────────
+        let matrix = [];       // binary matrix
+        let steps = [];
+        let stepIdx = 0;
+        let timer = null;
+        let confettiArmed = true;
+        const delays = [1500, 800, 380];
+        const cellEls = {};    // "r,c" -> element
+        const barEls = {};     // col -> bar element
+        const stkEls = {};     // stable id -> element
+
+        const examples = [
+            [[1,0,1,0,0],[1,0,1,1,1],[1,1,1,1,1],[1,0,0,1,0]],
+            [[0,0,0],[0,0,0]],
+        ];
+
+        const CODE = [
+            [['kw','def '],['fn','maximalRectangle'],['src','(mat):']],
+            [['src','  H = [0]*cols;  best = 0']],
+            [['kw','  for '],['src','r in range(rows):']],
+            [['kw','    for '],['src','c in range(cols):']],
+            [['src','      H[c] = H[c]+1 '],['kw','if '],['src','mat[r][c] '],['kw','else '],['src','0']],
+            [['src','    best = max(best, '],['fn','largestRect'],['src','(H))']],
+            [['kw','  return '],['src','best']],
+            [['src','def '],['fn','largestRect'],['src','(H):  st = []']],
+            [['kw','  for '],['src','j in range(len(H)+1):']],
+            [['src','    h = H[j] if j<len(H) else 0']],
+            [['kw','    while '],['src','st and h < H[st[-1]]:']],
+            [['src','      t = st.pop();  ht = H[t]']],
+            [['src','      w = j if not st else j-st[-1]-1']],
+            [['src','      area = max(area, ht*w)']],
+            [['src','    st.append(j)']],
+        ];
+        function buildCodePanel() {
+            const panel = document.getElementById('code-panel'); panel.innerHTML = '';
+            CODE.forEach((tokens, i) => {
+                const line = document.createElement('div'); line.className = 'code-line'; line.dataset.line = i;
+                const lno = document.createElement('span'); lno.className = 'lno'; lno.textContent = i + 1; line.appendChild(lno);
+                const src = document.createElement('span');
+                tokens.forEach(([cls, txt]) => { const s = document.createElement('span'); s.className = cls; s.textContent = txt; src.appendChild(s); });
+                line.appendChild(src); panel.appendChild(line);
+            });
+        }
+        function highlightCode(arr) { document.querySelectorAll('.code-line').forEach(el => el.classList.toggle('active', arr && arr.includes(+el.dataset.line))); }
+        function toggleDetails() {
+            const wrap = document.getElementById('details-wrap'); const open = wrap.classList.toggle('open');
+            wrap.querySelector('.details-toggle').setAttribute('aria-expanded', open ? 'true' : 'false');
+            document.getElementById('details-label').textContent = open ? 'Hide code, state & log' : 'Show code, state & log';
+        }
+
+        // ───────── step generation (real algorithm trace) ─────────
+        const fmtArr = (a) => '[' + a.join(', ') + ']';
+        function generateSteps() {
+            steps = [];
+            const rows = matrix.length, cols = matrix[0].length;
+            const heights = new Array(cols).fill(0);
+            let best = 0;            // global max area
+            let bestRect = null;     // {row, col0, col1, height} highlight in matrix
+
+            // a snapshot freezes everything renderStep needs
+            const snap = (extra) => Object.assign({
+                heights: [...heights], stack: [], top: -1, cursor: -1, popIdx: -1,
+                curRow: -1, best, bestRect: bestRect ? { ...bestRect } : null,
+                code: [], opIdx: null, tile: null, inBestCols: null,
+            }, extra);
+
+            steps.push(snap({
+                code: [0, 1], action: 'INIT', actionColor: 'var(--accent-blue)',
+                panel: `Scan rows top&#8594;bottom. Keep a per-column <b>height</b> = run of consecutive <code>1</code>s ending at this row. Each row becomes a histogram; the largest rectangle in it (via a <b>monotonic stack</b>) updates the global <code>best</code>.`,
+                log: `init  heights=${fmtArr(heights)}  best=0`,
+            }));
+
+            for (let r = 0; r < rows; r++) {
+                // ── build the histogram for this row ──
+                for (let c = 0; c < cols; c++) {
+                    heights[c] = matrix[r][c] === 1 ? heights[c] + 1 : 0;
+                }
+                steps.push(snap({
+                    curRow: r, opIdx: r, code: [2, 3, 4], action: 'ROW ' + r, actionColor: 'var(--accent-orange)',
+                    tile: `H = ${fmtArr(heights)}`,
+                    panel: `<b>Row ${r}</b>: update heights &#8212; a <code>1</code> extends the column run, a <code>0</code> resets it to 0. Histogram is now <code>${fmtArr(heights)}</code>.`,
+                    log: `row ${r}: heights=${fmtArr(heights)}`,
+                }));
+
+                // ── largest rectangle in this histogram via monotonic stack ──
+                const stack = [];            // indices, increasing heights
+                let rowMax = 0;
+                let rowBestRect = null;
+                for (let j = 0; j <= cols; j++) {
+                    const h = j < cols ? heights[j] : 0;
+                    // pop while the bar at top is taller than h
+                    while (stack.length && h < heights[stack[stack.length - 1]]) {
+                        const tp = stack[stack.length - 1];
+                        const ht = heights[tp];
+                        const w = stack.length === 1 ? j : j - stack[stack.length - 2] - 1;
+                        const left = stack.length === 1 ? 0 : stack[stack.length - 2] + 1;
+                        const area = ht * w;
+                        const better = area > rowMax;
+                        // snapshot BEFORE removing tp so the popped bar shows highlighted
+                        steps.push(snap({
+                            curRow: r, opIdx: r, stack: [...stack], top: tp, cursor: j, popIdx: tp,
+                            code: [10, 11, 12, 13], action: 'POP idx ' + tp, actionColor: 'var(--accent-red)',
+                            tile: `${ht} &times; ${w} = ${area}`,
+                            inBestCols: range(left, left + w - 1),
+                            panel: `<code>H[${j}]=${h}</code> &lt; top bar <code>H[${tp}]=${ht}</code> &#8594; pop. Width spans cols <code>${left}&#8230;${left + w - 1}</code> (w=<b>${w}</b>), area = <code>${ht}&times;${w} = ${area}</code>${better ? ' &#8212; new row best' : ''}.`,
+                            log: `  pop ${tp}: ${ht}x${w}=${area}${better ? ' *row best*' : ''}`,
+                        }));
+                        stack.pop();
+                        if (area > rowMax) { rowMax = area; rowBestRect = { row: r, col0: left, col1: left + w - 1, height: ht }; }
+                    }
+                    stack.push(j);
+                    // show the push (skip the trailing sentinel j === cols push to avoid clutter; still meaningful, keep it but lighter)
+                    const isSentinel = j === cols;
+                    steps.push(snap({
+                        curRow: r, opIdx: r, stack: [...stack], top: j, cursor: isSentinel ? -1 : j,
+                        code: [8, 9, 14], action: isSentinel ? 'SENTINEL' : 'PUSH idx ' + j, actionColor: 'var(--accent-blue)',
+                        tile: isSentinel ? 'flush (h = 0)' : `push ${j}  (h=${h})`,
+                        panel: isSentinel
+                            ? `Reached the sentinel <code>j=${cols}</code> with height <code>0</code> &#8594; all remaining bars were flushed above. Row ${r} largest = <b>${rowMax}</b>.`
+                            : `<code>H[${j}]=${h}</code> &#8805; stack top &#8594; <b>push</b> index <code>${j}</code>. Stack stays increasing in height.`,
+                        log: isSentinel ? `  flush sentinel  rowMax=${rowMax}` : `  push ${j} (h=${h})`,
+                    }));
+                }
+
+                if (rowMax > best) { best = rowMax; bestRect = rowBestRect; }
+                steps.push(snap({
+                    curRow: r, opIdx: r, code: [5], action: 'ROW ' + r + ' = ' + rowMax, actionColor: 'var(--accent-green)',
+                    best, bestRect: bestRect ? { ...bestRect } : null,
+                    tile: `row best ${rowMax} &middot; global ${best}`,
+                    panel: `Row ${r} largest rectangle = <b>${rowMax}</b>. <code>best = max(best, ${rowMax})</code> = <b>${best}</b>. Green tiles mark the best rectangle so far.`,
+                    log: `row ${r} done: rowMax=${rowMax}  best=${best}`,
+                }));
+            }
+
+            steps.push(snap({
+                complete: true, confetti: true, code: [6], action: '✓ MAX = ' + best, actionColor: 'var(--accent-green)',
+                best, bestRect: bestRect ? { ...bestRect } : null,
+                panel: `All rows scanned. The <b>maximal rectangle of 1s</b> has area <code>${best}</code> &#8212; shaded green in the matrix.`,
+                log: `done  maximal rectangle area = ${best}`,
+            }));
+        }
+        function range(a, b) { const out = []; for (let i = a; i <= b; i++) out.push(i); return out; }
+
+        // ───────── render (persistent-DOM reconciliation) ─────────
+        function renderStep(idx) {
+            stepIdx = idx; const step = steps[idx]; if (!step) return;
+            renderMatrix(step);
+            renderHisto(step);
+            renderStack(step);
+
+            // floating tile (value in motion)
+            const ft = document.getElementById('float-tile');
+            if (step.tile != null) {
+                ft.innerHTML = step.tile; ft.classList.add('show');
+                ft.style.borderColor = step.popIdx >= 0 ? 'var(--accent-red)'
+                    : step.complete || step.code.includes(5) ? 'var(--accent-green)'
+                    : step.code.includes(8) ? 'var(--accent-blue)' : 'var(--accent-orange)';
+                ft.style.color = step.popIdx >= 0 ? '#fecdd3'
+                    : step.complete || step.code.includes(5) ? '#d6ffe8'
+                    : step.code.includes(8) ? '#a5f3fc' : '#ffd591';
+            } else ft.classList.remove('show');
+
+            // narration / action / chrome
+            const mp = document.getElementById('main-panel');
+            mp.innerHTML = step.panel || '&mdash;';
+            mp.classList.toggle('done', !!step.complete);
+            mp.classList.toggle('miss', !!step.miss);
+            const aw = document.getElementById('action-word'); aw.textContent = step.action || ''; aw.style.color = step.actionColor || 'var(--text-dim)';
+            highlightCode(step.code);
+
+            if (step.confetti) { if (confettiArmed) { fireConfetti(); confettiArmed = false; } } else confettiArmed = true;
+
+            renderOpFeed(step.opIdx);
+            document.getElementById('st-row').textContent = step.curRow >= 0 ? step.curRow : '-';
+            document.getElementById('st-stack').textContent = fmtArr(step.stack);
+            document.getElementById('st-max').textContent = step.best;
+            document.getElementById('step-badge').textContent = `Step ${idx + 1} / ${steps.length}`;
+            document.getElementById('progress-fill').style.width = `${(idx / Math.max(1, steps.length - 1)) * 100}%`;
+
+            const logEl = document.getElementById('log');
+            logEl.innerHTML = steps.slice(0, idx + 1).map(s => `<div style="margin:3px 0;white-space:pre-wrap;">${s.log}</div>`).join('');
+            logEl.scrollTop = logEl.scrollHeight;
+        }
+
+        function inBestRect(step, r, c) {
+            const b = step.bestRect; if (!b) return false;
+            return c >= b.col0 && c <= b.col1 && r <= b.row && r > b.row - b.height;
+        }
+        function renderMatrix(step) {
+            const grid = document.getElementById('matrix-vis');
+            const rows = matrix.length, cols = matrix[0].length;
+            grid.style.gridTemplateColumns = `repeat(${cols}, 30px)`;
+            const used = new Set();
+            for (let r = 0; r < rows; r++) {
+                for (let c = 0; c < cols; c++) {
+                    const key = r + ',' + c; used.add(key);
+                    let el = cellEls[key];
+                    if (!el) { el = document.createElement('div'); el.className = 'mcell'; cellEls[key] = el; }
+                    // append in order on fresh build
+                    if (el.parentElement !== grid) grid.appendChild(el);
+                    const v = matrix[r][c];
+                    let cls = 'mcell ' + (v === 1 ? 'one' : 'zero');
+                    if (r === step.curRow) cls += ' activerow';
+                    if (inBestRect(step, r, c)) cls += ' best';
+                    el.className = cls;
+                    el.textContent = v;
+                }
+            }
+            Object.keys(cellEls).forEach(k => { if (!used.has(k)) { cellEls[k].remove(); delete cellEls[k]; } });
+        }
+
+        function renderHisto(step) {
+            const host = document.getElementById('histo-vis');
+            const cols = step.heights.length;
+            const maxH = Math.max(...step.heights, 1);
+            const used = new Set();
+            for (let c = 0; c < cols; c++) {
+                used.add(String(c));
+                let wrap = barEls[c];
+                if (!wrap) {
+                    wrap = document.createElement('div'); wrap.className = 'bar-wrap';
+                    wrap.innerHTML = `<div class="bar"></div><div class="bar-idx"></div>`;
+                    barEls[c] = wrap; host.appendChild(wrap);
+                }
+                const bar = wrap.querySelector('.bar');
+                const h = step.heights[c];
+                bar.style.height = `${(h / maxH) * 150 + 6}px`;
+                bar.textContent = h > 0 ? h : '';
+                wrap.querySelector('.bar-idx').textContent = c;
+                let cls = 'bar';
+                if (c === step.popIdx) cls += ' popping';
+                else if (c === step.cursor) cls += ' cursor';
+                else if (step.stack.includes(c)) cls += ' instack';
+                if (step.inBestCols && step.inBestCols.includes(c)) cls += ' inbest';
+                bar.className = cls;
+                wrap.classList.toggle('curwrap', c === step.cursor);
+            }
+            Object.keys(barEls).forEach(k => { if (!used.has(k)) { barEls[k].remove(); delete barEls[k]; } });
+        }
+
+        function renderStack(step) {
+            const host = document.getElementById('stack-vis');
+            const stack = step.stack;
+            const used = new Set();
+            if (stack.length === 0) {
+                Object.keys(stkEls).forEach(k => { stkEls[k].remove(); delete stkEls[k]; });
+                if (!host.querySelector('.stk-empty')) host.innerHTML = '<span class="stk-empty">empty</span>';
+                return;
+            }
+            const emp = host.querySelector('.stk-empty'); if (emp) emp.remove();
+            stack.forEach((idx, pos) => {
+                const id = 'k' + idx;
+                used.add(id);
+                let el = stkEls[id];
+                const fresh = !el;
+                if (!el) {
+                    el = document.createElement('div'); el.className = 'stk-item';
+                    el.innerHTML = `<span class="kv"></span><span class="sub"></span>`;
+                    stkEls[id] = el;
+                }
+                if (host.children[pos] !== el) host.insertBefore(el, host.children[pos] || null);
+                const isSentinel = idx === step.heights.length;
+                el.querySelector('.kv').textContent = idx;
+                el.querySelector('.sub').textContent = isSentinel ? 'h=0' : 'h=' + step.heights[idx];
+                el.className = 'stk-item' + (pos === stack.length - 1 ? ' top' : '');
+                if (fresh) Motion.pop(el, -14);
+            });
+            Object.keys(stkEls).forEach(k => { if (!used.has(k)) { stkEls[k].remove(); delete stkEls[k]; } });
+        }
+
+        function renderOpFeed(currentRow) {
+            const feed = document.getElementById('op-feed'); feed.innerHTML = '';
+            const rows = matrix.length;
+            for (let r = 0; r < rows; r++) {
+                const chip = document.createElement('div');
+                chip.className = 'op-chip' + (currentRow === r ? ' current' : (currentRow != null && currentRow > r ? ' done' : ''));
+                chip.textContent = 'row ' + r;
+                feed.appendChild(chip);
+            }
+        }
+
+        function fireConfetti() {
+            const host = document.getElementById('confetti'); if (!host || REDUCED) return;
+            const colors = ['#22c55e', '#06b6d4', '#a855f7', '#f5a524', '#f43f5e'];
+            for (let i = 0; i < 38; i++) {
+                const p = document.createElement('div'); p.className = 'confetti-piece';
+                p.style.setProperty('--x', ((Math.random() * 2 - 1) * 220) + 'px');
+                p.style.setProperty('--rot', ((Math.random() * 720 - 360)) + 'deg');
+                p.style.background = colors[i % colors.length];
+                p.style.animationDuration = (0.9 + Math.random() * 0.8) + 's';
+                p.style.animationDelay = (Math.random() * 0.15) + 's';
+                host.appendChild(p); setTimeout(() => p.remove(), 1900);
+            }
+        }
+
+        // ───────── controls ─────────
+        function nextStep() { if (stepIdx < steps.length - 1) renderStep(stepIdx + 1); else pause(); }
+        function prevStep() { if (stepIdx > 0) renderStep(stepIdx - 1); }
+        function resetSim() { pause(); renderStep(0); }
+        function togglePlay() {
+            const btn = document.getElementById('play-btn');
+            if (timer) { pause(); return; }
+            btn.textContent = 'Pause';
+            if (stepIdx >= steps.length - 1) renderStep(0);
+            timer = setInterval(() => { if (stepIdx < steps.length - 1) nextStep(); else pause(); }, delays[document.getElementById('speed').value]);
+        }
+        function pause() { clearInterval(timer); timer = null; document.getElementById('play-btn').textContent = 'Play'; }
+
+        function clearDom() {
+            Object.keys(cellEls).forEach(k => { cellEls[k].remove(); delete cellEls[k]; });
+            Object.keys(barEls).forEach(k => { barEls[k].remove(); delete barEls[k]; });
+            Object.keys(stkEls).forEach(k => { stkEls[k].remove(); delete stkEls[k]; });
+            document.getElementById('stack-vis').innerHTML = '';
+            confettiArmed = true;
+        }
+        function loadExample(n) {
+            pause();
+            matrix = examples[n].map(row => [...row]);
+            clearDom(); generateSteps(); renderStep(0);
+        }
+
+        document.addEventListener('keydown', (e) => {
+            const tag = (e.target.tagName || '').toLowerCase(); if (tag === 'input' || tag === 'textarea') return;
+            if (e.key === 'ArrowRight') { e.preventDefault(); pause(); nextStep(); }
+            else if (e.key === 'ArrowLeft') { e.preventDefault(); pause(); prevStep(); }
+            else if (e.key === ' ') { e.preventDefault(); togglePlay(); }
+        });
+        window.addEventListener('resize', () => renderStep(stepIdx));
+
+        buildCodePanel();
+        window.onload = () => loadExample(0);
+    </script>
+</body>
+</html>

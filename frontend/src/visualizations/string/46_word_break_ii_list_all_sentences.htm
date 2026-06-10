@@ -1,0 +1,663 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Word Break II &middot; All Sentences</title>
+    <style>
+        :root {
+            --bg-page: #070b14;
+            --bg-surface: rgba(255, 255, 255, 0.045);
+            --bg-input: rgba(255, 255, 255, 0.04);
+            --border-main: rgba(255, 255, 255, 0.10);
+            --btn-bg: rgba(255, 255, 255, 0.05);
+            --btn-hover: rgba(255, 255, 255, 0.10);
+            --text-main: #e8eefb;
+            --text-dim: #8b98b3;
+            --accent-orange: #f5a524;   /* DFS path / cursor          */
+            --accent-blue:   #06b6d4;    /* edges / links              */
+            --accent-green:  #22c55e;    /* complete valid leaf        */
+            --accent-red:    #f43f5e;    /* dead end / cannot split    */
+            --accent-purple: #a855f7;    /* root / current node        */
+            --mono: ui-monospace, 'SF Mono', 'Cascadia Code', 'Courier New', monospace;
+            --sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+            --shell: 980px;
+        }
+
+        * { box-sizing: border-box; }
+        html, body { overflow-x: hidden; }
+        body {
+            background:
+                radial-gradient(1100px 600px at 15% -10%, rgba(168, 85, 247, 0.12), transparent 60%),
+                radial-gradient(900px 600px at 100% 10%, rgba(6, 182, 212, 0.10), transparent 55%),
+                linear-gradient(160deg, #070b14 0%, #0b1120 55%, #0a0f1c 100%);
+            background-attachment: fixed;
+            color: var(--text-main); font-family: var(--sans); margin: 0;
+            display: flex; flex-direction: column; align-items: center; min-height: 100vh;
+            padding-bottom: 48px; -webkit-font-smoothing: antialiased;
+        }
+        body::before, body::after { content: ''; position: fixed; border-radius: 50%; filter: blur(70px); pointer-events: none; z-index: 0; opacity: 0.45; }
+        body::before { width: 380px; height: 380px; top: 8%; left: -120px; background: radial-gradient(circle, rgba(168,85,247,0.30), transparent 70%); }
+        body::after  { width: 420px; height: 420px; bottom: 4%; right: -140px; background: radial-gradient(circle, rgba(6,182,212,0.22), transparent 70%); }
+        body > * { position: relative; z-index: 1; }
+
+        .input-bar {
+            width: 100%; background: rgba(10, 15, 28, 0.55);
+            backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+            padding: 14px 16px; display: flex; justify-content: center; align-items: center; gap: 10px;
+            border-bottom: 1px solid var(--border-main); flex-wrap: wrap; position: sticky; top: 0; z-index: 50;
+        }
+        label.ui-label, .ui-label { font-family: var(--mono); font-size: 13px; color: var(--text-dim); letter-spacing: 0.2px; }
+        input[type="text"] {
+            background: var(--bg-input); border: 1px solid var(--border-main); color: var(--text-main);
+            height: 34px; border-radius: 9px; padding: 0 12px; font-size: 13px; font-family: var(--mono);
+            transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+        }
+        #str-input { width: 180px; }
+        #dict-input { width: 320px; }
+        input[type="text"]:focus { outline: none; border-color: var(--accent-purple); box-shadow: 0 0 0 3px rgba(168, 85, 247, 0.18); background: rgba(168, 85, 247, 0.06); }
+
+        button {
+            height: 34px; border-radius: 9px; padding: 0 14px; background: var(--btn-bg);
+            border: 1px solid var(--border-main); color: var(--text-main); font-size: 13px; font-weight: 600; cursor: pointer;
+            transition: transform 0.15s ease, background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+        }
+        button:hover { background: var(--btn-hover); border-color: rgba(168, 85, 247, 0.5); box-shadow: 0 0 18px rgba(168, 85, 247, 0.18); transform: translateY(-1px); }
+        button:active { transform: translateY(0); }
+        #play-btn { background: linear-gradient(135deg, rgba(168,85,247,0.22), rgba(168,85,247,0.10)); border-color: rgba(168, 85, 247, 0.45); color: #e9d5ff; min-width: 80px; }
+
+        .shell { width: var(--shell); max-width: 95%; margin: 24px auto 0; display: flex; flex-direction: column; gap: 16px; }
+
+        .title-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+        .title-row h1 { font-size: 18px; font-weight: 800; margin: 0; letter-spacing: 0.2px; }
+        .title-row .sub { color: var(--text-dim); font-weight: 500; font-size: 13px; }
+        .step-badge { font-family: var(--mono); font-size: 12px; font-weight: 700; color: #e9d5ff; background: rgba(168,85,247,0.12); border: 1px solid rgba(168,85,247,0.3); padding: 4px 10px; border-radius: 999px; white-space: nowrap; }
+        .progress-track { height: 4px; width: 100%; background: rgba(255,255,255,0.07); border-radius: 999px; overflow: hidden; margin-top: -6px; }
+        .progress-fill { height: 100%; width: 0%; border-radius: 999px; background: linear-gradient(90deg, var(--accent-purple), var(--accent-blue)); box-shadow: 0 0 12px rgba(168,85,247,0.5); transition: width 0.45s cubic-bezier(0.34,1.1,0.64,1); }
+
+        .dict-feed { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; min-height: 26px; }
+        .dict-label { font-family: var(--mono); font-size: 12px; color: var(--text-dim); }
+        .dict-chip { font-family: var(--mono); font-size: 12px; font-weight: 700; padding: 3px 9px; border-radius: 7px; border: 1px solid rgba(6,182,212,0.35); color: #a5f3fc; background: rgba(6,182,212,0.10); transition: border-color .3s, box-shadow .3s, color .3s, background .3s; }
+        .dict-chip.hot { border-color: var(--accent-orange); color: #fff; background: rgba(245,165,36,0.18); box-shadow: 0 0 14px rgba(245,165,36,0.4); }
+
+        .res-feed { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; min-height: 26px; }
+        .res-chip { font-family: var(--mono); font-size: 12px; font-weight: 800; padding: 4px 10px; border-radius: 8px; border: 1px solid rgba(34,197,94,0.4); color: #bbf7d0; background: rgba(34,197,94,0.12); opacity: 0; transform: scale(.6); transition: opacity .3s, transform .3s cubic-bezier(.34,1.5,.64,1); }
+        .res-chip.show { opacity: 1; transform: scale(1); }
+        .res-label { font-family: var(--mono); font-size: 12px; color: var(--text-dim); }
+
+        .narration { background: var(--bg-surface); border: 1px solid rgba(168,85,247,0.22); border-radius: 12px; padding: 12px 18px; font-family: var(--mono); font-size: 14px; line-height: 1.5; color: #ede9fe; min-height: 48px; display: flex; align-items: center; gap: 10px; transition: border-color 0.3s, background 0.3s; }
+        .narration::before { content: '\25B8'; color: var(--accent-purple); font-size: 13px; }
+        .narration.done { border-color: rgba(34,197,94,0.4); background: rgba(34,197,94,0.06); }
+        .narration.done::before { content: '\2713'; color: var(--accent-green); }
+        .narration.miss { border-color: rgba(244,63,94,0.4); background: rgba(244,63,94,0.06); }
+        .narration.miss::before { content: '\2717'; color: var(--accent-red); }
+        .narration code { background: rgba(168,85,247,0.14); color: #d8b4fe; padding: 1px 6px; border-radius: 5px; font-size: 12.5px; }
+        .narration b { color: #fff; }
+
+        .stage-card { background: var(--bg-surface); border: 1px solid var(--border-main); border-radius: 18px; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); box-shadow: 0 12px 38px rgba(0,0,0,0.4); overflow: hidden; }
+        .stage-screen { position: relative; margin: 14px; border-radius: 14px; background: radial-gradient(700px 300px at 50% -10%, rgba(168,85,247,0.08), transparent 70%), #090d18; border: 1px solid rgba(255,255,255,0.06); }
+        .tree-stage { position: relative; width: 100%; height: 430px; overflow: auto; scrollbar-width: thin; cursor: grab; }
+        .tree-stage.grabbing { cursor: grabbing; }
+        .tree-stage::-webkit-scrollbar { height: 7px; width: 7px; }
+        .tree-stage::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 8px; }
+        .tree-canvas { position: relative; }
+        .tree-inner { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
+        .zoom-bar { position: absolute; right: 14px; bottom: 12px; display: flex; gap: 6px; z-index: 12; }
+        .zoom-bar button { height: 30px; min-width: 30px; padding: 0 9px; border-radius: 8px; font-size: 15px; font-weight: 700; background: rgba(10,15,28,0.7); backdrop-filter: blur(6px); }
+        .zoom-bar .fit { font-size: 12px; }
+        #edges { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; z-index: 1; }
+        .edge-ln { stroke: var(--accent-blue); stroke-width: 2.2; fill: none; opacity: 0.5; transition: stroke 0.35s, opacity 0.35s; }
+        .edge-ln.on-path { stroke: var(--accent-orange); opacity: 1; filter: drop-shadow(0 0 6px rgba(245,165,36,0.6)); }
+        .edge-lbl { font-family: var(--mono); font-size: 12.5px; font-weight: 800; fill: var(--text-dim); }
+        .edge-lbl.on-path { fill: var(--accent-orange); }
+        .edge-lbl-bg { fill: #090d18; opacity: 0.9; }
+
+        .tnode { position: absolute; min-width: 36px; height: 34px; padding: 0 9px; margin-left: 0; display: flex; align-items: center; justify-content: center;
+            border-radius: 9px; font-family: var(--mono); font-weight: 800; font-size: 13px; transform: translate(-50%, 0);
+            border: 2px solid var(--border-main); background: rgba(255,255,255,0.06); color: var(--text-main); white-space: nowrap;
+            z-index: 2; will-change: transform, left, top; transition: background 0.35s, border-color 0.35s, color 0.35s, box-shadow 0.35s; }
+        .tnode.root { border-color: var(--accent-purple); background: linear-gradient(180deg, rgba(168,85,247,0.30), rgba(168,85,247,0.12)); color: #e9d5ff; }
+        .tnode.on-path { border-color: var(--accent-orange); box-shadow: 0 0 16px rgba(245,165,36,0.45); color: #fff; }
+        .tnode.current { border-color: var(--accent-purple); box-shadow: 0 0 22px rgba(168,85,247,0.6); color: #fff; }
+        .tnode.complete { border-color: var(--accent-green); background: linear-gradient(180deg, #2fe08f, #21c275); color: #06251a; box-shadow: 0 0 16px rgba(34,197,94,0.45); }
+        .tnode.dead { border-color: var(--accent-red); color: #fecdd3; background: rgba(244,63,94,0.10); }
+        .tnode.dim { opacity: 0.34; }
+        .tnode .sub-i { font-size: 10px; color: var(--text-dim); margin-left: 5px; font-weight: 700; }
+        .tnode.complete .sub-i { color: #06251a; }
+
+        .controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: center; }
+        .controls .kbd-hint { font-size: 11px; color: var(--text-dim); font-family: var(--mono); margin-left: 4px; }
+        .kbd { background: rgba(255,255,255,0.07); border: 1px solid var(--border-main); border-radius: 5px; padding: 1px 6px; font-size: 10px; }
+        input[type="range"] { accent-color: var(--accent-purple); width: 110px; cursor: pointer; }
+        #confetti { position: fixed; left: 0; right: 0; top: 30%; height: 0; overflow: visible; pointer-events: none; z-index: 60; }
+        .confetti-piece { position: absolute; top: 0; left: 50%; width: 8px; height: 13px; border-radius: 2px; opacity: 0; animation: confettiFall ease-out forwards; }
+
+        .details-toggle { align-self: center; height: 32px; padding: 0 16px; border-radius: 999px; cursor: pointer; background: rgba(255,255,255,0.04); border: 1px solid var(--border-main); color: var(--text-dim); font-family: var(--mono); font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; gap: 8px; transition: color 0.2s, border-color 0.2s, background 0.2s; }
+        .details-toggle:hover { color: var(--text-main); border-color: rgba(168,85,247,0.4); background: rgba(168,85,247,0.06); }
+        .details-toggle .chev { transition: transform 0.3s ease; }
+        .details-wrap.open .details-toggle .chev { transform: rotate(180deg); }
+        .details-body { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.4s ease; }
+        .details-wrap.open .details-body { grid-template-rows: 1fr; }
+        .details-inner { overflow: hidden; min-height: 0; }
+        .details-grid { display: flex; flex-direction: column; gap: 14px; padding-top: 14px; }
+
+        .panel-card { background: var(--bg-surface); border: 1px solid var(--border-main); border-radius: 16px; backdrop-filter: blur(10px); box-shadow: 0 8px 30px rgba(0,0,0,0.35); }
+        .panel-head { display: flex; align-items: center; gap: 8px; padding: 11px 16px; border-bottom: 1px solid var(--border-main); font-size: 11px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; color: var(--text-dim); }
+        .panel-head .pip { width: 7px; height: 7px; border-radius: 50%; background: var(--accent-purple); box-shadow: 0 0 8px var(--accent-purple); }
+        .code-body { padding: 12px 6px 14px; font-family: var(--mono); font-size: 12.5px; line-height: 1.7; }
+        .code-line { display: flex; gap: 12px; padding: 1px 16px; border-left: 2px solid transparent; transition: background 0.3s, border-color 0.3s; white-space: pre; }
+        .code-line .lno { color: #4b5772; width: 16px; text-align: right; user-select: none; }
+        .code-line .src { color: #c4cee0; }
+        .code-line .kw { color: #c792ea; }
+        .code-line .fn { color: #82aaff; }
+        .code-line.active { background: rgba(168,85,247,0.12); border-left-color: var(--accent-purple); }
+        .code-line.active .src, .code-line.active .lno { color: #e8eefb; }
+
+        .log-panel { border-radius: 14px; padding: 12px 16px; height: 110px; overflow-y: auto; font-family: var(--mono); font-size: 12.5px; line-height: 1.5; background: var(--bg-surface); border: 1px solid var(--border-main); }
+        .log-panel::-webkit-scrollbar { width: 8px; }
+        .log-panel::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 8px; }
+
+        @keyframes confettiFall { 0%{ opacity:1; transform: translate(-50%, 0) rotate(0deg); } 100%{ opacity:0; transform: translate(calc(-50% + var(--x)), 240px) rotate(var(--rot)); } }
+        @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; } }
+    </style>
+</head>
+<body>
+
+    <div class="input-bar">
+        <label class="ui-label">s =</label>
+        <input type="text" id="str-input" placeholder="catsanddog">
+        <label class="ui-label">dict =</label>
+        <input type="text" id="dict-input" value='["cat","cats","and","sand","dog"]'>
+        <button onclick="loadCustom()">Build</button>
+        <span class="ui-label" style="opacity:.5">|</span>
+        <button onclick="loadExample(0)">catsanddog</button>
+        <button onclick="loadExample(1)">pineapplepenapple</button>
+    </div>
+
+    <div class="shell">
+        <div class="title-row">
+            <h1>Word Break II <span class="sub">&middot; backtracking &middot; for each prefix in dict, recurse on the suffix; complete splits are sentences</span></h1>
+            <span class="step-badge" id="step-badge">Step 1 / 1</span>
+        </div>
+        <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+
+        <div class="dict-feed"><span class="dict-label">dict:</span><span id="dict-feed"></span></div>
+        <div class="res-feed"><span class="res-label">sentences:</span><span id="res-feed"></span></div>
+
+        <div class="narration" id="main-panel">&mdash;</div>
+
+        <div class="stage-card">
+            <div class="stage-screen">
+                <div class="tree-stage" id="tree-stage">
+                    <div class="tree-canvas" id="tree-canvas">
+                        <div class="tree-inner" id="tree-inner">
+                            <svg id="edges"></svg>
+                        </div>
+                    </div>
+                </div>
+                <div class="zoom-bar">
+                    <button onclick="zoomBy(0.8)" title="Zoom out">&#8722;</button>
+                    <button class="fit" onclick="fitView()" title="Fit whole tree">Fit</button>
+                    <button onclick="zoomBy(1.25)" title="Zoom in">+</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="controls">
+            <button onclick="resetSim()">&#8634; Reset</button>
+            <button onclick="prevStep()">&#8592; Back</button>
+            <button onclick="togglePlay()" id="play-btn">Play</button>
+            <button onclick="nextStep()">Next &#8594;</button>
+            <span class="ui-label" style="margin-left:6px; font-size:11px">Speed</span>
+            <input type="range" id="speed" min="0" max="2" value="1">
+            <span class="kbd-hint"><span class="kbd">&#8592;</span> <span class="kbd">&#8594;</span> step &middot; <span class="kbd">space</span> play</span>
+        </div>
+
+        <div class="details-wrap" id="details-wrap">
+            <button class="details-toggle" onclick="toggleDetails()" aria-expanded="false">
+                <span id="details-label">Show code &amp; log</span> <span class="chev">&#9662;</span>
+            </button>
+            <div class="details-body">
+                <div class="details-inner">
+                    <div class="details-grid">
+                        <div class="panel-card">
+                            <div class="panel-head"><span class="pip"></span> Algorithm</div>
+                            <div class="code-body" id="code-panel"></div>
+                        </div>
+                        <div class="log-panel" id="log"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div id="confetti"></div>
+
+    <script>
+        'use strict';
+
+        // ───────── Motion engine ─────────
+        const REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        const FRAME = 1000 / 60;
+        function sampleSpring(stiffness, damping, mass) {
+            const dt = 1 / 60; let x = 1, v = 0; const out = [];
+            for (let i = 0; i < 240; i++) { const a = (-stiffness * x - damping * v) / mass; v += a * dt; x += v * dt; out.push(1 - x); if (Math.abs(x) < 0.0015 && Math.abs(v) < 0.0015) break; }
+            out.push(1); return out;
+        }
+        const SPRING_POP = sampleSpring(520, 17, 1);
+        const durOf = (a) => a.length * FRAME;
+        const Motion = {
+            pop(el) {
+                if (REDUCED) { el.style.opacity = '1'; return; }
+                const base = el.style.transform.replace(/ scale\([^)]*\)/, '');
+                const kf = SPRING_POP.map(p => ({ opacity: Math.min(1, p * 2).toFixed(3), transform: `${base} scale(${(0.3 + 0.7 * p).toFixed(3)})` }));
+                const a = el.animate(kf, { duration: durOf(SPRING_POP), easing: 'linear' });
+                a.onfinish = () => { el.style.transform = base; el.style.opacity = '1'; };
+            },
+        };
+
+        // ───────── State ─────────
+        let S = 'catsanddog';
+        let DICT = ['cat', 'cats', 'and', 'sand', 'dog'];
+        let wordSet = new Set(DICT);
+        let nodes = [];        // recursion tree nodes
+        let steps = [];
+        let stepIdx = 0;
+        let timer = null;
+        let confettiArmed = true;
+        const delays = [1300, 700, 320];
+        const nodeEls = {};
+        const edgeEls = {};
+        let viewScale = 1, autoFit = true, contentW = 0, contentH = 0;
+
+        const CODE = [
+            [['kw','def '],['fn','solve'],['src','(start, path):']],
+            [['kw','  if '],['src','start == len(s):']],
+            [['src','    sentences.append(" ".join(path))']],
+            [['kw','    return']],
+            [['kw','  for '],['src','end in range(start+1, len(s)+1):']],
+            [['src','    w = s[start:end]']],
+            [['kw','    if '],['src','w in wordDict:']],
+            [['fn','      solve'],['src','(end, path + [w])']],
+        ];
+        function buildCodePanel() {
+            const panel = document.getElementById('code-panel'); panel.innerHTML = '';
+            CODE.forEach((tokens, i) => {
+                const line = document.createElement('div'); line.className = 'code-line'; line.dataset.line = i;
+                const lno = document.createElement('span'); lno.className = 'lno'; lno.textContent = i + 1; line.appendChild(lno);
+                const src = document.createElement('span');
+                tokens.forEach(([cls, txt]) => { const s = document.createElement('span'); s.className = cls; s.textContent = txt; src.appendChild(s); });
+                line.appendChild(src); panel.appendChild(line);
+            });
+        }
+        function highlightCode(arr) { document.querySelectorAll('.code-line').forEach(el => el.classList.toggle('active', arr && arr.includes(+el.dataset.line))); }
+        function toggleDetails() {
+            const wrap = document.getElementById('details-wrap'); const open = wrap.classList.toggle('open');
+            wrap.querySelector('.details-toggle').setAttribute('aria-expanded', open ? 'true' : 'false');
+            document.getElementById('details-label').textContent = open ? 'Hide code & log' : 'Show code & log';
+        }
+
+        const esc = (t) => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+        // ───────── build the full recursion tree + DFS preorder steps ─────────
+        function generateSteps() {
+            nodes = []; steps = [];
+            wordSet = new Set(DICT);
+            const byKey = new Map();
+            let uid = 0;
+
+            // a node represents a recursion call solve(start, path).
+            // key = unique id; label = the word on the edge into it; words = chosen words so far.
+            function addNode(parentKey, label, start, words) {
+                const key = 'k' + (uid++);
+                const node = { key, parent: parentKey, label, start, words: words.slice(),
+                               status: 'internal', complete: false, dead: false };
+                nodes.push(node); byKey.set(key, node); return node;
+            }
+            const root = addNode(null, null, 0, []);
+            const order = [];        // (node, action) in DFS preorder
+            const results = [];
+
+            (function dfs(node) {
+                // visit-enter event for this node
+                order.push({ kind: 'enter', node });
+                if (node.start === S.length) {
+                    node.status = 'complete'; node.complete = true;
+                    const sentence = node.words.join(' ');
+                    results.push(sentence);
+                    order.push({ kind: 'found', node, sentence });
+                    return;
+                }
+                let any = false;
+                for (let end = node.start + 1; end <= S.length; end++) {
+                    const w = S.substring(node.start, end);
+                    if (wordSet.has(w)) {
+                        any = true;
+                        const child = addNode(node.key, w, end, node.words.concat(w));
+                        order.push({ kind: 'match', node, child, word: w, start: node.start, end });
+                        dfs(child);
+                    }
+                }
+                if (!any && node.start !== S.length) {
+                    node.status = 'dead'; node.dead = true;
+                    order.push({ kind: 'dead', node });
+                }
+            })(root);
+
+            const totalResults = results.length;
+            const dictStr = JSON.stringify(DICT);
+
+            // helper: path keys from root to a node
+            function pathTo(node) {
+                const set = new Set(); let cur = node;
+                while (cur) { set.add(cur.key); cur = cur.parent != null ? byKey.get(cur.parent) : null; }
+                return set;
+            }
+
+            // step 0: intro (only root present)
+            steps.push({ visible: new Set([root.key]), current: root.key, path: new Set([root.key]),
+                found: 0, hot: null,
+                code: [0],
+                panel: `Find <b>all</b> ways to split <code>"${esc(S)}"</code> into dictionary words. From index <b>0</b>, try every prefix; if it is in the dictionary, recurse on the rest. A full consumption is one sentence.`,
+                log: `start  s="${S}"  dict=${dictStr}` });
+
+            const visible = new Set([root.key]);
+            order.forEach((ev) => {
+                if (ev.kind === 'enter') {
+                    const node = ev.node;
+                    if (node.key === root.key) return; // root already shown at its enter
+                    visible.add(node.key);
+                    const path = pathTo(node);
+                    const sofar = node.words.length ? node.words.map(w => '<code>' + esc(w) + '</code>').join(' + ') : 'nothing yet';
+                    const rem = S.substring(node.start) || '(empty)';
+                    steps.push({ visible: new Set(visible), current: node.key, path,
+                        code: [0, 1, 4],
+                        panel: `Enter <code>solve(${node.start})</code>. Chosen so far: ${sofar}. Remaining suffix: <code>"${esc(rem)}"</code>. Scan its prefixes for dictionary words.`,
+                        log: `enter solve(${node.start})  rem="${esc(rem)}"` });
+                } else if (ev.kind === 'match') {
+                    const node = ev.node, child = ev.child;
+                    // child not yet entered: show edge candidate from node, highlight matched word
+                    visible.add(child.key);
+                    const path = pathTo(child);
+                    steps.push({ visible: new Set(visible), current: node.key, path, hot: ev.word,
+                        matchKey: child.key,
+                        code: [4, 5, 6, 7],
+                        panel: `Prefix <code>"${esc(ev.word)}"</code> = <code>s[${ev.start}:${ev.end}]</code> is in the dictionary &#8594; take it and recurse on <code>solve(${ev.end})</code>.`,
+                        log: `  match "${esc(ev.word)}" at [${ev.start},${ev.end})  -> recurse` });
+                } else if (ev.kind === 'found') {
+                    const node = ev.node;
+                    const path = pathTo(node);
+                    steps.push({ visible: new Set(visible), current: node.key, path, confetti: true,
+                        complete: node.complete,
+                        markFound: ev.sentence,
+                        code: [1, 2, 3],
+                        panel: `<code>solve(${node.start})</code> reached the end of the string &#8594; full split found: <b>"${esc(ev.sentence)}"</b>. Record it and backtrack.`,
+                        log: `✓ sentence "${esc(ev.sentence)}"` });
+                } else if (ev.kind === 'dead') {
+                    const node = ev.node;
+                    const path = pathTo(node);
+                    const rem = S.substring(node.start) || '(empty)';
+                    steps.push({ visible: new Set(visible), current: node.key, path, dead: true,
+                        deadKey: node.key,
+                        code: [4, 6],
+                        panel: `No prefix of <code>"${esc(rem)}"</code> is in the dictionary &#8594; dead end. Backtrack and try a different split.`,
+                        log: `✗ dead end at solve(${node.start})  rem="${esc(rem)}"` });
+                }
+            });
+
+            // assign cumulative found counts and result-chip ordering by completion order
+            const completeOrder = nodes.filter(n => n.complete).map(n => n.words.join(' '));
+            // recompute "found" cumulative on each step based on markFound sequence
+            let runFound = 0;
+            steps.forEach(s => {
+                if (s.markFound !== undefined) { runFound++; }
+                s.foundCum = runFound;
+            });
+
+            // final summary
+            steps.push({ visible: new Set(nodes.map(n => n.key)), current: null, path: new Set(),
+                foundCum: totalResults, complete: true, confetti: true, done: true,
+                code: [], results: [...results],
+                panel: totalResults
+                    ? `Search complete &#8594; <b>${totalResults}</b> sentence${totalResults !== 1 ? 's' : ''}: ${results.map(r => '<code>' + esc(r) + '</code>').join(', ')}.`
+                    : `Search complete &#8594; <b>no</b> sentence splits <code>"${esc(S)}"</code> into dictionary words.`,
+                log: `done  ${totalResults} sentence(s)` });
+
+            // stash completion order for chip rendering
+            generateSteps._results = completeOrder;
+        }
+
+        // ───────── layout (tidy top-down tree, leaf-packed) ─────────
+        const PADX = 56, PADY = 24, ROW = 78;
+        function layout() {
+            const byKey = new Map();
+            nodes.forEach(n => byKey.set(n.key, Object.assign({}, n, { kids: [] })));
+            // depth = number of words chosen
+            byKey.forEach(n => { n.depth = n.words.length; });
+            byKey.forEach(n => { if (n.parent != null && byKey.has(n.parent)) byKey.get(n.parent).kids.push(n); });
+            const cnt = nodes.length;
+            const COL = cnt > 36 ? 70 : cnt > 18 ? 88 : 108;
+            let nextX = 0;
+            const rootNode = nodes[0] ? byKey.get(nodes[0].key) : null;
+            if (rootNode) (function place(n) {
+                n.y = n.depth * ROW + PADY;
+                if (n.kids.length === 0) { n.x = nextX * COL + PADX; nextX++; }
+                else { n.kids.forEach(place); n.x = (n.kids[0].x + n.kids[n.kids.length - 1].x) / 2; }
+            })(rootNode);
+            const width = Math.max(nextX, 1) * COL + PADX * 2 - COL;
+            let maxDepth = 0; byKey.forEach(n => { if (n.depth > maxDepth) maxDepth = n.depth; });
+            const height = maxDepth * ROW + PADY * 2 + 34;
+            return { byKey, width, height };
+        }
+
+        // ───────── render ─────────
+        function nodeText(n) {
+            if (n.parent == null) return S.length > 10 ? S.slice(0, 9) + '…' : S;
+            return n.label;
+        }
+
+        function renderStep(idx) {
+            stepIdx = idx; const step = steps[idx]; if (!step) return;
+            const { byKey, width, height } = layout();
+            contentW = width; contentH = height;
+            const inner = document.getElementById('tree-inner');
+            const svg = document.getElementById('edges');
+            inner.style.width = width + 'px'; inner.style.height = height + 'px';
+            svg.setAttribute('width', width); svg.setAttribute('height', height);
+
+            const used = new Set();
+            byKey.forEach((n, key) => {
+                if (!step.visible.has(key)) return;
+                const elKey = 'n:' + key; used.add(elKey);
+                let el = nodeEls[elKey]; const fresh = !el;
+                if (!el) { el = document.createElement('div'); el.className = 'tnode'; inner.appendChild(el); nodeEls[elKey] = el; }
+                const isRoot = n.parent == null;
+                const mainTxt = isRoot ? S : n.label;
+                el.innerHTML = esc(mainTxt) + '<span class="sub-i">@' + n.start + '</span>';
+                const onPath = step.path.has(key);
+                const isCur = step.current === key;
+                el.className = 'tnode'
+                    + (isRoot ? ' root' : '')
+                    + (n.complete ? ' complete' : '')
+                    + (n.dead ? ' dead' : '')
+                    + (onPath && !isCur && !n.complete ? ' on-path' : '')
+                    + (isCur ? ' current' : '')
+                    + (!onPath && !n.complete && !n.dead && step.current ? ' dim' : '');
+                el.style.left = n.x + 'px'; el.style.top = n.y + 'px';
+                el.style.transform = 'translate(-50%, 0)';
+                if (fresh) { el.style.opacity = '0'; Motion.pop(el); }
+            });
+
+            const usedE = new Set();
+            byKey.forEach((n, key) => {
+                if (n.parent == null || !step.visible.has(key)) return;
+                const par = byKey.get(n.parent); if (!par || !step.visible.has(n.parent)) return;
+                const eKey = 'e:' + key; usedE.add(eKey);
+                let rec = edgeEls[eKey];
+                if (!rec) {
+                    const ln = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                    const bg = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+                    bg.setAttribute('rx', '4'); bg.setAttribute('class', 'edge-lbl-bg');
+                    const lbl = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                    lbl.setAttribute('text-anchor', 'middle');
+                    svg.appendChild(ln); svg.appendChild(bg); svg.appendChild(lbl); rec = { ln, lbl, bg }; edgeEls[eKey] = rec;
+                }
+                const x1 = par.x, y1 = par.y + 34, x2 = n.x, y2 = n.y;
+                const my = (y1 + y2) / 2;
+                rec.ln.setAttribute('d', `M ${x1} ${y1} C ${x1} ${my}, ${x2} ${my}, ${x2} ${y2}`);
+                const on = step.path.has(key) && step.path.has(n.parent);
+                rec.ln.setAttribute('class', 'edge-ln' + (on ? ' on-path' : ''));
+                const mid = (x1 + x2) / 2;
+                rec.lbl.textContent = n.label;
+                rec.lbl.setAttribute('x', mid); rec.lbl.setAttribute('y', my + 4);
+                rec.lbl.setAttribute('class', 'edge-lbl' + (on ? ' on-path' : ''));
+                const w = (n.label.length * 7.6) + 8;
+                rec.bg.setAttribute('x', mid - w / 2); rec.bg.setAttribute('y', my - 9);
+                rec.bg.setAttribute('width', w); rec.bg.setAttribute('height', 16);
+            });
+
+            Object.keys(nodeEls).forEach(k => { if (!used.has(k)) { nodeEls[k].remove(); delete nodeEls[k]; } });
+            Object.keys(edgeEls).forEach(k => { if (!usedE.has(k)) { edgeEls[k].ln.remove(); edgeEls[k].lbl.remove(); edgeEls[k].bg.remove(); delete edgeEls[k]; } });
+
+            renderDictFeed(step.hot);
+            renderResFeed(step.foundCum || 0);
+
+            const mp = document.getElementById('main-panel');
+            mp.innerHTML = step.panel || '&mdash;';
+            mp.className = 'narration' + (step.complete ? ' done' : (step.dead ? ' miss' : ''));
+            highlightCode(step.code);
+
+            if (step.confetti) { if (confettiArmed) { fireConfetti(); confettiArmed = false; } } else confettiArmed = true;
+
+            document.getElementById('step-badge').textContent = `Step ${idx + 1} / ${steps.length}`;
+            document.getElementById('progress-fill').style.width = `${(idx / Math.max(1, steps.length - 1)) * 100}%`;
+
+            const logEl = document.getElementById('log');
+            logEl.innerHTML = steps.slice(0, idx + 1).map(s => `<div style="margin:3px 0;white-space:pre-wrap;">${esc(s.log)}</div>`).join('');
+            logEl.scrollTop = logEl.scrollHeight;
+
+            if (autoFit) fitView(); else applyView();
+        }
+
+        function renderDictFeed(hot) {
+            const feed = document.getElementById('dict-feed');
+            feed.innerHTML = '';
+            DICT.forEach(w => {
+                const chip = document.createElement('span');
+                chip.className = 'dict-chip' + (hot && hot === w ? ' hot' : '');
+                chip.textContent = w; feed.appendChild(chip);
+            });
+        }
+
+        function renderResFeed(found) {
+            const feed = document.getElementById('res-feed');
+            const all = generateSteps._results || [];
+            feed.innerHTML = '';
+            if (!all.length) {
+                const span = document.createElement('span'); span.className = 'res-label'; span.style.opacity = '.7';
+                span.textContent = '(none yet)'; feed.appendChild(span); return;
+            }
+            all.forEach((r, i) => {
+                const chip = document.createElement('span'); chip.className = 'res-chip' + (i < found ? ' show' : '');
+                chip.textContent = r; feed.appendChild(chip);
+            });
+        }
+
+        function fireConfetti() {
+            const host = document.getElementById('confetti'); if (!host || REDUCED) return;
+            const colors = ['#22c55e', '#06b6d4', '#a855f7', '#f5a524', '#f43f5e'];
+            for (let i = 0; i < 36; i++) {
+                const p = document.createElement('div'); p.className = 'confetti-piece';
+                p.style.setProperty('--x', ((Math.random() * 2 - 1) * 260) + 'px');
+                p.style.setProperty('--rot', ((Math.random() * 720 - 360)) + 'deg');
+                p.style.background = colors[i % colors.length];
+                p.style.animationDuration = (0.9 + Math.random() * 0.8) + 's';
+                p.style.animationDelay = (Math.random() * 0.15) + 's';
+                host.appendChild(p); setTimeout(() => p.remove(), 1900);
+            }
+        }
+
+        // ───────── view: fit / zoom / pan ─────────
+        function applyView() {
+            const inner = document.getElementById('tree-inner'), canvas = document.getElementById('tree-canvas'), stage = document.getElementById('tree-stage');
+            if (!inner || !canvas || !stage) return;
+            inner.style.transform = 'scale(' + viewScale + ')';
+            const sw = contentW * viewScale, sh = contentH * viewScale;
+            canvas.style.width = sw + 'px'; canvas.style.height = sh + 'px';
+            canvas.style.marginLeft = Math.max(0, (stage.clientWidth - sw) / 2) + 'px';
+            canvas.style.marginTop = Math.max(0, (stage.clientHeight - sh) / 2) + 'px';
+        }
+        function fitView() {
+            autoFit = true;
+            const stage = document.getElementById('tree-stage');
+            if (!stage || !contentW || !contentH) { viewScale = 1; applyView(); return; }
+            const s = Math.min((stage.clientWidth - 18) / contentW, (stage.clientHeight - 18) / contentH, 1.3);
+            viewScale = Math.max(0.12, s); applyView();
+        }
+        function zoomBy(f) { autoFit = false; viewScale = Math.max(0.12, Math.min(2.6, viewScale * f)); applyView(); }
+        (function setupPanZoom() {
+            const stage = document.getElementById('tree-stage'); if (!stage) return;
+            stage.addEventListener('wheel', (e) => { e.preventDefault(); zoomBy(e.deltaY < 0 ? 1.12 : 0.9); }, { passive: false });
+            let drag = false, sx = 0, sy = 0, sl = 0, st = 0;
+            stage.addEventListener('mousedown', (e) => { drag = true; stage.classList.add('grabbing'); sx = e.clientX; sy = e.clientY; sl = stage.scrollLeft; st = stage.scrollTop; });
+            window.addEventListener('mousemove', (e) => { if (!drag) return; stage.scrollLeft = sl - (e.clientX - sx); stage.scrollTop = st - (e.clientY - sy); });
+            window.addEventListener('mouseup', () => { drag = false; stage.classList.remove('grabbing'); });
+        })();
+        let _rsT; window.addEventListener('resize', () => { clearTimeout(_rsT); _rsT = setTimeout(() => { if (autoFit) fitView(); else applyView(); }, 120); });
+
+        // ───────── controls ─────────
+        function nextStep() { if (stepIdx < steps.length - 1) renderStep(stepIdx + 1); else pause(); }
+        function prevStep() { if (stepIdx > 0) renderStep(stepIdx - 1); }
+        function resetSim() { pause(); renderStep(0); }
+        function togglePlay() {
+            const btn = document.getElementById('play-btn');
+            if (timer) { pause(); return; }
+            btn.textContent = 'Pause';
+            if (stepIdx >= steps.length - 1) renderStep(0);
+            timer = setInterval(() => { if (stepIdx < steps.length - 1) nextStep(); else pause(); }, delays[document.getElementById('speed').value]);
+        }
+        function pause() { clearInterval(timer); timer = null; document.getElementById('play-btn').textContent = 'Play'; }
+
+        function clearDom() {
+            Object.keys(nodeEls).forEach(k => { nodeEls[k].remove(); delete nodeEls[k]; });
+            Object.keys(edgeEls).forEach(k => { edgeEls[k].ln.remove(); edgeEls[k].lbl.remove(); edgeEls[k].bg.remove(); delete edgeEls[k]; });
+            confettiArmed = true;
+        }
+        function loadData(s, dict) {
+            pause();
+            S = (s || '').slice(0, 24);
+            DICT = Array.isArray(dict) ? dict.filter(w => typeof w === 'string' && w.length) : [];
+            clearDom(); generateSteps(); renderStep(0);
+        }
+        function loadCustom() {
+            let v = document.getElementById('str-input').value.trim();
+            if (v.startsWith('"') && v.endsWith('"')) v = v.slice(1, -1);
+            let dict;
+            try { dict = JSON.parse(document.getElementById('dict-input').value.trim()); }
+            catch (e) { dict = document.getElementById('dict-input').value.replace(/[\[\]"']/g, '').split(',').map(x => x.trim()).filter(Boolean); }
+            loadData(v, dict);
+        }
+        const EXAMPLES = [
+            { s: 'catsanddog', dict: ['cat', 'cats', 'and', 'sand', 'dog'] },
+            { s: 'pineapplepenapple', dict: ['apple', 'pen', 'applepen', 'pine', 'pineapple'] },
+        ];
+        function loadExample(i) {
+            const ex = EXAMPLES[i] || EXAMPLES[0];
+            document.getElementById('str-input').value = ex.s;
+            document.getElementById('dict-input').value = JSON.stringify(ex.dict);
+            loadData(ex.s, ex.dict);
+        }
+
+        document.addEventListener('keydown', (e) => {
+            const tag = (e.target.tagName || '').toLowerCase(); if (tag === 'input' || tag === 'textarea') return;
+            if (e.key === 'ArrowRight') { e.preventDefault(); pause(); nextStep(); }
+            else if (e.key === 'ArrowLeft') { e.preventDefault(); pause(); prevStep(); }
+            else if (e.key === ' ') { e.preventDefault(); togglePlay(); }
+        });
+        document.getElementById('str-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') loadCustom(); });
+        document.getElementById('dict-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') loadCustom(); });
+
+        buildCodePanel();
+        window.onload = () => loadExample(0);
+    </script>
+</body>
+</html>

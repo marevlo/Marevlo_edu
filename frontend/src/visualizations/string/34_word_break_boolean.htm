@@ -1,0 +1,570 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Word Break (Boolean) - Visualization</title>
+    <style>
+        :root {
+            --bg-page: #070b14;
+            --bg-surface: rgba(255, 255, 255, 0.045);
+            --bg-input: rgba(255, 255, 255, 0.04);
+            --border-main: rgba(255, 255, 255, 0.10);
+            --btn-bg: rgba(255, 255, 255, 0.05);
+            --btn-hover: rgba(255, 255, 255, 0.10);
+            --text-main: #e8eefb;
+            --text-dim: #8b98b3;
+            --accent-orange: #f5a524;   /* prefix being tested            */
+            --accent-blue:   #06b6d4;    /* anchor dp[j]==true / chrome    */
+            --accent-green:  #22c55e;    /* segmentable (dp == true)       */
+            --accent-red:    #f43f5e;    /* not in dict / dp false         */
+            --accent-purple: #a855f7;    /* current prefix length i        */
+            --mono: ui-monospace, 'SF Mono', 'Cascadia Code', 'Courier New', monospace;
+            --sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+            --shell: 900px;
+        }
+
+        * { box-sizing: border-box; }
+        html, body { overflow-x: hidden; }
+        body {
+            background:
+                radial-gradient(1100px 600px at 15% -10%, rgba(168, 85, 247, 0.10), transparent 60%),
+                radial-gradient(900px 600px at 100% 10%, rgba(6, 182, 212, 0.10), transparent 55%),
+                linear-gradient(160deg, #070b14 0%, #0b1120 55%, #0a0f1c 100%);
+            background-attachment: fixed;
+            color: var(--text-main); font-family: var(--sans); margin: 0;
+            display: flex; flex-direction: column; align-items: center; min-height: 100vh;
+            padding-bottom: 48px; -webkit-font-smoothing: antialiased;
+        }
+        body::before, body::after { content: ''; position: fixed; border-radius: 50%; filter: blur(70px); pointer-events: none; z-index: 0; opacity: 0.45; }
+        body::before { width: 380px; height: 380px; top: 8%; left: -120px; background: radial-gradient(circle, rgba(168,85,247,0.30), transparent 70%); }
+        body::after  { width: 420px; height: 420px; bottom: 4%; right: -140px; background: radial-gradient(circle, rgba(6,182,212,0.22), transparent 70%); }
+        body > * { position: relative; z-index: 1; }
+
+        .input-bar {
+            width: 100%; background: rgba(10, 15, 28, 0.55);
+            backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+            padding: 14px 16px; display: flex; justify-content: center; align-items: center; gap: 10px;
+            border-bottom: 1px solid var(--border-main); flex-wrap: wrap; position: sticky; top: 0; z-index: 50;
+        }
+        label.ui-label, .ui-label { font-family: var(--mono); font-size: 13px; color: var(--text-dim); letter-spacing: 0.2px; }
+        input[type="text"] {
+            background: var(--bg-input); border: 1px solid var(--border-main); color: var(--text-main);
+            height: 34px; border-radius: 9px; padding: 0 12px; font-size: 13px; font-family: var(--mono);
+            transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+        }
+        #s-input { width: 150px; }
+        #dict-input { width: 190px; }
+        input[type="text"]:focus { outline: none; border-color: var(--accent-purple); box-shadow: 0 0 0 3px rgba(168, 85, 247, 0.18); background: rgba(168, 85, 247, 0.06); }
+
+        button {
+            height: 34px; border-radius: 9px; padding: 0 14px; background: var(--btn-bg);
+            border: 1px solid var(--border-main); color: var(--text-main); font-size: 13px; font-weight: 600; cursor: pointer;
+            transition: transform 0.15s ease, background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+        }
+        button:hover { background: var(--btn-hover); border-color: rgba(6, 182, 212, 0.5); box-shadow: 0 0 18px rgba(6, 182, 212, 0.18); transform: translateY(-1px); }
+        button:active { transform: translateY(0); }
+        #play-btn { background: linear-gradient(135deg, rgba(6,182,212,0.22), rgba(6,182,212,0.10)); border-color: rgba(6, 182, 212, 0.45); color: #a5f3fc; min-width: 80px; }
+
+        .shell { width: var(--shell); max-width: 95%; margin: 24px auto 0; display: flex; flex-direction: column; gap: 16px; }
+
+        .title-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+        .title-row h1 { font-size: 18px; font-weight: 800; margin: 0; letter-spacing: 0.2px; }
+        .title-row .sub { color: var(--text-dim); font-weight: 500; font-size: 13px; }
+        .step-badge { font-family: var(--mono); font-size: 12px; font-weight: 700; color: #a5f3fc; background: rgba(6,182,212,0.12); border: 1px solid rgba(6,182,212,0.3); padding: 4px 10px; border-radius: 999px; white-space: nowrap; }
+        .progress-track { height: 4px; width: 100%; background: rgba(255,255,255,0.07); border-radius: 999px; overflow: hidden; margin-top: -6px; }
+        .progress-fill { height: 100%; width: 0%; border-radius: 999px; background: linear-gradient(90deg, var(--accent-blue), var(--accent-purple)); box-shadow: 0 0 12px rgba(6,182,212,0.5); transition: width 0.45s cubic-bezier(0.34,1.1,0.64,1); }
+
+        .narration { background: var(--bg-surface); border: 1px solid rgba(6,182,212,0.22); border-radius: 12px; padding: 12px 18px; font-family: var(--mono); font-size: 14px; line-height: 1.5; color: #cfe9f5; min-height: 48px; display: flex; align-items: center; gap: 10px; transition: border-color 0.3s, background 0.3s; }
+        .narration::before { content: '\25B8'; color: var(--accent-blue); font-size: 13px; }
+        .narration.done { border-color: rgba(34,197,94,0.4); background: rgba(34,197,94,0.06); }
+        .narration.done::before { content: '\2713'; color: var(--accent-green); }
+        .narration.fail { border-color: rgba(244,63,94,0.4); background: rgba(244,63,94,0.06); }
+        .narration.fail::before { content: '\2717'; color: var(--accent-red); }
+        .narration code { background: rgba(6,182,212,0.14); color: #7dd3fc; padding: 1px 6px; border-radius: 5px; font-size: 12.5px; }
+        .narration b { color: #fff; }
+
+        .stage-card { background: var(--bg-surface); border: 1px solid var(--border-main); border-radius: 18px; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); box-shadow: 0 12px 38px rgba(0,0,0,0.4); overflow: hidden; }
+        .stage-screen { position: relative; margin: 14px; border-radius: 14px; background: radial-gradient(700px 300px at 50% -10%, rgba(6,182,212,0.08), transparent 70%), #090d18; border: 1px solid rgba(255,255,255,0.06); }
+        .grid-stage { position: relative; width: 100%; overflow-x: auto; scrollbar-width: thin; padding: 22px; display: flex; flex-direction: column; align-items: center; gap: 18px; }
+        .grid-stage::-webkit-scrollbar { height: 8px; width: 8px; }
+        .grid-stage::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 8px; }
+
+        /* dictionary chips */
+        .dict-row { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; align-items: center; }
+        .dict-label { font-family: var(--mono); font-size: 12px; color: var(--text-dim); margin-right: 2px; }
+        .chip { font-family: var(--mono); font-weight: 700; font-size: 13px; padding: 5px 12px; border-radius: 999px; border: 1px solid var(--border-main); background: rgba(255,255,255,0.04); color: #cbd5e8; transition: background 0.3s, border-color 0.3s, color 0.3s, box-shadow 0.3s, transform 0.3s; }
+        .chip.lit { border-color: var(--accent-orange); background: rgba(245,165,36,0.18); color: #ffd591; box-shadow: 0 0 16px rgba(245,165,36,0.5); transform: translateY(-2px); }
+        .chip.hit { border-color: var(--accent-green); background: rgba(34,197,94,0.18); color: #bbf7d0; box-shadow: 0 0 16px rgba(34,197,94,0.45); transform: translateY(-2px); }
+
+        /* the string row + dp strip share one column track so they line up */
+        .track { display: grid; gap: 6px; }
+        .char-row, .dp-row, .axis-row { display: contents; }
+        .slot { display: flex; align-items: center; justify-content: center; font-family: var(--mono); will-change: transform; }
+
+        .ch-cell {
+            width: 46px; height: 50px; border-radius: 10px; font-weight: 800; font-size: 20px;
+            border: 2px solid var(--border-main); background: rgba(255,255,255,0.04); color: var(--text-main);
+            transition: background 0.35s, border-color 0.35s, color 0.35s, box-shadow 0.35s, transform 0.3s;
+        }
+        .ch-cell.done { border-color: rgba(34,197,94,0.45); background: rgba(34,197,94,0.08); color: #bbf7d0; }
+        .ch-cell.anchor { border-color: var(--accent-blue); background: rgba(6,182,212,0.14); color: #a5f3fc; box-shadow: 0 0 14px rgba(6,182,212,0.35); }
+        .ch-cell.scan { border-color: var(--accent-orange); background: rgba(245,165,36,0.18); color: #ffd591; box-shadow: 0 0 16px rgba(245,165,36,0.5); transform: translateY(-2px); }
+        .ch-cell.scanhit { border-color: var(--accent-green); background: linear-gradient(180deg, rgba(47,224,143,0.85), rgba(33,194,117,0.85)); color: #06251a; box-shadow: 0 0 16px rgba(34,197,94,0.5); }
+
+        /* dp strip: one cell per boundary 0..n, sits under the GAPS between chars */
+        .dp-cell {
+            width: 46px; height: 36px; border-radius: 9px; font-weight: 800; font-size: 14px;
+            border: 2px solid var(--border-main); background: rgba(255,255,255,0.04); color: var(--text-dim);
+            transition: background 0.35s, border-color 0.35s, color 0.35s, box-shadow 0.35s, transform 0.3s;
+        }
+        .dp-cell.t { border-color: var(--accent-green); background: rgba(34,197,94,0.16); color: #86efac; }
+        .dp-cell.f { border-color: rgba(244,63,94,0.35); background: rgba(244,63,94,0.07); color: #fda4b4; }
+        .dp-cell.unset { color: transparent; background: rgba(255,255,255,0.02); border-style: dashed; }
+        .dp-cell.cur { border-color: var(--accent-purple); background: rgba(168,85,247,0.18); color: #e9d5ff; box-shadow: 0 0 20px rgba(168,85,247,0.55), inset 0 0 12px rgba(168,85,247,0.12); transform: scale(1.08); z-index: 2; }
+        .dp-cell.anchor { border-color: var(--accent-blue); background: rgba(6,182,212,0.16); color: #a5f3fc; box-shadow: 0 0 14px rgba(6,182,212,0.4); }
+        .dp-cell.justset { border-color: var(--accent-green); background: linear-gradient(180deg, rgba(47,224,143,0.85), rgba(33,194,117,0.85)); color: #06251a; box-shadow: 0 0 16px rgba(34,197,94,0.5); }
+
+        .axis-cell { width: 46px; height: 16px; font-family: var(--mono); font-size: 10px; color: #4b5772; display: flex; align-items: center; justify-content: center; }
+
+        .action-stage { position: relative; min-height: 92px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; }
+        .answer-track { display: flex; gap: 6px; align-items: center; min-height: 44px; flex-wrap: wrap; justify-content: center; }
+        .ans-word { padding: 8px 14px; border-radius: 10px; font-family: var(--mono); font-size: 17px; font-weight: 800; border: 2px solid var(--accent-green); background: rgba(34,197,94,0.16); color: #bbf7d0; box-shadow: 0 0 12px rgba(34,197,94,0.35); }
+        .ans-plus { color: var(--text-dim); font-family: var(--mono); font-weight: 800; }
+        .action-word { font-family: var(--mono); font-weight: 800; font-size: 18px; letter-spacing: 0.4px; min-height: 22px; text-align: center; transition: color 0.3s; }
+        #confetti { position: absolute; inset: 0; overflow: visible; pointer-events: none; }
+        .confetti-piece { position: absolute; top: 0; left: 50%; width: 8px; height: 13px; border-radius: 2px; opacity: 0; animation: confettiFall ease-out forwards; }
+
+        .controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: center; }
+        .controls .kbd-hint { font-size: 11px; color: var(--text-dim); font-family: var(--mono); margin-left: 4px; }
+        .kbd { background: rgba(255,255,255,0.07); border: 1px solid var(--border-main); border-radius: 5px; padding: 1px 6px; font-size: 10px; }
+        input[type="range"] { accent-color: var(--accent-blue); width: 110px; cursor: pointer; }
+
+        .details-toggle { align-self: center; height: 32px; padding: 0 16px; border-radius: 999px; cursor: pointer; background: rgba(255,255,255,0.04); border: 1px solid var(--border-main); color: var(--text-dim); font-family: var(--mono); font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; gap: 8px; transition: color 0.2s, border-color 0.2s, background 0.2s; }
+        .details-toggle:hover { color: var(--text-main); border-color: rgba(6,182,212,0.4); background: rgba(6,182,212,0.06); }
+        .details-toggle .chev { transition: transform 0.3s ease; }
+        .details-wrap.open .details-toggle .chev { transform: rotate(180deg); }
+        .details-body { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.4s ease; }
+        .details-wrap.open .details-body { grid-template-rows: 1fr; }
+        .details-inner { overflow: hidden; min-height: 0; }
+        .details-grid { display: flex; flex-direction: column; gap: 14px; padding-top: 14px; }
+
+        .panel-card { background: var(--bg-surface); border: 1px solid var(--border-main); border-radius: 16px; backdrop-filter: blur(10px); box-shadow: 0 8px 30px rgba(0,0,0,0.35); }
+        .panel-head { display: flex; align-items: center; gap: 8px; padding: 11px 16px; border-bottom: 1px solid var(--border-main); font-size: 11px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; color: var(--text-dim); }
+        .panel-head .pip { width: 7px; height: 7px; border-radius: 50%; background: var(--accent-blue); box-shadow: 0 0 8px var(--accent-blue); }
+        .code-body { padding: 12px 6px 14px; font-family: var(--mono); font-size: 12.5px; line-height: 1.7; }
+        .code-line { display: flex; gap: 12px; padding: 1px 16px; border-left: 2px solid transparent; transition: background 0.3s, border-color 0.3s; white-space: pre; }
+        .code-line .lno { color: #4b5772; width: 16px; text-align: right; user-select: none; }
+        .code-line .src { color: #c4cee0; }
+        .code-line .kw { color: #c792ea; }
+        .code-line .fn { color: #82aaff; }
+        .code-line.active { background: rgba(6,182,212,0.12); border-left-color: var(--accent-blue); }
+        .code-line.active .src, .code-line.active .lno { color: #e8eefb; }
+
+        .state-strip { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 0 2px; }
+        .pill { display: inline-flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 12px; color: var(--text-dim); background: rgba(255,255,255,0.04); border: 1px solid var(--border-main); border-radius: 999px; padding: 4px 11px; }
+        .pill b { color: var(--text-main); font-weight: 800; }
+        .pill.c b { color: var(--accent-purple); } .pill.a b { color: var(--accent-blue); } .pill.p b { color: var(--accent-orange); }
+
+        .log-panel { border-radius: 14px; padding: 12px 16px; height: 110px; overflow-y: auto; font-family: var(--mono); font-size: 12.5px; line-height: 1.5; background: var(--bg-surface); border: 1px solid var(--border-main); }
+        .log-panel::-webkit-scrollbar { width: 8px; }
+        .log-panel::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 8px; }
+
+        @keyframes confettiFall { 0%{ opacity:1; transform: translate(-50%, 0) rotate(0deg); } 100%{ opacity:0; transform: translate(calc(-50% + var(--x)), 220px) rotate(var(--rot)); } }
+        @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; } }
+    </style>
+</head>
+<body>
+
+    <div class="input-bar">
+        <label class="ui-label">s =</label>
+        <input type="text" id="s-input" placeholder="leetcode" maxlength="16">
+        <label class="ui-label">dict =</label>
+        <input type="text" id="dict-input" placeholder="leet,code" maxlength="40">
+        <button onclick="loadCustom()">Load</button>
+        <span class="ui-label" style="opacity:.5">|</span>
+        <button onclick="loadExample(0)">leetcode</button>
+        <button onclick="loadExample(1)">applepenapple</button>
+    </div>
+
+    <div class="shell">
+        <div class="title-row">
+            <h1>Word Break <span class="sub">&middot; 1-D DP &middot; dp[i] = &#8707; j &lt; i : dp[j] &amp;&amp; s[j:i] &#8712; dict &middot; O(n&sup2;&middot;k)</span></h1>
+            <span class="step-badge" id="step-badge">Step 1 / 1</span>
+        </div>
+        <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+
+        <div class="narration" id="main-panel">&mdash;</div>
+
+        <div class="stage-card">
+            <div class="stage-screen">
+                <div class="grid-stage" id="grid-stage">
+                    <div class="dict-row" id="dict-row"></div>
+                    <div class="track" id="track"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="action-stage">
+            <div id="confetti"></div>
+            <div class="answer-track" id="answer-track"></div>
+            <div class="action-word" id="action-word"></div>
+        </div>
+
+        <div class="controls">
+            <button onclick="resetSim()">&#8634; Reset</button>
+            <button onclick="prevStep()">&#8592; Back</button>
+            <button onclick="togglePlay()" id="play-btn">Play</button>
+            <button onclick="nextStep()">Next &#8594;</button>
+            <span class="ui-label" style="margin-left:6px; font-size:11px">Speed</span>
+            <input type="range" id="speed" min="0" max="2" value="1">
+            <span class="kbd-hint"><span class="kbd">&#8592;</span> <span class="kbd">&#8594;</span> step &middot; <span class="kbd">space</span> play</span>
+        </div>
+
+        <div class="details-wrap" id="details-wrap">
+            <button class="details-toggle" onclick="toggleDetails()" aria-expanded="false">
+                <span id="details-label">Show code, state &amp; log</span> <span class="chev">&#9662;</span>
+            </button>
+            <div class="details-body">
+                <div class="details-inner">
+                    <div class="details-grid">
+                        <div class="state-strip">
+                            <span class="pill c">prefix len i <b id="st-i">&mdash;</b></span>
+                            <span class="pill a">split j <b id="st-j">&mdash;</b></span>
+                            <span class="pill p">word s[j:i] <b id="st-word">&mdash;</b></span>
+                            <span class="pill">dp[n] <b id="st-ans">&mdash;</b></span>
+                        </div>
+                        <div class="panel-card">
+                            <div class="panel-head"><span class="pip"></span> Algorithm</div>
+                            <div class="code-body" id="code-panel"></div>
+                        </div>
+                        <div class="log-panel" id="log"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        'use strict';
+
+        // ========= Motion engine (spring pop, zero deps) =========
+        const REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        const FRAME = 1000 / 60;
+        function sampleSpring(stiffness, damping, mass) {
+            const dt = 1 / 60; let x = 1, v = 0; const out = [];
+            for (let i = 0; i < 240; i++) { const a = (-stiffness * x - damping * v) / mass; v += a * dt; x += v * dt; out.push(1 - x); if (Math.abs(x) < 0.0015 && Math.abs(v) < 0.0015) break; }
+            out.push(1); return out;
+        }
+        const SPRING_POP = sampleSpring(520, 17, 1);
+        const durOf = (a) => a.length * FRAME;
+        const Motion = {
+            pop(el) {
+                if (REDUCED) return;
+                const kf = SPRING_POP.map(p => ({ transform: `scale(${(0.4 + 0.66 * p).toFixed(3)})` }));
+                el.animate(kf, { duration: durOf(SPRING_POP), easing: 'linear' });
+            },
+        };
+
+        // ========= State =========
+        let S = "leetcode";
+        let DICT = ["leet", "code"];
+        let steps = [];
+        let stepIdx = 0;
+        let timer = null;
+        let confettiArmed = true;
+        const delays = [1450, 720, 330];
+        const chEls = {};   // 'k' -> char cell element
+        const dpEls = {};   // 'k' -> dp cell element
+        const axEls = {};   // 'k' -> axis label element
+
+        const CODE = [
+            [['kw','def '],['fn','wordBreak'],['src','(s, dict):']],
+            [['src','  words = set(dict)']],
+            [['src','  dp = [False]*(n+1);  dp[0] = True']],
+            [['kw','  for '],['src','i in 1..n:']],
+            [['kw','    for '],['src','j in 0..i-1:']],
+            [['kw','      if '],['src','dp[j] and s[j:i] in words:']],
+            [['src','        dp[i] = True']],
+            [['kw','        break']],
+            [['kw','  return '],['src','dp[n]']],
+        ];
+        function buildCodePanel() {
+            const panel = document.getElementById('code-panel'); panel.innerHTML = '';
+            CODE.forEach((tokens, i) => {
+                const line = document.createElement('div'); line.className = 'code-line'; line.dataset.line = i;
+                const lno = document.createElement('span'); lno.className = 'lno'; lno.textContent = i + 1; line.appendChild(lno);
+                const src = document.createElement('span');
+                tokens.forEach(([cls, txt]) => { const s = document.createElement('span'); s.className = cls; s.textContent = txt; src.appendChild(s); });
+                line.appendChild(src); panel.appendChild(line);
+            });
+        }
+        function highlightCode(arr) { document.querySelectorAll('.code-line').forEach(el => el.classList.toggle('active', arr && arr.includes(+el.dataset.line))); }
+        function toggleDetails() {
+            const wrap = document.getElementById('details-wrap'); const open = wrap.classList.toggle('open');
+            wrap.querySelector('.details-toggle').setAttribute('aria-expanded', open ? 'true' : 'false');
+            document.getElementById('details-label').textContent = open ? 'Hide code, state & log' : 'Show code, state & log';
+        }
+
+        // ========= step generation =========
+        function generateSteps() {
+            steps = [];
+            const n = S.length;
+            const words = new Set(DICT);
+            const dp = new Array(n + 1).fill(false);
+            dp[0] = true;
+
+            // segmentation backpointers: cut[i] = j such that s[j:i] is the word that set dp[i]
+            const cut = new Array(n + 1).fill(-1);
+
+            const snap = (extra) => Object.assign({
+                dp: dp.slice(), n, i: 0, j: -1, word: '', litChip: null,
+                done: false, complete: false, ok: false, justSet: -1, segment: null
+            }, extra);
+
+            steps.push(snap({
+                code: [0, 1, 2], action: 'BUILD DP', actionColor: 'var(--accent-blue)',
+                panel: `Can <code>s="${S}"</code> be cut into dictionary words? Let <code>dp[i]</code> = &ldquo;the prefix <code>s[0:i]</code> is segmentable&rdquo;. Seed <code>dp[0] = true</code> (the empty prefix).`,
+                log: `init  s="${S}" (n=${n})  dict={${DICT.join(', ')}}  dp[0]=T`
+            }));
+
+            outer:
+            for (let i = 1; i <= n; i++) {
+                let setHere = false;
+                for (let j = 0; j < i; j++) {
+                    if (!dp[j]) continue;                 // only split after a segmentable prefix
+                    const w = S.slice(j, i);
+                    const inDict = words.has(w);
+                    steps.push(snap({
+                        i, j, word: w, litChip: inDict ? w : null,
+                        code: [4, 5], action: `s[${j}:${i}] = "${w}"  ${inDict ? '∈ dict' : '∉ dict'}`,
+                        actionColor: inDict ? 'var(--accent-green)' : 'var(--accent-orange)',
+                        panel: inDict
+                            ? `<code>dp[${j}]</code> is true and <code>s[${j}:${i}]="${w}"</code> is in the dictionary &#8594; the whole prefix <code>s[0:${i}]</code> splits cleanly.`
+                            : `<code>dp[${j}]</code> is true, so test the tail <code>s[${j}:${i}]="${w}"</code>&hellip; it is <b>not</b> a dictionary word. Keep scanning <code>j</code>.`,
+                        log: `i=${i} j=${j}  "${w}" ${inDict ? '✓ in dict' : '✗'}`
+                    }));
+                    if (inDict) {
+                        dp[i] = true; cut[i] = j; setHere = true;
+                        steps.push(snap({
+                            i, j, word: w, litChip: w, justSet: i,
+                            code: [6, 7], action: `dp[${i}] = true`, actionColor: 'var(--accent-green)',
+                            panel: `Set <code>dp[${i}] = true</code> via the word <code>"${w}"</code>, then <code>break</code> &mdash; one valid split is enough.`,
+                            log: `  dp[${i}] = T  (word "${w}")`
+                        }));
+                        continue outer;                   // break inner loop, advance i
+                    }
+                }
+                if (!setHere) {
+                    steps.push(snap({
+                        i, j: -1, word: '',
+                        code: [4], action: `dp[${i}] = false`, actionColor: 'var(--accent-red)',
+                        panel: `No split <code>j</code> worked for length <code>${i}</code> &#8594; <code>dp[${i}]</code> stays <b>false</b>. The prefix <code>s[0:${i}]</code> is not segmentable (yet).`,
+                        log: `  dp[${i}] = F  (no valid split)`
+                    }));
+                }
+            }
+
+            const ok = dp[n];
+            // reconstruct one valid segmentation for the answer track
+            let segment = null;
+            if (ok) {
+                segment = []; let k = n;
+                while (k > 0) { segment.unshift(S.slice(cut[k], k)); k = cut[k]; }
+            }
+            steps.push(snap({
+                complete: true, confetti: ok, ok, segment,
+                i: n, code: [8],
+                action: ok ? '✓ YES — segmentable' : '✗ NO — cannot segment',
+                actionColor: ok ? 'var(--accent-green)' : 'var(--accent-red)',
+                panel: ok
+                    ? `<code>dp[${n}]</code> is <b>true</b> &#8594; the answer is <b>YES</b>. One valid breakup is <code>"${segment.join(' + ')}"</code>.`
+                    : `<code>dp[${n}]</code> is <b>false</b> &#8594; the answer is <b>NO</b>. <code>"${S}"</code> cannot be split entirely into dictionary words.`,
+                log: ok ? `done  YES = ${segment.join(' + ')}` : `done  NO  (dp[${n}] = false)`
+            }));
+        }
+
+        // ========= render (persistent DOM) =========
+        function renderStep(idx) {
+            stepIdx = idx; const step = steps[idx]; if (!step) return;
+            const n = step.n;
+
+            // ----- dictionary chips -----
+            const dictRow = document.getElementById('dict-row');
+            const dictUsed = new Set();
+            if (!dictRow.dataset.built) {
+                dictRow.innerHTML = '<span class="dict-label">dict =</span>';
+                dictRow.dataset.built = '1';
+            }
+            // rebuild chips only when DICT changes (cheap: keyed by content)
+            const wantChips = DICT.map(w => w).join('');
+            if (dictRow.dataset.words !== wantChips) {
+                dictRow.innerHTML = '<span class="dict-label">dict =</span>';
+                DICT.forEach(w => { const c = document.createElement('span'); c.className = 'chip'; c.dataset.w = w; c.textContent = w; dictRow.appendChild(c); });
+                dictRow.dataset.words = wantChips;
+            }
+            dictRow.querySelectorAll('.chip').forEach(c => {
+                c.classList.toggle('lit', step.litChip != null && c.dataset.w === step.litChip && step.justSet < 0);
+                c.classList.toggle('hit', step.litChip != null && c.dataset.w === step.litChip && step.justSet >= 0);
+            });
+
+            // ----- the track: row 1 = chars (n cols), row 2 = dp strip (n+1 cols), row3 axis -----
+            const track = document.getElementById('track');
+            // Lay chars in columns 1..n; dp cells in columns 0..n. Use a (n+1)-col grid of 46px,
+            // chars occupy odd visual slots — but simplest: grid of (n+1) cols, char k in col k+1, dp k in col k.
+            // We render two contents-rows; align by giving char k grid-column k+2 (1-based, skip dp[0] column).
+            track.style.gridTemplateColumns = `repeat(${n + 1}, 46px)`;
+
+            const usedCh = new Set(), usedDp = new Set(), usedAx = new Set();
+
+            // char cells (k = 0..n-1) -> grid column k+2  (so they sit to the right of dp[k])
+            for (let k = 0; k < n; k++) {
+                const key = String(k); usedCh.add(key);
+                let el = chEls[key];
+                if (!el) { el = document.createElement('div'); el.className = 'slot ch-cell'; chEls[key] = el; }
+                let cls = 'slot ch-cell';
+                if (k < step.i) cls += ' done';                                  // chars covered so far
+                // char k belongs to the slice s[j:i] when scanning
+                if (step.j >= 0 && k >= step.j && k < step.i) cls += step.justSet >= 0 ? ' scanhit' : ' scan';
+                el.className = cls; el.textContent = S[k];
+                el.style.gridColumn = (k + 2) + ' / span 1'; el.style.gridRow = '1';
+                track.appendChild(el);
+            }
+
+            // dp cells (k = 0..n) -> grid column k+1, row 2
+            for (let k = 0; k <= n; k++) {
+                const key = String(k); usedDp.add(key);
+                let el = dpEls[key];
+                if (!el) { el = document.createElement('div'); el.className = 'slot dp-cell'; dpEls[key] = el; }
+                let cls = 'slot dp-cell';
+                const settled = k <= step.i;          // dp values computed up to i are final/known
+                const val = step.dp[k];
+                let txt;
+                if (!settled) { cls += ' unset'; txt = '?'; }
+                else { cls += val ? ' t' : ' f'; txt = val ? 'T' : 'F'; }
+                if (k === step.justSet) cls += ' justset';
+                else if (k === step.i && !step.complete) cls += ' cur';
+                if (k === step.j) cls += ' anchor';   // dp[j] anchor (must be true)
+                const prev = el.textContent;
+                el.className = cls; el.textContent = txt;
+                el.style.gridColumn = (k + 1) + ' / span 1'; el.style.gridRow = '2';
+                if ((k === step.justSet) && prev !== 'T') Motion.pop(el);
+                track.appendChild(el);
+            }
+
+            // axis labels (boundary indices 0..n) under dp cells, row 3
+            for (let k = 0; k <= n; k++) {
+                const key = String(k); usedAx.add(key);
+                let el = axEls[key];
+                if (!el) { el = document.createElement('div'); el.className = 'axis-cell'; axEls[key] = el; }
+                el.textContent = k;
+                el.style.gridColumn = (k + 1) + ' / span 1'; el.style.gridRow = '3';
+                track.appendChild(el);
+            }
+
+            // reap removed nodes (when n shrinks on new input)
+            Object.keys(chEls).forEach(k => { if (!usedCh.has(k)) { chEls[k].remove(); delete chEls[k]; } });
+            Object.keys(dpEls).forEach(k => { if (!usedDp.has(k)) { dpEls[k].remove(); delete dpEls[k]; } });
+            Object.keys(axEls).forEach(k => { if (!usedAx.has(k)) { axEls[k].remove(); delete axEls[k]; } });
+
+            // ----- answer track -----
+            const at = document.getElementById('answer-track'); at.innerHTML = '';
+            if (step.complete && step.ok && step.segment) {
+                step.segment.forEach((w, idx2) => {
+                    if (idx2 > 0) { const p = document.createElement('span'); p.className = 'ans-plus'; p.textContent = '+'; at.appendChild(p); }
+                    const t = document.createElement('div'); t.className = 'ans-word'; t.textContent = w; at.appendChild(t);
+                });
+            }
+
+            // ----- narration + action -----
+            const mp = document.getElementById('main-panel');
+            mp.innerHTML = step.panel || '&mdash;';
+            mp.classList.toggle('done', !!(step.complete && step.ok));
+            mp.classList.toggle('fail', !!(step.complete && !step.ok));
+            const aw = document.getElementById('action-word'); aw.textContent = step.action || ''; aw.style.color = step.actionColor || 'var(--text-dim)';
+            highlightCode(step.code);
+
+            if (step.confetti) { if (confettiArmed) { fireConfetti(); confettiArmed = false; } } else confettiArmed = true;
+
+            // ----- state pills -----
+            document.getElementById('st-i').textContent = step.complete ? n : (step.i || step.i === 0 ? step.i : '—');
+            document.getElementById('st-j').textContent = step.j >= 0 ? step.j : '—';
+            document.getElementById('st-word').textContent = step.word ? `"${step.word}"` : '—';
+            document.getElementById('st-ans').textContent = step.complete ? (step.ok ? 'true' : 'false') : (step.dp[n] ? 'true' : '…');
+
+            document.getElementById('step-badge').textContent = `Step ${idx + 1} / ${steps.length}`;
+            document.getElementById('progress-fill').style.width = `${(idx / Math.max(1, steps.length - 1)) * 100}%`;
+
+            const logEl = document.getElementById('log');
+            logEl.innerHTML = steps.slice(0, idx + 1).map(s => `<div style="margin:3px 0;white-space:pre-wrap;">${s.log}</div>`).join('');
+            logEl.scrollTop = logEl.scrollHeight;
+        }
+
+        function fireConfetti() {
+            const host = document.getElementById('confetti'); if (!host || REDUCED) return;
+            const colors = ['#22c55e', '#06b6d4', '#a855f7', '#f5a524', '#f43f5e'];
+            for (let i = 0; i < 38; i++) {
+                const p = document.createElement('div'); p.className = 'confetti-piece';
+                p.style.setProperty('--x', ((Math.random() * 2 - 1) * 220) + 'px');
+                p.style.setProperty('--rot', ((Math.random() * 720 - 360)) + 'deg');
+                p.style.background = colors[i % colors.length];
+                p.style.animationDuration = (0.9 + Math.random() * 0.8) + 's';
+                p.style.animationDelay = (Math.random() * 0.15) + 's';
+                host.appendChild(p); setTimeout(() => p.remove(), 1900);
+            }
+        }
+
+        // ========= controls =========
+        function nextStep() { if (stepIdx < steps.length - 1) renderStep(stepIdx + 1); else pause(); }
+        function prevStep() { if (stepIdx > 0) renderStep(stepIdx - 1); }
+        function resetSim() { pause(); renderStep(0); }
+        function togglePlay() {
+            const btn = document.getElementById('play-btn');
+            if (timer) { pause(); return; }
+            btn.textContent = 'Pause';
+            if (stepIdx >= steps.length - 1) renderStep(0);
+            timer = setInterval(() => { if (stepIdx < steps.length - 1) nextStep(); else pause(); }, delays[document.getElementById('speed').value]);
+        }
+        function pause() { clearInterval(timer); timer = null; document.getElementById('play-btn').textContent = 'Play'; }
+
+        function clearDom() {
+            Object.keys(chEls).forEach(k => { chEls[k].remove(); delete chEls[k]; });
+            Object.keys(dpEls).forEach(k => { dpEls[k].remove(); delete dpEls[k]; });
+            Object.keys(axEls).forEach(k => { axEls[k].remove(); delete axEls[k]; });
+            const dictRow = document.getElementById('dict-row'); dictRow.dataset.words = '';
+            confettiArmed = true;
+        }
+        function parseDict(raw) {
+            return (raw || '').split(',').map(w => w.trim()).filter(w => w.length).slice(0, 8);
+        }
+        function loadPair(s, dict) {
+            pause();
+            S = (s || '').slice(0, 16);
+            DICT = (dict && dict.length) ? dict : DICT;
+            clearDom(); generateSteps(); renderStep(0);
+        }
+        function loadCustom() {
+            const s = (document.getElementById('s-input').value || '').slice(0, 16);
+            const dict = parseDict(document.getElementById('dict-input').value);
+            if (s.length && dict.length) loadPair(s, dict);
+        }
+        function loadExample(n) {
+            const ex = [['leetcode', ['leet', 'code']], ['applepenapple', ['apple', 'pen']]][n];
+            document.getElementById('s-input').value = ex[0];
+            document.getElementById('dict-input').value = ex[1].join(',');
+            loadPair(ex[0], ex[1]);
+        }
+
+        document.addEventListener('keydown', (e) => {
+            const tag = (e.target.tagName || '').toLowerCase(); if (tag === 'input' || tag === 'textarea') return;
+            if (e.key === 'ArrowRight') { e.preventDefault(); pause(); nextStep(); }
+            else if (e.key === 'ArrowLeft') { e.preventDefault(); pause(); prevStep(); }
+            else if (e.key === ' ') { e.preventDefault(); togglePlay(); }
+        });
+        ['s-input', 'dict-input'].forEach(id => document.getElementById(id).addEventListener('keydown', (e) => { if (e.key === 'Enter') loadCustom(); }));
+
+        buildCodePanel();
+        window.onload = () => loadExample(0);
+    </script>
+</body>
+</html>

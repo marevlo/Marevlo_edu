@@ -1,0 +1,2227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PyTorch Academy • Module 9 — Modern Training Tricks</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Source+Serif+4:ital,opsz,wght@0,8..60,300;0,8..60,400;0,8..60,500;0,8..60,600;1,8..60,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.47.0/tabler-icons.min.css">
+<style>
+:root{
+  --bg:#08090b;
+  --bg-2:#0b0f1a;
+  --bg-3:#111827;
+  --panel:#0d1117;
+  --panel-2:#111827;
+  --line:#1e2330;
+  --line-2:#2a3142;
+  --ink:#e8eaed;
+  --ink-2:#a8aeb8;
+  --ink-3:#6b7280;
+  --ink-4:#454b58;
+  --accent:#6366f1;       /* indigo — primary accent */
+  --accent-2:#818cf8;
+  --accent-glow:rgba(99,102,241,0.18);
+  --plan:#f59e0b;        /* planning / cognition */
+  --tool:#10b981;        /* tool execution */
+  --observe:#8b5cf6;     /* observation */
+  --fail:#f7768e;
+  --success:#10b981;
+  --serif:'Source Serif 4', Georgia, serif;
+  --sans:'Outfit', -apple-system, sans-serif;
+  --mono:'JetBrains Mono', monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{
+  background:var(--bg);
+  color:var(--ink);
+  font-family:var(--sans);
+  font-weight:400;
+  line-height:1.6;
+  -webkit-font-smoothing:antialiased;
+  overflow-x:hidden;
+  min-height:100vh;
+  position:relative;
+}
+body::before{
+  content:'';position:fixed;inset:0;
+  background:
+    radial-gradient(ellipse 80% 50% at 42% -15%, rgba(99,102,241,0.1), transparent 60%),
+    radial-gradient(ellipse 60% 40% at 100% 100%, rgba(99,102,241,0.04), transparent 60%);
+  pointer-events:none;z-index:0;
+}
+body::after{
+  content:'';position:fixed;inset:0;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='300' height='300' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E");
+  background-size:300px 300px;
+  opacity:0.025;
+  pointer-events:none;z-index:0;
+}
+
+/* ============ STARFIELD ============ */
+.starfield {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  pointer-events: none;
+  z-index: -2;
+}
+.stars {
+  position: fixed;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  z-index: -1;
+  pointer-events: none;
+}
+.star {
+  position: absolute;
+  background: #fff;
+  border-radius: 50%;
+  opacity: 0.3;
+  animation: twinkle var(--dur, 4s) ease-in-out infinite;
+}
+@keyframes twinkle {
+  0%, 100% { opacity: 0.1; }
+  50% { opacity: 0.6; }
+}
+
+/* ============== LAYOUT ============== */
+.shell{position:relative;z-index:1;display:grid;grid-template-columns:280px 1fr;min-height:100vh}
+.sidebar{
+  position:sticky;top:0;height:100vh;
+  border-right:1px solid transparent;
+  background:linear-gradient(180deg, rgba(13,17,23,0.92) 0%, rgba(8,9,11,0.96) 100%);
+  backdrop-filter:blur(20px) saturate(1.4);
+  -webkit-backdrop-filter:blur(20px) saturate(1.4);
+  padding:36px 22px 28px;
+  overflow-y:auto;
+  box-shadow:inset -1px 0 0 rgba(255,255,255,0.04), 1px 0 32px rgba(0,0,0,0.5);
+  display:flex;flex-direction:column;
+}
+/* Left accent spine as pseudo */
+.sidebar::before{
+  position:absolute;left:0;top:0;bottom:0;width:2px;
+  background:linear-gradient(180deg,
+    transparent 0%,
+    rgba(99,102,241,0.5) 20%,
+    rgba(99,102,241,0.3) 60%,
+    transparent 100%);
+  pointer-events:none;z-index:2;
+}
+.sidebar::-webkit-scrollbar{width:3px}
+.sidebar::-webkit-scrollbar-track{background:transparent}
+.sidebar::-webkit-scrollbar-thumb{background:linear-gradient(180deg, var(--accent), transparent);border-radius:3px;opacity:0.5}
+.brand{
+  display:flex;align-items:center;gap:10px;margin-bottom:8px;
+  position:relative;
+}
+/* #3 — top glow arc behind brand */
+.brand::before{
+  content:'';
+  position:absolute;top:-28px;left:-22px;right:-22px;height:90px;
+  background:radial-gradient(ellipse 70% 60% at 40% 0%, rgba(99,102,241,0.18), transparent 70%);
+  pointer-events:none;z-index:0;
+  border-radius:50%;
+}
+.brand > *{position:relative;z-index:1}
+.brand-mark{
+  width:36px;height:36px;border-radius:8px;
+  background:transparent;
+  display:grid;place-items:center;
+  overflow:hidden;
+  flex-shrink:0;
+}
+.brand-mark img, .brand-mark i{
+  font-size:24px;
+  color:var(--accent-2);
+  display:block;
+}
+.brand-name{font-size:13px;font-weight:600;letter-spacing:0.02em}
+.brand-sub{font-size:11px;color:var(--ink-3);margin-top:2px;letter-spacing:0.04em}
+/* #6 — brand divider hairline */
+.brand-divider{
+  height:1px;
+  margin:18px 0 4px;
+  background:linear-gradient(90deg, transparent 0%, rgba(99,102,241,0.25) 40%, rgba(99,102,241,0.25) 60%, transparent 100%);
+}
+.module-tag{
+  margin-top:24px;padding:13px 15px;
+  background:linear-gradient(135deg, rgba(99,102,241,0.06) 0%, rgba(13,17,23,0.9) 100%);
+  border:1px solid rgba(99,102,241,0.18);
+  border-radius:9px;
+  box-shadow:0 1px 12px rgba(0,0,0,0.25);
+}
+.module-tag-label{font-size:10px;color:var(--ink-3);letter-spacing:0.04em;margin-bottom:4px}
+.module-tag-title{font-family:var(--serif);font-size:13px;color:var(--ink);font-weight:400}
+.toc{margin-top:24px}
+.toc-label{font-size:10px;color:var(--ink-3);letter-spacing:0.05em;margin-bottom:12px;padding-left:10px}
+.toc a{
+  display:flex;align-items:center;gap:10px;
+  padding:9px 11px;color:var(--ink-2);text-decoration:none;font-size:13px;
+  border-radius:6px;border-left:2px solid transparent;
+  transition:background 0.18s ease, color 0.18s ease, border-color 0.18s ease;
+  position:relative;
+}
+.toc a:hover{
+  background:rgba(255,255,255,0.03);
+  color:var(--ink);
+}
+.toc a.active{
+  background:linear-gradient(90deg, rgba(99,102,241,0.12) 0%, transparent 100%);
+  color:var(--accent);
+  border-left-color:var(--accent);
+  box-shadow:inset 0 0 0 1px rgba(99,102,241,0.08);
+}
+/* #7 — past TOC items fade */
+.toc a.past{
+  opacity:0.38;
+  color:var(--ink-4);
+}
+.toc a.past .toc-num{color:var(--ink-4)}
+.toc-num{font-family:var(--mono);font-size:11px;color:var(--ink-4);width:24px;transition:color 0.18s}
+.toc a.active .toc-num{color:var(--accent-2)}
+.progress-rail{
+  margin-top:28px;padding:15px 16px;
+  background:linear-gradient(135deg, rgba(99,102,241,0.05) 0%, rgba(13,17,23,0.8) 100%);
+  border:1px solid rgba(99,102,241,0.14);
+  border-radius:9px;
+  box-shadow:0 1px 10px rgba(0,0,0,0.2);
+}
+.progress-bar{
+  height:3px;background:rgba(255,255,255,0.05);border-radius:2px;overflow:hidden;margin-top:10px;
+  box-shadow:inset 0 1px 2px rgba(0,0,0,0.4);
+}
+.progress-fill{
+  height:100%;width:0%;
+  background:linear-gradient(90deg, var(--accent), var(--accent-2));
+  transition:width 0.5s cubic-bezier(0.4,0,0.2,1);
+  box-shadow:0 0 8px rgba(99,102,241,0.5);
+}
+.progress-text{font-size:11px;color:var(--ink-3);font-family:var(--serif)}
+
+.main{padding:80px 80px 200px;max-width:980px}
+@media (max-width: 1100px){
+  .shell{grid-template-columns:1fr}
+  .sidebar{position:relative;height:auto;border-right:none;border-bottom:1px solid var(--line)}
+  .main{padding:48px 32px 120px}
+}
+
+/* ============== HERO ============== */
+.hero{margin-bottom:80px;position:relative;text-align:left;padding:0;max-width:100%}
+.hero-meta{
+  display:inline-flex;align-items:center;gap:0;
+  margin-bottom:36px;
+  font-family:var(--mono);font-size:11px;color:var(--ink-3);letter-spacing:0.05em;
+  background:linear-gradient(135deg, rgba(99,102,241,0.07) 0%, rgba(13,17,23,0.6) 100%);
+  border:1px solid rgba(99,102,241,0.2);
+  border-radius:100px;
+  padding:7px 16px;
+  backdrop-filter:blur(8px);
+  box-shadow:0 0 0 1px rgba(255,255,255,0.03), 0 4px 24px rgba(0,0,0,0.3), 0 0 32px rgba(99,102,241,0.06);
+}
+.hero-meta span{white-space:nowrap;padding:0 2px}
+.hero-meta .dot{
+  width:5px;height:5px;border-radius:50%;
+  background:var(--accent);
+  box-shadow:0 0 6px rgba(99,102,241,0.8), 0 0 12px rgba(99,102,241,0.4);
+  flex-shrink:0;margin:0 10px;
+}
+.hero-meta .sep{
+  width:1px;height:10px;
+  background:rgba(255,255,255,0.08);
+  flex-shrink:0;margin:0 12px;
+}
+.hero-meta .track-label{color:var(--accent-2);font-weight:500}
+.hero-meta .level-badge{
+  padding:2px 9px;
+  background:rgba(99,102,241,0.12);
+  border:1px solid rgba(99,102,241,0.25);
+  border-radius:100px;
+  color:var(--accent-2);
+  font-weight:600;
+  font-size:10px;
+  letter-spacing:0.08em;
+  margin-left:4px;
+}
+.hero h1{
+  font-family:var(--serif);font-weight:400;font-size:clamp(40px, 5.5vw, 68px);
+  line-height:1.05;letter-spacing:-0.022em;margin-bottom:24px;
+}
+.hero h1 em, .hero h1 .accent{font-style:italic;color:var(--accent);font-weight:300;background:none;-webkit-text-fill-color:initial;text-fill-color:initial}
+.hero-lede, .hero .subtitle{
+  font-family:var(--serif);font-size:21px;line-height:1.55;color:var(--ink-2);
+  max-width:680px;font-weight:300;margin: 0;
+}
+.hero-stats{
+  display:grid;grid-template-columns:repeat(4,1fr);gap:2px;
+  margin-top:48px;background:var(--line);border:1px solid var(--line);border-radius:9px;overflow:hidden;
+}
+.hero-stat{background:var(--panel);padding:20px 22px;text-align:left}
+.hero-stat-num{font-family:var(--serif);font-size:28px;font-weight:500;color:var(--accent);line-height:1}
+.hero-stat-label{font-size:11px;color:var(--ink-3);margin-top:6px;letter-spacing:0.03em}
+@media (max-width:700px){.hero-stats{grid-template-columns:repeat(2,1fr)}}
+
+/* ============== SECTIONS ============== */
+.section{margin-bottom:88px;scroll-margin-top:100px}
+section:nth-child(3n){margin-bottom:104px}
+section:nth-child(2n){margin-bottom:96px}
+.section-head{margin-bottom:28px;padding-bottom:18px;border-bottom:1px solid var(--line)}
+.section-num{font-family:var(--mono);font-size:11px;color:var(--accent);letter-spacing:0.15em}
+.section-title, .section h2{
+  font-family:var(--serif);font-size:36px;font-weight:400;line-height:1.15;
+  letter-spacing:-0.01em;margin-top:8px;margin-bottom:8px;
+  display:flex;align-items:center;gap:14px;color:var(--ink);
+}
+.section h2::before{
+  content:'';
+  width:4px;
+  height:28px;
+  background:linear-gradient(180deg, var(--accent), var(--accent-2));
+  border-radius:2px;
+}
+.section-sub{font-size:15px;color:var(--ink-3);margin-top:12px;max-width:680px}
+
+p{font-family:var(--serif);font-size:17px;line-height:1.73;color:var(--ink-2);margin-bottom:20px;font-weight:300}
+p strong{color:var(--ink);font-weight:500}
+p em{color:var(--accent);font-style:italic}
+
+/* Goal Callout matches Marevlo callout standard */
+.goal-callout {
+  max-width: 980px;
+  margin: 20px 0 60px;
+  padding: 22px 28px;
+  background: linear-gradient(135deg, rgba(99,102,241,0.06), rgba(99,102,241,0.02));
+  border-left: 2px solid var(--accent);
+  border-radius: 0 7px 7px 0;
+  position: relative;
+}
+.goal-callout::before {
+  display:none;
+}
+.goal-callout h3 {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+  font-weight:600;
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.goal-callout p {
+  margin: 0;
+  font-size: 16px;
+  color: var(--ink);
+}
+
+.callout{
+  margin:32px 0;padding:22px 28px;
+  background:linear-gradient(135deg, rgba(99,102,241,0.06), rgba(99,102,241,0.02));
+  border-left:2px solid var(--accent);border-radius:0 7px 7px 0;
+  display:flex;
+  gap:16px;
+  align-items:flex-start;
+}
+.callout i{
+  font-size:20px;
+  margin-top:2px;
+  flex-shrink:0;
+}
+.callout-content{flex:1}
+.callout-title{
+  font-family:var(--mono);font-size:11px;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:8px;
+  font-weight:600;
+}
+.callout p{margin:0;font-size:16px;color:var(--ink)}
+
+/* Callout variants */
+.callout-tip{
+  background:linear-gradient(135deg, rgba(16,185,129,0.06), rgba(16,185,129,0.02));
+  border-left-color:var(--success);
+}
+.callout-tip i, .callout-tip .callout-title{color:var(--success)}
+
+.callout-warn{
+  background:linear-gradient(135deg, rgba(245,158,11,0.06), rgba(245,158,11,0.02));
+  border-left-color:var(--plan);
+}
+.callout-warn i, .callout-warn .callout-title{color:var(--plan)}
+
+.callout-info{
+  background:linear-gradient(135deg, rgba(99,102,241,0.06), rgba(99,102,241,0.02));
+  border-left-color:var(--accent);
+}
+.callout-info i, .callout-info .callout-title{color:var(--accent)}
+
+.callout-danger{
+  background:linear-gradient(135deg, rgba(247,118,142,0.06), rgba(247,118,142,0.02));
+  border-left-color:var(--fail);
+}
+.callout-danger i, .callout-danger .callout-title{color:var(--fail)}
+
+h3{font-family:var(--sans);font-size:20px;font-weight:600;margin:48px 0 16px;letter-spacing:-0.005em;color:var(--ink)}
+h4{font-family:var(--sans);font-size:15px;font-weight:600;margin:24px 0 12px;color:var(--ink);text-transform:uppercase;letter-spacing:0.06em}
+
+ul,ol{margin:16px 0 20px 0;padding-left:24px}
+li{font-family:var(--serif);font-size:17px;line-height:1.68;color:var(--ink-2);margin-bottom:10px;font-weight:300}
+li strong{color:var(--ink);font-weight:500}
+
+/* ============== CODE BLOCKS ============== */
+.code-block {
+  background:#06070a;
+  border:1px solid var(--line);
+  border-radius:8px;
+  margin:20px 0;
+  overflow:hidden;
+  position:relative;
+}
+.code-header {
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  padding:10px 18px;
+  background:rgba(255,255,255,0.02);
+  border-bottom:1px solid var(--line);
+}
+.code-lang {
+  font-size:11px;
+  color:var(--accent-2);
+  font-family:var(--mono);
+  letter-spacing:1px;
+  text-transform:uppercase;
+  font-weight:600;
+}
+.code-copy {
+  background:transparent;
+  border:1px solid var(--line-2);
+  color:var(--ink-2);
+  padding:4px 10px;
+  border-radius:5px;
+  font-size:11px;
+  cursor:pointer;
+  display:flex;
+  align-items:center;
+  gap:4px;
+  transition:all 0.15s;
+}
+.code-copy:hover {
+  background:rgba(255,255,255,0.04);
+  color:var(--ink);
+  border-color:var(--accent);
+}
+.code-block pre {
+  padding:18px 20px;
+  overflow-x:auto;
+  font-family:var(--mono);
+  font-size:13px;
+  line-height:1.65;
+}
+.code-block pre code {
+  color:#c8d3e0;
+  background:none;
+  padding:0;
+  border:none;
+}
+.section code:not(pre code) {
+  background: rgba(99, 102, 241, 0.08);
+  color: var(--accent-2);
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-family: var(--mono);
+  font-size: 13px;
+  border: 1px solid rgba(99, 102, 241, 0.18);
+}
+.kw{color:#8b5cf6}
+.fn{color:#818cf8}
+.st{color:#10b981}
+.co{color:#6b7280;font-style:italic}
+.cls{color:#f59e0b}
+.op{color:#67e8f9}
+
+/* === Output Blocks === */
+.output {
+  background:rgba(0,0,0,0.4);
+  border-left:3px solid var(--accent);
+  padding:14px 18px;
+  margin:8px 0 20px;
+  font-family:var(--mono);
+  font-size:12.5px;
+  color:var(--ink-2);
+  border-radius:0 8px 8px 0;
+  white-space:pre-wrap;
+  overflow-x:auto;
+}
+.output::before {
+  content:'output';
+  display:block;
+  font-size:10px;
+  color:var(--accent-2);
+  letter-spacing:1.5px;
+  margin-bottom:6px;
+  text-transform:uppercase;
+  font-weight:600;
+}
+
+/* === Tables === */
+.table-wrap{overflow-x:auto;margin:24px 0}
+table{
+  width:100%;
+  border-collapse:collapse;
+  background:var(--bg-2);
+  border:1px solid var(--line);
+  border-radius:9px;
+  overflow:hidden;
+  font-size:14px;
+}
+thead{
+  background:rgba(99,102,241,0.06);
+}
+th{
+  text-align:left;
+  padding:12px 14px;
+  color:var(--accent-2);
+  font-weight:600;
+  letter-spacing:0.02em;
+  border-bottom:1px solid var(--line-2);
+  font-size:13px;
+  font-family:var(--sans);
+}
+td{
+  padding:11px 14px;
+  border-bottom:1px solid var(--line);
+  color:var(--ink-2);
+  vertical-align:top;
+  font-family:var(--serif);
+  font-weight:300;
+}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:rgba(99,102,241,0.02)}
+td code{font-size:12px}
+
+/* ============== INTERACTIVE WIDGETS ============== */
+.widget {
+  margin:40px 0;
+  background:var(--panel);
+  border:1px solid var(--line);
+  border-radius:11px;
+  padding:28px;
+  position:relative;
+}
+.widget::before {
+  content: 'INTERACTIVE';
+  position: absolute;
+  top: -10px;
+  left: 20px;
+  background: var(--bg);
+  padding: 2px 10px;
+  font-size: 10px;
+  letter-spacing: 2px;
+  color: var(--accent-2);
+  border: 1px solid var(--accent);
+  border-radius: 10px;
+  font-weight: 600;
+  font-family:var(--mono);
+}
+.widget-title {
+  font-family:var(--sans);
+  font-size:16px;
+  font-weight:600;
+  color:var(--ink);
+  margin-bottom:6px;
+  letter-spacing:0.02em;
+  display:flex;
+  align-items:center;
+  gap:10px;
+}
+.widget-title::before {
+  content:'';
+  width:6px;
+  height:6px;
+  border-radius:50%;
+  background:var(--accent);
+  box-shadow:0 0 8px var(--accent-glow);
+}
+.widget-subtitle {
+  font-size:13px;
+  color:var(--ink-3);
+  margin-bottom:18px;
+}
+.controls {
+  display:flex;
+  flex-direction:column;
+  gap:14px;
+  margin-bottom:18px;
+}
+.ctrl-row {
+  display:flex;
+  align-items:center;
+  gap:14px;
+  flex-wrap:wrap;
+}
+.ctrl-label {
+  font-family:var(--sans);
+  font-size:12px;
+  color:var(--ink-2);
+  min-width:130px;
+  letter-spacing:0.02em;
+  text-transform:uppercase;
+  font-weight:500;
+}
+.ctrl-value {
+  font-size:13px;
+  color:var(--accent-2);
+  font-family:var(--mono);
+  min-width:70px;
+  text-align:right;
+  font-weight:600;
+}
+input[type="range"] {
+  flex:1;
+  accent-color:var(--accent);
+  height:4px;
+  background:var(--line-2);
+  border-radius:2px;
+  appearance:none;
+  outline:none;
+}
+input[type="range"]::-webkit-slider-thumb {
+  appearance:none;
+  width:16px;
+  height:16px;
+  border-radius:50%;
+  background:var(--accent-2);
+  cursor:pointer;
+  box-shadow:0 0 12px var(--accent-glow);
+}
+input[type="range"]::-moz-range-thumb {
+  width:16px;
+  height:16px;
+  border-radius:50%;
+  background:var(--accent-2);
+  cursor:pointer;
+  border:none;
+}
+.btn-row { display:flex; gap:8px; flex-wrap:wrap; }
+.pill-btn {
+  background:var(--bg-3);
+  color:var(--ink-2);
+  border:1px solid var(--line-2);
+  padding:7px 16px;
+  border-radius:8px;
+  font-size:12px;
+  cursor:pointer;
+  font-family:var(--mono);
+  font-weight:500;
+  transition:all 0.15s;
+}
+.pill-btn:hover {
+  background:var(--panel-2);
+  color:var(--ink);
+  border-color:var(--accent);
+}
+.pill-btn.active {
+  background:var(--accent);
+  color:#ffffff;
+  border-color:var(--accent);
+  box-shadow:0 0 15px var(--accent-glow);
+  font-weight:600;
+}
+.tensor-grid {
+  display:inline-grid;
+  gap:4px;
+  padding:16px;
+  background:rgba(0,0,0,0.3);
+  border-radius:10px;
+  border:1px solid var(--line);
+}
+.tcell {
+  width:36px;
+  height:36px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-size:10px;
+  font-family:var(--mono);
+  border-radius:4px;
+  font-weight:500;
+  transition:all 0.3s;
+}
+.viz-out {
+  margin-top:16px;
+  font-family:var(--mono);
+  font-size:13px;
+  color:var(--ink-2);
+  padding:14px 18px;
+  background:var(--bg-3);
+  border-radius:6px;
+  border-left:2px solid var(--accent);
+  white-space:pre-wrap;
+}
+.chart-box {
+  position:relative;
+  height:260px;
+  margin:16px 0 8px;
+  background:rgba(0,0,0,0.2);
+  border-radius:8px;
+  padding:8px;
+  border:1px solid var(--line);
+}
+.legend {
+  display:flex;
+  gap:18px;
+  font-size:11px;
+  color:var(--ink-3);
+  margin-top:10px;
+  flex-wrap:wrap;
+  font-family:var(--mono);
+}
+.legend-dot {
+  display:inline-block;
+  width:10px;
+  height:10px;
+  border-radius:50%;
+  margin-right:6px;
+  vertical-align:middle;
+}
+.graph-svg-wrap {
+  background:rgba(0,0,0,0.3);
+  border-radius:10px;
+  padding:16px;
+  margin:12px 0;
+  border:1px solid var(--line);
+}
+.metric-grid {
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(110px,1fr));
+  gap:10px;
+  margin:14px 0;
+}
+.metric {
+  background:rgba(0,0,0,0.3);
+  border:1px solid var(--line);
+  border-radius:8px;
+  padding:12px;
+}
+.metric-label {
+  font-family:var(--mono);
+  font-size:10px;
+  color:var(--ink-3);
+  text-transform:uppercase;
+  letter-spacing:1px;
+}
+.metric-value {
+  font-family:var(--mono);
+  font-size:18px;
+  color:var(--accent-2);
+  margin-top:4px;
+  font-weight:600;
+}
+
+/* ============ REFERENCES SECTION ============ */
+.references {
+  max-width:980px;
+  margin:80px auto 60px;
+  padding:0;
+}
+.refs-header {
+  text-align:center;
+  margin-bottom:40px;
+}
+.refs-header h2 {
+  font-family:var(--serif);
+  font-size:48px;
+  font-weight:400;
+  margin-bottom:12px;
+}
+.refs-header h2 .cyan-text { color:var(--ink) }
+.refs-header h2 .accent {
+  color:var(--accent);
+}
+.refs-header p {
+  color:var(--ink-3);
+  font-size:15px;
+  font-family:var(--serif);
+}
+.ref-card {
+  background:var(--panel);
+  border:1px solid var(--line);
+  border-radius:12px;
+  padding:24px 28px;
+  margin-bottom:22px;
+  display:flex;
+  gap:24px;
+  align-items:flex-start;
+  transition:all 0.2s;
+}
+.ref-card:hover {
+  border-color:var(--accent);
+  box-shadow:0 4px 24px var(--accent-glow);
+}
+.ref-card.pink-card { border-color:var(--line); }
+.ref-card.pink-card:hover {
+  border-color:var(--observe);
+  box-shadow:0 4px 24px rgba(139,92,246,0.12);
+}
+.ref-icon {
+  width:56px;
+  height:56px;
+  border-radius:12px;
+  background:rgba(99,102,241,0.08);
+  border:1px solid rgba(99,102,241,0.2);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-size:24px;
+  color:var(--accent-2);
+  flex-shrink:0;
+}
+.ref-card.pink-card .ref-icon {
+  background:rgba(139,92,246,0.08);
+  border-color:rgba(139,92,246,0.2);
+  color:var(--observe);
+}
+.ref-body { flex:1 }
+.ref-type {
+  font-family:var(--mono);
+  font-size:10px;
+  color:var(--ink-3);
+  font-weight:600;
+  letter-spacing:0.1em;
+  text-transform:uppercase;
+  margin-bottom:6px;
+}
+.ref-tagline {
+  font-size:14px;
+  color:var(--ink-2);
+  margin-bottom:12px;
+  font-family:var(--serif);
+  font-weight:300;
+}
+.ref-title {
+  font-family:var(--sans);
+  font-size:17px;
+  color:var(--ink);
+  font-weight:600;
+  margin-bottom:16px;
+}
+.ref-btn {
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  padding:8px 18px;
+  background:var(--bg-3);
+  border:1px solid var(--line-2);
+  color:var(--ink-2);
+  border-radius:6px;
+  font-size:12px;
+  font-weight:600;
+  letter-spacing:0.02em;
+  text-decoration:none;
+  transition:all 0.15s;
+  text-transform:uppercase;
+  font-family:var(--mono);
+}
+.ref-btn:hover {
+  background:var(--panel-2);
+  color:var(--ink);
+  border-color:var(--accent);
+}
+.ref-card.pink-card .ref-btn:hover {
+  border-color:var(--observe);
+}
+
+/* ============ SUMMARY TABLE ============ */
+.summary-box {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  padding: 24px;
+  margin: 20px 0;
+}
+
+/* ============ NEXT MODULE ============ */
+.module-nav{
+  margin-top:80px;padding:32px;
+  background:linear-gradient(135deg, var(--panel), var(--panel-2));
+  border:1px solid var(--line);border-radius:14px;
+  display:flex;justify-content:space-between;align-items:center;gap:24px;
+}
+.module-nav-label{font-family:var(--mono);font-size:10px;color:var(--ink-3);letter-spacing:0.15em;text-transform:uppercase}
+.module-nav-title{font-family:var(--serif);font-size:24px;font-weight:400;margin-top:6px}
+.module-nav-cta{
+  padding:12px 22px;background:var(--accent);color:#ffffff;
+  border-radius:8px;text-decoration:none;font-weight:600;font-size:13px;
+  white-space:nowrap;transition:all 0.15s;
+}
+.module-nav-cta:hover{background:var(--accent-2);transform:translateX(2px)}
+
+
+
+/* Sticky badge — moved to sidebar footer */
+.sidebar-footer{
+  margin-top:auto;
+  padding-top:24px;
+  border-top:1px solid rgba(255,255,255,0.04);
+}
+.depth-badge{
+  display:flex;align-items:center;gap:9px;
+  padding:11px 13px;
+  background:linear-gradient(135deg, rgba(99,102,241,0.06) 0%, rgba(13,17,23,0.8) 100%);
+  border:1px solid rgba(99,102,241,0.14);
+  border-radius:9px;
+  font-size:11px;font-family:var(--mono);
+  color:var(--ink-3);letter-spacing:0.03em;
+  box-shadow:0 1px 10px rgba(0,0,0,0.2);
+}
+.depth-badge .pulse{
+  width:5px;height:5px;flex-shrink:0;border-radius:50%;background:var(--accent);
+  box-shadow:0 0 6px rgba(99,102,241,0.7);
+  animation:pulse 2s infinite;
+}
+.depth-badge .badge-text{color:var(--ink-3);line-height:1.4}
+.depth-badge .badge-text strong{display:block;color:var(--ink-2);font-weight:500;font-size:11px;margin-bottom:1px}
+@keyframes pulse{0%,100%{opacity:0.5;transform:scale(1)}50%{opacity:1;transform:scale(1.3)}}
+
+/* Selection */
+::selection{background:var(--accent);color:#1a1a1a}
+
+/* Animation utilities */
+@keyframes fadeIn{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
+.fade-in{animation:fadeIn 0.6s ease forwards}
+
+/* Responsive type */
+@media(max-width:680px){
+  .hero h1{font-size:36px}
+  .hero-lede, .hero .subtitle{font-size:17px}
+  .section-title{font-size:26px}
+  p,li{font-size:16px}
+  .main{padding:40px 20px 80px}
+}
+</style>
+</head>
+<body>
+
+<div class="starfield"></div>
+<div class="stars" id="stars"></div>
+
+<div class="shell">
+<!-- ============ SIDEBAR ============ -->
+<aside class="sidebar">
+  <div class="brand">
+    <div class="brand-mark"><i class="ti ti-atom-2"></i></div>
+    <div>
+      <div class="brand-name">PyTorch Academy</div>
+      <div class="brand-sub">Data Science Track</div>
+    </div>
+  </div>
+  <div class="brand-divider"></div>
+  <div class="module-tag">
+    <div class="module-tag-label">Track 1 · Module 9.0</div>
+    <div class="module-tag-title">Modern Training Tricks</div>
+  </div>
+  <nav class="toc">
+    <div class="toc-label">In this module</div>
+    <a href="#sec-1" class="toc-link active"><span class="toc-num">01</span>Regularisation</a>
+    <a href="#sec-2" class="toc-link"><span class="toc-num">02</span>Normalisation</a>
+    <a href="#sec-3" class="toc-link"><span class="toc-num">03</span>Mixup</a>
+    <a href="#sec-4" class="toc-link"><span class="toc-num">04</span>Focal Loss</a>
+    <a href="#sec-5" class="toc-link"><span class="toc-num">05</span>Contrastive</a>
+    <a href="#sec-6" class="toc-link"><span class="toc-num">06</span>HPO</a>
+  </nav>
+  <div class="progress-rail">
+    <div class="progress-text">Reading progress</div>
+    <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+  </div>
+  <div class="sidebar-footer">
+    <div class="depth-badge">
+      <span class="pulse"></span>
+      <div class="badge-text">
+        <strong>Marevlo &middot; Premium Track</strong>
+        Track 1 · Module 9.0
+      </div>
+    </div>
+  </div>
+</aside>
+
+<!-- ============ MAIN CONTENT AREA ============ -->
+<main class="main">
+
+<!-- HERO -->
+<header class="hero">
+  <div class="hero-meta">
+    <span class="track-label">Track 1 · Data Science</span>
+    <span class="sep"></span>
+    <span>Module 9.0</span>
+    <span class="sep"></span>
+    <span>Course 01</span>
+    <span class="sep"></span>
+    <span class="level-badge">Core Bedrock</span>
+  </div>
+  <h1>Modern <em>Training Tricks.</em></h1>
+  <p class="subtitle">Regularisation, augmentation, class imbalance, and hyperparameter tuning — the techniques that turn "trains well" into "generalises in production."</p>
+  <div class="hero-stats">
+    <div class="hero-stat"><div class="hero-stat-num">6</div><div class="hero-stat-label">Module sections</div></div>
+    <div class="hero-stat"><div class="hero-stat-num">6</div><div class="hero-stat-label">Interactive widgets</div></div>
+    <div class="hero-stat"><div class="hero-stat-num">1</div><div class="hero-stat-label">Mini projects</div></div>
+    <div class="hero-stat"><div class="hero-stat-num">100%</div><div class="hero-stat-label">Vectorised code</div></div>
+  </div>
+</header>
+
+<div class="goal-callout">
+  <h3><i class="ti ti-target"></i> MODULE GOAL</h3>
+  <p>Learn the regularisation and training tricks that take a model from "overfitting on training set" to "generalises in production." Covers dropout, label smoothing, weight decay, focal loss, mixup for tabular data, and an Optuna-style hyperparameter search workflow.</p>
+</div>
+
+<div class="content">
+
+  <!-- ============ SECTION 1 ============ -->
+  <section class="section" id="sec-1">
+    <div class="section-num">SECTION 01</div>
+    <h2>Regularisation</h2>
+
+    <h3>Dropout</h3>
+
+    <!-- INTERACTIVE WIDGET 1: Dropout Visualiser -->
+    <div class="widget">
+      <div class="widget-title">Dropout Visualiser</div>
+      <div class="widget-subtitle">A hidden layer of 24 neurons. Drag dropout_p to set the probability of zeroing each neuron during training. Toggle between train and eval mode to see how PyTorch handles scaling.</div>
+      <div class="controls">
+        <div class="ctrl-row">
+          <span class="ctrl-label">dropout_p</span>
+          <input type="range" id="drop-p" min="0" max="0.8" value="0.3" step="0.05">
+          <span class="ctrl-value" id="drop-p-v">0.30</span>
+        </div>
+        <div class="ctrl-row">
+          <span class="ctrl-label">Mode</span>
+          <div class="btn-row">
+            <button class="pill-btn active" data-mode="train">model.train()</button>
+            <button class="pill-btn" data-mode="eval">model.eval()</button>
+          </div>
+        </div>
+        <div class="btn-row" style="justify-content:flex-end;">
+          <button class="pill-btn" id="drop-resample"><i class="ti ti-refresh"></i> New forward pass</button>
+        </div>
+      </div>
+      <div class="neuron-grid" id="neuron-grid"></div>
+      <div class="metric-grid">
+        <div class="metric"><div class="metric-label">Active neurons</div><div class="metric-value" id="drop-active">17 / 24</div></div>
+        <div class="metric"><div class="metric-label">Output scale</div><div class="metric-value" id="drop-scale">1.43×</div></div>
+        <div class="metric"><div class="metric-label">Expected output</div><div class="metric-value" id="drop-expected" style="color:var(--success);">≈ same</div></div>
+      </div>
+      <div class="viz-out" id="drop-out"></div>
+    </div>
+
+    <div class="code-block">
+      <div class="code-header"><span class="code-lang">python</span><button class="code-copy"><i class="ti ti-copy"></i> Copy</button></div>
+<pre><code><span class="kw">import</span> torch
+<span class="kw">import</span> torch.nn <span class="kw">as</span> nn
+<span class="kw">import</span> numpy <span class="kw">as</span> np
+torch.<span class="fn">manual_seed</span>(<span class="st">42</span>)
+
+<span class="co"># Dropout randomly zeros activations during training</span>
+<span class="co"># At inference, all neurons are active but outputs are scaled by (1-p)</span>
+
+<span class="co"># Where to put dropout:</span>
+<span class="co"># - After activation functions in hidden layers</span>
+<span class="co"># - Before the final linear layer</span>
+<span class="co"># - NOT after the very last linear layer (before loss)</span>
+
+<span class="kw">class</span> <span class="cls">RegularisedMLP</span>(nn.Module):
+
+    <span class="kw">def</span> <span class="fn">__init__</span>(self, in_dim, hidden, out_dim, dropout_p=<span class="st">0.3</span>):
+        <span class="fn">super</span>().<span class="fn">__init__</span>()
+        self.net = nn.<span class="cls">Sequential</span>(
+            nn.<span class="fn">Linear</span>(in_dim, hidden), nn.<span class="fn">ReLU</span>(), nn.<span class="fn">Dropout</span>(dropout_p),
+            nn.<span class="fn">Linear</span>(hidden, hidden), nn.<span class="fn">ReLU</span>(), nn.<span class="fn">Dropout</span>(dropout_p),
+            nn.<span class="fn">Linear</span>(hidden, out_dim)
+        )
+
+    <span class="kw">def</span> <span class="fn">forward</span>(self, x): <span class="kw">return</span> self.<span class="fn">net</span>(x)</code></pre>
+    </div>
+
+    <h3>Label Smoothing</h3>
+    <p>Standard cross-entropy trains the model towards one-hot targets <code>[0, 0, 1, 0]</code>. Label smoothing uses soft targets <code>[0.05, 0.05, 0.85, 0.05]</code> — prevents the model from becoming overconfident.</p>
+
+    <!-- INTERACTIVE WIDGET 2: Label Smoothing Visualiser -->
+    <div class="widget">
+      <div class="widget-title">Label Smoothing Comparator</div>
+      <div class="widget-subtitle">5-class classification with target = class 2. Drag the smoothing factor to see how the hard one-hot target softens into a probability distribution.</div>
+      <div class="controls">
+        <div class="ctrl-row">
+          <span class="ctrl-label">label_smoothing</span>
+          <input type="range" id="ls" min="0" max="0.5" value="0.1" step="0.02">
+          <span class="ctrl-value" id="ls-v">0.10</span>
+        </div>
+      </div>
+      <div class="label-bars" id="label-bars"></div>
+      <div class="metric-grid">
+        <div class="metric"><div class="metric-label">Target prob</div><div class="metric-value" id="ls-target">0.92</div></div>
+        <div class="metric"><div class="metric-label">Each other class</div><div class="metric-value" id="ls-other" style="font-size:14px;">0.020</div></div>
+        <div class="metric"><div class="metric-label">Entropy (bits)</div><div class="metric-value" id="ls-entropy" style="color:var(--pink);">0.40</div></div>
+        <div class="metric"><div class="metric-label">Hard CE loss</div><div class="metric-value" id="ls-hard" style="font-size:14px;">2.10</div></div>
+        <div class="metric"><div class="metric-label">Smooth CE loss</div><div class="metric-value" id="ls-smooth" style="font-size:14px;color:var(--cyan-soft);">2.09</div></div>
+      </div>
+      <div class="viz-out" id="ls-out"></div>
+    </div>
+
+    <div class="code-block">
+      <div class="code-header"><span class="code-lang">python</span><button class="code-copy"><i class="ti ti-copy"></i> Copy</button></div>
+<pre><code><span class="co"># Label smoothing is built into CrossEntropyLoss since PyTorch 1.10</span>
+criterion_smooth = nn.<span class="fn">CrossEntropyLoss</span>(label_smoothing=<span class="st">0.1</span>)
+
+logits  = torch.<span class="fn">randn</span>(<span class="st">16</span>, <span class="st">5</span>)
+targets = torch.<span class="fn">randint</span>(<span class="st">0</span>, <span class="st">5</span>, (<span class="st">16</span>,))
+
+loss_hard = nn.<span class="fn">CrossEntropyLoss</span>()(logits, targets)
+loss_soft = <span class="fn">criterion_smooth</span>(logits, targets)
+
+<span class="fn">print</span>(<span class="st">f"Hard label CE loss:   {loss_hard.item():.4f}"</span>)
+<span class="fn">print</span>(<span class="st">f"Smooth label CE loss: {loss_soft.item():.4f}"</span>)
+<span class="co"># Smooth loss is typically a bit higher — model can't get too confident</span></code></pre>
+    </div>
+    <div class="output">Hard label CE loss:       2.1040
+Smooth label CE loss:     2.0936</div>
+
+    <h3>Weight Decay: L2 Regularisation</h3>
+    <div class="code-block">
+      <div class="code-header"><span class="code-lang">python</span><button class="code-copy"><i class="ti ti-copy"></i> Copy</button></div>
+<pre><code><span class="co"># Weight decay penalises large weights — simpler models generalise better</span>
+<span class="co"># AdamW implements DECOUPLED weight decay (correct version)</span>
+
+model = <span class="fn">RegularisedMLP</span>(<span class="st">10</span>, <span class="st">64</span>, <span class="st">3</span>)
+
+<span class="co"># Apply different weight decay to different parameter groups</span>
+<span class="co"># Common pattern: no weight decay on biases and LayerNorm parameters</span>
+no_decay     = [<span class="st">'bias'</span>, <span class="st">'norm'</span>]
+decay_params = [p <span class="kw">for</span> n, p <span class="kw">in</span> model.<span class="fn">named_parameters</span>()
+                <span class="kw">if</span> <span class="kw">not</span> <span class="fn">any</span>(nd <span class="kw">in</span> n <span class="kw">for</span> nd <span class="kw">in</span> no_decay)]
+nodecay_params = [p <span class="kw">for</span> n, p <span class="kw">in</span> model.<span class="fn">named_parameters</span>()
+                  <span class="kw">if</span> <span class="fn">any</span>(nd <span class="kw">in</span> n <span class="kw">for</span> nd <span class="kw">in</span> no_decay)]
+
+opt = torch.optim.<span class="fn">AdamW</span>([
+    {<span class="st">'params'</span>: decay_params,    <span class="st">'weight_decay'</span>: <span class="st">1e-2</span>},
+    {<span class="st">'params'</span>: nodecay_params,  <span class="st">'weight_decay'</span>: <span class="st">0.0</span>},
+], lr=<span class="st">1e-3</span>)
+
+<span class="fn">print</span>(<span class="st">"Optimizer with selective weight decay configured."</span>)
+<span class="fn">print</span>(<span class="st">f"Decay param count:    {sum(p.numel() for p in decay_params):,}"</span>)
+<span class="fn">print</span>(<span class="st">f"No-decay param count: {sum(p.numel() for p in nodecay_params):,}"</span>)</code></pre>
+    </div>
+    <div class="output">Optimizer with selective weight decay configured.
+Decay param count:    4,928
+No-decay param count: 131</div>
+  </section>
+
+  <!-- ============ SECTION 2 ============ -->
+  <section class="section" id="sec-2">
+    <div class="section-num">SECTION 02</div>
+    <h2>Normalisation: Batch vs Layer Norm</h2>
+
+    <!-- INTERACTIVE WIDGET 3: BatchNorm vs LayerNorm -->
+    <div class="widget">
+      <div class="widget-title">BatchNorm vs LayerNorm</div>
+      <div class="widget-subtitle">A batch of 8 samples × 6 features. BatchNorm normalises down columns (across samples). LayerNorm normalises across rows (across features). See exactly which axis each one collapses.</div>
+      <div class="controls">
+        <div class="ctrl-row">
+          <span class="ctrl-label">Method</span>
+          <div class="btn-row">
+            <button class="pill-btn active" data-norm="raw">Raw input</button>
+            <button class="pill-btn" data-norm="bn">BatchNorm1d</button>
+            <button class="pill-btn" data-norm="ln">LayerNorm</button>
+          </div>
+        </div>
+      </div>
+      <div id="norm-grid" style="background:rgba(0,0,0,0.3);border-radius:10px;padding:12px;overflow-x:auto;"></div>
+      <div class="metric-grid">
+        <div class="metric"><div class="metric-label">Normalises across</div><div class="metric-value" id="norm-axis" style="font-size:13px;">—</div></div>
+        <div class="metric"><div class="metric-label">Per-column mean</div><div class="metric-value" id="norm-cmean" style="font-size:14px;">—</div></div>
+        <div class="metric"><div class="metric-label">Per-row mean</div><div class="metric-value" id="norm-rmean" style="font-size:14px;">—</div></div>
+      </div>
+      <div class="viz-out" id="norm-out"></div>
+    </div>
+
+    <div class="code-block">
+      <div class="code-header"><span class="code-lang">python</span><button class="code-copy"><i class="ti ti-copy"></i> Copy</button></div>
+<pre><code><span class="co"># BatchNorm: normalise across BATCH dimension</span>
+<span class="co"># Problem: fails with batch_size=1, and behaviour differs train/eval</span>
+bn = nn.<span class="fn">BatchNorm1d</span>(<span class="st">64</span>)
+
+<span class="co"># LayerNorm: normalise across FEATURE dimension</span>
+<span class="co"># Works at any batch size; consistent train/eval; preferred for Transformers</span>
+ln = nn.<span class="fn">LayerNorm</span>(<span class="st">64</span>)
+
+x = torch.<span class="fn">randn</span>(<span class="st">16</span>, <span class="st">64</span>)
+
+bn_out = <span class="fn">bn</span>(x)
+ln_out = <span class="fn">ln</span>(x)
+
+<span class="fn">print</span>(<span class="st">"BatchNorm output mean/std:"</span>, bn_out.<span class="fn">mean</span>().<span class="fn">item</span>(), bn_out.<span class="fn">std</span>().<span class="fn">item</span>())
+<span class="fn">print</span>(<span class="st">"LayerNorm output mean/std:"</span>, ln_out.<span class="fn">mean</span>().<span class="fn">item</span>(), ln_out.<span class="fn">std</span>().<span class="fn">item</span>())
+
+<span class="co"># Rule of thumb:</span>
+<span class="co"># CNNs               → BatchNorm</span>
+<span class="co"># Transformers, RNNs → LayerNorm</span>
+<span class="co"># Small batch size   → LayerNorm (BatchNorm fails at batch_size &lt; 8)</span></code></pre>
+    </div>
+    <div class="output">BatchNorm output mean/std: -2.2992026060819626e-09 1.0004825592041016
+LayerNorm output mean/std: 1.1641532182693481e-09 1.0004833936691284</div>
+  </section>
+
+  <!-- ============ SECTION 3 ============ -->
+  <section class="section" id="sec-3">
+    <div class="section-num">SECTION 03</div>
+    <h2>Augmentations: Mixup for Tabular / Time-Series</h2>
+
+    <p>Mixup creates new training samples by linearly interpolating between two real samples. Originally proposed for images, it works well for tabular and time-series data too.</p>
+
+    <!-- INTERACTIVE WIDGET 4: Mixup Visualiser -->
+    <div class="widget">
+      <div class="widget-title">Mixup Interpolation Demo</div>
+      <div class="widget-subtitle">Two tabular samples with 5 features and one-hot labels (3 classes). Drag λ to see how Mixup creates new training samples — and notice how the label becomes a soft mixture too.</div>
+      <div class="controls">
+        <div class="ctrl-row">
+          <span class="ctrl-label">λ (lambda)</span>
+          <input type="range" id="mix-lam" min="0" max="1" value="0.6" step="0.05">
+          <span class="ctrl-value" id="mix-lam-v">0.60</span>
+        </div>
+        <div class="ctrl-row">
+          <span class="ctrl-label">Beta α (drives λ)</span>
+          <input type="range" id="mix-alpha" min="0.1" max="2" value="0.4" step="0.1">
+          <span class="ctrl-value" id="mix-alpha-v">0.4</span>
+        </div>
+        <div class="btn-row" style="justify-content:flex-end;">
+          <button class="pill-btn" id="mix-sample"><i class="ti ti-dice"></i> Sample λ from Beta(α,α)</button>
+        </div>
+      </div>
+      <div class="mixup-row">
+        <div class="mixup-card" id="mix-a">
+          <div class="mixup-title">SAMPLE A — class 0</div>
+          <div id="mix-a-feats"></div>
+        </div>
+        <div class="op-sign">×λ +</div>
+        <div class="mixup-card" id="mix-b">
+          <div class="mixup-title">SAMPLE B — class 2</div>
+          <div id="mix-b-feats"></div>
+        </div>
+        <div class="op-sign">×(1−λ) =</div>
+        <div class="mixup-card mixed" id="mix-c">
+          <div class="mixup-title">MIXED</div>
+          <div id="mix-c-feats"></div>
+        </div>
+      </div>
+      <div class="chart-box" style="height:140px;"><canvas id="beta-chart"></canvas></div>
+      <div class="viz-out" id="mix-out"></div>
+    </div>
+
+    <div class="code-block">
+      <div class="code-header"><span class="code-lang">python</span><button class="code-copy"><i class="ti ti-copy"></i> Copy</button></div>
+<pre><code><span class="kw">def</span> <span class="fn">mixup_batch</span>(X: torch.Tensor, y: torch.Tensor, alpha: <span class="cls">float</span> = <span class="st">0.4</span>):
+    <span class="st">"""
+    Apply mixup augmentation to a batch.
+    Creates convex combinations of pairs of samples.
+
+    Returns:
+        X_mixed: interpolated features
+        y_a, y_b: original labels
+        lam:      mixing coefficient
+    """</span>
+    lam   = np.random.<span class="fn">beta</span>(alpha, alpha) <span class="kw">if</span> alpha &gt; <span class="st">0</span> <span class="kw">else</span> <span class="st">1.0</span>
+    idx   = torch.<span class="fn">randperm</span>(<span class="fn">len</span>(X))
+
+    X_mixed = lam * X + (<span class="st">1</span> - lam) * X[idx]
+    y_a     = y
+    y_b     = y[idx]
+    <span class="kw">return</span> X_mixed, y_a, y_b, lam
+
+
+<span class="kw">def</span> <span class="fn">mixup_criterion</span>(criterion, pred, y_a, y_b, lam):
+    <span class="st">"""Loss for mixup-augmented samples."""</span>
+    <span class="kw">return</span> lam * <span class="fn">criterion</span>(pred, y_a) + (<span class="st">1</span> - lam) * <span class="fn">criterion</span>(pred, y_b)
+
+
+<span class="co"># Usage in training loop</span>
+X_b = torch.<span class="fn">randn</span>(<span class="st">32</span>, <span class="st">10</span>)
+y_b = torch.<span class="fn">randint</span>(<span class="st">0</span>, <span class="st">3</span>, (<span class="st">32</span>,))
+criterion_ce = nn.<span class="fn">CrossEntropyLoss</span>()
+model_m = <span class="fn">RegularisedMLP</span>(<span class="st">10</span>, <span class="st">64</span>, <span class="st">3</span>)
+
+X_mix, y_a, y_b_mix, lam = <span class="fn">mixup_batch</span>(X_b, y_b, alpha=<span class="st">0.4</span>)
+logits = <span class="fn">model_m</span>(X_mix)
+loss   = <span class="fn">mixup_criterion</span>(criterion_ce, logits, y_a, y_b_mix, lam)
+<span class="fn">print</span>(<span class="st">f"Mixup loss: {loss.item():.4f}  (lambda={lam:.3f})"</span>)</code></pre>
+    </div>
+    <div class="output">Mixup loss: 1.1269     (lambda=0.001)</div>
+  </section>
+
+  <!-- ============ SECTION 4 ============ -->
+  <section class="section" id="sec-4">
+    <div class="section-num">SECTION 04</div>
+    <h2>Class Imbalance: Focal Loss + Weighted Sampling</h2>
+
+    <h3>Focal Loss</h3>
+    <p>Focal loss down-weights easy, well-classified examples so the model focuses on hard ones. Originally designed for object detection, it's highly useful for anomaly detection and fraud.</p>
+
+    <!-- INTERACTIVE WIDGET 5: Focal Loss Curve -->
+    <div class="widget">
+      <div class="widget-title">Focal Loss vs Cross-Entropy</div>
+      <div class="widget-subtitle">FL(p_t) = -α (1 − p_t)^γ log(p_t). The cross-entropy curve treats all examples the same way; focal loss with γ &gt; 0 down-weights easy ones (high p_t) so training focuses on hard examples.</div>
+      <div class="controls">
+        <div class="ctrl-row">
+          <span class="ctrl-label">γ (gamma)</span>
+          <input type="range" id="focal-g" min="0" max="5" value="2" step="0.1">
+          <span class="ctrl-value" id="focal-g-v">2.0</span>
+        </div>
+        <div class="ctrl-row">
+          <span class="ctrl-label">α (alpha)</span>
+          <input type="range" id="focal-a" min="0.1" max="1" value="0.25" step="0.05">
+          <span class="ctrl-value" id="focal-a-v">0.25</span>
+        </div>
+      </div>
+      <div class="chart-box"><canvas id="focal-chart"></canvas></div>
+      <div class="legend" style="justify-content:center;">
+        <span><span class="legend-dot" style="background:var(--pink);"></span>Cross-entropy</span>
+        <span><span class="legend-dot" style="background:var(--cyan);"></span>Focal loss</span>
+      </div>
+      <div class="metric-grid">
+        <div class="metric"><div class="metric-label">CE @ p=0.9 (easy)</div><div class="metric-value" id="f-easy-ce" style="color:var(--pink);">0.105</div></div>
+        <div class="metric"><div class="metric-label">FL @ p=0.9 (easy)</div><div class="metric-value" id="f-easy-fl">0.000</div></div>
+        <div class="metric"><div class="metric-label">Down-weight @ 0.9</div><div class="metric-value" id="f-down-easy" style="color:var(--success);">99×</div></div>
+        <div class="metric"><div class="metric-label">Down-weight @ 0.5</div><div class="metric-value" id="f-down-mid" style="color:var(--warn);">4×</div></div>
+      </div>
+      <div class="viz-out" id="focal-out"></div>
+    </div>
+
+    <div class="code-block">
+      <div class="code-header"><span class="code-lang">python</span><button class="code-copy"><i class="ti ti-copy"></i> Copy</button></div>
+<pre><code><span class="kw">class</span> <span class="cls">FocalLoss</span>(nn.Module):
+    <span class="st">"""
+    Focal Loss: FL(p_t) = -alpha_t * (1 - p_t)^gamma * log(p_t)
+    gamma > 0 reduces loss for well-classified examples.
+    alpha balances class importance.
+    """</span>
+
+    <span class="kw">def</span> <span class="fn">__init__</span>(self, alpha: <span class="cls">float</span> = <span class="st">0.25</span>, gamma: <span class="cls">float</span> = <span class="st">2.0</span>,
+                 reduction: <span class="cls">str</span> = <span class="st">'mean'</span>):
+        <span class="fn">super</span>().<span class="fn">__init__</span>()
+        self.alpha     = alpha
+        self.gamma     = gamma
+        self.reduction = reduction
+
+    <span class="kw">def</span> <span class="fn">forward</span>(self, logits: torch.Tensor, targets: torch.Tensor) -&gt; torch.Tensor:
+        ce_loss = nn.functional.<span class="fn">cross_entropy</span>(logits, targets, reduction=<span class="st">'none'</span>)
+        pt      = torch.<span class="fn">exp</span>(-ce_loss)             <span class="co"># p_t = probability of correct class</span>
+        focal   = self.alpha * (<span class="st">1</span> - pt) ** self.gamma * ce_loss
+
+        <span class="kw">if</span> self.reduction == <span class="st">'mean'</span>: <span class="kw">return</span> focal.<span class="fn">mean</span>()
+        <span class="kw">if</span> self.reduction == <span class="st">'sum'</span>:  <span class="kw">return</span> focal.<span class="fn">sum</span>()
+        <span class="kw">return</span> focal
+
+
+<span class="co"># Compare on imbalanced batch</span>
+logits  = torch.<span class="fn">randn</span>(<span class="st">32</span>, <span class="st">2</span>)
+targets = torch.<span class="fn">zeros</span>(<span class="st">32</span>, dtype=torch.long)
+targets[:<span class="st">3</span>] = <span class="st">1</span>   <span class="co"># Only 3 positives out of 32 — heavily imbalanced</span>
+
+ce_loss    = nn.<span class="fn">CrossEntropyLoss</span>()(logits, targets)
+focal_loss = <span class="fn">FocalLoss</span>(gamma=<span class="st">2.0</span>)(logits, targets)
+
+<span class="fn">print</span>(<span class="st">f"Cross-entropy loss: {ce_loss.item():.4f}"</span>)
+<span class="fn">print</span>(<span class="st">f"Focal loss:         {focal_loss.item():.4f}"</span>)</code></pre>
+    </div>
+    <div class="output">Cross-entropy loss: 0.9112
+Focal loss:         0.1130</div>
+  </section>
+
+  <!-- ============ SECTION 5 ============ -->
+  <section class="section" id="sec-5">
+    <div class="section-num">SECTION 05</div>
+    <h2>Self-Supervised Learning: Contrastive Learning Intro</h2>
+
+    <p>Contrastive learning trains a model to bring similar samples together and push different samples apart — without requiring labels for every sample.</p>
+
+    <div class="code-block">
+      <div class="code-header"><span class="code-lang">python</span><button class="code-copy"><i class="ti ti-copy"></i> Copy</button></div>
+<pre><code><span class="kw">class</span> <span class="cls">ProjectionHead</span>(nn.Module):
+    <span class="st">"""Small MLP head used for contrastive learning."""</span>
+    <span class="kw">def</span> <span class="fn">__init__</span>(self, in_dim, proj_dim=<span class="st">64</span>):
+        <span class="fn">super</span>().<span class="fn">__init__</span>()
+        self.net = nn.<span class="cls">Sequential</span>(
+            nn.<span class="fn">Linear</span>(in_dim, in_dim), nn.<span class="fn">ReLU</span>(),
+            nn.<span class="fn">Linear</span>(in_dim, proj_dim)
+        )
+    <span class="kw">def</span> <span class="fn">forward</span>(self, x): <span class="kw">return</span> self.<span class="fn">net</span>(x)
+
+
+<span class="kw">def</span> <span class="fn">nt_xent_loss</span>(z1: torch.Tensor, z2: torch.Tensor, temperature: <span class="cls">float</span> = <span class="st">0.5</span>):
+    <span class="st">"""
+    NT-Xent (Normalised Temperature-scaled Cross Entropy) loss.
+    z1, z2: two augmented views of the same samples (B, D).
+    Positives: (z1[i], z2[i]). Negatives: all other pairs.
+    """</span>
+    B = z1.<span class="fn">size</span>(<span class="st">0</span>)
+    z = torch.<span class="fn">cat</span>([z1, z2], dim=<span class="st">0</span>)                       <span class="co"># (2B, D)</span>
+    z = nn.functional.<span class="fn">normalize</span>(z, dim=<span class="st">1</span>)
+
+    sim = torch.<span class="fn">matmul</span>(z, z.T) / temperature              <span class="co"># (2B, 2B)</span>
+    <span class="co"># Remove self-similarity from denominator</span>
+    mask = torch.<span class="fn">eye</span>(<span class="st">2</span>*B, dtype=torch.<span class="cls">bool</span>, device=z.device)
+    sim.<span class="fn">masked_fill_</span>(mask, <span class="fn">float</span>(<span class="st">'-inf'</span>))
+
+    <span class="co"># Positive pairs: i with i+B and i+B with i</span>
+    labels = torch.<span class="fn">cat</span>([torch.<span class="fn">arange</span>(B) + B,
+                        torch.<span class="fn">arange</span>(B)], dim=<span class="st">0</span>).<span class="fn">to</span>(z.device)
+
+    <span class="kw">return</span> nn.<span class="fn">CrossEntropyLoss</span>()(sim, labels)
+
+
+<span class="co"># Demo: augment log feature vectors by adding noise</span>
+B, D = <span class="st">32</span>, <span class="st">64</span>
+z1 = torch.<span class="fn">randn</span>(B, D)
+z2 = z1 + torch.<span class="fn">randn</span>(B, D) * <span class="st">0.1</span>   <span class="co"># Slightly perturbed (positive pair)</span>
+
+proj_head = <span class="fn">ProjectionHead</span>(D, proj_dim=<span class="st">32</span>)
+z1_proj   = <span class="fn">proj_head</span>(z1)
+z2_proj   = <span class="fn">proj_head</span>(z2)
+
+loss = <span class="fn">nt_xent_loss</span>(z1_proj, z2_proj, temperature=<span class="st">0.5</span>)
+<span class="fn">print</span>(<span class="st">f"NT-Xent contrastive loss: {loss.item():.4f}"</span>)</code></pre>
+    </div>
+    <div class="output">NT-Xent contrastive loss: 2.7913</div>
+
+    <div class="callout callout-info">
+      <i class="ti ti-info-circle"></i>
+      <div class="callout-content">
+        <div class="callout-title">WHY CONTRASTIVE PRETRAINING IS POWERFUL</div>
+        Most production datasets have far more unlabelled samples than labelled ones. Contrastive learning extracts general-purpose features from unlabelled data using simple augmentations (noise, masking, time-shift). You then attach a small classifier head and fine-tune on the small labelled set — often beating supervised-only baselines.
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ SECTION 6 ============ -->
+  <section class="section" id="sec-6">
+    <div class="section-num">SECTION 06</div>
+    <h2>Hyperparameter Tuning: Optuna-Style Workflow</h2>
+
+    <!-- INTERACTIVE WIDGET 6: HPO Simulator -->
+    <div class="widget">
+      <div class="widget-title">Hyperparameter Search Simulator</div>
+      <div class="widget-subtitle">Run an Optuna-style search across LR, dropout, hidden dim, and weight decay. Each "trial" trains a model for 20 epochs and reports val_acc. The best trial is highlighted.</div>
+      <div class="controls">
+        <div class="ctrl-row">
+          <span class="ctrl-label">Search strategy</span>
+          <div class="btn-row">
+            <button class="pill-btn active" data-hpo="random">Random search</button>
+            <button class="pill-btn" data-hpo="grid">Grid search</button>
+            <button class="pill-btn" data-hpo="bayes">Bayesian (TPE)</button>
+          </div>
+        </div>
+        <div class="ctrl-row">
+          <span class="ctrl-label">Number of trials</span>
+          <input type="range" id="hpo-n" min="3" max="20" value="8" step="1">
+          <span class="ctrl-value" id="hpo-n-v">8</span>
+        </div>
+        <div class="btn-row" style="justify-content:flex-end;">
+          <button class="pill-btn" id="hpo-run"><i class="ti ti-player-play"></i> Run search</button>
+        </div>
+      </div>
+      <div class="trial-header">
+        <span>TRIAL</span><span>LR</span><span>DROPOUT</span><span class="trial-hidden-h">HIDDEN</span><span class="trial-wd-h">WEIGHT DECAY</span><span style="text-align:right;">VAL_ACC</span>
+      </div>
+      <div class="trial-list" id="trial-list"></div>
+      <div class="chart-box" style="height:200px;"><canvas id="hpo-chart"></canvas></div>
+      <div class="metric-grid">
+        <div class="metric"><div class="metric-label">Best val_acc</div><div class="metric-value" id="hpo-best" style="color:var(--success);">—</div></div>
+        <div class="metric"><div class="metric-label">Best trial</div><div class="metric-value" id="hpo-best-id">—</div></div>
+        <div class="metric"><div class="metric-label">Trials run</div><div class="metric-value" id="hpo-count">0</div></div>
+      </div>
+    </div>
+
+    <div class="code-block">
+      <div class="code-header"><span class="code-lang">python</span><button class="code-copy"><i class="ti ti-copy"></i> Copy</button></div>
+<pre><code><span class="co"># Optuna is the recommended HPO library for PyTorch</span>
+<span class="co"># pip install optuna</span>
+
+<span class="co"># Without Optuna installed, here is the design pattern:</span>
+
+<span class="kw">def</span> <span class="fn">objective</span>(trial_config: <span class="cls">dict</span>) -&gt; <span class="cls">float</span>:
+    <span class="st">"""
+    One trial: build + train model with given hyperparameters.
+    Returns: validation metric (to minimise or maximise).
+    """</span>
+    lr      = trial_config[<span class="st">'lr'</span>]
+    dropout = trial_config[<span class="st">'dropout'</span>]
+    hidden  = trial_config[<span class="st">'hidden_dim'</span>]
+    wd      = trial_config[<span class="st">'weight_decay'</span>]
+
+    X_tr = torch.<span class="fn">randn</span>(<span class="st">500</span>, <span class="st">10</span>); y_tr = torch.<span class="fn">randint</span>(<span class="st">0</span>, <span class="st">3</span>, (<span class="st">500</span>,))
+    X_vl = torch.<span class="fn">randn</span>(<span class="st">100</span>, <span class="st">10</span>); y_vl = torch.<span class="fn">randint</span>(<span class="st">0</span>, <span class="st">3</span>, (<span class="st">100</span>,))
+
+    model = <span class="fn">RegularisedMLP</span>(<span class="st">10</span>, hidden, <span class="st">3</span>, dropout_p=dropout)
+    opt   = torch.optim.<span class="fn">AdamW</span>(model.<span class="fn">parameters</span>(), lr=lr, weight_decay=wd)
+    crit  = nn.<span class="fn">CrossEntropyLoss</span>(label_smoothing=<span class="st">0.1</span>)
+
+    <span class="kw">for</span> _ <span class="kw">in</span> <span class="fn">range</span>(<span class="st">20</span>):
+        model.<span class="fn">train</span>(); opt.<span class="fn">zero_grad</span>()
+        loss = <span class="fn">crit</span>(<span class="fn">model</span>(X_tr), y_tr)
+        loss.<span class="fn">backward</span>(); opt.<span class="fn">step</span>()
+
+    model.<span class="fn">eval</span>()
+    <span class="kw">with</span> torch.<span class="fn">no_grad</span>():
+        acc = (<span class="fn">model</span>(X_vl).<span class="fn">argmax</span>(<span class="st">1</span>) == y_vl).<span class="fn">float</span>().<span class="fn">mean</span>().<span class="fn">item</span>()
+
+    <span class="kw">return</span> acc
+
+
+<span class="co"># Manual grid search (replace with Optuna for production)</span>
+search_space = [
+    {<span class="st">'lr'</span>: <span class="st">1e-3</span>, <span class="st">'dropout'</span>: <span class="st">0.2</span>, <span class="st">'hidden_dim'</span>: <span class="st">64</span>,  <span class="st">'weight_decay'</span>: <span class="st">1e-3</span>},
+    {<span class="st">'lr'</span>: <span class="st">5e-4</span>, <span class="st">'dropout'</span>: <span class="st">0.3</span>, <span class="st">'hidden_dim'</span>: <span class="st">128</span>, <span class="st">'weight_decay'</span>: <span class="st">1e-2</span>},
+    {<span class="st">'lr'</span>: <span class="st">1e-3</span>, <span class="st">'dropout'</span>: <span class="st">0.1</span>, <span class="st">'hidden_dim'</span>: <span class="st">32</span>,  <span class="st">'weight_decay'</span>: <span class="st">1e-4</span>},
+]
+
+<span class="fn">print</span>(<span class="st">"Manual HPO search:"</span>)
+<span class="kw">for</span> i, config <span class="kw">in</span> <span class="fn">enumerate</span>(search_space):
+    val_acc = <span class="fn">objective</span>(config)
+    <span class="fn">print</span>(<span class="st">f"  Trial {i}: lr={config['lr']}, hidden={config['hidden_dim']} "</span>
+          <span class="st">f"→ val_acc={val_acc:.3f}"</span>)</code></pre>
+    </div>
+    <div class="output">Manual HPO search:
+  Trial 0: lr=0.001, hidden=64 → val_acc=0.370
+  Trial 1: lr=0.0005, hidden=128 → val_acc=0.300
+  Trial 2: lr=0.001, hidden=32 → val_acc=0.320</div>
+  </section>
+
+  <!-- ============ SUMMARY ============ -->
+  <section class="section" id="sec-summary">
+    <div class="section-num">RECAP</div>
+    <h2>Module Summary</h2>
+    <div class="summary-box">
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Concept</th><th>Key Takeaway</th></tr></thead>
+          <tbody>
+            <tr><td>Dropout</td><td>Add after activations in hidden layers. Never after the final layer.</td></tr>
+            <tr><td>Label smoothing</td><td><code>CrossEntropyLoss(label_smoothing=0.1)</code>. Prevents overconfidence.</td></tr>
+            <tr><td>Weight decay</td><td>Use AdamW. Apply to weights, not biases or norm parameters.</td></tr>
+            <tr><td>Focal loss</td><td>Best for imbalanced classification (fraud, anomaly detection). <code>gamma=2</code>.</td></tr>
+            <tr><td>Mixup</td><td>Interpolate samples and labels. Improves generalisation on tabular data.</td></tr>
+            <tr><td>Contrastive learning</td><td>Learn representations from unlabelled data using augmentation pairs.</td></tr>
+            <tr><td>HPO</td><td>Use Optuna. The objective function is just your training loop returning a metric.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <h3>What's Next</h3>
+    <p>Module 10 — Model Debugging covers the systematic approach to diagnosing broken training: vanishing/exploding gradients, activation histograms, the LR finder, and the "overfit a tiny batch" sanity check. You will receive a pre-broken model and debug it from scratch.</p>
+  </section>
+</div>
+
+<!-- ============ REFERENCES ============ -->
+<section class="references">
+  <div class="refs-header">
+    <h2><span class="cyan-text">Learn &amp;</span> <span class="accent">Practice</span></h2>
+    <p>Explore curated resources and practice with real code</p>
+  </div>
+
+  <div class="ref-card">
+    <div class="ref-icon"><i class="ti ti-bulb"></i></div>
+    <div class="ref-body">
+      <div class="ref-type">Progressive Article</div>
+      <div class="ref-tagline">Stuck? Start here — beginner-friendly explanation</div>
+      <div class="ref-title">A Recipe for Training Neural Networks — Karpathy</div>
+      <a href="https://karpathy.github.io/2019/04/25/recipe/" target="_blank" rel="noopener" class="ref-btn"><i class="ti ti-external-link"></i> Read Article</a>
+    </div>
+  </div>
+
+  <div class="ref-card">
+    <div class="ref-icon"><i class="ti ti-file-text"></i></div>
+    <div class="ref-body">
+      <div class="ref-type">Canonical Article</div>
+      <div class="ref-tagline">Authoritative source — official docs and tutorials</div>
+      <div class="ref-title">Optuna — Hyperparameter Optimization Framework</div>
+      <a href="https://optuna.readthedocs.io/en/stable/" target="_blank" rel="noopener" class="ref-btn"><i class="ti ti-external-link"></i> Read Canonical</a>
+    </div>
+  </div>
+
+  <div class="ref-card pink-card">
+    <div class="ref-icon"><i class="ti ti-brand-github"></i></div>
+    <div class="ref-body">
+      <div class="ref-type">GitHub Repository</div>
+      <div class="ref-tagline">Hands-on — reference implementation &amp; examples</div>
+      <div class="ref-title">optuna / optuna-examples — recipes for HPO with PyTorch</div>
+      <a href="https://github.com/optuna/optuna-examples" target="_blank" rel="noopener" class="ref-btn"><i class="ti ti-external-link"></i> Explore Repo</a>
+    </div>
+  </div>
+
+  <div class="ref-card">
+    <div class="ref-icon"><i class="ti ti-book-2"></i></div>
+    <div class="ref-body">
+      <div class="ref-type">API Reference</div>
+      <div class="ref-tagline">Loss functions, optimizers, and regularisation</div>
+      <div class="ref-title">torch.nn — Loss Functions &amp; Modules Reference</div>
+      <a href="https://docs.pytorch.org/docs/stable/nn.html#loss-functions" target="_blank" rel="noopener" class="ref-btn"><i class="ti ti-external-link"></i> Open Docs</a>
+    </div>
+  </div>
+</section>
+
+<!-- =================== NEXT MODULE =================== -->
+<div class="module-nav">
+  <div>
+    <div class="module-nav-label">Next up · Module 10.0</div>
+    <div class="module-nav-title">Module 10.0 — Model Debugging &amp; Troubleshooting</div>
+    <p style="font-size:14px;color:var(--ink-3);margin:10px 0 0;max-width:520px">Diagnose vanishing/exploding gradients, dead neurons, tensor dimension mismatches, and overfit issues.</p>
+    <div style="display:flex;flex-wrap:wrap;gap:18px;margin-top:14px;font-family:var(--mono);font-size:11px;color:var(--ink-3)">
+      <span>ESTIMATED · <span style="color:var(--ink-2)">~60 min</span></span>
+      <span>TYPE · <span style="color:var(--ink-2)">Debugging</span></span>
+      <span>CODE · <span style="color:var(--ink-2)">Python</span></span>
+      <span>DIFFICULTY · <span style="color:var(--accent)">★★★</span>☆☆</span>
+    </div>
+  </div>
+  <a class="module-nav-cta" href="module_10_debugging.html">Begin Module 10.0 →</a>
+</div>
+
+<div style="margin-top:32px;text-align:center;font-family:var(--mono);font-size:10px;color:var(--ink-4);letter-spacing:0.15em">
+  AGENTIC AI ACADEMY // COURSE 02 — AUTONOMOUS SYSTEMS // MODULE 9.0 — END OF TRANSMISSION
+</div>
+</main>
+</div>
+
+<div class="scroll-dots" id="scroll-dots">
+  <div class="scroll-dot active" data-target="sec-1" data-label="Regularisation"></div>
+  <div class="scroll-dot" data-target="sec-2" data-label="Normalisation"></div>
+  <div class="scroll-dot" data-target="sec-3" data-label="Mixup"></div>
+  <div class="scroll-dot" data-target="sec-4" data-label="Focal Loss"></div>
+  <div class="scroll-dot" data-target="sec-5" data-label="Contrastive"></div>
+  <div class="scroll-dot" data-target="sec-6" data-label="HPO"></div>
+  <div class="scroll-dot" data-target="sec-summary" data-label="Summary"></div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+/* Starfield */
+(function(){
+  const sf = document.getElementById('stars');
+  for (let i = 0; i < 120; i++) {
+    const s = document.createElement('div');
+    s.className = 'star';
+    const sz = Math.random() * 2 + 0.5;
+    s.style.width = sz + 'px'; s.style.height = sz + 'px';
+    s.style.left = Math.random() * 100 + '%';
+    s.style.top = Math.random() * 100 + '%';
+    s.style.setProperty('--dur', (2 + Math.random() * 4) + 's');
+    s.style.animationDelay = Math.random() * 4 + 's';
+    sf.appendChild(s);
+  }
+})();
+
+/* Nav + scroll dots */
+/* ============ SCROLL DOTS + TOC NAV ACTIVE + PROGRESS ============ */
+(function(){
+  const dots = document.querySelectorAll('.scroll-dot');
+  const tocLinks = document.querySelectorAll('.toc-link');
+  const sections = document.querySelectorAll('.section');
+  const progressFill = document.getElementById('progressFill');
+
+  dots.forEach(d => {
+    d.addEventListener('click', () => {
+      const target = document.getElementById(d.dataset.target);
+      if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  });
+
+  tocLinks.forEach(a => {
+    a.addEventListener('click', (e) => {
+      e.preventDefault();
+      const id = a.getAttribute('href').slice(1);
+      const t = document.getElementById(id);
+      if (t) t.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  });
+
+  function updateActive() {
+    let current = sections[0].id;
+    let currentIndex = -1;
+    sections.forEach((s, i) => {
+      const rect = s.getBoundingClientRect();
+      if (rect.top < window.innerHeight * 0.35) {
+        current = s.id;
+        currentIndex = i;
+      }
+    });
+
+    dots.forEach(d => d.classList.toggle('active', d.dataset.target === current));
+    tocLinks.forEach((l, i) => {
+      const isActive = l.getAttribute('href') === '#' + current;
+      const isPast = currentIndex > -1 && i < currentIndex;
+      l.classList.toggle('active', isActive);
+      l.classList.toggle('past', isPast && !isActive);
+    });
+
+    const docHeight = document.documentElement.scrollHeight - window.innerHeight;
+    const scrolled = window.scrollY / docHeight * 100;
+    if (progressFill) progressFill.style.width = Math.min(100, scrolled) + '%';
+  }
+
+  window.addEventListener('scroll', updateActive, { passive: true });
+  updateActive();
+})();
+
+/* Copy */
+document.querySelectorAll('.code-copy').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const code = btn.closest('.code-block').querySelector('pre').innerText;
+    navigator.clipboard.writeText(code).then(() => {
+      const orig = btn.innerHTML;
+      btn.innerHTML = '<i class="ti ti-check"></i> Copied';
+      setTimeout(() => btn.innerHTML = orig, 1200);
+    });
+  });
+});
+
+/* WIDGET 1: Dropout Visualiser */
+(function(){
+  const N = 24;
+  const grid = document.getElementById('neuron-grid');
+  const pEl = document.getElementById('drop-p');
+  const pV = document.getElementById('drop-p-v');
+  let mode = 'train';
+  let dropMask = new Array(N).fill(false);
+
+  function rng() { return Math.random(); }
+  function build() {
+    grid.innerHTML = '';
+    for (let i = 0; i < N; i++) {
+      const n = document.createElement('div');
+      n.className = 'neuron';
+      grid.appendChild(n);
+    }
+  }
+  build();
+
+  function sample() {
+    const p = +pEl.value;
+    if (mode === 'train') {
+      dropMask = dropMask.map(() => rng() < p);
+    } else {
+      dropMask = dropMask.map(() => false);
+    }
+    render();
+  }
+
+  function render() {
+    const p = +pEl.value;
+    pV.textContent = p.toFixed(2);
+    const cells = grid.children;
+    let active = 0;
+    for (let i = 0; i < N; i++) {
+      const dropped = dropMask[i];
+      cells[i].classList.toggle('dropped', dropped);
+      if (dropped) {
+        cells[i].textContent = '0';
+      } else {
+        active++;
+        // PyTorch's dropout scales by 1/(1-p) during training
+        const scale = mode === 'train' && p > 0 ? (1 / (1 - p)) : 1;
+        cells[i].textContent = scale.toFixed(1) + (mode === 'train' ? 'x' : '');
+      }
+    }
+    document.getElementById('drop-active').textContent = active + ' / ' + N;
+    const scale = mode === 'train' && p > 0 ? (1 / (1 - p)) : 1.0;
+    document.getElementById('drop-scale').textContent = scale.toFixed(2) + '×';
+    let advice;
+    if (mode === 'eval') advice = '>>> Eval mode: dropout is OFF.\n    All ' + N + ' neurons active, no scaling.\n    This is why model.eval() must be called before validation.';
+    else if (p === 0) advice = '>>> No dropout. Model has no stochastic regularisation.\n    Try p=0.2-0.5 for hidden layers.';
+    else if (p > 0.6) advice = '>>> Aggressive dropout. May underfit.\n    p > 0.5 hurts capacity unless the layer is large or dataset is huge.';
+    else advice = '>>> PyTorch scales surviving activations by 1/(1-p) = ' + scale.toFixed(3) + '\n    so expected output stays the same as eval-time.\n    This is "inverted dropout" — the standard implementation.';
+    document.getElementById('drop-out').textContent = advice;
+  }
+
+  pEl.addEventListener('input', () => { sample(); });
+  document.querySelectorAll('[data-mode]').forEach(b => b.addEventListener('click', () => {
+    document.querySelectorAll('[data-mode]').forEach(x => x.classList.remove('active'));
+    b.classList.add('active');
+    mode = b.dataset.mode;
+    sample();
+  }));
+  document.getElementById('drop-resample').addEventListener('click', sample);
+  sample();
+})();
+
+/* WIDGET 2: Label Smoothing */
+(function(){
+  const N_CLASSES = 5;
+  const TARGET = 2;
+  const lsEl = document.getElementById('ls');
+  const lsV = document.getElementById('ls-v');
+  const bars = document.getElementById('label-bars');
+
+  // build columns
+  const cols = [];
+  bars.innerHTML = '';
+  for (let i = 0; i < N_CLASSES; i++) {
+    const col = document.createElement('div');
+    col.className = 'label-col';
+    col.innerHTML =
+      '<div class="label-bar-container"><div class="label-bar' + (i === TARGET ? ' target' : '') + '" id="lbar-' + i + '" style="height:0%"></div></div>' +
+      '<div class="label-name">class ' + i + (i === TARGET ? ' ★' : '') + '</div>' +
+      '<div class="label-val" id="lval-' + i + '">0.00</div>';
+    bars.appendChild(col);
+    cols.push(col);
+  }
+
+  function update() {
+    const ls = +lsEl.value;
+    lsV.textContent = ls.toFixed(2);
+    const targetProb = 1 - ls + ls / N_CLASSES;
+    const otherProb = ls / N_CLASSES;
+    for (let i = 0; i < N_CLASSES; i++) {
+      const v = i === TARGET ? targetProb : otherProb;
+      document.getElementById('lbar-' + i).style.height = (v * 100).toFixed(1) + '%';
+      document.getElementById('lval-' + i).textContent = v.toFixed(3);
+    }
+    document.getElementById('ls-target').textContent = targetProb.toFixed(2);
+    document.getElementById('ls-other').textContent = otherProb.toFixed(3);
+    // entropy
+    let ent = 0;
+    for (let i = 0; i < N_CLASSES; i++) {
+      const v = i === TARGET ? targetProb : otherProb;
+      if (v > 0) ent -= v * Math.log2(v);
+    }
+    document.getElementById('ls-entropy').textContent = ent.toFixed(2);
+    // example CE losses (approximating module's output)
+    const hard = 2.10;
+    const smooth = hard - 0.01 + ls * 0.05;
+    document.getElementById('ls-hard').textContent = hard.toFixed(2);
+    document.getElementById('ls-smooth').textContent = smooth.toFixed(2);
+    let interp;
+    if (ls === 0) interp = '>>> ls=0: pure one-hot target. Model can become arbitrarily confident.\n    Can overfit, especially with noisy labels.';
+    else if (ls <= 0.1) interp = '>>> ls=' + ls.toFixed(2) + ': mild smoothing. Standard default.\n    Each non-target class gets ' + otherProb.toFixed(3) + ' probability.\n    Model is encouraged to not exceed ' + targetProb.toFixed(2) + ' confidence.';
+    else if (ls <= 0.2) interp = '>>> ls=' + ls.toFixed(2) + ': moderate smoothing.\n    Good for noisy labels or when overconfidence hurts calibration.';
+    else interp = '>>> ls=' + ls.toFixed(2) + ': aggressive smoothing.\n    Loses too much signal — model can\'t commit to predictions. Reduce.';
+    document.getElementById('ls-out').textContent = interp;
+  }
+  lsEl.addEventListener('input', update);
+  update();
+})();
+
+/* WIDGET 3: BatchNorm vs LayerNorm */
+(function(){
+  // Build a fixed 8x6 matrix
+  const ROWS = 8, COLS = 6;
+  let seed = 42;
+  function rnd() { seed = (seed * 9301 + 49297) % 233280; return seed / 233280 - 0.5; }
+  // Generate with column-specific shifts and scales (so BN does something)
+  const raw = [];
+  const colShifts = [0.5, -1.0, 2.0, 0.3, -0.8, 1.5];
+  const colScales = [1.5, 0.8, 2.2, 0.5, 1.8, 1.0];
+  for (let i = 0; i < ROWS; i++) {
+    const row = [];
+    for (let j = 0; j < COLS; j++) {
+      row.push(rnd() * colScales[j] * 2 + colShifts[j]);
+    }
+    raw.push(row);
+  }
+  function batchnorm(matrix) {
+    const result = matrix.map(r => [...r]);
+    for (let j = 0; j < COLS; j++) {
+      let sum = 0;
+      for (let i = 0; i < ROWS; i++) sum += matrix[i][j];
+      const mean = sum / ROWS;
+      let sumSq = 0;
+      for (let i = 0; i < ROWS; i++) sumSq += (matrix[i][j] - mean) ** 2;
+      const std = Math.sqrt(sumSq / ROWS + 1e-5);
+      for (let i = 0; i < ROWS; i++) result[i][j] = (matrix[i][j] - mean) / std;
+    }
+    return result;
+  }
+  function layernorm(matrix) {
+    const result = matrix.map(r => [...r]);
+    for (let i = 0; i < ROWS; i++) {
+      let sum = 0;
+      for (let j = 0; j < COLS; j++) sum += matrix[i][j];
+      const mean = sum / COLS;
+      let sumSq = 0;
+      for (let j = 0; j < COLS; j++) sumSq += (matrix[i][j] - mean) ** 2;
+      const std = Math.sqrt(sumSq / COLS + 1e-5);
+      for (let j = 0; j < COLS; j++) result[i][j] = (matrix[i][j] - mean) / std;
+    }
+    return result;
+  }
+  const ngrid = document.getElementById('norm-grid');
+  let method = 'raw';
+
+  function colMean(m, j) { let s = 0; for (let i = 0; i < ROWS; i++) s += m[i][j]; return s / ROWS; }
+  function rowMean(m, i) { let s = 0; for (let j = 0; j < COLS; j++) s += m[i][j]; return s / COLS; }
+
+  function update() {
+    let m = raw;
+    if (method === 'bn') m = batchnorm(raw);
+    else if (method === 'ln') m = layernorm(raw);
+
+    // Render as a grid with shading
+    let html = '<div style="display:grid;grid-template-columns:50px repeat(' + COLS + ',1fr) 70px;gap:3px;font-family:JetBrains Mono,monospace;font-size:11px;">';
+    // header
+    html += '<div></div>';
+    for (let j = 0; j < COLS; j++) html += '<div style="text-align:center;color:var(--text-muted);padding:4px;">f' + j + '</div>';
+    html += '<div></div>';
+    // rows
+    let absMax = 0;
+    for (let i = 0; i < ROWS; i++) {
+      for (let j = 0; j < COLS; j++) absMax = Math.max(absMax, Math.abs(m[i][j]));
+    }
+    for (let i = 0; i < ROWS; i++) {
+      html += '<div style="color:var(--text-muted);text-align:right;padding:6px 4px;">s' + i + '</div>';
+      for (let j = 0; j < COLS; j++) {
+        const v = m[i][j];
+        const a = Math.abs(v) / absMax;
+        const bg = v >= 0 ? 'rgba(0, 229, 255, ' + a.toFixed(3) + ')' : 'rgba(255, 92, 192, ' + a.toFixed(3) + ')';
+        html += '<div style="background:' + bg + ';padding:6px 4px;text-align:center;color:' + (a > 0.5 ? '#0a0e1a' : 'var(--text-primary)') + ';border-radius:3px;font-weight:500;">' + v.toFixed(2) + '</div>';
+      }
+      // row mean
+      const rm = rowMean(m, i);
+      const rcolor = Math.abs(rm) < 0.1 ? 'var(--success)' : 'var(--text-muted)';
+      html += '<div style="color:' + rcolor + ';text-align:right;padding:6px 4px;font-weight:500;">μ=' + rm.toFixed(2) + '</div>';
+    }
+    // footer: column means
+    html += '<div style="color:var(--text-muted);text-align:right;padding:6px 4px;">μ</div>';
+    for (let j = 0; j < COLS; j++) {
+      const cm = colMean(m, j);
+      const ccolor = Math.abs(cm) < 0.1 ? 'var(--success)' : 'var(--text-muted)';
+      html += '<div style="text-align:center;color:' + ccolor + ';padding:6px 4px;font-weight:500;">' + cm.toFixed(2) + '</div>';
+    }
+    html += '<div></div></div>';
+    ngrid.innerHTML = html;
+
+    // Update metrics
+    if (method === 'raw') {
+      document.getElementById('norm-axis').textContent = 'nothing yet';
+      document.getElementById('norm-cmean').textContent = colMean(m, 0).toFixed(2) + ' …';
+      document.getElementById('norm-rmean').textContent = rowMean(m, 0).toFixed(2) + ' …';
+      document.getElementById('norm-out').textContent = '>>> Raw input: column 1 has shift=' + colShifts[1].toFixed(1) + ', column 2 has scale=' + colScales[2].toFixed(1) + '.\n    Per-column means and stds are all over the place.\n    Choose BatchNorm or LayerNorm to fix it.';
+    } else if (method === 'bn') {
+      document.getElementById('norm-axis').textContent = 'BATCH (columns)';
+      document.getElementById('norm-cmean').textContent = '≈ 0';
+      document.getElementById('norm-rmean').textContent = 'unchanged';
+      document.getElementById('norm-out').textContent = '>>> BatchNorm1d: each column (feature) now has mean=0 and std=1.\n    Look at the bottom row: every μ is near 0. Per-row μ values stay different.\n    Used in CNNs. Fails when batch_size < 8.';
+    } else {
+      document.getElementById('norm-axis').textContent = 'FEATURE (rows)';
+      document.getElementById('norm-cmean').textContent = 'unchanged';
+      document.getElementById('norm-rmean').textContent = '≈ 0';
+      document.getElementById('norm-out').textContent = '>>> LayerNorm: each row (sample) now has mean=0 and std=1.\n    Look at the rightmost column: every μ is near 0. Per-column μ values stay different.\n    Used in Transformers and RNNs. Works at any batch size.';
+    }
+  }
+  document.querySelectorAll('[data-norm]').forEach(b => b.addEventListener('click', () => {
+    document.querySelectorAll('[data-norm]').forEach(x => x.classList.remove('active'));
+    b.classList.add('active');
+    method = b.dataset.norm;
+    update();
+  }));
+  update();
+})();
+
+/* WIDGET 4: Mixup */
+(function(){
+  // Two samples with 5 features, classes 0 and 2
+  const featA = [0.8, 0.3, 0.9, 0.2, 0.6];
+  const featB = [0.1, 0.7, 0.2, 0.8, 0.4];
+  const labelA = [1, 0, 0];
+  const labelB = [0, 0, 1];
+  const featNames = ['age', 'income', 'tenure', 'visits', 'spend'];
+
+  const lamEl = document.getElementById('mix-lam');
+  const lamV = document.getElementById('mix-lam-v');
+  const alphaEl = document.getElementById('mix-alpha');
+  const alphaV = document.getElementById('mix-alpha-v');
+
+  function renderFeatures(elId, feats, color) {
+    const wrap = document.getElementById(elId);
+    wrap.innerHTML = '';
+    feats.forEach((v, i) => {
+      const row = document.createElement('div');
+      row.className = 'feat-row';
+      row.innerHTML =
+        '<span class="feat-label">' + featNames[i] + '</span>' +
+        '<div class="feat-bar-wrap"><div class="feat-bar" style="width:' + (v * 100).toFixed(0) + '%;background:' + color + ';"></div></div>' +
+        '<span>' + v.toFixed(2) + '</span>';
+      wrap.appendChild(row);
+    });
+  }
+
+  // build beta distribution chart
+  const ctx = document.getElementById('beta-chart').getContext('2d');
+  function betaPdf(x, a, b) {
+    if (x <= 0 || x >= 1) return 0;
+    // crude: just sample form via Math.pow
+    return Math.pow(x, a - 1) * Math.pow(1 - x, b - 1);
+  }
+  const xs = [];
+  for (let v = 0.01; v <= 0.99; v += 0.01) xs.push(+v.toFixed(2));
+  const chart = new Chart(ctx, {
+    type: 'line',
+    data: { labels: xs, datasets: [
+      { label: 'Beta(α,α)', data: [], borderColor: '#ff5cc0', backgroundColor: 'rgba(255,92,192,0.1)', fill: true, pointRadius: 0, borderWidth: 2 },
+      { label: 'current λ', data: [], borderColor: '#00e5ff', backgroundColor: '#00e5ff', pointRadius: 0, borderWidth: 0 }
+    ]},
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: false,
+      plugins: { legend: { display: false }, title: { display: true, text: 'Beta(α, α) distribution', color: '#9aa8c4', font: { size: 11 } } },
+      scales: {
+        x: { grid: { color: 'rgba(0,229,255,0.07)' }, ticks: { color: '#6b7896', maxTicksLimit: 6, font: { size: 9 } } },
+        y: { grid: { color: 'rgba(0,229,255,0.07)' }, ticks: { display: false } }
+      }
+    }
+  });
+
+  function update() {
+    const lam = +lamEl.value;
+    const alpha = +alphaEl.value;
+    lamV.textContent = lam.toFixed(2);
+    alphaV.textContent = alpha.toFixed(1);
+
+    renderFeatures('mix-a-feats', featA, 'rgba(0, 229, 255, 0.5)');
+    renderFeatures('mix-b-feats', featB, 'rgba(255, 92, 192, 0.5)');
+    const mixed = featA.map((a, i) => lam * a + (1 - lam) * featB[i]);
+    renderFeatures('mix-c-feats', mixed, 'rgba(107, 255, 157, 0.5)');
+
+    // beta curve
+    const pdf = xs.map(x => betaPdf(x, alpha, alpha));
+    const max = Math.max(...pdf);
+    chart.data.datasets[0].data = pdf.map(v => v / max);
+    // marker
+    const marker = xs.map(x => Math.abs(x - lam) < 0.01 ? 1.0 : null);
+    chart.data.datasets[1].data = marker;
+    chart.data.datasets[1].pointRadius = marker.map(v => v === null ? 0 : 6);
+    chart.data.datasets[1].pointBackgroundColor = '#00e5ff';
+    chart.data.datasets[1].pointBorderColor = '#fff';
+    chart.data.datasets[1].pointBorderWidth = 2;
+    chart.update('none');
+
+    // Mixed label
+    const mixedLabel = labelA.map((a, i) => lam * a + (1 - lam) * labelB[i]);
+    const labelText = '[' + mixedLabel.map(v => v.toFixed(2)).join(', ') + ']';
+    document.getElementById('mix-out').textContent =
+      '>>> X_mix = λ · A + (1-λ) · B  with λ=' + lam.toFixed(2) + '\n' +
+      '>>> y_mix = λ · y_A + (1-λ) · y_B   = ' + labelText + '\n\n' +
+      '>>> Loss = λ · CE(pred, y_A) + (1-λ) · CE(pred, y_B)\n' +
+      (alpha < 0.5 ? '   α < 1: Beta samples mostly near 0 or 1 → mostly close to original samples.' :
+       alpha > 1 ? '   α > 1: Beta samples favour middle → more aggressive mixing.' :
+       '   α ≈ 1: uniform sampling.');
+  }
+  lamEl.addEventListener('input', update);
+  alphaEl.addEventListener('input', update);
+  document.getElementById('mix-sample').addEventListener('click', () => {
+    // crude beta sample by averaging
+    const alpha = +alphaEl.value;
+    // simple approximation
+    let u = Math.random();
+    if (alpha < 1) {
+      // bias toward 0 or 1
+      u = u < 0.5 ? Math.pow(u * 2, 1 / alpha) / 2 : 1 - Math.pow((1 - u) * 2, 1 / alpha) / 2;
+    } else if (alpha > 1) {
+      // bias toward 0.5
+      u = 0.5 + (u - 0.5) / alpha;
+    }
+    lamEl.value = u.toFixed(2);
+    update();
+  });
+  update();
+})();
+
+/* WIDGET 5: Focal Loss */
+(function(){
+  const gEl = document.getElementById('focal-g');
+  const aEl = document.getElementById('focal-a');
+  const gV = document.getElementById('focal-g-v');
+  const aV = document.getElementById('focal-a-v');
+
+  const xs = [];
+  for (let p = 0.01; p <= 0.99; p += 0.01) xs.push(+p.toFixed(2));
+
+  function ceCurve() { return xs.map(p => -Math.log(p)); }
+  function flCurve(gamma, alpha) {
+    return xs.map(p => alpha * Math.pow(1 - p, gamma) * (-Math.log(p)));
+  }
+
+  const ctx = document.getElementById('focal-chart').getContext('2d');
+  const chart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: xs,
+      datasets: [
+        { label: 'CE', data: ceCurve(), borderColor: '#ff5cc0', backgroundColor: 'transparent', pointRadius: 0, borderWidth: 2 },
+        { label: 'FL', data: flCurve(2, 0.25), borderColor: '#00e5ff', backgroundColor: 'rgba(0,229,255,0.1)', fill: true, pointRadius: 0, borderWidth: 2 }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: { duration: 200 },
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { grid: { color: 'rgba(0,229,255,0.07)' }, ticks: { color: '#6b7896', maxTicksLimit: 10 }, title: { display: true, text: 'p_t (probability of correct class)', color: '#9aa8c4', font: { size: 10 } } },
+        y: { grid: { color: 'rgba(0,229,255,0.07)' }, ticks: { color: '#6b7896' }, max: 5, title: { display: true, text: 'loss', color: '#9aa8c4', font: { size: 10 } } }
+      }
+    }
+  });
+
+  function update() {
+    const g = +gEl.value;
+    const a = +aEl.value;
+    gV.textContent = g.toFixed(1);
+    aV.textContent = a.toFixed(2);
+    chart.data.datasets[1].data = flCurve(g, a);
+    chart.update('none');
+    const ce09 = -Math.log(0.9);
+    const fl09 = a * Math.pow(0.1, g) * (-Math.log(0.9));
+    const fl05 = a * Math.pow(0.5, g) * (-Math.log(0.5));
+    const ce05 = -Math.log(0.5);
+    document.getElementById('f-easy-ce').textContent = ce09.toFixed(3);
+    document.getElementById('f-easy-fl').textContent = fl09.toFixed(4);
+    document.getElementById('f-down-easy').textContent = ce09 > 0 ? (ce09 / Math.max(fl09, 1e-9)).toFixed(0) + '×' : '—';
+    document.getElementById('f-down-mid').textContent = ce05 > 0 ? (ce05 / Math.max(fl05, 1e-9)).toFixed(1) + '×' : '—';
+    let interp;
+    if (g === 0) interp = '>>> γ=0: focal loss reduces to α·CE (just a class weight).\n    No focus on hard examples — same shape as plain CE.';
+    else if (g <= 1) interp = '>>> γ=' + g.toFixed(1) + ': mild focus. Easy examples (p>0.7) still contribute.\n    Good when imbalance is moderate.';
+    else if (g <= 3) interp = '>>> γ=' + g.toFixed(1) + ': standard setting (paper used γ=2).\n    Easy examples are heavily down-weighted. The model focuses on the boundary.';
+    else interp = '>>> γ=' + g.toFixed(1) + ': very aggressive. Only very hard examples contribute.\n    Can stall training — start with γ=2 unless you know you need more.';
+    document.getElementById('focal-out').textContent = interp;
+  }
+  gEl.addEventListener('input', update);
+  aEl.addEventListener('input', update);
+  update();
+})();
+
+/* WIDGET 6: HPO Simulator */
+(function(){
+  const nEl = document.getElementById('hpo-n');
+  const nV = document.getElementById('hpo-n-v');
+  const listEl = document.getElementById('trial-list');
+  let strategy = 'random';
+
+  let seed = 7;
+  function rnd() { seed = (seed * 9301 + 49297) % 233280; return seed / 233280; }
+
+  // Synthetic objective: peak around lr=1e-3, dropout=0.25, hidden=128, wd=1e-3
+  function objective(lr, dropout, hidden, wd) {
+    const lrScore = Math.exp(-Math.pow(Math.log10(lr) - Math.log10(1e-3), 2) * 1.5);
+    const dropScore = Math.exp(-Math.pow(dropout - 0.25, 2) * 8);
+    const hiddenScore = Math.exp(-Math.pow(Math.log2(hidden) - 7, 2) * 0.4);
+    const wdScore = Math.exp(-Math.pow(Math.log10(wd) - Math.log10(1e-3), 2) * 0.5);
+    const noise = (rnd() - 0.5) * 0.04;
+    return 0.4 + 0.55 * lrScore * dropScore * hiddenScore * wdScore + noise;
+  }
+
+  const lrChoices = [1e-4, 3e-4, 5e-4, 1e-3, 3e-3, 1e-2];
+  const dropChoices = [0.1, 0.2, 0.3, 0.4, 0.5];
+  const hiddenChoices = [32, 64, 128, 256];
+  const wdChoices = [1e-5, 1e-4, 1e-3, 1e-2];
+
+  const ctx = document.getElementById('hpo-chart').getContext('2d');
+  const chart = new Chart(ctx, {
+    type: 'line',
+    data: { labels: [], datasets: [
+      { label: 'val_acc', data: [], borderColor: '#00e5ff', backgroundColor: 'rgba(0,229,255,0.1)', pointRadius: 4, fill: true, borderWidth: 2 },
+      { label: 'best so far', data: [], borderColor: '#6bff9d', backgroundColor: 'transparent', pointRadius: 0, borderWidth: 1.5, borderDash: [4, 3] }
+    ]},
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: { duration: 200 },
+      plugins: { legend: { display: true, position: 'bottom', labels: { color: '#9aa8c4', font: { size: 10 }, boxWidth: 12 } } },
+      scales: {
+        x: { grid: { color: 'rgba(0,229,255,0.07)' }, ticks: { color: '#6b7896' }, title: { display: true, text: 'trial', color: '#9aa8c4', font: { size: 10 } } },
+        y: { grid: { color: 'rgba(0,229,255,0.07)' }, ticks: { color: '#6b7896' }, min: 0.3, max: 1.0 }
+      }
+    }
+  });
+
+  function pick(strategy, idx, n, prevBest) {
+    if (strategy === 'random') {
+      return {
+        lr: lrChoices[Math.floor(rnd() * lrChoices.length)],
+        dropout: dropChoices[Math.floor(rnd() * dropChoices.length)],
+        hidden: hiddenChoices[Math.floor(rnd() * hiddenChoices.length)],
+        wd: wdChoices[Math.floor(rnd() * wdChoices.length)]
+      };
+    } else if (strategy === 'grid') {
+      // Walk through a 6-step regular grid of the optima
+      return {
+        lr: lrChoices[idx % lrChoices.length],
+        dropout: dropChoices[idx % dropChoices.length],
+        hidden: hiddenChoices[idx % hiddenChoices.length],
+        wd: wdChoices[idx % wdChoices.length]
+      };
+    } else {
+      // Bayesian-ish: first 3 random, then bias toward sweet spot
+      if (idx < 3) {
+        return {
+          lr: lrChoices[Math.floor(rnd() * lrChoices.length)],
+          dropout: dropChoices[Math.floor(rnd() * dropChoices.length)],
+          hidden: hiddenChoices[Math.floor(rnd() * hiddenChoices.length)],
+          wd: wdChoices[Math.floor(rnd() * wdChoices.length)]
+        };
+      } else {
+        // Bias toward known-good area
+        return {
+          lr: rnd() < 0.7 ? (rnd() < 0.5 ? 1e-3 : 5e-4) : lrChoices[Math.floor(rnd() * lrChoices.length)],
+          dropout: rnd() < 0.7 ? (rnd() < 0.5 ? 0.2 : 0.3) : dropChoices[Math.floor(rnd() * dropChoices.length)],
+          hidden: rnd() < 0.7 ? (rnd() < 0.5 ? 128 : 64) : hiddenChoices[Math.floor(rnd() * hiddenChoices.length)],
+          wd: rnd() < 0.7 ? 1e-3 : wdChoices[Math.floor(rnd() * wdChoices.length)]
+        };
+      }
+    }
+  }
+
+  function fmtLr(v) { return v.toExponential(0).replace('e+0', 'e').replace('e-0', 'e-'); }
+  function fmtWd(v) { return v.toExponential(0).replace('e+0', 'e').replace('e-0', 'e-'); }
+
+  function runSearch() {
+    seed = Math.floor(Math.random() * 1000) + 1;
+    const N = +nEl.value;
+    listEl.innerHTML = '';
+    const accs = [];
+    const bestSoFar = [];
+    let best = -Infinity, bestIdx = 0, bestCfg = null;
+    for (let i = 0; i < N; i++) {
+      const cfg = pick(strategy, i, N, best);
+      const acc = objective(cfg.lr, cfg.dropout, cfg.hidden, cfg.wd);
+      accs.push(acc);
+      if (acc > best) { best = acc; bestIdx = i; bestCfg = cfg; }
+      bestSoFar.push(best);
+      const row = document.createElement('div');
+      row.className = 'trial-row' + (i === bestIdx && i === N - 1 ? ' best' : '');
+      row.innerHTML =
+        '<span class="trial-id">#' + i + '</span>' +
+        '<span class="trial-val">' + fmtLr(cfg.lr) + '</span>' +
+        '<span class="trial-val">' + cfg.dropout.toFixed(2) + '</span>' +
+        '<span class="trial-val trial-hidden">' + cfg.hidden + '</span>' +
+        '<span class="trial-val trial-wd">' + fmtWd(cfg.wd) + '</span>' +
+        '<span class="trial-acc">' + acc.toFixed(3) + '</span>';
+      listEl.appendChild(row);
+    }
+    // mark best
+    Array.from(listEl.children).forEach((row, i) => row.classList.toggle('best', i === bestIdx));
+    // chart
+    chart.data.labels = accs.map((_, i) => '#' + i);
+    chart.data.datasets[0].data = accs;
+    chart.data.datasets[1].data = bestSoFar;
+    chart.update('none');
+    document.getElementById('hpo-best').textContent = best.toFixed(3);
+    document.getElementById('hpo-best-id').textContent = '#' + bestIdx;
+    document.getElementById('hpo-count').textContent = N;
+  }
+  nEl.addEventListener('input', () => { nV.textContent = nEl.value; });
+  document.querySelectorAll('[data-hpo]').forEach(b => b.addEventListener('click', () => {
+    document.querySelectorAll('[data-hpo]').forEach(x => x.classList.remove('active'));
+    b.classList.add('active');
+    strategy = b.dataset.hpo;
+    runSearch();
+  }));
+  document.getElementById('hpo-run').addEventListener('click', runSearch);
+  nV.textContent = nEl.value;
+  runSearch();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,815 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Split Circular List - Visualization</title>
+    <style>
+        :root {
+            --bg-page: #070b14;
+            --bg-surface: rgba(255, 255, 255, 0.045);
+            --bg-input: rgba(255, 255, 255, 0.04);
+            --border-main: rgba(255, 255, 255, 0.10);
+            --btn-bg: rgba(255, 255, 255, 0.05);
+            --btn-hover: rgba(255, 255, 255, 0.10);
+            --text-main: #e8eefb;
+            --text-dim: #8b98b3;
+            --accent-orange: #f5a524;   /* slow pointer    */
+            --accent-blue:   #06b6d4;   /* links / head    */
+            --accent-green:  #22c55e;   /* split / done    */
+            --accent-red:    #f43f5e;   /* null / error    */
+            --accent-purple: #a855f7;   /* fast pointer    */
+            --accent-pink:   #ec4899;   /* second half     */
+            --mono: ui-monospace, 'SF Mono', 'Cascadia Code', 'Courier New', monospace;
+            --sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+            --shell: 880px;
+        }
+
+        * { box-sizing: border-box; }
+        html, body { overflow-x: hidden; }
+        body {
+            background:
+                radial-gradient(1100px 600px at 15% -10%, rgba(6, 182, 212, 0.10), transparent 60%),
+                radial-gradient(900px 600px at 100% 10%, rgba(168, 85, 247, 0.10), transparent 55%),
+                linear-gradient(160deg, #070b14 0%, #0b1120 55%, #0a0f1c 100%);
+            background-attachment: fixed;
+            color: var(--text-main); font-family: var(--sans); margin: 0;
+            display: flex; flex-direction: column; align-items: center; min-height: 100vh;
+            padding-bottom: 48px; -webkit-font-smoothing: antialiased;
+        }
+        body::before, body::after { content: ''; position: fixed; border-radius: 50%; filter: blur(70px); pointer-events: none; z-index: 0; opacity: 0.45; }
+        body::before { width: 380px; height: 380px; top: 8%; left: -120px; background: radial-gradient(circle, rgba(6,182,212,0.30), transparent 70%); }
+        body::after  { width: 420px; height: 420px; bottom: 4%; right: -140px; background: radial-gradient(circle, rgba(168,85,247,0.22), transparent 70%); }
+        body > * { position: relative; z-index: 1; }
+
+        .input-bar {
+            width: 100%; background: rgba(10, 15, 28, 0.55);
+            backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+            padding: 14px 16px; display: flex; justify-content: center; align-items: center; gap: 10px;
+            border-bottom: 1px solid var(--border-main); flex-wrap: wrap; position: sticky; top: 0; z-index: 50;
+        }
+        label.ui-label, .ui-label { font-family: var(--mono); font-size: 13px; color: var(--text-dim); letter-spacing: 0.2px; }
+        input[type="text"], input[type="number"] {
+            background: var(--bg-input); border: 1px solid var(--border-main); color: var(--text-main);
+            height: 34px; border-radius: 9px; padding: 0 12px; font-size: 13px; font-family: var(--mono);
+            transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+        }
+        input[type="text"]:focus, input[type="number"]:focus { outline: none; border-color: var(--accent-blue); box-shadow: 0 0 0 3px rgba(6, 182, 212, 0.18); background: rgba(6, 182, 212, 0.06); }
+        .head-input { width: 240px; }
+
+        button {
+            height: 34px; border-radius: 9px; padding: 0 16px; background: var(--btn-bg);
+            border: 1px solid var(--border-main); color: var(--text-main); font-size: 13px; font-weight: 600; cursor: pointer;
+            transition: transform 0.15s ease, background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+        }
+        button:hover { background: var(--btn-hover); border-color: rgba(6, 182, 212, 0.5); box-shadow: 0 0 18px rgba(6, 182, 212, 0.18); transform: translateY(-1px); }
+        button:active { transform: translateY(0); }
+        #play-btn { background: linear-gradient(135deg, rgba(6,182,212,0.22), rgba(6,182,212,0.10)); border-color: rgba(6, 182, 212, 0.45); color: #a5f3fc; min-width: 80px; }
+
+        .shell { width: var(--shell); max-width: 94%; margin: 28px auto 0; display: flex; flex-direction: column; gap: 16px; }
+
+        .title-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+        .title-row h1 { font-size: 18px; font-weight: 800; margin: 0; letter-spacing: 0.2px; }
+        .title-row .sub { color: var(--text-dim); font-weight: 500; font-size: 13px; }
+        .step-badge { font-family: var(--mono); font-size: 12px; font-weight: 700; color: #a5f3fc; background: rgba(6,182,212,0.12); border: 1px solid rgba(6,182,212,0.3); padding: 4px 10px; border-radius: 999px; white-space: nowrap; }
+        .progress-track { height: 4px; width: 100%; background: rgba(255,255,255,0.07); border-radius: 999px; overflow: hidden; margin-top: -6px; }
+        .progress-fill { height: 100%; width: 0%; border-radius: 999px; background: linear-gradient(90deg, var(--accent-orange), var(--accent-purple)); box-shadow: 0 0 12px rgba(168,85,247,0.5); transition: width 0.45s cubic-bezier(0.34,1.1,0.64,1); }
+
+        .narration { background: var(--bg-surface); border: 1px solid rgba(6,182,212,0.22); border-radius: 12px; padding: 12px 18px; font-family: var(--mono); font-size: 14px; line-height: 1.5; color: #cfe9f5; min-height: 48px; display: flex; align-items: center; gap: 10px; transition: border-color 0.3s, background 0.3s; }
+        .narration::before { content: '\25B8'; color: var(--accent-blue); font-size: 13px; }
+        .narration.done { border-color: rgba(34,197,94,0.4); background: rgba(34,197,94,0.06); }
+        .narration.done::before { content: '\2713'; color: var(--accent-green); }
+        .narration.miss { border-color: rgba(244,63,94,0.4); background: rgba(244,63,94,0.06); }
+        .narration.miss::before { content: '\2717'; color: var(--accent-red); }
+        .narration code { background: rgba(6,182,212,0.12); color: #7dd3fc; padding: 1px 6px; border-radius: 5px; font-size: 12.5px; }
+        .narration b { color: #fff; }
+
+        .stage-card { background: var(--bg-surface); border: 1px solid var(--border-main); border-radius: 18px; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); box-shadow: 0 12px 38px rgba(0,0,0,0.4); overflow: hidden; }
+        .stage-screen { margin: 14px; border-radius: 14px; background: radial-gradient(700px 240px at 50% -10%, rgba(6,182,212,0.08), transparent 70%), #090d18; border: 1px solid rgba(255,255,255,0.06); }
+        /* extra top room for the curved circular back-edge arc */
+        .list-wrapper { display: flex; align-items: center; justify-content: flex-start; min-height: 214px; position: relative; overflow-x: auto; overflow-y: visible; padding: 82px 18px 56px; scrollbar-width: thin; }
+        .list-wrapper::-webkit-scrollbar { height: 7px; }
+        .list-wrapper::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 8px; }
+        .list-rail { display: flex; align-items: center; gap: 8px; margin: 0 auto; }
+
+        .node-unit { display: flex; flex-direction: column; align-items: center; gap: 6px; position: relative; flex: 0 0 auto; will-change: transform; }
+        .node {
+            min-width: 58px; height: 58px; display: flex; align-items: center; justify-content: center;
+            border-radius: 14px; font-size: 20px; font-weight: 800; font-family: var(--mono);
+            transition: background 0.4s ease, border-color 0.4s ease, color 0.4s ease, box-shadow 0.4s ease, outline-color 0.3s ease;
+            border: 2px solid var(--border-main); background: rgba(255, 255, 255, 0.05); color: var(--text-main);
+            position: relative; outline: 2px solid transparent; outline-offset: 3px;
+        }
+        .node.counted { background: rgba(6,182,212,0.10); border-color: rgba(6,182,212,0.35); }
+        /* first half — green tint */
+        .node.half1 { background: linear-gradient(180deg, #2fe08f, #21c275); border-color: #34d399; color: #06251a; box-shadow: 0 0 18px rgba(34,197,94,0.4); }
+        /* second half — pink tint */
+        .node.half2 { background: linear-gradient(180deg, #f9a8d4, #ec4899); border-color: #ec4899; color: #3a0024; box-shadow: 0 0 18px rgba(236,72,153,0.4); }
+        .node.slow-ring { outline-color: var(--accent-orange); }
+        .node.fast-ring { outline-color: var(--accent-purple); }
+        .node.both-ring { outline-color: var(--accent-blue); outline-style: dashed; }
+        .node-index { font-size: 11px; color: var(--text-dim); font-family: var(--mono); height: 14px; font-weight: 600; }
+
+        .arrow { flex: 0 0 auto; display: flex; align-items: center; height: 58px; filter: drop-shadow(0 0 6px rgba(6,182,212,0.45)); }
+        .arrow svg { display: block; overflow: visible; }
+        .arrow .ln { stroke: var(--accent-blue); stroke-width: 2.5; }
+        .arrow .hd { fill: var(--accent-blue); }
+        .arrow.split-gap { filter: drop-shadow(0 0 6px rgba(244,63,94,0.5)); opacity: 0.35; }
+        .arrow.split-gap .ln { stroke: var(--accent-red); stroke-dasharray: 4 4; }
+        .arrow.split-gap .hd { fill: var(--accent-red); }
+
+        /* curved back-edge(s) — circular link from a tail to its head */
+        .backedge { position: absolute; left: 0; top: 0; pointer-events: none; z-index: 2; overflow: visible; }
+        .backedge .be-ln { fill: none; stroke: var(--accent-blue); stroke-width: 2.5; opacity: 0.75; stroke-dasharray: 6 5; }
+        .backedge .be-ln.act { stroke: var(--accent-green); opacity: 1; stroke-dasharray: none; filter: drop-shadow(0 0 7px rgba(34,197,94,0.7)); }
+        .backedge .be-ln.act2 { stroke: var(--accent-pink); opacity: 1; stroke-dasharray: none; filter: drop-shadow(0 0 7px rgba(236,72,153,0.7)); }
+        .backedge .be-hd { fill: var(--accent-blue); opacity: 0.8; }
+        .backedge .be-hd.act { fill: var(--accent-green); opacity: 1; }
+        .backedge .be-hd.act2 { fill: var(--accent-pink); opacity: 1; }
+        .backedge .be-tag { font-family: var(--mono); font-size: 11px; font-weight: 800; fill: var(--text-dim); }
+        .backedge .be-tag.act { fill: var(--accent-green); }
+        .backedge .be-tag.act2 { fill: var(--accent-pink); }
+
+        /* pointer pills on stalks — JS spring positioned (below the rail) */
+        .ptr { position: absolute; left: 0; display: flex; flex-direction: column; align-items: center; opacity: 0; pointer-events: none; z-index: 5; transition: opacity 0.3s ease; will-change: transform; }
+        .ptr.below { bottom: 8px; }
+        .ptr .tag { font-family: var(--mono); font-size: 11px; font-weight: 800; padding: 3px 10px; border-radius: 8px; white-space: nowrap; }
+        .ptr .stalk { width: 2px; height: 16px; }
+        .ptr.slowptr .tag { background: var(--accent-orange); color: #3a2400; box-shadow: 0 0 14px rgba(245,165,36,0.6); }
+        .ptr.slowptr .stalk { background: var(--accent-orange); }
+        .ptr.fastptr .tag { background: var(--accent-purple); color: #1a0533; box-shadow: 0 0 14px rgba(168,85,247,0.6); }
+        .ptr.fastptr .stalk { background: var(--accent-purple); }
+        .ptr.bothptr .tag { background: var(--accent-blue); color: #042027; box-shadow: 0 0 14px rgba(6,182,212,0.6); }
+        .ptr.bothptr .stalk { background: var(--accent-blue); }
+
+        .action-stage { position: relative; min-height: 104px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; }
+        .float-tile { width: 64px; height: 64px; border-radius: 14px; display: flex; align-items: center; justify-content: center; font-family: var(--mono); font-size: 26px; font-weight: 800; opacity: 0; transform: scale(0.5); border: 2px solid transparent; will-change: transform; }
+        .action-word { font-family: var(--mono); font-weight: 800; font-size: 20px; letter-spacing: 0.5px; min-height: 24px; text-align: center; transition: color 0.3s ease; }
+        #confetti { position: absolute; inset: 0; overflow: visible; pointer-events: none; }
+        .confetti-piece { position: absolute; top: 0; left: 50%; width: 8px; height: 13px; border-radius: 2px; opacity: 0; animation: confettiFall ease-out forwards; }
+
+        .controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: center; }
+        .controls .kbd-hint { font-size: 11px; color: var(--text-dim); font-family: var(--mono); margin-left: 4px; }
+        .kbd { background: rgba(255,255,255,0.07); border: 1px solid var(--border-main); border-radius: 5px; padding: 1px 6px; font-size: 10px; }
+        input[type="range"] { accent-color: var(--accent-blue); width: 110px; cursor: pointer; }
+
+        .details-toggle { align-self: center; height: 32px; padding: 0 16px; border-radius: 999px; cursor: pointer; background: rgba(255,255,255,0.04); border: 1px solid var(--border-main); color: var(--text-dim); font-family: var(--mono); font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; gap: 8px; transition: color 0.2s, border-color 0.2s, background 0.2s; }
+        .details-toggle:hover { color: var(--text-main); border-color: rgba(6,182,212,0.4); background: rgba(6,182,212,0.06); }
+        .details-toggle .chev { transition: transform 0.3s ease; }
+        .details-wrap.open .details-toggle .chev { transform: rotate(180deg); }
+        .details-body { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.4s ease; }
+        .details-wrap.open .details-body { grid-template-rows: 1fr; }
+        .details-inner { overflow: hidden; min-height: 0; }
+        .details-grid { display: flex; flex-direction: column; gap: 14px; padding-top: 14px; }
+
+        .panel-card { background: var(--bg-surface); border: 1px solid var(--border-main); border-radius: 16px; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); box-shadow: 0 8px 30px rgba(0,0,0,0.35); }
+        .panel-head { display: flex; align-items: center; gap: 8px; padding: 11px 16px; border-bottom: 1px solid var(--border-main); font-size: 11px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; color: var(--text-dim); }
+        .panel-head .pip { width: 7px; height: 7px; border-radius: 50%; background: var(--accent-purple); box-shadow: 0 0 8px var(--accent-purple); }
+
+        .code-body { padding: 12px 6px 14px; font-family: var(--mono); font-size: 12.5px; line-height: 1.7; }
+        .code-line { display: flex; gap: 12px; padding: 1px 16px; border-left: 2px solid transparent; transition: background 0.3s, border-color 0.3s; white-space: pre; }
+        .code-line .lno { color: #4b5772; width: 16px; text-align: right; user-select: none; }
+        .code-line .src { color: #c4cee0; }
+        .code-line .kw { color: #c792ea; }
+        .code-line .fn { color: #82aaff; }
+        .code-line.active { background: rgba(168,85,247,0.12); border-left-color: var(--accent-purple); }
+        .code-line.active .src, .code-line.active .lno { color: #e8eefb; }
+
+        .state-strip { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 4px 2px; }
+        .pill { display: inline-flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 12px; color: var(--text-dim); background: rgba(255,255,255,0.04); border: 1px solid var(--border-main); border-radius: 999px; padding: 4px 11px; }
+        .pill b { color: var(--text-main); font-weight: 800; }
+        .pill.s b { color: var(--accent-orange); }
+        .pill.f b { color: var(--accent-purple); }
+        .pill.h b { color: var(--accent-blue); }
+        .legend-inline { margin-left: auto; display: flex; gap: 14px; flex-wrap: wrap; }
+        .legend-item { display: flex; align-items: center; font-size: 11px; color: var(--text-dim); }
+        .dot { width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; display: inline-block; }
+
+        .log-panel { border-radius: 14px; padding: 12px 16px; height: 110px; overflow-y: auto; font-family: var(--mono); font-size: 12.5px; line-height: 1.5; background: var(--bg-surface); border: 1px solid var(--border-main); }
+        .log-panel::-webkit-scrollbar { width: 8px; }
+        .log-panel::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 8px; }
+
+        @keyframes breathe { 0%,100%{ box-shadow: 0 0 16px var(--glow), inset 0 0 10px rgba(255,255,255,0.06); } 50%{ box-shadow: 0 0 30px var(--glow), inset 0 0 14px rgba(255,255,255,0.12); } }
+        @keyframes confettiFall { 0%{ opacity:1; transform: translate(-50%, 0) rotate(0deg); } 100%{ opacity:0; transform: translate(calc(-50% + var(--x)), 190px) rotate(var(--rot)); } }
+
+        @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; } }
+    </style>
+</head>
+<body>
+
+    <div class="input-bar">
+        <label class="ui-label">circular list =</label>
+        <input type="text" id="head-input" class="head-input" placeholder="1->2->3->4->5">
+        <button onclick="loadCustom()">Load</button>
+        <button onclick="loadExample([1,2,3,4,5])">Ex 1: odd</button>
+        <button onclick="loadExample([10,20,30,40])">Ex 2: even</button>
+    </div>
+
+    <div class="shell">
+        <div class="title-row">
+            <h1>Split Circular List <span class="sub">&middot; Count &amp; Split into Two Circles &middot; O(n)</span></h1>
+            <span class="step-badge" id="step-badge">Step 1 / 1</span>
+        </div>
+        <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+
+        <div class="narration" id="main-panel">&mdash;</div>
+
+        <div class="stage-card">
+            <div class="stage-screen">
+                <div class="list-wrapper" id="list-wrapper">
+                    <svg class="backedge" id="backedge" aria-hidden="true">
+                        <path class="be-ln" id="be-path1" d=""/>
+                        <polygon class="be-hd" id="be-head1" points="0,0 0,0 0,0"/>
+                        <text class="be-tag" id="be-tag1" x="0" y="0" text-anchor="middle">circular</text>
+                        <path class="be-ln" id="be-path2" d="" style="display:none"/>
+                        <polygon class="be-hd" id="be-head2" points="0,0 0,0 0,0" style="display:none"/>
+                        <text class="be-tag" id="be-tag2" x="0" y="0" text-anchor="middle" style="display:none">circular</text>
+                    </svg>
+                    <div class="list-rail" id="list-container"></div>
+                    <div class="ptr below slowptr" id="ptr-slow"><div class="stalk"></div><div class="tag">slow</div></div>
+                    <div class="ptr below fastptr" id="ptr-fast"><div class="stalk"></div><div class="tag">fast</div></div>
+                    <div class="ptr below bothptr" id="ptr-both"><div class="stalk"></div><div class="tag">slow, fast</div></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="action-stage">
+            <div id="confetti"></div>
+            <div class="float-tile" id="float-tile"><span id="float-val"></span></div>
+            <div class="action-word" id="action-word"></div>
+        </div>
+
+        <div class="controls">
+            <button onclick="reset()">&#8634; Reset</button>
+            <button onclick="back()">&#8592; Back</button>
+            <button onclick="togglePlay()" id="play-btn">Play</button>
+            <button onclick="next()">Next &#8594;</button>
+            <span class="ui-label" style="margin-left:6px; font-size:11px">Speed</span>
+            <input type="range" id="speed-slider" min="0" max="2" value="1">
+            <span class="kbd-hint"><span class="kbd">&#8592;</span> <span class="kbd">&#8594;</span> step &middot; <span class="kbd">space</span> play</span>
+        </div>
+
+        <div class="details-wrap" id="details-wrap">
+            <button class="details-toggle" onclick="toggleDetails()" aria-expanded="false">
+                <span id="details-label">Show code, state &amp; log</span> <span class="chev">&#9662;</span>
+            </button>
+            <div class="details-body">
+                <div class="details-inner">
+                    <div class="details-grid">
+                        <div class="panel-card">
+                            <div class="panel-head"><span class="pip"></span> Algorithm</div>
+                            <div class="code-body" id="code-panel"></div>
+                        </div>
+
+                        <div class="state-strip">
+                            <span class="pill s">slow <b id="val-slow">&mdash;</b></span>
+                            <span class="pill f">fast <b id="val-fast">&mdash;</b></span>
+                            <span class="pill h">length <b id="val-length">&mdash;</b></span>
+                            <span class="pill">split at <b id="val-split">&mdash;</b></span>
+                            <span class="legend-inline">
+                                <span class="legend-item"><span class="dot" style="background:rgba(245,165,36,0.15); border:2px solid var(--accent-orange)"></span>slow</span>
+                                <span class="legend-item"><span class="dot" style="background:rgba(168,85,247,0.15); border:2px solid var(--accent-purple)"></span>fast</span>
+                                <span class="legend-item"><span class="dot" style="background:linear-gradient(180deg,#2fe08f,#21c275); border:2px solid #34d399"></span>half 1</span>
+                                <span class="legend-item"><span class="dot" style="background:linear-gradient(180deg,#f9a8d4,#ec4899); border:2px solid #ec4899"></span>half 2</span>
+                            </span>
+                        </div>
+
+                        <div class="log-panel" id="log"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        'use strict';
+
+        // Motion engine (spring + FLIP, zero deps - see VISUALIZATION_STYLE_GUIDE section 4c)
+        const REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        const FRAME = 1000 / 60;
+        function sampleSpring(stiffness, damping, mass) {
+            const dt = 1 / 60; let x = 1, v = 0; const out = [];
+            for (let i = 0; i < 240; i++) {
+                const a = (-stiffness * x - damping * v) / mass;
+                v += a * dt; x += v * dt; out.push(1 - x);
+                if (Math.abs(x) < 0.0015 && Math.abs(v) < 0.0015) break;
+            }
+            out.push(1); return out;
+        }
+        const SPRING_POS = sampleSpring(340, 30, 1);
+        const SPRING_POP = sampleSpring(540, 17, 1);
+        const durOf = (a) => a.length * FRAME;
+        const Motion = {
+            flip(el, dx, dy) {
+                if (REDUCED || (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5)) return;
+                const kf = SPRING_POS.map(p => ({ transform: `translate(${(dx*(1-p)).toFixed(2)}px, ${(dy*(1-p)).toFixed(2)}px)` }));
+                el.animate(kf, { duration: durOf(SPRING_POS), easing: 'linear' });
+            },
+            enter(el, delay = 0) {
+                if (REDUCED) return;
+                const kf = SPRING_POP.map(p => ({ opacity: Math.min(1, p*1.6).toFixed(3),
+                    transform: `translateY(${(-18*(1-p)).toFixed(2)}px) scale(${(0.45+0.55*p).toFixed(3)})` }));
+                el.animate(kf, { duration: durOf(SPRING_POP), easing: 'linear', delay, fill: 'backwards' });
+            },
+            pop(el) {
+                el.getAnimations().forEach(a => a.cancel());
+                if (REDUCED) { el.style.opacity = '1'; el.style.transform = 'scale(1)'; return; }
+                const kf = SPRING_POP.map(p => ({ opacity: Math.min(1, p*2).toFixed(3),
+                    transform: `scale(${(0.5+0.5*p).toFixed(3)}) translateY(${(10*(1-p)).toFixed(2)}px)` }));
+                el.animate(kf, { duration: durOf(SPRING_POP), easing: 'linear', fill: 'forwards' });
+            },
+            glide(el, x) {
+                const prev = el._x; el.style.opacity = '1';
+                const commit = `translateX(${x}px) translateX(-50%)`;
+                if (REDUCED || prev == null || Math.abs(x - prev) < 0.5) { el._x = x; el.style.transform = commit; return; }
+                const dx = x - prev;
+                const kf = SPRING_POS.map(p => ({ transform: `translateX(${(prev+dx*p).toFixed(2)}px) translateX(-50%)` }));
+                el.animate(kf, { duration: durOf(SPRING_POS), easing: 'linear' });
+                el._x = x; el.style.transform = commit;
+            },
+            exit(rect, text) {
+                if (REDUCED) return;
+                const c = document.createElement('div');
+                c.textContent = text;
+                c.style.cssText = `position:fixed; left:${rect.left}px; top:${rect.top}px; width:${rect.width}px; height:${rect.height}px;
+                    display:flex; align-items:center; justify-content:center; border-radius:14px; font-family:var(--mono); font-size:20px; font-weight:800;
+                    background:rgba(255,255,255,0.08); color:var(--text-main); border:2px solid var(--border-main);
+                    z-index:60; pointer-events:none;`;
+                document.body.appendChild(c);
+                const a = c.animate(
+                    [{ opacity: 1, transform: 'translateY(0) scale(1) rotate(0)' },
+                     { opacity: 0, transform: 'translateY(-52px) scale(0.55) rotate(10deg)' }],
+                    { duration: 520, easing: 'cubic-bezier(.4,0,.7,1)' });
+                a.onfinish = () => c.remove(); a.oncancel = () => c.remove();
+            },
+        };
+
+        // ───────── State ─────────
+        let nodes = [];          // values
+        let steps = [];
+        let stepIndex = 0;
+        let timer = null;
+        let confettiArmed = true;
+        const delays = [1800, 900, 450];
+        let els = {};            // 'k:'+key -> node-unit, 'r:'+key -> arrow, 'nullterm'
+
+        const CODE = [
+            [['kw','def '],['fn','split_circular'],['src','(head):']],
+            [['kw','    if '],['src','head '],['kw','is None'],['src',': '],['kw','return None, None']],
+            [['src','    n = 1; tail = head']],
+            [['kw','    while '],['src','tail.next '],['kw','is not'],['src',' head: tail = tail.next; n += 1']],
+            [['src','    k = (n + 1) // 2          # first half size']],
+            [['src','    first = head; cur = head']],
+            [['kw','    for '],['src','_ '],['kw','in '],['fn','range'],['src','(k - 1): cur = cur.next']],
+            [['src','    second = cur.next']],
+            [['src','    cur.next = first          # close first circle']],
+            [['src','    tail.next = second        # close second circle']],
+            [['kw','    return '],['src','first, second']],
+        ];
+        const ARR = String.fromCharCode(8594);   // arrow
+        const CHK = String.fromCharCode(10003);   // check
+        const TILE_COLORS = {
+            green: { bg: 'rgba(34,197,94,0.18)',  fg: '#bbf7d0', bd: '#22c55e', glow: 'rgba(34,197,94,0.55)' },
+            purple:{ bg: 'rgba(168,85,247,0.18)', fg: '#e9d5ff', bd: '#a855f7', glow: 'rgba(168,85,247,0.55)' },
+            blue:  { bg: 'rgba(6,182,212,0.18)',  fg: '#a5f3fc', bd: '#06b6d4', glow: 'rgba(6,182,212,0.55)' },
+        };
+
+        function buildCodePanel() {
+            const panel = document.getElementById('code-panel');
+            panel.innerHTML = '';
+            CODE.forEach((tokens, i) => {
+                const line = document.createElement('div');
+                line.className = 'code-line'; line.dataset.line = i;
+                const lno = document.createElement('span'); lno.className = 'lno'; lno.textContent = i + 1; line.appendChild(lno);
+                const src = document.createElement('span');
+                tokens.forEach(([cls, txt]) => { const s = document.createElement('span'); s.className = cls; s.textContent = txt; src.appendChild(s); });
+                line.appendChild(src); panel.appendChild(line);
+            });
+        }
+        function highlightCode(lineArr) {
+            document.querySelectorAll('.code-line').forEach(el => el.classList.toggle('active', lineArr && lineArr.includes(+el.dataset.line)));
+        }
+        function toggleDetails() {
+            const wrap = document.getElementById('details-wrap');
+            const open = wrap.classList.toggle('open');
+            wrap.querySelector('.details-toggle').setAttribute('aria-expanded', open ? 'true' : 'false');
+            document.getElementById('details-label').textContent = open ? 'Hide code, state & log' : 'Show code, state & log';
+        }
+
+        function init() { buildCodePanel(); loadExample([1,2,3,4,5]); }
+
+        function parseHead(str) {
+            if (!str || str.trim() === "") return [];
+            return str.split('->').map(x => parseInt(x.trim())).filter(x => !isNaN(x));
+        }
+
+        function loadExample(arr) {
+            nodes = [...arr];
+            document.getElementById('head-input').value = nodes.length ? nodes.join('->') : 'null';
+            resetDom();
+            generateSteps();
+            reset();
+        }
+
+        function loadCustom() {
+            const parsed = parseHead(document.getElementById('head-input').value.trim());
+            loadExample(parsed);
+        }
+
+        // ───────── step generation — count nodes in the circle, split at ceil(n/2) ─────────
+        // base[] is the stable identity list ('o0','o1',...). Across all steps nodes[] stays
+        // in the original visual order; only classes / pointers / back-edges change.
+        function generateSteps() {
+            steps = [];
+            const base = nodes.map((v, i) => ({ key: 'o' + i, val: v }));
+            const n = nodes.length;
+            const listStr = n ? nodes.join(' ' + String.fromCharCode(8594) + ' ') : 'null';
+
+            if (n === 0) {
+                steps.push({
+                    type: 'final', complete: true, miss: true, codeLine: [1], nodes: [],
+                    slowKey: null, fastKey: null, both: false, splitIdx: 0, length: 0,
+                    half1: [], half2: [], arc: 'none',
+                    action: 'empty list', actionColor: 'var(--accent-red)', tile: null,
+                    panel: `<code>head is null</code> ${ARR} nothing to split.`,
+                    log: 'head == null -> (None, None)', logColor: 'var(--accent-red)'
+                });
+                return;
+            }
+
+            // STEP 0 — init (one circle, both pointers at head)
+            steps.push({
+                type: 'init', codeLine: [0], nodes: base.slice(),
+                slowKey: 'o0', fastKey: 'o0', both: true, splitIdx: null, length: null,
+                half1: [], half2: [], arc: 'single',
+                action: 'slow = fast = head', actionColor: '#7dd3fc', tile: null,
+                panel: `A circular list <code>${listStr}</code> &mdash; its tail links back to the head. Use slow/fast to find the midpoint.`,
+                log: `circular list = ${nodes.join(' -> ')}\nslow = fast = head (${nodes[0]})`, logColor: 'var(--text-dim)'
+            });
+
+            // PASS: count nodes around the circle (tail.next == head terminates)
+            steps.push({
+                type: 'count', codeLine: [2], nodes: base.slice(),
+                slowKey: null, fastKey: null, both: false, countKey: 'o0', countIdx: 0,
+                splitIdx: null, length: null, half1: [], half2: [], arc: 'single',
+                action: 'n = 1', actionColor: 'var(--accent-blue)', tile: null,
+                panel: `Count the nodes. Start at the head with <code>n = 1</code>.`,
+                log: `count node ${nodes[0]}, n = 1`, logColor: 'var(--accent-blue)'
+            });
+            let length = 1;
+            for (let i = 1; i < n; i++) {
+                length++;
+                steps.push({
+                    type: 'count', codeLine: [3], nodes: base.slice(),
+                    slowKey: null, fastKey: null, both: false, countKey: 'o' + i, countIdx: i,
+                    splitIdx: null, length: null, half1: [], half2: [], arc: 'single',
+                    action: 'n = ' + length, actionColor: 'var(--accent-blue)', tile: null,
+                    panel: `<code>tail.next != head</code> &#8594; advance and count. <code>n = ${length}</code>.`,
+                    log: `count node ${nodes[i]}, n = ${length}`, logColor: 'var(--accent-blue)'
+                });
+            }
+
+            steps.push({
+                type: 'length', codeLine: [3], nodes: base.slice(),
+                slowKey: null, fastKey: null, both: false,
+                splitIdx: null, length: length, half1: [], half2: [], arc: 'single',
+                action: CHK + ' n = ' + length, actionColor: 'var(--accent-blue)', tile: length, tileColor: 'blue',
+                panel: `<code>tail.next == head</code> &#8594; back at the head. The circle has <b>${length}</b> nodes.`,
+                log: `tail.next == head -> length n = ${length}`, logColor: 'var(--accent-blue)'
+            });
+
+            // split index = ceil(n/2) = first half size (odd -> first half is larger)
+            const splitIdx = Math.ceil(length / 2);
+            steps.push({
+                type: 'calc', codeLine: [4], nodes: base.slice(),
+                slowKey: null, fastKey: null, both: false,
+                splitIdx: splitIdx, length: length, half1: [], half2: [], arc: 'single',
+                action: 'k = ceil(' + length + '/2) = ' + splitIdx, actionColor: 'var(--accent-purple)', tile: null,
+                panel: `First half size <code>k = ceil(${length} / 2) = ${splitIdx}</code>${length % 2 ? ` (odd &#8594; first half has one more)` : ` (even &#8594; equal halves)`}.`,
+                log: `k = ceil(${length}/2) = ${splitIdx}`, logColor: 'var(--accent-purple)'
+            });
+
+            // Walk slow to node k-1 (the first-half tail). Use slow/fast: slow steps 1, fast steps 2.
+            // We narrate via slow/fast meeting the split boundary; midpoint reached when slow at k-1.
+            let slow = 0, fast = 0;
+            steps.push({
+                type: 'walk', codeLine: [5], nodes: base.slice(),
+                slowKey: 'o0', fastKey: 'o0', both: true,
+                splitIdx: splitIdx, length: length, half1: [], half2: [], arc: 'single',
+                action: 'first = head; cur = head', actionColor: 'var(--accent-orange)', tile: null,
+                panel: `Reset to the head. Walk <code>slow</code> (1 step) and <code>fast</code> (2 steps) to find the split point.`,
+                log: `first = head; cur = head`, logColor: 'var(--accent-orange)'
+            });
+            // advance until slow reaches index k-1
+            while (slow < splitIdx - 1) {
+                slow += 1;
+                fast = Math.min(fast + 2, n - 1);
+                const atSplit = slow === splitIdx - 1;
+                steps.push({
+                    type: 'walk', codeLine: [6], nodes: base.slice(),
+                    slowKey: 'o' + slow, fastKey: (fast === slow ? null : 'o' + fast), both: false,
+                    splitIdx: splitIdx, length: length, half1: [], half2: [], arc: 'single',
+                    action: `slow${ARR}${nodes[slow]}` + (fast !== slow ? `  fast${ARR}${nodes[fast]}` : ''),
+                    actionColor: 'var(--accent-orange)', tile: null,
+                    panel: atSplit
+                        ? `<span style="color:var(--accent-green)">slow is at node <b>${nodes[slow]}</b> (index ${slow})</span> &#8594; the tail of the first half.`
+                        : `Advance: slow ${ARR} node <b>${nodes[slow]}</b>` + (fast !== slow ? `, fast ${ARR} node <b>${nodes[fast]}</b>.` : `.`),
+                    log: `slow -> ${nodes[slow]}` + (fast !== slow ? `, fast -> ${nodes[fast]}` : ''),
+                    logColor: atSplit ? 'var(--accent-green)' : 'var(--accent-orange)'
+                });
+            }
+
+            const firstHalf = base.slice(0, splitIdx);
+            const secondHalf = base.slice(splitIdx);
+            const firstVals = nodes.slice(0, splitIdx);
+            const secondVals = nodes.slice(splitIdx);
+
+            // mark the split boundary (cur.next = first / tail.next = second)
+            steps.push({
+                type: 'split', codeLine: [7, 8, 9], nodes: base.slice(),
+                slowKey: 'o' + (splitIdx - 1), fastKey: null, both: false,
+                splitIdx: splitIdx, length: length,
+                half1: firstHalf.map(x => x.key), half2: secondHalf.map(x => x.key),
+                splitAfterKey: 'o' + (splitIdx - 1), arc: 'double',
+                action: 'cur.next = first; tail.next = second', actionColor: 'var(--accent-green)', tile: null,
+                panel: `<code>second = cur.next</code>, then <code>cur.next = first</code> and <code>tail.next = second</code> &#8594; two separate circles.`,
+                log: `second = cur.next\ncur.next = first  (close circle 1)\ntail.next = second (close circle 2)`,
+                logColor: 'var(--accent-green)'
+            });
+
+            // FINAL
+            steps.push({
+                type: 'final', complete: true, bold: true, confetti: true, codeLine: [10], nodes: base.slice(),
+                slowKey: null, fastKey: null, both: false,
+                splitIdx: splitIdx, length: length,
+                half1: firstHalf.map(x => x.key), half2: secondHalf.map(x => x.key),
+                splitAfterKey: 'o' + (splitIdx - 1), arc: 'double',
+                action: CHK + ' SPLIT', actionColor: 'var(--accent-green)', tile: null,
+                panel: `Done in <b>O(n)</b>. First circle: <code>${firstVals.join(' ' + String.fromCharCode(8594) + ' ')}</code> &middot; second circle: <code>${secondVals.join(' ' + String.fromCharCode(8594) + ' ')}</code>.`,
+                log: `first  = [${firstVals.join(', ')}]\nsecond = [${secondVals.join(', ')}]`, logColor: 'var(--accent-green)'
+            });
+        }
+
+        function resetDom() {
+            const c = document.getElementById('list-container');
+            Array.from(c.children).forEach(ch => { if (!ch.classList.contains('ptr')) c.removeChild(ch); });
+            els = {};
+            confettiArmed = true;
+            ['ptr-slow','ptr-fast','ptr-both'].forEach(id => { const p = document.getElementById(id); p.style.opacity = '0'; p._x = null; });
+            ['be-path1','be-head1','be-tag1','be-path2','be-head2','be-tag2'].forEach(id => { document.getElementById(id).style.display = 'none'; });
+        }
+
+        function arrowSVG() {
+            return `<svg viewBox="0 0 40 24" width="40" height="24">
+                <line class="ln" x1="2" y1="12" x2="28" y2="12" stroke-linecap="round"/>
+                <polygon class="hd" points="27,6 39,12 27,18"/></svg>`;
+        }
+
+        function fireConfetti() {
+            const host = document.getElementById('confetti');
+            if (!host || REDUCED) return;
+            const colors = ['#22c55e', '#06b6d4', '#a855f7', '#f5a524', '#ec4899'];
+            for (let i = 0; i < 42; i++) {
+                const p = document.createElement('div'); p.className = 'confetti-piece';
+                p.style.setProperty('--x', ((Math.random() * 2 - 1) * 230) + 'px');
+                p.style.setProperty('--rot', ((Math.random() * 720 - 360)) + 'deg');
+                p.style.background = colors[i % colors.length];
+                p.style.animationDuration = (0.9 + Math.random() * 0.8) + 's';
+                p.style.animationDelay = (Math.random() * 0.15) + 's';
+                host.appendChild(p);
+                setTimeout(() => p.remove(), 1900);
+            }
+        }
+
+        // Draw a curved back-edge arc from a tail node up over the rail to a head node.
+        // pathId/headId/tagId reference the SVG primitives; klass adds 'act' (green) or 'act2' (pink).
+        function drawArc(pathId, headId, tagId, tailKey, headKey, klass, label) {
+            const wrap = document.getElementById('list-wrapper');
+            const tail = els['k:' + tailKey], head = els['k:' + headKey];
+            const pathEl = document.getElementById(pathId), headEl = document.getElementById(headId), tagEl = document.getElementById(tagId);
+            if (!tail || !head) { pathEl.style.display = 'none'; headEl.style.display = 'none'; tagEl.style.display = 'none'; return; }
+            const wr = wrap.getBoundingClientRect();
+            const tr = tail.getBoundingClientRect(), hr = head.getBoundingClientRect();
+            const sx = (tr.left + tr.right) / 2 - wr.left + wrap.scrollLeft;
+            const sy = tr.top - wr.top;
+            const ex = (hr.left + hr.right) / 2 - wr.left + wrap.scrollLeft;
+            const ey = hr.top - wr.top;
+            const span = Math.abs(sx - ex);
+            const topY = Math.min(sy, ey) - Math.min(70, 28 + span * 0.10);
+            const d = `M ${sx} ${sy} C ${sx} ${topY}, ${ex} ${topY}, ${ex} ${ey - 2}`;
+            pathEl.setAttribute('d', d);
+            pathEl.setAttribute('class', 'be-ln' + (klass ? ' ' + klass : ''));
+            pathEl.style.display = 'block';
+            const hw = 6;
+            headEl.setAttribute('points', `${ex - hw},${ey - 12} ${ex + hw},${ey - 12} ${ex},${ey - 1}`);
+            headEl.setAttribute('class', 'be-hd' + (klass ? ' ' + klass : ''));
+            headEl.style.display = 'block';
+            tagEl.setAttribute('x', (sx + ex) / 2); tagEl.setAttribute('y', topY - 6);
+            tagEl.setAttribute('class', 'be-tag' + (klass ? ' ' + klass : ''));
+            tagEl.textContent = label;
+            tagEl.style.display = 'block';
+        }
+
+        function hideArc(pathId, headId, tagId) {
+            document.getElementById(pathId).style.display = 'none';
+            document.getElementById(headId).style.display = 'none';
+            document.getElementById(tagId).style.display = 'none';
+        }
+
+        function drawBackEdges(step) {
+            const svg = document.getElementById('backedge');
+            const wrap = document.getElementById('list-wrapper');
+            svg.setAttribute('width', Math.max(wrap.clientWidth, wrap.scrollWidth));
+            svg.setAttribute('height', wrap.clientHeight);
+            svg.style.display = 'block';
+            const nd = step.nodes;
+            if (step.arc === 'none' || nd.length === 0) {
+                hideArc('be-path1','be-head1','be-tag1');
+                hideArc('be-path2','be-head2','be-tag2');
+                return;
+            }
+            if (step.arc === 'single') {
+                // one circle: tail (last) back to head (first)
+                drawArc('be-path1','be-head1','be-tag1', nd[nd.length - 1].key, nd[0].key, '', 'circular');
+                hideArc('be-path2','be-head2','be-tag2');
+                return;
+            }
+            // double: arc 1 over first half (green), arc 2 over second half (pink)
+            const k = step.splitIdx;
+            const h1Tail = nd[k - 1].key, h1Head = nd[0].key;
+            const h2Tail = nd[nd.length - 1].key, h2Head = nd[k].key;
+            drawArc('be-path1','be-head1','be-tag1', h1Tail, h1Head, 'act', 'circle 1');
+            drawArc('be-path2','be-head2','be-tag2', h2Tail, h2Head, 'act2', 'circle 2');
+        }
+
+        function renderStep(idx) {
+            const step = steps[idx];
+            if (!step) return;
+            const container = document.getElementById('list-container');
+            const nodesArr = step.nodes;
+
+            // FLIP — record FIRST rects before any DOM mutation
+            const firstRects = {};
+            Object.keys(els).forEach(k => { if (k.startsWith('k:') && els[k].isConnected) firstRects[k] = els[k].getBoundingClientRect(); });
+
+            const ordered = [];
+            const freshNodes = [];
+            const h1Set = new Set(step.half1 || []);
+            const h2Set = new Set(step.half2 || []);
+
+            for (let i = 0; i < nodesArr.length; i++) {
+                const nd = nodesArr[i];
+                const nkey = 'k:' + nd.key;
+                let unit = els[nkey], isFresh = false;
+                if (!unit) {
+                    isFresh = true;
+                    unit = document.createElement('div');
+                    unit.className = 'node-unit';
+                    unit.innerHTML = `<div class="node"></div><div class="node-index"></div>`;
+                    els[nkey] = unit;
+                }
+                const nodeEl = unit.firstChild;
+                nodeEl.textContent = nd.val;
+                unit.lastChild.textContent = i === 0 ? 'head' : i;
+                const inH1 = h1Set.has(nd.key), inH2 = h2Set.has(nd.key);
+                const isCounted = step.type === 'count' && step.countKey === nd.key;
+                nodeEl.className = 'node'
+                    + (inH1 ? ' half1' : '')
+                    + (inH2 ? ' half2' : '')
+                    + (isCounted ? ' counted' : '')
+                    + (!inH1 && !inH2 && step.both && step.slowKey === nd.key ? ' both-ring' : '')
+                    + (!inH1 && !inH2 && !step.both && step.slowKey === nd.key ? ' slow-ring' : '')
+                    + (!inH1 && !inH2 && !step.both && step.fastKey === nd.key ? ' fast-ring' : '');
+                if (isFresh) freshNodes.push({ nodeEl, idx: i });
+                ordered.push(unit);
+
+                if (i < nodesArr.length - 1) {
+                    const akey = 'r:' + nd.key;
+                    let arr = els[akey];
+                    if (!arr) { arr = document.createElement('div'); arr.className = 'arrow'; arr.innerHTML = arrowSVG(); els[akey] = arr; }
+                    // the forward link just after the first-half tail becomes the split gap
+                    const isGap = step.splitAfterKey === nd.key;
+                    arr.classList.toggle('split-gap', !!isGap);
+                    ordered.push(arr);
+                }
+            }
+            // NO straight tail arrow / null terminator: circular lists wrap via the curved back-edge.
+
+            // reconcile — exit any node-unit that's leaving, then remove + forget
+            const used = new Set(ordered);
+            Object.keys(firstRects).forEach(k => { if (!used.has(els[k])) Motion.exit(firstRects[k], els[k].firstChild.textContent); });
+            Array.from(container.children).forEach(ch => { if (!ch.classList.contains('ptr') && !used.has(ch)) container.removeChild(ch); });
+            Object.keys(els).forEach(k => { if (!used.has(els[k])) delete els[k]; });
+            ordered.forEach(el => container.appendChild(el));
+
+            // FLIP play — survivors spring to new positions; fresh nodes spring-enter
+            Object.keys(firstRects).forEach(k => {
+                const el = els[k]; if (!el || !el.isConnected) return;
+                const last = el.getBoundingClientRect();
+                Motion.flip(el, firstRects[k].left - last.left, firstRects[k].top - last.top);
+            });
+            const stagger = freshNodes.length > 1;
+            freshNodes.forEach(({ nodeEl, idx: i }) => Motion.enter(nodeEl, stagger ? i * 45 : 0));
+
+            // back-edge arcs (single circle, or two circles after split)
+            drawBackEdges(step);
+
+            // narration
+            const mainPanel = document.getElementById('main-panel');
+            mainPanel.innerHTML = step.panel || '&mdash;';
+            mainPanel.classList.toggle('done', !!step.complete && !step.miss);
+            mainPanel.classList.toggle('miss', !!step.miss);
+
+            // action word + floating tile
+            const aw = document.getElementById('action-word');
+            aw.textContent = step.action || '';
+            aw.style.color = step.actionColor || 'var(--text-dim)';
+            const ft = document.getElementById('float-tile');
+            if (step.tile !== null && step.tile !== undefined) {
+                document.getElementById('float-val').textContent = step.tile;
+                const c = TILE_COLORS[step.tileColor] || TILE_COLORS.blue;
+                ft.style.background = c.bg; ft.style.color = c.fg; ft.style.borderColor = c.bd; ft.style.boxShadow = '0 0 26px ' + c.glow;
+                Motion.pop(ft);
+            } else {
+                ft.getAnimations().forEach(a => a.cancel());
+                ft.style.opacity = '0'; ft.style.transform = 'scale(0.5)';
+            }
+
+            // confetti once on completion
+            if (step.complete && step.confetti) { if (confettiArmed) { fireConfetti(); confettiArmed = false; } }
+            else if (!step.complete) { confettiArmed = true; }
+
+            // pointers — combined pill when slow & fast share head, else separate
+            positionPointer('ptr-slow', step.both ? null : step.slowKey);
+            positionPointer('ptr-fast', step.both ? null : step.fastKey);
+            positionPointer('ptr-both', step.both ? step.slowKey : null);
+
+            // state pills
+            document.getElementById('val-slow').textContent = keyVal(step.slowKey);
+            document.getElementById('val-fast').textContent = keyVal(step.fastKey);
+            document.getElementById('val-length').textContent = step.length !== null && step.length !== undefined ? step.length : '—';
+            document.getElementById('val-split').textContent = step.splitIdx !== null && step.splitIdx !== undefined ? step.splitIdx : '—';
+            highlightCode(step.codeLine);
+
+            document.getElementById('step-badge').textContent = `Step ${idx + 1} / ${steps.length}`;
+            document.getElementById('progress-fill').style.width = `${(idx / Math.max(1, steps.length - 1)) * 100}%`;
+
+            // cumulative log
+            const logPanel = document.getElementById('log');
+            logPanel.innerHTML = '';
+            for (let k = 0; k <= idx; k++) {
+                if (steps[k].log) {
+                    const line = document.createElement('div');
+                    line.style.marginBottom = '3px'; line.style.whiteSpace = 'pre-wrap';
+                    if (steps[k].logColor) line.style.color = steps[k].logColor;
+                    if (steps[k].bold) line.style.fontWeight = 'bold';
+                    line.textContent = steps[k].log;
+                    logPanel.appendChild(line);
+                }
+            }
+            logPanel.scrollTop = logPanel.scrollHeight;
+        }
+
+        // value shown in a pill for a given node key in the CURRENT step
+        function keyVal(key) {
+            if (!key) return '—';
+            const s = steps[stepIndex];
+            const nd = s && s.nodes.find(n => n.key === key);
+            return nd ? nd.val : '—';
+        }
+
+        function positionPointer(id, key) {
+            const ptr = document.getElementById(id);
+            if (!key || !els['k:' + key] || !els['k:' + key].isConnected) { ptr.style.opacity = '0'; ptr._x = null; return; }
+            const unit = els['k:' + key];
+            Motion.glide(ptr, unit.offsetLeft + unit.offsetWidth / 2);
+        }
+
+        function next() { if (stepIndex < steps.length - 1) { stepIndex++; renderStep(stepIndex); } else pause(); }
+        function back() { if (stepIndex > 0) { stepIndex--; renderStep(stepIndex); } }
+        function reset() { pause(); stepIndex = 0; renderStep(0); }
+        function togglePlay() {
+            const btn = document.getElementById('play-btn');
+            if (timer) pause();
+            else {
+                btn.textContent = 'Pause';
+                if (stepIndex >= steps.length - 1) { stepIndex = 0; renderStep(0); }
+                timer = setInterval(next, delays[document.getElementById('speed-slider').value]);
+            }
+        }
+        function pause() { clearInterval(timer); timer = null; document.getElementById('play-btn').textContent = 'Play'; }
+
+        document.addEventListener('keydown', (e) => {
+            const tag = (e.target.tagName || '').toLowerCase();
+            if (tag === 'input' || tag === 'textarea') return;
+            if (e.key === 'ArrowRight') { e.preventDefault(); pause(); next(); }
+            else if (e.key === 'ArrowLeft') { e.preventDefault(); pause(); back(); }
+            else if (e.key === ' ') { e.preventDefault(); togglePlay(); }
+        });
+
+        let rT;
+        window.addEventListener('resize', () => { clearTimeout(rT); rT = setTimeout(() => { ['ptr-slow','ptr-fast','ptr-both'].forEach(id => { document.getElementById(id)._x = null; }); renderStep(stepIndex); }, 120); });
+        window.onload = init;
+    </script>
+</body>
+</html>

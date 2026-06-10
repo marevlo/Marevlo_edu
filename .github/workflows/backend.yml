@@ -1,0 +1,59 @@
+name: deploy-backend
+on:
+  push:
+    branches: [main]
+    paths: ["Backend/**", "runner/**", "terraform/**"]
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    env:
+      AWS_REGION: ap-south-1
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ap-south-1
+
+      - id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build & push images (immutable SHA tags)
+        env:
+          REG: ${{ steps.ecr.outputs.registry }}
+          TAG: ${{ github.sha }}
+        run: |
+          docker build -t "$REG/marevlo-api:$TAG" ./Backend
+          docker build -t "$REG/marevlo-runner:$TAG" ./runner
+          docker push "$REG/marevlo-api:$TAG"
+          docker push "$REG/marevlo-runner:$TAG"
+          echo "API_IMAGE=$REG/marevlo-api:$TAG"       >> "$GITHUB_ENV"
+          echo "RUNNER_IMAGE=$REG/marevlo-runner:$TAG" >> "$GITHUB_ENV"
+
+      - uses: hashicorp/setup-terraform@v3
+        with: { terraform_version: "1.7.5" }
+
+      # Terraform stays the single source of truth: roll the new images through
+      # the task defs + services it manages. -target keeps the apply fast/safe.
+      - name: Roll out via Terraform
+        working-directory: terraform
+        run: |
+          terraform init -input=false
+          terraform apply -input=false -auto-approve \
+            -var="api_image=$API_IMAGE" \
+            -var="runner_image=$RUNNER_IMAGE" \
+            -target=aws_ecs_task_definition.api \
+            -target=aws_ecs_task_definition.runner \
+            -target=aws_ecs_service.api \
+            -target=aws_ecs_service.runner
+
+      - name: Wait for ECS to stabilize
+        run: |
+          aws ecs wait services-stable --cluster marevlo-prod --services api runner

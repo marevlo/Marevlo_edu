@@ -1,0 +1,636 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Advanced CRT (non-coprime moduli) - Visualization</title>
+    <style>
+        :root {
+            --bg-page: #070b14;
+            --bg-surface: rgba(255, 255, 255, 0.045);
+            --bg-input: rgba(255, 255, 255, 0.04);
+            --border-main: rgba(255, 255, 255, 0.10);
+            --btn-bg: rgba(255, 255, 255, 0.05);
+            --btn-hover: rgba(255, 255, 255, 0.10);
+            --text-main: #e8eefb;
+            --text-dim: #8b98b3;
+            --accent-orange: #f5a524;   /* the running merged congruence / answer */
+            --accent-blue:   #06b6d4;   /* incoming congruence / chrome           */
+            --accent-green:  #22c55e;   /* consistent merge / solution            */
+            --accent-red:    #f43f5e;   /* inconsistency -> no solution           */
+            --accent-purple: #a855f7;   /* active pair being merged               */
+            --mono: ui-monospace, 'SF Mono', 'Cascadia Code', 'Courier New', monospace;
+            --sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+            --shell: 900px;
+        }
+
+        * { box-sizing: border-box; }
+        html, body { overflow-x: hidden; }
+        body {
+            background:
+                radial-gradient(1100px 600px at 15% -10%, rgba(168, 85, 247, 0.10), transparent 60%),
+                radial-gradient(900px 600px at 100% 10%, rgba(6, 182, 212, 0.10), transparent 55%),
+                linear-gradient(160deg, #070b14 0%, #0b1120 55%, #0a0f1c 100%);
+            background-attachment: fixed;
+            color: var(--text-main); font-family: var(--sans); margin: 0;
+            display: flex; flex-direction: column; align-items: center; min-height: 100vh;
+            padding-bottom: 48px; -webkit-font-smoothing: antialiased;
+        }
+        body::before, body::after { content: ''; position: fixed; border-radius: 50%; filter: blur(70px); pointer-events: none; z-index: 0; opacity: 0.45; }
+        body::before { width: 380px; height: 380px; top: 8%; left: -120px; background: radial-gradient(circle, rgba(168,85,247,0.30), transparent 70%); }
+        body::after  { width: 420px; height: 420px; bottom: 4%; right: -140px; background: radial-gradient(circle, rgba(6,182,212,0.22), transparent 70%); }
+        body > * { position: relative; z-index: 1; }
+
+        .input-bar {
+            width: 100%; background: rgba(10, 15, 28, 0.55);
+            backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+            padding: 14px 16px; display: flex; justify-content: center; align-items: center; gap: 10px;
+            border-bottom: 1px solid var(--border-main); flex-wrap: wrap; position: sticky; top: 0; z-index: 50;
+        }
+        label.ui-label, .ui-label { font-family: var(--mono); font-size: 13px; color: var(--text-dim); letter-spacing: 0.2px; }
+        input[type="text"] {
+            background: var(--bg-input); border: 1px solid var(--border-main); color: var(--text-main);
+            height: 34px; border-radius: 9px; padding: 0 12px; font-size: 13px; font-family: var(--mono); width: 240px;
+            transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+        }
+        input[type="text"]:focus { outline: none; border-color: var(--accent-purple); box-shadow: 0 0 0 3px rgba(168, 85, 247, 0.18); background: rgba(168, 85, 247, 0.06); }
+
+        button {
+            height: 34px; border-radius: 9px; padding: 0 14px; background: var(--btn-bg);
+            border: 1px solid var(--border-main); color: var(--text-main); font-size: 13px; font-weight: 600; cursor: pointer;
+            transition: transform 0.15s ease, background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+        }
+        button:hover { background: var(--btn-hover); border-color: rgba(6, 182, 212, 0.5); box-shadow: 0 0 18px rgba(6, 182, 212, 0.18); transform: translateY(-1px); }
+        button:active { transform: translateY(0); }
+        #play-btn { background: linear-gradient(135deg, rgba(6,182,212,0.22), rgba(6,182,212,0.10)); border-color: rgba(6, 182, 212, 0.45); color: #a5f3fc; min-width: 80px; }
+
+        .shell { width: var(--shell); max-width: 95%; margin: 24px auto 0; display: flex; flex-direction: column; gap: 16px; }
+
+        .title-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+        .title-row h1 { font-size: 18px; font-weight: 800; margin: 0; letter-spacing: 0.2px; }
+        .title-row .sub { color: var(--text-dim); font-weight: 500; font-size: 13px; }
+        .step-badge { font-family: var(--mono); font-size: 12px; font-weight: 700; color: #a5f3fc; background: rgba(6,182,212,0.12); border: 1px solid rgba(6,182,212,0.3); padding: 4px 10px; border-radius: 999px; white-space: nowrap; }
+        .progress-track { height: 4px; width: 100%; background: rgba(255,255,255,0.07); border-radius: 999px; overflow: hidden; margin-top: -6px; }
+        .progress-fill { height: 100%; width: 0%; border-radius: 999px; background: linear-gradient(90deg, var(--accent-blue), var(--accent-purple)); box-shadow: 0 0 12px rgba(6,182,212,0.5); transition: width 0.45s cubic-bezier(0.34,1.1,0.64,1); }
+
+        .narration { background: var(--bg-surface); border: 1px solid rgba(6,182,212,0.22); border-radius: 12px; padding: 12px 18px; font-family: var(--mono); font-size: 14px; line-height: 1.5; color: #cfe9f5; min-height: 48px; display: flex; align-items: center; gap: 10px; transition: border-color 0.3s, background 0.3s; }
+        .narration::before { content: '\25B8'; color: var(--accent-blue); font-size: 13px; }
+        .narration.done { border-color: rgba(34,197,94,0.4); background: rgba(34,197,94,0.06); }
+        .narration.done::before { content: '\2713'; color: var(--accent-green); }
+        .narration.fail { border-color: rgba(244,63,94,0.45); background: rgba(244,63,94,0.07); }
+        .narration.fail::before { content: '\2715'; color: var(--accent-red); }
+        .narration code { background: rgba(6,182,212,0.14); color: #7dd3fc; padding: 1px 6px; border-radius: 5px; font-size: 12.5px; }
+        .narration b { color: #fff; }
+
+        .stage-card { background: var(--bg-surface); border: 1px solid var(--border-main); border-radius: 18px; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); box-shadow: 0 12px 38px rgba(0,0,0,0.4); overflow: hidden; }
+        .stage-screen { position: relative; margin: 14px; border-radius: 14px; background: radial-gradient(700px 300px at 50% -10%, rgba(6,182,212,0.08), transparent 70%), #090d18; border: 1px solid rgba(255,255,255,0.06); }
+        .grid-stage { position: relative; width: 100%; overflow: auto; scrollbar-width: thin; padding: 22px; display: flex; flex-direction: column; align-items: center; gap: 18px; }
+        .grid-stage::-webkit-scrollbar { height: 8px; width: 8px; }
+        .grid-stage::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 8px; }
+
+        /* ── congruence chip row ── */
+        .cong-row { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; min-height: 64px; }
+        .cong-chip {
+            display: flex; flex-direction: column; align-items: center; gap: 4px;
+            border-radius: 11px; border: 2px solid var(--border-main); background: rgba(255,255,255,0.04);
+            padding: 9px 14px; min-width: 92px; font-family: var(--mono); will-change: transform;
+            transition: background 0.35s, border-color 0.35s, color 0.35s, box-shadow 0.35s, transform 0.3s, opacity 0.35s;
+        }
+        .cong-chip .lhs { font-size: 15px; font-weight: 800; color: var(--text-main); white-space: nowrap; }
+        .cong-chip .lbl { font-size: 10px; letter-spacing: 0.6px; color: var(--text-dim); text-transform: uppercase; }
+        .cong-chip.merged { opacity: 0.4; border-style: dashed; }
+        .cong-chip.acc { border-color: var(--accent-orange); background: rgba(245,165,36,0.16); color: #ffd591; box-shadow: 0 0 18px rgba(245,165,36,0.4); }
+        .cong-chip.acc .lhs { color: #ffd591; }
+        .cong-chip.incoming { border-color: var(--accent-blue); background: rgba(6,182,212,0.14); box-shadow: 0 0 16px rgba(6,182,212,0.35); transform: scale(1.05); }
+        .cong-chip.incoming .lhs { color: #a5f3fc; }
+        .cong-chip.bad { border-color: var(--accent-red); background: rgba(244,63,94,0.16); box-shadow: 0 0 18px rgba(244,63,94,0.45); }
+        .cong-chip.bad .lhs { color: #fda4af; }
+        .cong-chip.good { border-color: var(--accent-green); background: rgba(34,197,94,0.15); box-shadow: 0 0 18px rgba(34,197,94,0.4); }
+        .cong-chip.good .lhs { color: #86efac; }
+
+        /* ── merge table ── */
+        .merge-table { display: grid; gap: 5px; font-family: var(--mono); }
+        .mt-cell {
+            display: flex; align-items: center; justify-content: center; text-align: center;
+            border-radius: 9px; font-weight: 700; font-size: 13px; padding: 7px 9px;
+            border: 2px solid var(--border-main); background: rgba(255,255,255,0.04); color: var(--text-main);
+            min-height: 38px; will-change: transform;
+            transition: background 0.35s, border-color 0.35s, color 0.35s, box-shadow 0.35s, transform 0.3s, opacity 0.35s;
+        }
+        .mt-cell.head { border: none; background: transparent; color: var(--text-dim); font-size: 11px; letter-spacing: 0.6px; text-transform: uppercase; font-weight: 800; min-height: 0; padding: 2px 6px; }
+        .mt-cell.dim { color: var(--text-dim); opacity: 0.55; }
+        .mt-cell.lit { border-color: var(--accent-purple); background: rgba(168,85,247,0.16); color: #e9d5ff; box-shadow: 0 0 16px rgba(168,85,247,0.45); transform: scale(1.04); z-index: 2; }
+        .mt-cell.ok { border-color: var(--accent-green); background: rgba(34,197,94,0.14); color: #86efac; box-shadow: 0 0 12px rgba(34,197,94,0.3); }
+        .mt-cell.no { border-color: var(--accent-red); background: rgba(244,63,94,0.15); color: #fda4af; box-shadow: 0 0 14px rgba(244,63,94,0.4); }
+        .mt-cell .small { font-size: 10px; color: var(--text-dim); display: block; margin-top: 2px; font-weight: 600; }
+        .mt-cell.lit .small, .mt-cell.ok .small, .mt-cell.no .small { color: inherit; opacity: 0.8; }
+
+        .action-stage { position: relative; min-height: 92px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; }
+        .answer-track { display: flex; gap: 6px; align-items: center; min-height: 40px; }
+        .ans-tile { height: 40px; padding: 0 12px; border-radius: 9px; display: flex; align-items: center; justify-content: center; font-family: var(--mono); font-size: 18px; font-weight: 800; border: 2px solid var(--accent-orange); background: rgba(245,165,36,0.16); color: #ffd591; box-shadow: 0 0 12px rgba(245,165,36,0.35); white-space: nowrap; }
+        .ans-tile.fail { border-color: var(--accent-red); background: rgba(244,63,94,0.16); color: #fda4af; box-shadow: 0 0 12px rgba(244,63,94,0.4); }
+        .action-word { font-family: var(--mono); font-weight: 800; font-size: 18px; letter-spacing: 0.4px; min-height: 22px; text-align: center; transition: color 0.3s; }
+        #confetti { position: absolute; inset: 0; overflow: visible; pointer-events: none; }
+        .confetti-piece { position: absolute; top: 0; left: 50%; width: 8px; height: 13px; border-radius: 2px; opacity: 0; animation: confettiFall ease-out forwards; }
+
+        .controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: center; }
+        .controls .kbd-hint { font-size: 11px; color: var(--text-dim); font-family: var(--mono); margin-left: 4px; }
+        .kbd { background: rgba(255,255,255,0.07); border: 1px solid var(--border-main); border-radius: 5px; padding: 1px 6px; font-size: 10px; }
+        input[type="range"] { accent-color: var(--accent-blue); width: 110px; cursor: pointer; }
+
+        .details-toggle { align-self: center; height: 32px; padding: 0 16px; border-radius: 999px; cursor: pointer; background: rgba(255,255,255,0.04); border: 1px solid var(--border-main); color: var(--text-dim); font-family: var(--mono); font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; gap: 8px; transition: color 0.2s, border-color 0.2s, background 0.2s; }
+        .details-toggle:hover { color: var(--text-main); border-color: rgba(6,182,212,0.4); background: rgba(6,182,212,0.06); }
+        .details-toggle .chev { transition: transform 0.3s ease; }
+        .details-wrap.open .details-toggle .chev { transform: rotate(180deg); }
+        .details-body { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.4s ease; }
+        .details-wrap.open .details-body { grid-template-rows: 1fr; }
+        .details-inner { overflow: hidden; min-height: 0; }
+        .details-grid { display: flex; flex-direction: column; gap: 14px; padding-top: 14px; }
+
+        .panel-card { background: var(--bg-surface); border: 1px solid var(--border-main); border-radius: 16px; backdrop-filter: blur(10px); box-shadow: 0 8px 30px rgba(0,0,0,0.35); }
+        .panel-head { display: flex; align-items: center; gap: 8px; padding: 11px 16px; border-bottom: 1px solid var(--border-main); font-size: 11px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; color: var(--text-dim); }
+        .panel-head .pip { width: 7px; height: 7px; border-radius: 50%; background: var(--accent-blue); box-shadow: 0 0 8px var(--accent-blue); }
+        .code-body { padding: 12px 6px 14px; font-family: var(--mono); font-size: 12.5px; line-height: 1.7; }
+        .code-line { display: flex; gap: 12px; padding: 1px 16px; border-left: 2px solid transparent; transition: background 0.3s, border-color 0.3s; white-space: pre; }
+        .code-line .lno { color: #4b5772; width: 16px; text-align: right; user-select: none; }
+        .code-line .src { color: #c4cee0; }
+        .code-line .kw { color: #c792ea; }
+        .code-line .fn { color: #82aaff; }
+        .code-line.active { background: rgba(6,182,212,0.12); border-left-color: var(--accent-blue); }
+        .code-line.active .src, .code-line.active .lno { color: #e8eefb; }
+
+        .state-strip { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 0 2px; }
+        .pill { display: inline-flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 12px; color: var(--text-dim); background: rgba(255,255,255,0.04); border: 1px solid var(--border-main); border-radius: 999px; padding: 4px 11px; }
+        .pill b { color: var(--text-main); font-weight: 800; }
+        .pill.c b { color: var(--accent-purple); } .pill.b b { color: var(--accent-orange); } .pill.g b { color: var(--accent-green); } .pill.r b { color: var(--accent-red); }
+
+        .log-panel { border-radius: 14px; padding: 12px 16px; height: 110px; overflow-y: auto; font-family: var(--mono); font-size: 12.5px; line-height: 1.5; background: var(--bg-surface); border: 1px solid var(--border-main); }
+        .log-panel::-webkit-scrollbar { width: 8px; }
+        .log-panel::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 8px; }
+
+        @keyframes confettiFall { 0%{ opacity:1; transform: translate(-50%, 0) rotate(0deg); } 100%{ opacity:0; transform: translate(calc(-50% + var(--x)), 220px) rotate(var(--rot)); } }
+        @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; } }
+    </style>
+</head>
+<body>
+
+    <div class="input-bar">
+        <label class="ui-label">Congruences =</label>
+        <input type="text" id="num-input" value="[[2,3],[3,4],[1,5]]" placeholder="[[a,m],...]">
+        <button onclick="loadCustom()">Load</button>
+        <span class="ui-label" style="opacity:.5">|</span>
+        <button onclick="loadExample(0)">Ex 1</button>
+        <button onclick="loadExample(1)">Ex 2</button>
+    </div>
+
+    <div class="shell">
+        <div class="title-row">
+            <h1>Advanced CRT <span class="sub">&middot; non-coprime moduli &middot; pairwise merge &middot; consistent iff gcd(m&#7522;,m&#11388;) | (a&#7522;&minus;a&#11388;)</span></h1>
+            <span class="step-badge" id="step-badge">Step 1 / 1</span>
+        </div>
+        <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+
+        <div class="narration" id="main-panel">&mdash;</div>
+
+        <div class="stage-card">
+            <div class="stage-screen">
+                <div class="grid-stage" id="grid-stage">
+                    <div class="cong-row" id="cong-row"></div>
+                    <div class="merge-table" id="merge-table"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="action-stage">
+            <div id="confetti"></div>
+            <div class="answer-track" id="answer-track"></div>
+            <div class="action-word" id="action-word"></div>
+        </div>
+
+        <div class="controls">
+            <button onclick="resetSim()">&#8634; Reset</button>
+            <button onclick="prevStep()">&#8592; Back</button>
+            <button onclick="togglePlay()" id="play-btn">Play</button>
+            <button onclick="nextStep()">Next &#8594;</button>
+            <span class="ui-label" style="margin-left:6px; font-size:11px">Speed</span>
+            <input type="range" id="speed" min="0" max="2" value="1">
+            <span class="kbd-hint"><span class="kbd">&#8592;</span> <span class="kbd">&#8594;</span> step &middot; <span class="kbd">space</span> play</span>
+        </div>
+
+        <div class="details-wrap" id="details-wrap">
+            <button class="details-toggle" onclick="toggleDetails()" aria-expanded="false">
+                <span id="details-label">Show code, state &amp; log</span> <span class="chev">&#9662;</span>
+            </button>
+            <div class="details-body">
+                <div class="details-inner">
+                    <div class="details-grid">
+                        <div class="state-strip">
+                            <span class="pill b">merged x <b id="st-x">&mdash;</b></span>
+                            <span class="pill c">mod (lcm) <b id="st-mod">&mdash;</b></span>
+                            <span class="pill g">merged <b id="st-cnt">0</b></span>
+                            <span class="pill r">consistent <b id="st-ok">yes</b></span>
+                        </div>
+                        <div class="panel-card">
+                            <div class="panel-head"><span class="pip"></span> Algorithm</div>
+                            <div class="code-body" id="code-panel"></div>
+                        </div>
+                        <div class="log-panel" id="log"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        'use strict';
+
+        // ───────── Motion engine (spring pop, zero deps) ─────────
+        const REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        const FRAME = 1000 / 60;
+        function sampleSpring(stiffness, damping, mass) {
+            const dt = 1 / 60; let x = 1, v = 0; const out = [];
+            for (let i = 0; i < 240; i++) { const a = (-stiffness * x - damping * v) / mass; v += a * dt; x += v * dt; out.push(1 - x); if (Math.abs(x) < 0.0015 && Math.abs(v) < 0.0015) break; }
+            out.push(1); return out;
+        }
+        const SPRING_POP = sampleSpring(520, 17, 1);
+        const durOf = (a) => a.length * FRAME;
+        const Motion = {
+            pop(el) {
+                if (REDUCED) return;
+                const kf = SPRING_POP.map(p => ({ transform: `scale(${(0.4 + 0.66 * p).toFixed(3)})` }));
+                el.animate(kf, { duration: durOf(SPRING_POP), easing: 'linear' });
+            },
+        };
+
+        // ───────── State ─────────
+        let congruences = [[2, 3], [3, 4], [1, 5]];   // [[a1,m1],[a2,m2],...]
+        let steps = [];
+        let stepIdx = 0;
+        let timer = null;
+        let confettiArmed = true;
+        const delays = [1450, 720, 330];
+        const chipEls = {};   // 'idx' -> element  (input congruence chips, persistent)
+        const mtEls = {};     // 'r,c' -> element  (merge-table cells, persistent)
+
+        const EXAMPLES = ['[[2,3],[3,4],[1,5]]', '[[1,2],[2,4]]'];
+
+        // ───────── number theory ─────────
+        function gcd(a, b) { a = Math.abs(a); b = Math.abs(b); while (b) { [a, b] = [b, a % b]; } return a; }
+        // extended euclid -> [g, x, y] with a*x + b*y = g
+        function egcd(a, b) { if (b === 0) return [a, 1, 0]; const [g, x, y] = egcd(b, a % b); return [g, y, x - Math.floor(a / b) * y]; }
+        const mod = (n, m) => ((n % m) + m) % m;
+
+        // ───────── code panel ─────────
+        const CODE = [
+            [['kw', 'def '], ['fn', 'crt'], ['src', '(cong):']],
+            [['src', '  a, m = cong[0]          # running congruence']],
+            [['kw', '  for '], ['src', '(a2, m2) in cong[1:]:']],
+            [['src', '    g = gcd(m, m2)']],
+            [['kw', '    if '], ['src', '(a2 - a) % g != 0:']],
+            [['kw', '      return '], ['src', 'None       # inconsistent']],
+            [['src', '    lcm = m // g * m2']],
+            [['src', '    a = a + m * ((a2-a)//g * inv(m//g, m2//g) % (m2//g))']],
+            [['src', '    a, m = a % lcm, lcm    # merged']],
+            [['kw', '  return '], ['src', '(a % m, m)         # x = a (mod m)']],
+        ];
+        function buildCodePanel() {
+            const panel = document.getElementById('code-panel'); panel.innerHTML = '';
+            CODE.forEach((tokens, i) => {
+                const line = document.createElement('div'); line.className = 'code-line'; line.dataset.line = i;
+                const lno = document.createElement('span'); lno.className = 'lno'; lno.textContent = i + 1; line.appendChild(lno);
+                const src = document.createElement('span');
+                tokens.forEach(([cls, txt]) => { const s = document.createElement('span'); s.className = cls; s.textContent = txt; src.appendChild(s); });
+                line.appendChild(src); panel.appendChild(line);
+            });
+        }
+        function highlightCode(arr) { document.querySelectorAll('.code-line').forEach(el => el.classList.toggle('active', arr && arr.includes(+el.dataset.line))); }
+        function toggleDetails() {
+            const wrap = document.getElementById('details-wrap'); const open = wrap.classList.toggle('open');
+            wrap.querySelector('.details-toggle').setAttribute('aria-expanded', open ? 'true' : 'false');
+            document.getElementById('details-label').textContent = open ? 'Hide code, state & log' : 'Show code, state & log';
+        }
+
+        // ───────── step generation (genuine pairwise-merge simulation) ─────────
+        function generateSteps() {
+            steps = [];
+            const C = congruences;
+            const N = C.length;
+
+            // pre-build the merge-table model: rows accumulate as pairs are merged.
+            // table columns: step | incoming (a2,m2) | gcd | a2-a | divisible? | new x (mod lcm)
+            const tableRows = [];        // each row is {cols:[...], cls:'' } we mutate cls per snapshot via tableState
+
+            // snapshot helper: capture an immutable copy of the table state + chip state
+            const snap = (extra) => Object.assign({
+                merged: extra && extra.merged != null ? extra.merged : 0,
+                acc: extra && extra.acc ? extra.acc.slice() : null,     // [a, m] running
+                table: tableRows.map(r => ({ cols: r.cols.slice(), cls: r.cls })),
+                chipStates: extra && extra.chipStates ? extra.chipStates.slice() : new Array(N).fill(''),
+                ok: extra ? (extra.ok !== false) : true,
+            }, extra);
+
+            if (N === 0) {
+                steps.push(snap({ panel: 'No congruences provided.', action: 'EMPTY', actionColor: 'var(--text-dim)', code: [0], log: 'empty input', chipStates: [] }));
+                return;
+            }
+
+            const fmt = (a, m) => `x &equiv; ${a} (mod ${m})`;
+            const congList = C.map(([a, m]) => `x&equiv;${a} (mod ${m})`).join(', &nbsp;');
+
+            // header row of the merge table is rendered separately; tableRows holds only data rows.
+
+            // --- step 0: init, take first congruence as the running one ---
+            let [a, m] = C[0]; a = mod(a, m);
+            {
+                const chip = new Array(N).fill(''); chip[0] = 'acc';
+                steps.push(snap({
+                    merged: 1, acc: [a, m], chipStates: chip,
+                    code: [0, 1], action: 'START MERGE', actionColor: 'var(--accent-orange)',
+                    panel: `Merge the congruences <code>${congList}</code> <b>pairwise</b>. Start with the running congruence <code>${fmt(a, m)}</code>.`,
+                    log: `start  x ≡ ${a} (mod ${m})`
+                }));
+            }
+
+            let consistent = true;
+            let failIdx = -1;
+
+            for (let i = 1; i < N; i++) {
+                let [a2, m2] = C[i]; a2 = mod(a2, m2);
+                const g = gcd(m, m2);
+                const diff = a2 - a;
+                const divisible = mod(diff, g) === 0;
+                const lcm = (m / g) * m2;
+
+                // (a) spotlight the incoming pair + show gcd / consistency test (table row appended)
+                const rowIdx = tableRows.length;
+                tableRows.push({
+                    cols: [
+                        `#${i}`,
+                        `${a2} (m=${m2})`,
+                        `${g}`,
+                        `${a2}&minus;${a} = ${diff}`,
+                        divisible ? `${diff} &middot; (1/${g}) &#10003;` : `${g} &#8740; ${diff}`,
+                        '&mdash;'
+                    ],
+                    cls: 'lit'
+                });
+                {
+                    const chip = new Array(N).fill(''); chip[i] = 'incoming';
+                    for (let k = 0; k < i; k++) chip[k] = 'merged'; chip[i - 1] = chip[i - 1]; // already merged
+                    // mark all already-merged as 'merged', running stays implicit via acc
+                    for (let k = 0; k < i; k++) chip[k] = 'merged';
+                    chip[i] = 'incoming';
+                    steps.push(snap({
+                        merged: i, acc: [a, m], chipStates: chip,
+                        code: [2, 3, 4], action: `CHECK gcd(${m},${m2}) = ${g}`, actionColor: 'var(--accent-purple)',
+                        panel: `Bring in <code>${fmt(a2, m2)}</code>. Compute <code>g = gcd(${m}, ${m2}) = ${g}</code>; the pair is solvable iff <code>g | (a&#8322;&minus;a) = ${diff}</code>.`,
+                        log: `merge #${i}: incoming x ≡ ${a2} (mod ${m2}); gcd(${m},${m2})=${g}, a2-a=${diff}`
+                    }));
+                }
+
+                if (!divisible) {
+                    // (b-fail) inconsistency -> no solution
+                    tableRows[rowIdx].cls = 'no';
+                    tableRows[rowIdx].cols[5] = 'NO SOLUTION';
+                    const chip = new Array(N).fill(''); for (let k = 0; k < i; k++) chip[k] = 'merged'; chip[i] = 'bad';
+                    steps.push(snap({
+                        merged: i, acc: [a, m], chipStates: chip, ok: false,
+                        code: [4, 5], action: 'INCONSISTENT', actionColor: 'var(--accent-red)',
+                        panel: `<code>g = ${g}</code> does <b>not</b> divide <code>a&#8322;&minus;a = ${diff}</code> &#8594; the system is <b>inconsistent</b>. No <code>x</code> can satisfy both congruences.`,
+                        log: `✗ ${g} ∤ ${diff}  →  inconsistent, return None`
+                    }));
+                    consistent = false; failIdx = i;
+                    break;
+                }
+
+                // (b-ok) consistent: merge
+                tableRows[rowIdx].cls = 'lit';
+                {
+                    const chip = new Array(N).fill(''); for (let k = 0; k < i; k++) chip[k] = 'merged'; chip[i] = 'incoming';
+                    steps.push(snap({
+                        merged: i, acc: [a, m], chipStates: chip,
+                        code: [4, 6], action: `OK: ${g} | ${diff}`, actionColor: 'var(--accent-green)',
+                        panel: `<code>${g} | ${diff}</code> &#8594; consistent. The merged modulus becomes <code>lcm(${m}, ${m2}) = ${lcm}</code>.`,
+                        log: `✓ ${g} | ${diff}; lcm(${m},${m2})=${lcm}`
+                    }));
+                }
+
+                // compute merged residue via CRT for non-coprime moduli
+                const mg = m / g, m2g = m2 / g;
+                const [, inv0] = egcd(mg, m2g);
+                const inv = mod(inv0, m2g);
+                const t = mod((diff / g) * inv, m2g);
+                const newA = mod(a + m * t, lcm);
+
+                // (c) record merged result, retire incoming chip
+                tableRows[rowIdx].cls = 'ok';
+                tableRows[rowIdx].cols[5] = `x &equiv; ${newA} (mod ${lcm})`;
+                a = newA; m = lcm;
+                {
+                    const chip = new Array(N).fill(''); for (let k = 0; k <= i; k++) chip[k] = 'merged';
+                    steps.push(snap({
+                        merged: i + 1, acc: [a, m], chipStates: chip,
+                        code: [7, 8], action: `x ≡ ${a} (mod ${m})`, actionColor: 'var(--accent-orange)',
+                        panel: `Merged into a single congruence <code>${fmt(a, m)}</code>. ${i + 1 < N ? 'Continue with the next pair.' : 'All congruences absorbed.'}`,
+                        log: `→ merged: x ≡ ${a} (mod ${m})`
+                    }));
+                }
+            }
+
+            // --- final step ---
+            if (!consistent) {
+                steps.push(snap({
+                    merged: failIdx, acc: [a, m], ok: false, fail: true,
+                    chipStates: (function () { const c = new Array(N).fill(''); for (let k = 0; k < failIdx; k++) c[k] = 'merged'; c[failIdx] = 'bad'; return c; })(),
+                    code: [5], action: '✗ NO SOLUTION', actionColor: 'var(--accent-red)',
+                    answer: null,
+                    panel: `Done. Congruence <code>#${failIdx}</code> contradicts the merged system &#8594; <b>no solution exists</b>.`,
+                    log: `done  result = no solution`
+                }));
+            } else {
+                steps.push(snap({
+                    merged: N, acc: [a, m], complete: true, confetti: true,
+                    chipStates: new Array(N).fill('good'),
+                    code: [9], action: `✓ x ≡ ${a} (mod ${m})`, actionColor: 'var(--accent-green)',
+                    answer: { a, m },
+                    panel: `Done. All ${N} congruences merge to the unique solution <code>x &equiv; ${a} (mod ${m})</code>, where <code>${m}</code> is the <b>lcm</b> of every modulus.`,
+                    log: `done  x ≡ ${a} (mod ${m})`
+                }));
+            }
+        }
+
+        // ───────── render (persistent DOM reconciliation) ─────────
+        const TABLE_HEAD = ['Pair', 'Incoming a (mod m)', 'gcd', 'a&#8322;&minus;a', 'g | (a&#8322;&minus;a)?', 'Merged x (mod lcm)'];
+        const COLS = TABLE_HEAD.length;
+
+        function renderStep(idx) {
+            stepIdx = idx; const step = steps[idx]; if (!step) return;
+
+            // --- congruence chip row ---
+            const row = document.getElementById('cong-row');
+            const usedChips = new Set();
+            congruences.forEach((c, i) => {
+                const key = 'k' + i; usedChips.add(key);
+                let el = chipEls[key];
+                if (!el) {
+                    el = document.createElement('div'); el.className = 'cong-chip';
+                    const lhs = document.createElement('div'); lhs.className = 'lhs';
+                    const lbl = document.createElement('div'); lbl.className = 'lbl';
+                    el.append(lhs, lbl); chipEls[key] = el;
+                }
+                el.querySelector('.lhs').innerHTML = `x &equiv; ${c[0]} (mod ${c[1]})`;
+                el.querySelector('.lbl').textContent = '#' + i;
+                const st = (step.chipStates && step.chipStates[i]) || '';
+                const newCls = 'cong-chip' + (st ? ' ' + st : '');
+                if (el.className !== newCls && (st === 'incoming' || st === 'good' || st === 'bad')) Motion.pop(el);
+                el.className = newCls;
+                row.appendChild(el);
+            });
+            Object.keys(chipEls).forEach(k => { if (!usedChips.has(k)) { chipEls[k].remove(); delete chipEls[k]; } });
+
+            // --- merge table (header + data rows) ---
+            const table = document.getElementById('merge-table');
+            table.style.gridTemplateColumns = `repeat(${COLS}, minmax(64px, max-content))`;
+            const usedMt = new Set();
+            const dataRows = step.table || [];
+            const totalRows = 1 + dataRows.length;       // +1 header
+
+            for (let r = 0; r < totalRows; r++) {
+                for (let c = 0; c < COLS; c++) {
+                    const key = r + ',' + c; usedMt.add(key);
+                    let el = mtEls[key];
+                    if (!el) { el = document.createElement('div'); mtEls[key] = el; }
+                    let cls = 'mt-cell', html = '';
+                    if (r === 0) { cls += ' head'; html = TABLE_HEAD[c]; }
+                    else {
+                        const dr = dataRows[r - 1];
+                        const wasEmpty = el.innerHTML === '' || el.textContent === '';
+                        html = dr.cols[c];
+                        if (dr.cls === 'lit') cls += ' lit';
+                        else if (dr.cls === 'ok') cls += ' ok';
+                        else if (dr.cls === 'no') cls += ' no';
+                        else cls += ' dim';
+                        if (wasEmpty && html && html !== '&mdash;') Motion.pop(el);
+                    }
+                    el.className = cls; el.innerHTML = html;
+                    table.appendChild(el);
+                }
+            }
+            Object.keys(mtEls).forEach(k => { if (!usedMt.has(k)) { mtEls[k].remove(); delete mtEls[k]; } });
+
+            // --- answer track ---
+            const at = document.getElementById('answer-track'); at.innerHTML = '';
+            if (step.complete && step.answer) {
+                const t = document.createElement('div'); t.className = 'ans-tile';
+                t.innerHTML = `x &equiv; ${step.answer.a} (mod ${step.answer.m})`;
+                at.appendChild(t); Motion.pop(t);
+            } else if (step.fail) {
+                const t = document.createElement('div'); t.className = 'ans-tile fail';
+                t.textContent = 'no solution';
+                at.appendChild(t); Motion.pop(t);
+            }
+
+            // --- narration / action word ---
+            const mp = document.getElementById('main-panel');
+            mp.innerHTML = step.panel || '&mdash;';
+            mp.classList.toggle('done', !!step.complete);
+            mp.classList.toggle('fail', !!step.fail);
+            const aw = document.getElementById('action-word'); aw.textContent = step.action || ''; aw.style.color = step.actionColor || 'var(--text-dim)';
+            highlightCode(step.code);
+
+            if (step.confetti) { if (confettiArmed) { fireConfetti(); confettiArmed = false; } } else confettiArmed = true;
+
+            // --- state pills ---
+            const acc = step.acc;
+            document.getElementById('st-x').textContent = acc ? acc[0] : '—';
+            document.getElementById('st-mod').textContent = acc ? acc[1] : '—';
+            document.getElementById('st-cnt').textContent = (step.merged || 0) + '/' + congruences.length;
+            const okEl = document.getElementById('st-ok');
+            okEl.textContent = step.ok === false ? 'no' : 'yes';
+            okEl.parentElement.classList.toggle('r', step.ok === false);
+            okEl.parentElement.classList.toggle('g', step.ok !== false);
+
+            // --- badge + progress ---
+            document.getElementById('step-badge').textContent = `Step ${idx + 1} / ${steps.length}`;
+            document.getElementById('progress-fill').style.width = `${(idx / Math.max(1, steps.length - 1)) * 100}%`;
+
+            // --- log ---
+            const logEl = document.getElementById('log');
+            logEl.innerHTML = steps.slice(0, idx + 1).map(s => `<div style="margin:3px 0;white-space:pre-wrap;">${s.log}</div>`).join('');
+            logEl.scrollTop = logEl.scrollHeight;
+        }
+
+        function fireConfetti() {
+            const host = document.getElementById('confetti'); if (!host || REDUCED) return;
+            const colors = ['#22c55e', '#06b6d4', '#a855f7', '#f5a524', '#f43f5e'];
+            for (let i = 0; i < 38; i++) {
+                const p = document.createElement('div'); p.className = 'confetti-piece';
+                p.style.setProperty('--x', ((Math.random() * 2 - 1) * 220) + 'px');
+                p.style.setProperty('--rot', ((Math.random() * 720 - 360)) + 'deg');
+                p.style.background = colors[i % colors.length];
+                p.style.animationDuration = (0.9 + Math.random() * 0.8) + 's';
+                p.style.animationDelay = (Math.random() * 0.15) + 's';
+                host.appendChild(p); setTimeout(() => p.remove(), 1900);
+            }
+        }
+
+        // ───────── controls ─────────
+        function nextStep() { if (stepIdx < steps.length - 1) renderStep(stepIdx + 1); else pause(); }
+        function prevStep() { if (stepIdx > 0) renderStep(stepIdx - 1); }
+        function resetSim() { pause(); renderStep(0); }
+        function togglePlay() {
+            const btn = document.getElementById('play-btn');
+            if (timer) { pause(); return; }
+            btn.textContent = 'Pause';
+            if (stepIdx >= steps.length - 1) renderStep(0);
+            timer = setInterval(() => { if (stepIdx < steps.length - 1) nextStep(); else pause(); }, delays[document.getElementById('speed').value]);
+        }
+        function pause() { clearInterval(timer); timer = null; document.getElementById('play-btn').textContent = 'Play'; }
+
+        function clearDom() {
+            Object.keys(chipEls).forEach(k => { chipEls[k].remove(); delete chipEls[k]; });
+            Object.keys(mtEls).forEach(k => { mtEls[k].remove(); delete mtEls[k]; });
+            confettiArmed = true;
+        }
+
+        function parseCongruences(str) {
+            try {
+                const v = JSON.parse(String(str).replace(/'/g, '"'));
+                if (!Array.isArray(v) || v.length === 0) return null;
+                const cleaned = [];
+                for (const pair of v) {
+                    if (!Array.isArray(pair) || pair.length < 2) return null;
+                    let a = Math.trunc(Number(pair[0])), m = Math.trunc(Number(pair[1]));
+                    if (!Number.isFinite(a) || !Number.isFinite(m) || m <= 0) return null;
+                    cleaned.push([mod(a, m), m]);
+                }
+                return cleaned;
+            } catch (e) { return null; }
+        }
+
+        function loadList(list) { pause(); congruences = list; clearDom(); generateSteps(); renderStep(0); }
+        function loadCustom() {
+            const parsed = parseCongruences(document.getElementById('num-input').value.trim());
+            if (parsed) loadList(parsed);
+            else { const inp = document.getElementById('num-input'); inp.style.borderColor = 'var(--accent-red)'; setTimeout(() => inp.style.borderColor = '', 900); }
+        }
+        function loadExample(n) {
+            const str = EXAMPLES[n];
+            document.getElementById('num-input').value = str;
+            loadList(parseCongruences(str));
+        }
+
+        document.addEventListener('keydown', (e) => {
+            const tag = (e.target.tagName || '').toLowerCase(); if (tag === 'input' || tag === 'textarea') return;
+            if (e.key === 'ArrowRight') { e.preventDefault(); pause(); nextStep(); }
+            else if (e.key === 'ArrowLeft') { e.preventDefault(); pause(); prevStep(); }
+            else if (e.key === ' ') { e.preventDefault(); togglePlay(); }
+        });
+        document.getElementById('num-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') loadCustom(); });
+        window.addEventListener('resize', () => { if (steps.length) renderStep(stepIdx); });
+
+        buildCodePanel();
+        window.onload = () => loadExample(0);
+    </script>
+</body>
+</html>

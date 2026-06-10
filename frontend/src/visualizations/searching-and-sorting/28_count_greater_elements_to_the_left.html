@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Count Greater Elements to the Left</title>
+    <style>
+        :root {
+            --bg-page: #070b14;
+            --bg-surface: rgba(255, 255, 255, 0.045);
+            --bg-input: rgba(255, 255, 255, 0.04);
+            --border-main: rgba(255, 255, 255, 0.10);
+            --btn-bg: rgba(255, 255, 255, 0.05);
+            --btn-hover: rgba(255, 255, 255, 0.10);
+            --text-main: #e8eefb;
+            --text-dim: #8b98b3;
+            --accent-orange: #f5a524;   /* scanning j pointer            */
+            --accent-blue:   #06b6d4;    /* settled / counted             */
+            --accent-green:  #22c55e;    /* done                          */
+            --accent-red:    #f43f5e;    /* greater element found         */
+            --accent-purple: #a855f7;    /* current i                     */
+            --mono: ui-monospace, 'SF Mono', 'Cascadia Code', 'Courier New', monospace;
+            --sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+            --shell: 900px;
+        }
+
+        * { box-sizing: border-box; }
+        html, body { overflow-x: hidden; }
+        body {
+            background:
+                radial-gradient(1100px 600px at 15% -10%, rgba(168, 85, 247, 0.10), transparent 60%),
+                radial-gradient(900px 600px at 100% 10%, rgba(6, 182, 212, 0.10), transparent 55%),
+                linear-gradient(160deg, #070b14 0%, #0b1120 55%, #0a0f1c 100%);
+            background-attachment: fixed;
+            color: var(--text-main); font-family: var(--sans); margin: 0;
+            display: flex; flex-direction: column; align-items: center; min-height: 100vh;
+            padding-bottom: 48px; -webkit-font-smoothing: antialiased;
+        }
+        body::before, body::after { content: ''; position: fixed; border-radius: 50%; filter: blur(70px); pointer-events: none; z-index: 0; opacity: 0.45; }
+        body::before { width: 380px; height: 380px; top: 8%; left: -120px; background: radial-gradient(circle, rgba(168,85,247,0.30), transparent 70%); }
+        body::after  { width: 420px; height: 420px; bottom: 4%; right: -140px; background: radial-gradient(circle, rgba(6,182,212,0.22), transparent 70%); }
+        body > * { position: relative; z-index: 1; }
+
+        .input-bar {
+            width: 100%; background: rgba(10, 15, 28, 0.55);
+            backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+            padding: 14px 16px; display: flex; justify-content: center; align-items: center; gap: 10px;
+            border-bottom: 1px solid var(--border-main); flex-wrap: wrap; position: sticky; top: 0; z-index: 50;
+        }
+        label.ui-label, .ui-label { font-family: var(--mono); font-size: 13px; color: var(--text-dim); letter-spacing: 0.2px; }
+        input[type="text"] {
+            background: var(--bg-input); border: 1px solid var(--border-main); color: var(--text-main);
+            height: 34px; border-radius: 9px; padding: 0 12px; font-size: 13px; font-family: var(--mono); width: 240px;
+            transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+        }
+        input:focus { outline: none; border-color: var(--accent-purple); box-shadow: 0 0 0 3px rgba(168,85,247,0.18); background: rgba(168,85,247,0.06); }
+
+        button {
+            height: 34px; border-radius: 9px; padding: 0 14px; background: var(--btn-bg);
+            border: 1px solid var(--border-main); color: var(--text-main); font-size: 13px; font-weight: 600; cursor: pointer;
+            transition: transform 0.15s ease, background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+        }
+        button:hover { background: var(--btn-hover); border-color: rgba(168, 85, 247, 0.5); box-shadow: 0 0 18px rgba(168, 85, 247, 0.18); transform: translateY(-1px); }
+        button:active { transform: translateY(0); }
+        #play-btn { background: linear-gradient(135deg, rgba(168,85,247,0.22), rgba(168,85,247,0.10)); border-color: rgba(168, 85, 247, 0.45); color: #e9d5ff; min-width: 80px; }
+
+        .shell { width: var(--shell); max-width: 95%; margin: 24px auto 0; display: flex; flex-direction: column; gap: 16px; }
+
+        .title-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+        .title-row h1 { font-size: 18px; font-weight: 800; margin: 0; letter-spacing: 0.2px; }
+        .title-row .sub { color: var(--text-dim); font-weight: 500; font-size: 13px; }
+        .step-badge { font-family: var(--mono); font-size: 12px; font-weight: 700; color: #e9d5ff; background: rgba(168,85,247,0.12); border: 1px solid rgba(168,85,247,0.3); padding: 4px 10px; border-radius: 999px; white-space: nowrap; }
+        .progress-track { height: 4px; width: 100%; background: rgba(255,255,255,0.07); border-radius: 999px; overflow: hidden; margin-top: -6px; }
+        .progress-fill { height: 100%; width: 0%; border-radius: 999px; background: linear-gradient(90deg, var(--accent-purple), var(--accent-blue)); box-shadow: 0 0 12px rgba(168,85,247,0.5); transition: width 0.45s cubic-bezier(0.34,1.1,0.64,1); }
+
+        .narration { background: var(--bg-surface); border: 1px solid rgba(168,85,247,0.22); border-radius: 12px; padding: 12px 18px; font-family: var(--mono); font-size: 14px; line-height: 1.5; color: #ede9fe; min-height: 48px; display: flex; align-items: center; gap: 10px; transition: border-color 0.3s, background 0.3s; }
+        .narration::before { content: '\25B8'; color: var(--accent-purple); font-size: 13px; }
+        .narration.done { border-color: rgba(34,197,94,0.4); background: rgba(34,197,94,0.06); }
+        .narration.done::before { content: '\2713'; color: var(--accent-green); }
+        .narration code { background: rgba(168,85,247,0.14); color: #d8b4fe; padding: 1px 6px; border-radius: 5px; font-size: 12.5px; }
+        .narration b { color: #fff; }
+
+        .stage-card { background: var(--bg-surface); border: 1px solid var(--border-main); border-radius: 18px; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); box-shadow: 0 12px 38px rgba(0,0,0,0.4); overflow: hidden; }
+        .stage-screen { position: relative; margin: 14px; border-radius: 14px; background: radial-gradient(700px 300px at 50% -10%, rgba(168,85,247,0.08), transparent 70%), #090d18; padding: 64px 24px 70px; border: 1px solid rgba(255,255,255,0.06); display: flex; justify-content: center; overflow-x: auto; min-height: 250px; }
+
+        .board { position: relative; display: flex; flex-direction: column; gap: 30px; align-items: center; }
+        .arr-rail { position: relative; display: flex; gap: 10px; }
+        .res-rail { position: relative; display: flex; gap: 10px; }
+
+        .cell { width: 52px; height: 52px; border-radius: 12px; display: flex; align-items: center; justify-content: center; position: relative;
+            font-family: var(--mono); font-weight: 800; font-size: 19px; will-change: transform;
+            border: 2px solid var(--border-main); background: rgba(255,255,255,0.05); color: var(--text-main);
+            transition: background 0.35s, border-color 0.35s, color 0.35s, box-shadow 0.35s, transform 0.3s; }
+        .cell .ci { position: absolute; top: -22px; left: 0; right: 0; text-align: center; font-size: 11px; color: var(--text-dim); font-weight: 700; }
+        .cell .cv { line-height: 1; }
+        .cell.dim { opacity: 0.4; }
+        .cell.counted { border-color: rgba(6,182,212,0.5); background: rgba(6,182,212,0.12); color: #a5f3fc; }   /* already-processed i */
+        .cell.cur { box-shadow: 0 0 24px rgba(168,85,247,0.6); border-color: var(--accent-purple); background: rgba(168,85,247,0.16); color: #e9d5ff; transform: translateY(-3px) scale(1.06); z-index: 4; }
+        .cell.scan { box-shadow: 0 0 18px rgba(245,165,36,0.5); border-color: var(--accent-orange); background: rgba(245,165,36,0.12); color: #ffd591; z-index: 3; }
+        .cell.greater { box-shadow: 0 0 22px rgba(244,63,94,0.55); border-color: var(--accent-red); background: rgba(244,63,94,0.16); color: #fda4af; z-index: 3; }
+        .cell.settled { border-color: var(--accent-green); background: linear-gradient(180deg, rgba(47,224,143,0.85), rgba(33,194,117,0.85)); color: #06251a; box-shadow: 0 0 16px rgba(34,197,94,0.4); }
+
+        /* result cells under each element */
+        .rcell { width: 52px; height: 40px; border-radius: 10px; display: flex; align-items: center; justify-content: center; position: relative;
+            font-family: var(--mono); font-weight: 800; font-size: 17px; will-change: transform;
+            border: 2px dashed rgba(255,255,255,0.14); background: rgba(255,255,255,0.03); color: var(--text-dim);
+            transition: background 0.35s, border-color 0.35s, color 0.35s, box-shadow 0.35s, transform 0.3s; }
+        .rcell.filled { border-style: solid; border-color: rgba(6,182,212,0.5); background: rgba(6,182,212,0.12); color: #a5f3fc; }
+        .rcell.active { border-style: solid; border-color: var(--accent-purple); background: rgba(168,85,247,0.16); color: #e9d5ff; box-shadow: 0 0 18px rgba(168,85,247,0.45); transform: scale(1.06); z-index: 3; }
+        .rcell.bump { border-color: var(--accent-red); background: rgba(244,63,94,0.18); color: #fda4af; box-shadow: 0 0 18px rgba(244,63,94,0.5); }
+        .rcell.done { border-style: solid; border-color: var(--accent-green); background: linear-gradient(180deg, rgba(47,224,143,0.85), rgba(33,194,117,0.85)); color: #06251a; box-shadow: 0 0 14px rgba(34,197,94,0.4); }
+
+        .rail-tag { position: absolute; left: -78px; top: 50%; transform: translateY(-50%); font-family: var(--mono); font-size: 11px; font-weight: 800; letter-spacing: 0.5px; color: var(--text-dim); text-transform: uppercase; white-space: nowrap; }
+
+        /* gliding pointer pills */
+        .sptr { position: absolute; left: 0; display: flex; flex-direction: column; align-items: center; opacity: 0; pointer-events: none; will-change: transform; z-index: 6; }
+        .sptr.i { bottom: 100%; margin-bottom: 7px; flex-direction: column-reverse; }
+        .sptr.j { top: 100%; margin-top: 7px; }
+        .sptr .tag { font-family: var(--mono); font-size: 11px; font-weight: 800; padding: 3px 9px; border-radius: 8px; white-space: nowrap; }
+        .sptr .stalk { width: 2px; height: 15px; }
+        .sptr.i .tag { background: var(--accent-purple); color: #1a0533; box-shadow: 0 0 14px rgba(168,85,247,0.6); } .sptr.i .stalk { background: var(--accent-purple); }
+        .sptr.j .tag { background: var(--accent-orange); color: #3a2400; box-shadow: 0 0 14px rgba(245,165,36,0.6); } .sptr.j .stalk { background: var(--accent-orange); }
+
+        .action-stage { position: relative; min-height: 80px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; }
+        .action-word { font-family: var(--mono); font-weight: 800; font-size: 18px; letter-spacing: 0.4px; min-height: 22px; text-align: center; transition: color 0.3s; }
+        #confetti { position: absolute; inset: 0; overflow: visible; pointer-events: none; }
+        .confetti-piece { position: absolute; top: 0; left: 50%; width: 8px; height: 13px; border-radius: 2px; opacity: 0; animation: confettiFall ease-out forwards; }
+
+        .controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: center; }
+        .controls .kbd-hint { font-size: 11px; color: var(--text-dim); font-family: var(--mono); margin-left: 4px; }
+        .kbd { background: rgba(255,255,255,0.07); border: 1px solid var(--border-main); border-radius: 5px; padding: 1px 6px; font-size: 10px; }
+        input[type="range"] { accent-color: var(--accent-purple); width: 110px; cursor: pointer; }
+
+        .details-toggle { align-self: center; height: 32px; padding: 0 16px; border-radius: 999px; cursor: pointer; background: rgba(255,255,255,0.04); border: 1px solid var(--border-main); color: var(--text-dim); font-family: var(--mono); font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; gap: 8px; transition: color 0.2s, border-color 0.2s, background 0.2s; }
+        .details-toggle:hover { color: var(--text-main); border-color: rgba(168,85,247,0.4); background: rgba(168,85,247,0.06); }
+        .details-toggle .chev { transition: transform 0.3s ease; }
+        .details-wrap.open .details-toggle .chev { transform: rotate(180deg); }
+        .details-body { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.4s ease; }
+        .details-wrap.open .details-body { grid-template-rows: 1fr; }
+        .details-inner { overflow: hidden; min-height: 0; }
+        .details-grid { display: flex; flex-direction: column; gap: 14px; padding-top: 14px; }
+
+        .panel-card { background: var(--bg-surface); border: 1px solid var(--border-main); border-radius: 16px; backdrop-filter: blur(10px); box-shadow: 0 8px 30px rgba(0,0,0,0.35); }
+        .panel-head { display: flex; align-items: center; gap: 8px; padding: 11px 16px; border-bottom: 1px solid var(--border-main); font-size: 11px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; color: var(--text-dim); }
+        .panel-head .pip { width: 7px; height: 7px; border-radius: 50%; background: var(--accent-purple); box-shadow: 0 0 8px var(--accent-purple); }
+        .code-body { padding: 12px 6px 14px; font-family: var(--mono); font-size: 12.5px; line-height: 1.7; }
+        .code-line { display: flex; gap: 12px; padding: 1px 16px; border-left: 2px solid transparent; transition: background 0.3s, border-color 0.3s; white-space: pre; }
+        .code-line .lno { color: #4b5772; width: 16px; text-align: right; user-select: none; }
+        .code-line .src { color: #c4cee0; }
+        .code-line .kw { color: #c792ea; }
+        .code-line .fn { color: #82aaff; }
+        .code-line.active { background: rgba(168,85,247,0.12); border-left-color: var(--accent-purple); }
+        .code-line.active .src, .code-line.active .lno { color: #e8eefb; }
+
+        .state-strip { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 0 2px; }
+        .pill { display: inline-flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 12px; color: var(--text-dim); background: rgba(255,255,255,0.04); border: 1px solid var(--border-main); border-radius: 999px; padding: 4px 11px; }
+        .pill b { color: var(--text-main); font-weight: 800; }
+        .pill.i b { color: var(--accent-purple); } .pill.j b { color: var(--accent-orange); } .pill.cnt b { color: var(--accent-red); }
+
+        .log-panel { border-radius: 14px; padding: 12px 16px; height: 110px; overflow-y: auto; font-family: var(--mono); font-size: 12.5px; line-height: 1.5; background: var(--bg-surface); border: 1px solid var(--border-main); }
+        .log-panel::-webkit-scrollbar { width: 8px; }
+        .log-panel::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 8px; }
+
+        @keyframes confettiFall { 0%{ opacity:1; transform: translate(-50%, 0) rotate(0deg); } 100%{ opacity:0; transform: translate(calc(-50% + var(--x)), 220px) rotate(var(--rot)); } }
+        @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; } }
+    </style>
+</head>
+<body>
+
+    <div class="input-bar">
+        <label class="ui-label">arr =</label>
+        <input type="text" id="arr-input" placeholder="3, 2, 1">
+        <button onclick="loadCustom()">Count</button>
+        <span class="ui-label" style="opacity:.5">|</span>
+        <button onclick="loadExample(0)">3 2 1</button>
+        <button onclick="loadExample(1)">1 2 3 4</button>
+    </div>
+
+    <div class="shell">
+        <div class="title-row">
+            <h1>Count Greater to the Left <span class="sub">&middot; for each i, count earlier elements that are bigger &middot; brute force &middot; O(n&sup2;)</span></h1>
+            <span class="step-badge" id="step-badge">Step 1 / 1</span>
+        </div>
+        <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+
+        <div class="narration" id="main-panel">&mdash;</div>
+
+        <div class="stage-card">
+            <div class="stage-screen">
+                <div class="board">
+                    <div class="arr-rail" id="arr-rail"><span class="rail-tag">arr</span></div>
+                    <div class="res-rail" id="res-rail"><span class="rail-tag">count</span></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="action-stage">
+            <div id="confetti"></div>
+            <div class="action-word" id="action-word"></div>
+        </div>
+
+        <div class="controls">
+            <button onclick="resetSim()">&#8634; Reset</button>
+            <button onclick="prevStep()">&#8592; Back</button>
+            <button onclick="togglePlay()" id="play-btn">Play</button>
+            <button onclick="nextStep()">Next &#8594;</button>
+            <span class="ui-label" style="margin-left:6px; font-size:11px">Speed</span>
+            <input type="range" id="speed" min="0" max="2" value="1">
+            <span class="kbd-hint"><span class="kbd">&#8592;</span> <span class="kbd">&#8594;</span> step &middot; <span class="kbd">space</span> play</span>
+        </div>
+
+        <div class="details-wrap" id="details-wrap">
+            <button class="details-toggle" onclick="toggleDetails()" aria-expanded="false">
+                <span id="details-label">Show code, state &amp; log</span> <span class="chev">&#9662;</span>
+            </button>
+            <div class="details-body">
+                <div class="details-inner">
+                    <div class="details-grid">
+                        <div class="state-strip">
+                            <span class="pill i">i <b id="st-i">&mdash;</b></span>
+                            <span class="pill j">j <b id="st-j">&mdash;</b></span>
+                            <span class="pill">pair <b id="st-pair">&mdash;</b></span>
+                            <span class="pill cnt">count <b id="st-count">&mdash;</b></span>
+                        </div>
+                        <div class="panel-card">
+                            <div class="panel-head"><span class="pip"></span> Algorithm</div>
+                            <div class="code-body" id="code-panel"></div>
+                        </div>
+                        <div class="log-panel" id="log"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        'use strict';
+
+        // ───────── Motion engine (spring glide) ─────────
+        const REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        const FRAME = 1000 / 60;
+        function sampleSpring(stiffness, damping, mass) {
+            const dt = 1 / 60; let x = 1, v = 0; const out = [];
+            for (let i = 0; i < 240; i++) { const a = (-stiffness * x - damping * v) / mass; v += a * dt; x += v * dt; out.push(1 - x); if (Math.abs(x) < 0.0015 && Math.abs(v) < 0.0015) break; }
+            out.push(1); return out;
+        }
+        const SPRING_POS = sampleSpring(320, 30, 1);
+        const durOf = (a) => a.length * FRAME;
+        const Motion = {
+            glide(el, x) {
+                const prev = el._x; el.style.opacity = '1';
+                const commit = `translateX(${x.toFixed(2)}px) translateX(-50%)`;
+                if (REDUCED || prev == null || Math.abs(x - prev) < 0.5) { el._x = x; el.style.transform = commit; return; }
+                const dx = x - prev;
+                const kf = SPRING_POS.map(p => ({ transform: `translateX(${(prev + dx * p).toFixed(2)}px) translateX(-50%)` }));
+                el.animate(kf, { duration: durOf(SPRING_POS), easing: 'linear' });
+                el._x = x; el.style.transform = commit;
+            },
+        };
+
+        // ───────── State ─────────
+        let arr = [3, 2, 1];
+        let steps = [];
+        let stepIdx = 0;
+        let timer = null;
+        let confettiArmed = true;
+        const delays = [1500, 820, 400];
+        const cellEls = {};   // arr cells by index
+        const resEls = {};    // result cells by index
+        const ptrEls = {};    // i / j pointer pills
+
+        const CODE = [
+            [['kw','def '],['fn','countGreaterLeft'],['src','(a):']],
+            [['src','  res = [0] * len(a)']],
+            [['kw','  for '],['src','i in range(len(a)):']],
+            [['kw','    for '],['src','j in range(i):']],
+            [['kw','      if '],['src','a[j] > a[i]:']],
+            [['src','        res[i] += 1']],
+            [['kw','  return '],['src','res']],
+        ];
+        function buildCodePanel() {
+            const panel = document.getElementById('code-panel'); panel.innerHTML = '';
+            CODE.forEach((tokens, i) => {
+                const line = document.createElement('div'); line.className = 'code-line'; line.dataset.line = i;
+                const lno = document.createElement('span'); lno.className = 'lno'; lno.textContent = i + 1; line.appendChild(lno);
+                const src = document.createElement('span');
+                tokens.forEach(([cls, txt]) => { const s = document.createElement('span'); s.className = cls; s.textContent = txt; src.appendChild(s); });
+                line.appendChild(src); panel.appendChild(line);
+            });
+        }
+        function highlightCode(a) { document.querySelectorAll('.code-line').forEach(el => el.classList.toggle('active', a && a.includes(+el.dataset.line))); }
+        function toggleDetails() {
+            const wrap = document.getElementById('details-wrap'); const open = wrap.classList.toggle('open');
+            wrap.querySelector('.details-toggle').setAttribute('aria-expanded', open ? 'true' : 'false');
+            document.getElementById('details-label').textContent = open ? 'Hide code, state & log' : 'Show code, state & log';
+        }
+
+        // ───────── step generation (brute-force count of greater elements to the left) ─────────
+        function generateSteps() {
+            steps = [];
+            const a = [...arr], n = a.length;
+            const res = new Array(n).fill(null);   // null = not yet computed
+            let i = -1, j = -1, count = 0;
+            // snap captures an immutable snapshot of the whole frame
+            const snap = (extra) => Object.assign({
+                arr: [...a], res: [...res], i, j, count, cur: -1, done: false
+            }, extra);
+
+            steps.push(snap({ code: [0, 1], action: 'START', actionColor: 'var(--accent-purple)',
+                panel: `For every index <code>i</code>, count how many earlier elements <code>a[j]</code> (with <code>j &lt; i</code>) are <b>greater</b> than <code>a[i]</code>. Build a <code>count</code> row underneath. Array: <code>[${a.join(', ')}]</code>.`,
+                log: `init  n=${n}  res=[${res.map(() => 0).join(', ')}]` }));
+
+            for (i = 0; i < n; i++) {
+                count = 0;
+                res[i] = 0;
+                // open this i
+                steps.push(snap({ cur: i, j: -1, count: 0, code: [2], action: `i = ${i}  (a[i] = ${a[i]})`, actionColor: 'var(--accent-purple)',
+                    panel: `Take <code>i = ${i}</code>, value <b>${a[i]}</b>. Scan every element to its left and count those greater than <b>${a[i]}</b>. Start <code>count = 0</code>.`,
+                    log: `i=${i} (a[i]=${a[i]})  scan left, count=0` }));
+
+                for (j = 0; j < i; j++) {
+                    const greater = a[j] > a[i];
+                    // compare step
+                    steps.push(snap({ cur: i, j, count, code: [3, 4],
+                        action: `compare a[${j}]=${a[j]} ${greater ? '>' : '&#8804;'} a[${i}]=${a[i]}`,
+                        actionColor: greater ? 'var(--accent-red)' : 'var(--accent-orange)',
+                        panel: `Is <code>a[${j}] = ${a[j]}</code> greater than <code>a[${i}] = ${a[i]}</code>? &#8594; <b>${greater ? 'yes' : 'no'}</b>.`,
+                        log: `  j=${j}: ${a[j]} > ${a[i]} ? ${greater ? 'YES' : 'no'}` }));
+
+                    if (greater) {
+                        count++;
+                        res[i] = count;
+                        steps.push(snap({ cur: i, j, count, code: [5], bump: true,
+                            action: `greater &#8594; count = ${count}`, actionColor: 'var(--accent-red)',
+                            panel: `<b>Greater!</b> <code>a[${j}] = ${a[j]} &gt; ${a[i]}</code> &#8594; increment <code>count</code> to <b>${count}</b>.`,
+                            log: `    -> greater, count[i=${i}] = ${count}` }));
+                    }
+                }
+
+                res[i] = count;
+                // finalize this i
+                steps.push(snap({ cur: i, j: -1, count, code: [2], settledI: true,
+                    action: `&#10003; count[${i}] = ${count}`, actionColor: 'var(--accent-blue)',
+                    panel: `Finished scanning to the left of <code>i = ${i}</code>. There ${count === 1 ? 'is' : 'are'} <b>${count}</b> greater element${count === 1 ? '' : 's'} &#8594; <code>count[${i}] = ${count}</code>.`,
+                    log: `  done i=${i}  count[${i}] = ${count}` }));
+            }
+
+            i = -1; j = -1;
+            steps.push(snap({ i: -1, j: -1, done: true, complete: true, confetti: true,
+                action: '&#10003; DONE', actionColor: 'var(--accent-green)',
+                panel: `Every index processed. <code>count = [${res.join(', ')}]</code> &mdash; each entry is the number of greater elements to its left.`,
+                log: `done  count = [${res.join(', ')}]` }));
+        }
+
+        // ───────── render ─────────
+        function cellCenterX(i) { const el = cellEls[i]; return el ? el.offsetLeft + el.offsetWidth / 2 : 0; }
+
+        function renderStep(idx) {
+            stepIdx = idx; const step = steps[idx]; if (!step) return;
+            const rail = document.getElementById('arr-rail');
+            const resRail = document.getElementById('res-rail');
+
+            // ── array cells (persistent DOM, keyed by index) ──
+            const used = new Set();
+            for (let k = 0; k < step.arr.length; k++) {
+                used.add(String(k));
+                let el = cellEls[k];
+                if (!el) { el = document.createElement('div'); el.className = 'cell'; el.innerHTML = `<span class="ci"></span><span class="cv"></span>`; cellEls[k] = el; rail.appendChild(el); }
+                el.querySelector('.ci').textContent = k;
+                el.querySelector('.cv').textContent = step.arr[k];
+
+                let cls = 'cell';
+                if (step.done) {
+                    cls += ' settled';
+                } else if (k === step.cur) {
+                    cls += ' cur';
+                } else if (k === step.j) {
+                    cls += step.bump ? ' greater' : ' scan';
+                } else if (step.cur >= 0 && k < step.cur) {
+                    cls += ' counted';            // already-processed positions
+                } else if (step.cur >= 0 && k > step.cur) {
+                    cls += ' dim';                // not reached yet
+                }
+                el.className = cls;
+            }
+            Object.keys(cellEls).forEach(k => { if (!used.has(k)) { cellEls[k].remove(); delete cellEls[k]; } });
+
+            // ── result cells (persistent DOM, keyed by index) ──
+            const usedR = new Set();
+            for (let k = 0; k < step.res.length; k++) {
+                usedR.add(String(k));
+                let el = resEls[k];
+                if (!el) { el = document.createElement('div'); el.className = 'rcell'; resEls[k] = el; resRail.appendChild(el); }
+                const filled = step.res[k] !== null;
+                // live count shown on the active i even before finalized
+                const showLive = (k === step.cur && !step.done);
+                const val = showLive ? step.count : (filled ? step.res[k] : null);
+                el.textContent = (val === null || val === undefined) ? '?' : val;
+
+                let cls = 'rcell';
+                if (step.done) cls += ' done';
+                else if (k === step.cur) cls += step.bump ? ' active bump' : ' active';
+                else if (filled) cls += ' filled';
+                el.className = cls;
+            }
+            Object.keys(resEls).forEach(k => { if (!usedR.has(k)) { resEls[k].remove(); delete resEls[k]; } });
+
+            // ── pointer pills ──
+            placePtr('i', step.done ? -1 : step.cur);
+            placePtr('j', step.done ? -1 : step.j);
+
+            // ── narration / action / code ──
+            const mp = document.getElementById('main-panel');
+            mp.innerHTML = step.panel || '&mdash;';
+            mp.classList.toggle('done', !!step.complete);
+            const aw = document.getElementById('action-word'); aw.innerHTML = step.action || ''; aw.style.color = step.actionColor || 'var(--text-dim)';
+            highlightCode(step.code);
+
+            if (step.confetti) { if (confettiArmed) { fireConfetti(); confettiArmed = false; } } else confettiArmed = true;
+
+            // ── state pills ──
+            document.getElementById('st-i').textContent = step.cur >= 0 ? step.cur : '—';
+            document.getElementById('st-j').textContent = step.j >= 0 ? step.j : '—';
+            document.getElementById('st-pair').textContent = (step.cur >= 0 && step.j >= 0) ? `${step.arr[step.j]}, ${step.arr[step.cur]}` : '—';
+            document.getElementById('st-count').textContent = step.cur >= 0 ? step.count : '—';
+
+            document.getElementById('step-badge').textContent = `Step ${idx + 1} / ${steps.length}`;
+            document.getElementById('progress-fill').style.width = `${(idx / Math.max(1, steps.length - 1)) * 100}%`;
+
+            const logEl = document.getElementById('log');
+            logEl.innerHTML = steps.slice(0, idx + 1).map(s => `<div style="margin:3px 0;white-space:pre-wrap;">${s.log}</div>`).join('');
+            logEl.scrollTop = logEl.scrollHeight;
+        }
+
+        function placePtr(name, i) {
+            let pill = ptrEls[name];
+            if (!pill) {
+                pill = document.createElement('div'); pill.className = 'sptr ' + name;
+                pill.innerHTML = (name === 'j') ? `<div class="stalk"></div><div class="tag">j</div>` : `<div class="tag">i</div><div class="stalk"></div>`;
+                document.getElementById('arr-rail').appendChild(pill); ptrEls[name] = pill;
+            }
+            if (i == null || i < 0 || !cellEls[i]) { pill.style.opacity = '0'; pill._x = null; return; }
+            Motion.glide(pill, cellCenterX(i));
+        }
+
+        function fireConfetti() {
+            const host = document.getElementById('confetti'); if (!host || REDUCED) return;
+            const colors = ['#22c55e', '#06b6d4', '#a855f7', '#f5a524', '#f43f5e'];
+            for (let i = 0; i < 38; i++) {
+                const p = document.createElement('div'); p.className = 'confetti-piece';
+                p.style.setProperty('--x', ((Math.random() * 2 - 1) * 220) + 'px');
+                p.style.setProperty('--rot', ((Math.random() * 720 - 360)) + 'deg');
+                p.style.background = colors[i % colors.length];
+                p.style.animationDuration = (0.9 + Math.random() * 0.8) + 's';
+                p.style.animationDelay = (Math.random() * 0.15) + 's';
+                host.appendChild(p); setTimeout(() => p.remove(), 1900);
+            }
+        }
+
+        // ───────── controls ─────────
+        function nextStep() { if (stepIdx < steps.length - 1) renderStep(stepIdx + 1); else pause(); }
+        function prevStep() { if (stepIdx > 0) renderStep(stepIdx - 1); }
+        function resetSim() { pause(); renderStep(0); }
+        function togglePlay() {
+            const btn = document.getElementById('play-btn');
+            if (timer) { pause(); return; }
+            btn.textContent = 'Pause';
+            if (stepIdx >= steps.length - 1) renderStep(0);
+            timer = setInterval(() => { if (stepIdx < steps.length - 1) nextStep(); else pause(); }, delays[document.getElementById('speed').value]);
+        }
+        function pause() { clearInterval(timer); timer = null; document.getElementById('play-btn').textContent = 'Play'; }
+
+        function clearDom() {
+            Object.keys(cellEls).forEach(k => { cellEls[k].remove(); delete cellEls[k]; });
+            Object.keys(resEls).forEach(k => { resEls[k].remove(); delete resEls[k]; });
+            Object.keys(ptrEls).forEach(k => { ptrEls[k].remove(); delete ptrEls[k]; });
+            confettiArmed = true;
+        }
+        function loadArr(a) { pause(); arr = a; clearDom(); generateSteps(); renderStep(0); }
+        function loadCustom() {
+            const raw = (document.getElementById('arr-input').value || '').split(',').map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n));
+            if (raw.length) loadArr(raw.slice(0, 12));
+        }
+        function loadExample(n) {
+            const ex = [[3, 2, 1], [1, 2, 3, 4]][n];
+            document.getElementById('arr-input').value = ex.join(', ');
+            loadArr(ex);
+        }
+
+        document.addEventListener('keydown', (e) => {
+            const tag = (e.target.tagName || '').toLowerCase(); if (tag === 'input' || tag === 'textarea') return;
+            if (e.key === 'ArrowRight') { e.preventDefault(); pause(); nextStep(); }
+            else if (e.key === 'ArrowLeft') { e.preventDefault(); pause(); prevStep(); }
+            else if (e.key === ' ') { e.preventDefault(); togglePlay(); }
+        });
+        document.getElementById('arr-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') loadCustom(); });
+        window.addEventListener('resize', () => renderStep(stepIdx));
+
+        buildCodePanel();
+        window.onload = () => loadExample(0);
+    </script>
+</body>
+</html>

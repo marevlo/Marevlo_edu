@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Matrix Exponentiation mod m - Visualization</title>
+    <style>
+        :root {
+            --bg-page: #070b14;
+            --bg-surface: rgba(255, 255, 255, 0.045);
+            --bg-input: rgba(255, 255, 255, 0.04);
+            --border-main: rgba(255, 255, 255, 0.10);
+            --btn-bg: rgba(255, 255, 255, 0.05);
+            --btn-hover: rgba(255, 255, 255, 0.10);
+            --text-main: #e8eefb;
+            --text-dim: #8b98b3;
+            --accent-orange: #f5a524;   /* result accumulator R / answer  */
+            --accent-blue:   #06b6d4;    /* base matrix / chrome           */
+            --accent-green:  #22c55e;    /* bit = 1 / multiply             */
+            --accent-red:    #f43f5e;    /* bit = 0 / skip                 */
+            --accent-purple: #a855f7;    /* active square / current bit    */
+            --mono: ui-monospace, 'SF Mono', 'Cascadia Code', 'Courier New', monospace;
+            --sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+            --shell: 900px;
+        }
+
+        * { box-sizing: border-box; }
+        html, body { overflow-x: hidden; }
+        body {
+            background:
+                radial-gradient(1100px 600px at 15% -10%, rgba(168, 85, 247, 0.10), transparent 60%),
+                radial-gradient(900px 600px at 100% 10%, rgba(6, 182, 212, 0.10), transparent 55%),
+                linear-gradient(160deg, #070b14 0%, #0b1120 55%, #0a0f1c 100%);
+            background-attachment: fixed;
+            color: var(--text-main); font-family: var(--sans); margin: 0;
+            display: flex; flex-direction: column; align-items: center; min-height: 100vh;
+            padding-bottom: 48px; -webkit-font-smoothing: antialiased;
+        }
+        body::before, body::after { content: ''; position: fixed; border-radius: 50%; filter: blur(70px); pointer-events: none; z-index: 0; opacity: 0.45; }
+        body::before { width: 380px; height: 380px; top: 8%; left: -120px; background: radial-gradient(circle, rgba(168,85,247,0.30), transparent 70%); }
+        body::after  { width: 420px; height: 420px; bottom: 4%; right: -140px; background: radial-gradient(circle, rgba(6,182,212,0.22), transparent 70%); }
+        body > * { position: relative; z-index: 1; }
+
+        .input-bar {
+            width: 100%; background: rgba(10, 15, 28, 0.55);
+            backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+            padding: 14px 16px; display: flex; justify-content: center; align-items: center; gap: 10px;
+            border-bottom: 1px solid var(--border-main); flex-wrap: wrap; position: sticky; top: 0; z-index: 50;
+        }
+        label.ui-label, .ui-label { font-family: var(--mono); font-size: 13px; color: var(--text-dim); letter-spacing: 0.2px; }
+        input[type="text"] {
+            background: var(--bg-input); border: 1px solid var(--border-main); color: var(--text-main);
+            height: 34px; border-radius: 9px; padding: 0 12px; font-size: 13px; font-family: var(--mono); width: 56px;
+            transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+        }
+        input[type="text"]:focus { outline: none; border-color: var(--accent-purple); box-shadow: 0 0 0 3px rgba(168, 85, 247, 0.18); background: rgba(168, 85, 247, 0.06); }
+
+        button {
+            height: 34px; border-radius: 9px; padding: 0 14px; background: var(--btn-bg);
+            border: 1px solid var(--border-main); color: var(--text-main); font-size: 13px; font-weight: 600; cursor: pointer;
+            transition: transform 0.15s ease, background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+        }
+        button:hover { background: var(--btn-hover); border-color: rgba(6, 182, 212, 0.5); box-shadow: 0 0 18px rgba(6, 182, 212, 0.18); transform: translateY(-1px); }
+        button:active { transform: translateY(0); }
+        #play-btn { background: linear-gradient(135deg, rgba(6,182,212,0.22), rgba(6,182,212,0.10)); border-color: rgba(6, 182, 212, 0.45); color: #a5f3fc; min-width: 80px; }
+
+        .shell { width: var(--shell); max-width: 95%; margin: 24px auto 0; display: flex; flex-direction: column; gap: 16px; }
+
+        .title-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+        .title-row h1 { font-size: 18px; font-weight: 800; margin: 0; letter-spacing: 0.2px; }
+        .title-row .sub { color: var(--text-dim); font-weight: 500; font-size: 13px; }
+        .step-badge { font-family: var(--mono); font-size: 12px; font-weight: 700; color: #a5f3fc; background: rgba(6,182,212,0.12); border: 1px solid rgba(6,182,212,0.3); padding: 4px 10px; border-radius: 999px; white-space: nowrap; }
+        .progress-track { height: 4px; width: 100%; background: rgba(255,255,255,0.07); border-radius: 999px; overflow: hidden; margin-top: -6px; }
+        .progress-fill { height: 100%; width: 0%; border-radius: 999px; background: linear-gradient(90deg, var(--accent-blue), var(--accent-purple)); box-shadow: 0 0 12px rgba(6,182,212,0.5); transition: width 0.45s cubic-bezier(0.34,1.1,0.64,1); }
+
+        .narration { background: var(--bg-surface); border: 1px solid rgba(6,182,212,0.22); border-radius: 12px; padding: 12px 18px; font-family: var(--mono); font-size: 14px; line-height: 1.5; color: #cfe9f5; min-height: 48px; display: flex; align-items: center; gap: 10px; transition: border-color 0.3s, background 0.3s; }
+        .narration::before { content: '\25B8'; color: var(--accent-blue); font-size: 13px; }
+        .narration.done { border-color: rgba(34,197,94,0.4); background: rgba(34,197,94,0.06); }
+        .narration.done::before { content: '\2713'; color: var(--accent-green); }
+        .narration code { background: rgba(6,182,212,0.14); color: #7dd3fc; padding: 1px 6px; border-radius: 5px; font-size: 12.5px; }
+        .narration b { color: #fff; }
+
+        .stage-card { background: var(--bg-surface); border: 1px solid var(--border-main); border-radius: 18px; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); box-shadow: 0 12px 38px rgba(0,0,0,0.4); overflow: hidden; }
+        .stage-screen { position: relative; margin: 14px; border-radius: 14px; background: radial-gradient(700px 300px at 50% -10%, rgba(6,182,212,0.08), transparent 70%), #090d18; border: 1px solid rgba(255,255,255,0.06); }
+        .grid-stage { position: relative; width: 100%; overflow: auto; scrollbar-width: thin; padding: 22px; display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: center; gap: 30px; }
+        .grid-stage::-webkit-scrollbar { height: 8px; width: 8px; }
+        .grid-stage::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 8px; }
+
+        /* ── matrix blocks ── */
+        .mat-block { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+        .mat-title { font-family: var(--mono); font-size: 12px; font-weight: 700; letter-spacing: 0.4px; color: var(--text-dim); text-align: center; }
+        .mat-title b { color: var(--text-main); }
+        .mat-frame {
+            position: relative; display: grid; grid-template-columns: repeat(2, 50px); gap: 6px;
+            padding: 10px 16px; border-radius: 12px; border: 1px solid var(--border-main);
+            background: rgba(255,255,255,0.02);
+            transition: border-color 0.35s, box-shadow 0.35s, background 0.35s;
+        }
+        .mat-frame::before, .mat-frame::after {
+            content: ''; position: absolute; top: 6px; bottom: 6px; width: 8px;
+            border: 2px solid var(--text-dim); transition: border-color 0.35s;
+        }
+        .mat-frame::before { left: 3px; border-right: none; border-radius: 4px 0 0 4px; }
+        .mat-frame::after  { right: 3px; border-left: none; border-radius: 0 4px 4px 0; }
+        .mat-frame.lit-blue   { border-color: rgba(6,182,212,0.45); box-shadow: 0 0 22px rgba(6,182,212,0.22); }
+        .mat-frame.lit-orange { border-color: rgba(245,165,36,0.45); box-shadow: 0 0 22px rgba(245,165,36,0.22); }
+        .mat-frame.lit-purple { border-color: rgba(168,85,247,0.5);  box-shadow: 0 0 22px rgba(168,85,247,0.28); }
+        .mat-frame.lit-blue::before, .mat-frame.lit-blue::after { border-color: var(--accent-blue); }
+        .mat-frame.lit-orange::before, .mat-frame.lit-orange::after { border-color: var(--accent-orange); }
+        .mat-frame.lit-purple::before, .mat-frame.lit-purple::after { border-color: var(--accent-purple); }
+
+        .cell {
+            display: flex; align-items: center; justify-content: center;
+            border-radius: 9px; font-family: var(--mono); font-weight: 800; font-size: 18px;
+            border: 2px solid var(--border-main); background: rgba(255,255,255,0.04); color: var(--text-main);
+            width: 50px; height: 50px; will-change: transform;
+            transition: background 0.35s, border-color 0.35s, color 0.35s, box-shadow 0.35s, transform 0.3s;
+        }
+        .cell.base   { border-color: rgba(6,182,212,0.4); background: rgba(6,182,212,0.10); color: #a5f3fc; }
+        .cell.result { border-color: rgba(245,165,36,0.4); background: rgba(245,165,36,0.12); color: #ffd591; }
+        .cell.changed { border-color: var(--accent-purple); background: rgba(168,85,247,0.18); color: #e9d5ff; box-shadow: 0 0 20px rgba(168,85,247,0.5); transform: scale(1.06); z-index: 2; }
+        .cell.final { border-color: var(--accent-green); background: linear-gradient(180deg, rgba(47,224,143,0.85), rgba(33,194,117,0.85)); color: #06251a; box-shadow: 0 0 18px rgba(34,197,94,0.45); }
+
+        .op-glyph { font-family: var(--mono); font-size: 26px; font-weight: 800; color: var(--text-dim); align-self: center; padding-bottom: 4px; }
+
+        /* ── exponent bit row ── */
+        .bit-block { display: flex; flex-direction: column; align-items: center; gap: 10px; width: 100%; }
+        .bit-row { display: flex; gap: 7px; flex-wrap: wrap; justify-content: center; }
+        .bit {
+            width: 38px; height: 44px; border-radius: 9px; display: flex; flex-direction: column;
+            align-items: center; justify-content: center; gap: 1px;
+            font-family: var(--mono); font-weight: 800; font-size: 17px;
+            border: 2px solid var(--border-main); background: rgba(255,255,255,0.04); color: var(--text-dim);
+            transition: background 0.3s, border-color 0.3s, color 0.3s, box-shadow 0.3s, transform 0.3s;
+        }
+        .bit .blab { font-size: 9px; font-weight: 600; color: var(--text-dim); opacity: 0.6; }
+        .bit.done { color: var(--text-main); }
+        .bit.one  { border-color: rgba(34,197,94,0.45); color: #bbf7d0; background: rgba(34,197,94,0.10); }
+        .bit.zero { border-color: rgba(244,63,94,0.35); color: #fda4af; background: rgba(244,63,94,0.07); }
+        .bit.active { transform: scale(1.12); box-shadow: 0 0 18px rgba(168,85,247,0.55); border-color: var(--accent-purple); }
+
+        .action-stage { position: relative; min-height: 92px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; }
+        .answer-track { display: flex; gap: 6px; align-items: center; min-height: 40px; }
+        .ans-tile { min-width: 40px; padding: 0 10px; height: 44px; border-radius: 9px; display: flex; align-items: center; justify-content: center; font-family: var(--mono); font-size: 19px; font-weight: 800; border: 2px solid var(--accent-orange); background: rgba(245,165,36,0.16); color: #ffd591; box-shadow: 0 0 12px rgba(245,165,36,0.35); }
+        .action-word { font-family: var(--mono); font-weight: 800; font-size: 18px; letter-spacing: 0.4px; min-height: 22px; text-align: center; transition: color 0.3s; }
+        #confetti { position: absolute; inset: 0; overflow: visible; pointer-events: none; }
+        .confetti-piece { position: absolute; top: 0; left: 50%; width: 8px; height: 13px; border-radius: 2px; opacity: 0; animation: confettiFall ease-out forwards; }
+
+        .controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: center; }
+        .controls .kbd-hint { font-size: 11px; color: var(--text-dim); font-family: var(--mono); margin-left: 4px; }
+        .kbd { background: rgba(255,255,255,0.07); border: 1px solid var(--border-main); border-radius: 5px; padding: 1px 6px; font-size: 10px; }
+        input[type="range"] { accent-color: var(--accent-blue); width: 110px; cursor: pointer; }
+
+        .details-toggle { align-self: center; height: 32px; padding: 0 16px; border-radius: 999px; cursor: pointer; background: rgba(255,255,255,0.04); border: 1px solid var(--border-main); color: var(--text-dim); font-family: var(--mono); font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; gap: 8px; transition: color 0.2s, border-color 0.2s, background 0.2s; }
+        .details-toggle:hover { color: var(--text-main); border-color: rgba(6,182,212,0.4); background: rgba(6,182,212,0.06); }
+        .details-toggle .chev { transition: transform 0.3s ease; }
+        .details-wrap.open .details-toggle .chev { transform: rotate(180deg); }
+        .details-body { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.4s ease; }
+        .details-wrap.open .details-body { grid-template-rows: 1fr; }
+        .details-inner { overflow: hidden; min-height: 0; }
+        .details-grid { display: flex; flex-direction: column; gap: 14px; padding-top: 14px; }
+
+        .panel-card { background: var(--bg-surface); border: 1px solid var(--border-main); border-radius: 16px; backdrop-filter: blur(10px); box-shadow: 0 8px 30px rgba(0,0,0,0.35); }
+        .panel-head { display: flex; align-items: center; gap: 8px; padding: 11px 16px; border-bottom: 1px solid var(--border-main); font-size: 11px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; color: var(--text-dim); }
+        .panel-head .pip { width: 7px; height: 7px; border-radius: 50%; background: var(--accent-blue); box-shadow: 0 0 8px var(--accent-blue); }
+        .code-body { padding: 12px 6px 14px; font-family: var(--mono); font-size: 12.5px; line-height: 1.7; }
+        .code-line { display: flex; gap: 12px; padding: 1px 16px; border-left: 2px solid transparent; transition: background 0.3s, border-color 0.3s; white-space: pre; }
+        .code-line .lno { color: #4b5772; width: 16px; text-align: right; user-select: none; }
+        .code-line .src { color: #c4cee0; }
+        .code-line .kw { color: #c792ea; }
+        .code-line .fn { color: #82aaff; }
+        .code-line.active { background: rgba(6,182,212,0.12); border-left-color: var(--accent-blue); }
+        .code-line.active .src, .code-line.active .lno { color: #e8eefb; }
+
+        .state-strip { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 0 2px; }
+        .pill { display: inline-flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 12px; color: var(--text-dim); background: rgba(255,255,255,0.04); border: 1px solid var(--border-main); border-radius: 999px; padding: 4px 11px; }
+        .pill b { color: var(--text-main); font-weight: 800; }
+        .pill.c b { color: var(--accent-purple); } .pill.b b { color: var(--accent-orange); } .pill.g b { color: var(--accent-green); }
+
+        .log-panel { border-radius: 14px; padding: 12px 16px; height: 110px; overflow-y: auto; font-family: var(--mono); font-size: 12.5px; line-height: 1.5; background: var(--bg-surface); border: 1px solid var(--border-main); }
+        .log-panel::-webkit-scrollbar { width: 8px; }
+        .log-panel::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 8px; }
+
+        @keyframes confettiFall { 0%{ opacity:1; transform: translate(-50%, 0) rotate(0deg); } 100%{ opacity:0; transform: translate(calc(-50% + var(--x)), 220px) rotate(var(--rot)); } }
+        @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; } }
+    </style>
+</head>
+<body>
+
+    <div class="input-bar">
+        <label class="ui-label">n =</label>
+        <input type="text" id="n-input" value="4" maxlength="4">
+        <label class="ui-label">a =</label>
+        <input type="text" id="a-input" value="1" maxlength="6">
+        <label class="ui-label">b =</label>
+        <input type="text" id="b-input" value="1" maxlength="6">
+        <label class="ui-label">m =</label>
+        <input type="text" id="m-input" value="10" maxlength="6">
+        <button onclick="loadCustom()">Load</button>
+        <span class="ui-label" style="opacity:.5">|</span>
+        <button onclick="loadExample(0)">Ex 1 (n=4,a=1,b=1,m=10)</button>
+        <button onclick="loadExample(1)">Ex 2 (n=5,a=2,b=3,m=7)</button>
+    </div>
+
+    <div class="shell">
+        <div class="title-row">
+            <h1>Matrix Exponentiation mod m <span class="sub">&middot; M<sup>n&minus;1</sup> by binary squaring &middot; M = [[1,1],[1,0]] &middot; O(log n) mat-muls</span></h1>
+            <span class="step-badge" id="step-badge">Step 1 / 1</span>
+        </div>
+        <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+
+        <div class="narration" id="main-panel">&mdash;</div>
+
+        <div class="stage-card">
+            <div class="stage-screen">
+                <div class="grid-stage" id="grid-stage">
+                    <div class="bit-block" id="bit-block">
+                        <div class="mat-title" id="bit-title">exponent</div>
+                        <div class="bit-row" id="bit-row"></div>
+                    </div>
+                    <div class="mat-block">
+                        <div class="mat-title" id="result-title">R &middot; accumulator</div>
+                        <div class="mat-frame" id="result-frame"></div>
+                    </div>
+                    <div class="op-glyph" id="op-glyph">&times;</div>
+                    <div class="mat-block">
+                        <div class="mat-title" id="base-title">base = M<sup>1</sup></div>
+                        <div class="mat-frame" id="base-frame"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="action-stage">
+            <div id="confetti"></div>
+            <div class="answer-track" id="answer-track"></div>
+            <div class="action-word" id="action-word"></div>
+        </div>
+
+        <div class="controls">
+            <button onclick="resetSim()">&#8634; Reset</button>
+            <button onclick="prevStep()">&#8592; Back</button>
+            <button onclick="togglePlay()" id="play-btn">Play</button>
+            <button onclick="nextStep()">Next &#8594;</button>
+            <span class="ui-label" style="margin-left:6px; font-size:11px">Speed</span>
+            <input type="range" id="speed" min="0" max="2" value="1">
+            <span class="kbd-hint"><span class="kbd">&#8592;</span> <span class="kbd">&#8594;</span> step &middot; <span class="kbd">space</span> play</span>
+        </div>
+
+        <div class="details-wrap" id="details-wrap">
+            <button class="details-toggle" onclick="toggleDetails()" aria-expanded="false">
+                <span id="details-label">Show code, state &amp; log</span> <span class="chev">&#9662;</span>
+            </button>
+            <div class="details-body">
+                <div class="details-inner">
+                    <div class="details-grid">
+                        <div class="state-strip">
+                            <span class="pill c">bit <b id="st-bit">&mdash;</b></span>
+                            <span class="pill b">R <b id="st-r">I</b></span>
+                            <span class="pill">base <b id="st-base">M</b></span>
+                            <span class="pill g">f(n) mod m <b id="st-ans">&hellip;</b></span>
+                        </div>
+                        <div class="panel-card">
+                            <div class="panel-head"><span class="pip"></span> Algorithm</div>
+                            <div class="code-body" id="code-panel"></div>
+                        </div>
+                        <div class="log-panel" id="log"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        'use strict';
+
+        // ───────── Motion engine (spring pop, zero deps) ─────────
+        const REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        const FRAME = 1000 / 60;
+        function sampleSpring(stiffness, damping, mass) {
+            const dt = 1 / 60; let x = 1, v = 0; const out = [];
+            for (let i = 0; i < 240; i++) { const a = (-stiffness * x - damping * v) / mass; v += a * dt; x += v * dt; out.push(1 - x); if (Math.abs(x) < 0.0015 && Math.abs(v) < 0.0015) break; }
+            out.push(1); return out;
+        }
+        const SPRING_POP = sampleSpring(520, 17, 1);
+        const durOf = (a) => a.length * FRAME;
+        const Motion = {
+            pop(el) {
+                if (REDUCED) return;
+                const kf = SPRING_POP.map(p => ({ transform: `scale(${(0.55 + 0.55 * p).toFixed(3)})` }));
+                el.animate(kf, { duration: durOf(SPRING_POP), easing: 'linear' });
+            },
+        };
+
+        // ───────── State ─────────
+        let nVal = 4, aVal = 1, bVal = 1, mVal = 10;
+        let steps = [];
+        let stepIdx = 0;
+        let timer = null;
+        let confettiArmed = true;
+        const delays = [1450, 720, 330];
+
+        // persistent DOM registries
+        const baseCells = {};   // 'r,c' -> element
+        const resCells = {};
+        const bitEls = {};      // bit index -> element
+
+        // ───────── code panel (the REAL algorithm) ─────────
+        const CODE = [
+            [['kw','def '],['fn','matpow_mod'],['src','(M, k, m):']],
+            [['src','  R = I  ']],
+            [['src','  base = M % m']],
+            [['kw','  while '],['src','k > 0:']],
+            [['kw','    if '],['src','k & 1:        # bit set']],
+            [['src','      R = (R * base) % m']],
+            [['src','    base = (base * base) % m']],
+            [['src','    k >>= 1']],
+            [['kw','  return '],['src','R']],
+            [['src','  # f(n) = R[0][0]*b + R[0][1]*a (mod m)']],
+        ];
+        function buildCodePanel() {
+            const panel = document.getElementById('code-panel'); panel.innerHTML = '';
+            CODE.forEach((tokens, i) => {
+                const line = document.createElement('div'); line.className = 'code-line'; line.dataset.line = i;
+                const lno = document.createElement('span'); lno.className = 'lno'; lno.textContent = i + 1; line.appendChild(lno);
+                const src = document.createElement('span');
+                tokens.forEach(([cls, txt]) => { const s = document.createElement('span'); s.className = cls; s.textContent = txt; src.appendChild(s); });
+                line.appendChild(src); panel.appendChild(line);
+            });
+        }
+        function highlightCode(arr) { document.querySelectorAll('.code-line').forEach(el => el.classList.toggle('active', arr && arr.includes(+el.dataset.line))); }
+        function toggleDetails() {
+            const wrap = document.getElementById('details-wrap'); const open = wrap.classList.toggle('open');
+            wrap.querySelector('.details-toggle').setAttribute('aria-expanded', open ? 'true' : 'false');
+            document.getElementById('details-label').textContent = open ? 'Hide code, state & log' : 'Show code, state & log';
+        }
+
+        // ───────── matrix helpers ─────────
+        function matmul(A, B, m) {
+            return [
+                [ (A[0][0]*B[0][0] + A[0][1]*B[1][0]) % m, (A[0][0]*B[0][1] + A[0][1]*B[1][1]) % m ],
+                [ (A[1][0]*B[0][0] + A[1][1]*B[1][0]) % m, (A[1][0]*B[0][1] + A[1][1]*B[1][1]) % m ],
+            ];
+        }
+        const cloneMat = (M) => [M[0].slice(), M[1].slice()];
+        const matStr = (M) => `[[${M[0][0]},${M[0][1]}],[${M[1][0]},${M[1][1]}]]`;
+        function changedCells(A, B) { // which entries differ between two 2x2 matrices
+            const out = [];
+            for (let r = 0; r < 2; r++) for (let c = 0; c < 2; c++) if (A[r][c] !== B[r][c]) out.push(r + ',' + c);
+            return out;
+        }
+
+        // ───────── step generation (genuine binary exponentiation) ─────────
+        function generateSteps() {
+            steps = [];
+            const m = mVal;
+            const k = Math.max(0, nVal - 1);                  // exponent = n-1
+            const M = [[1, 1], [1, 0]];                       // Fibonacci matrix
+            const bits = (k === 0 ? '0' : k.toString(2)).split('').reverse().map(Number); // LSB-first
+
+            let R = [[1, 0], [0, 1]];                         // identity accumulator
+            let base = [[M[0][0] % m, M[0][1] % m], [M[1][0] % m, M[1][1] % m]];
+
+            const snap = (extra) => Object.assign({
+                R: cloneMat(R), base: cloneMat(base), bits, m, k,
+                rChanged: [], baseChanged: [], activeBit: null,
+                rFrame: '', baseFrame: '', opGlyph: '×',
+                complete: false, answer: null,
+            }, extra);
+
+            steps.push(snap({
+                code: [0, 1, 2], action: 'SET UP', actionColor: 'var(--accent-blue)',
+                rFrame: 'lit-orange', baseFrame: 'lit-blue',
+                panel: `Goal: <code>f(${nVal}) mod ${m}</code> with <code>f(0)=${aVal}</code>, <code>f(1)=${bVal}</code>. The Fibonacci map is <code>M = [[1,1],[1,0]]</code>, and <code>[f(n),f(n-1)]<sup>T</sup> = M<sup>n&minus;1</sup>&middot;[f(1),f(0)]<sup>T</sup></code>. So we raise <code>M</code> to the power <b>k = n&minus;1 = ${k}</b> (binary <b>${k.toString(2)}</b>) mod ${m}.`,
+                log: `init  M=[[1,1],[1,0]]  k=n-1=${k} (bin ${k.toString(2)})  m=${m}  R=I`
+            }));
+
+            let bitIdx = 0;
+            let kk = k;
+            while (kk > 0) {
+                const bit = kk & 1;
+                // ── inspect this bit ──
+                steps.push(snap({
+                    activeBit: bitIdx, rFrame: 'lit-orange', baseFrame: 'lit-blue',
+                    code: [3, 4], action: `BIT ${bitIdx} = ${bit}`,
+                    actionColor: bit ? 'var(--accent-green)' : 'var(--accent-red)',
+                    panel: bit
+                        ? `Exponent bit <code>${bitIdx}</code> is <b>1</b> &#8594; this power of <code>M</code> participates, so multiply it into <code>R</code>: <code>R = (R &times; base) mod ${m}</code>.`
+                        : `Exponent bit <code>${bitIdx}</code> is <b>0</b> &#8594; skip the multiply; only square <code>base</code> to advance to the next power of <code>M</code>.`,
+                    log: `bit ${bitIdx} = ${bit}  ${bit ? '-> multiply R*base' : '-> skip (square only)'}`
+                }));
+
+                if (bit) {
+                    const newR = matmul(R, base, m);
+                    const ch = changedCells(R, newR);
+                    R = newR;
+                    steps.push(snap({
+                        activeBit: bitIdx, rChanged: ch, rFrame: 'lit-purple', baseFrame: 'lit-blue', opGlyph: '×',
+                        code: [5], action: 'MULTIPLY R', actionColor: 'var(--accent-orange)',
+                        panel: `<code>R = (R &times; base) mod ${m} = ${matStr(R)}</code>. The accumulator now holds the product of the powers chosen so far.`,
+                        log: `  R = (R*base) % ${m} = ${matStr(R)}`
+                    }));
+                }
+
+                // ── square base ──
+                const newBase = matmul(base, base, m);
+                const bch = changedCells(base, newBase);
+                base = newBase;
+                steps.push(snap({
+                    activeBit: bitIdx, baseChanged: bch, baseFrame: 'lit-purple', rFrame: 'lit-orange', opGlyph: '×',
+                    code: [6, 7], action: 'SQUARE base', actionColor: 'var(--accent-purple)',
+                    panel: `Square the base: <code>base = (base &times; base) mod ${m} = ${matStr(base)}</code> &#8594; this is <code>M<sup>${(1 << (bitIdx + 1))}</sup> mod ${m}</code>. Shift <code>k</code> right and move to bit ${bitIdx + 1}.`,
+                    log: `  base = (base*base) % ${m} = ${matStr(base)}   k >>= 1`,
+                    advancedBit: bitIdx + 1
+                }));
+
+                kk >>= 1; bitIdx++;
+            }
+
+            // ── final answer from R ──
+            const fn = ((R[0][0] * (bVal % m)) % m + (R[0][1] * (aVal % m)) % m) % m;
+            steps.push(snap({
+                complete: true, confetti: true, rFrame: 'lit-orange', baseFrame: '',
+                code: [8, 9], action: `f(${nVal}) mod ${m} = ${fn}`, actionColor: 'var(--accent-green)',
+                rFinal: true, answer: fn,
+                panel: `Done. <code>M<sup>${k}</sup> mod ${m} = ${matStr(R)}</code>. Reading off the top row: <code>f(${nVal}) = R[0][0]&middot;f(1) + R[0][1]&middot;f(0) = ${R[0][0]}&middot;${bVal} + ${R[0][1]}&middot;${aVal} = ${R[0][0]*bVal + R[0][1]*aVal}</code> &#8801; <b>${fn}</b> (mod ${m}).`,
+                log: `done  M^${k} % ${m} = ${matStr(R)}   f(${nVal}) mod ${m} = ${fn}`
+            }));
+        }
+
+        // ───────── render (persistent DOM) ─────────
+        function fillMatrix(frameEl, registry, M, baseClass, changedKeys, finalAll) {
+            const chSet = new Set(changedKeys || []);
+            for (let r = 0; r < 2; r++) {
+                for (let c = 0; c < 2; c++) {
+                    const key = r + ',' + c;
+                    let el = registry[key];
+                    if (!el) { el = document.createElement('div'); el.className = 'cell'; registry[key] = el; }
+                    let cls = 'cell ' + baseClass;
+                    if (finalAll) cls += ' final';
+                    else if (chSet.has(key)) cls += ' changed';
+                    const txt = String(M[r][c]);
+                    const prev = el.dataset.v;
+                    el.className = cls;
+                    el.textContent = txt; el.dataset.v = txt;
+                    if (prev !== undefined && prev !== txt) Motion.pop(el);
+                    frameEl.appendChild(el); // grid order is row-major, append keeps order on first build
+                }
+            }
+        }
+
+        function renderBits(step) {
+            const row = document.getElementById('bit-row');
+            const bits = step.bits;                            // LSB-first array
+            const used = new Set();
+            // display MSB..LSB so the binary reads naturally, but keep stable ids = bit position
+            for (let disp = bits.length - 1; disp >= 0; disp--) {
+                const idx = disp; used.add(idx);
+                let el = bitEls[idx];
+                if (!el) {
+                    el = document.createElement('div');
+                    const v = document.createElement('div'); v.className = 'bval';
+                    const lab = document.createElement('div'); lab.className = 'blab';
+                    el.append(v, lab); bitEls[idx] = el;
+                }
+                const v = el.firstChild, lab = el.lastChild;
+                v.textContent = bits[idx];
+                lab.textContent = 'b' + idx;
+                let cls = 'bit ' + (bits[idx] ? 'one' : 'zero');
+                // a bit is "done" (already processed) if a later bit is active or we are complete
+                const active = step.activeBit;
+                if (active != null) {
+                    if (idx === active) cls += ' active';
+                } else if (step.complete) {
+                    cls += ' done';
+                }
+                el.className = cls;
+                row.appendChild(el); // reorder to MSB..LSB each render (cheap, 1-30 nodes)
+            }
+            Object.keys(bitEls).forEach(k => { if (!used.has(+k)) { bitEls[k].remove(); delete bitEls[k]; } });
+        }
+
+        function renderStep(idx) {
+            stepIdx = idx; const step = steps[idx]; if (!step) return;
+
+            // bit row
+            renderBits(step);
+            document.getElementById('bit-title').innerHTML = `k = n&minus;1 = <b>${step.k}</b> &nbsp;(binary ${step.k.toString(2)}, LSB first read right&#8594;left)`;
+
+            // result + base matrices
+            const rFrame = document.getElementById('result-frame');
+            const bFrame = document.getElementById('base-frame');
+            rFrame.className = 'mat-frame' + (step.rFrame ? ' ' + step.rFrame : '');
+            bFrame.className = 'mat-frame' + (step.baseFrame ? ' ' + step.baseFrame : '');
+            fillMatrix(rFrame, resCells, step.R, 'result', step.rChanged, step.rFinal);
+            fillMatrix(bFrame, baseCells, step.base, 'base', step.baseChanged, false);
+
+            document.getElementById('result-title').innerHTML = `R &middot; accumulator`;
+            const expShown = step.advancedBit != null ? step.advancedBit : (step.activeBit != null ? step.activeBit : 0);
+            document.getElementById('base-title').innerHTML = `base = M<sup>${(1 << expShown)}</sup> mod ${step.m}`;
+            document.getElementById('op-glyph').innerHTML = step.opGlyph === '×' ? '&times;' : step.opGlyph;
+
+            // answer tiles
+            const at = document.getElementById('answer-track'); at.innerHTML = '';
+            if (step.complete && step.answer != null) {
+                const t = document.createElement('div'); t.className = 'ans-tile'; t.textContent = `f(${nVal}) ≡ ${step.answer}  (mod ${step.m})`; at.appendChild(t);
+            }
+
+            // narration + action word
+            const mp = document.getElementById('main-panel');
+            mp.innerHTML = step.panel || '&mdash;';
+            mp.classList.toggle('done', !!step.complete);
+            const aw = document.getElementById('action-word'); aw.textContent = step.action || ''; aw.style.color = step.actionColor || 'var(--text-dim)';
+            highlightCode(step.code);
+
+            if (step.confetti) { if (confettiArmed) { fireConfetti(); confettiArmed = false; } } else confettiArmed = true;
+
+            // state pills
+            document.getElementById('st-bit').textContent = step.activeBit != null ? `#${step.activeBit} = ${step.bits[step.activeBit]}` : (step.complete ? 'done' : '—');
+            document.getElementById('st-r').textContent = matStr(step.R);
+            document.getElementById('st-base').textContent = matStr(step.base);
+            document.getElementById('st-ans').textContent = step.complete && step.answer != null ? String(step.answer) : '…';
+
+            document.getElementById('step-badge').textContent = `Step ${idx + 1} / ${steps.length}`;
+            document.getElementById('progress-fill').style.width = `${(idx / Math.max(1, steps.length - 1)) * 100}%`;
+
+            const logEl = document.getElementById('log');
+            logEl.innerHTML = steps.slice(0, idx + 1).map(s => `<div style="margin:3px 0;white-space:pre-wrap;">${s.log}</div>`).join('');
+            logEl.scrollTop = logEl.scrollHeight;
+        }
+
+        function fireConfetti() {
+            const host = document.getElementById('confetti'); if (!host || REDUCED) return;
+            const colors = ['#22c55e', '#06b6d4', '#a855f7', '#f5a524', '#f43f5e'];
+            for (let i = 0; i < 38; i++) {
+                const p = document.createElement('div'); p.className = 'confetti-piece';
+                p.style.setProperty('--x', ((Math.random() * 2 - 1) * 220) + 'px');
+                p.style.setProperty('--rot', ((Math.random() * 720 - 360)) + 'deg');
+                p.style.background = colors[i % colors.length];
+                p.style.animationDuration = (0.9 + Math.random() * 0.8) + 's';
+                p.style.animationDelay = (Math.random() * 0.15) + 's';
+                host.appendChild(p); setTimeout(() => p.remove(), 1900);
+            }
+        }
+
+        // ───────── controls ─────────
+        function nextStep() { if (stepIdx < steps.length - 1) renderStep(stepIdx + 1); else pause(); }
+        function prevStep() { if (stepIdx > 0) renderStep(stepIdx - 1); }
+        function resetSim() { pause(); renderStep(0); }
+        function togglePlay() {
+            const btn = document.getElementById('play-btn');
+            if (timer) { pause(); return; }
+            btn.textContent = 'Pause';
+            if (stepIdx >= steps.length - 1) renderStep(0);
+            timer = setInterval(() => { if (stepIdx < steps.length - 1) nextStep(); else pause(); }, delays[document.getElementById('speed').value]);
+        }
+        function pause() { clearInterval(timer); timer = null; document.getElementById('play-btn').textContent = 'Play'; }
+
+        function clearDom() {
+            [baseCells, resCells, bitEls].forEach(reg => Object.keys(reg).forEach(k => { reg[k].remove(); delete reg[k]; }));
+            confettiArmed = true;
+        }
+        function loadAll(n, a, b, m) {
+            pause();
+            nVal = n; aVal = a; bVal = b; mVal = m;
+            clearDom(); generateSteps(); renderStep(0);
+        }
+        function clampInt(v, def, min, max) {
+            let x = parseInt(v, 10); if (!Number.isFinite(x)) x = def;
+            return Math.max(min, Math.min(max, x));
+        }
+        function loadCustom() {
+            const n = clampInt(document.getElementById('n-input').value, 4, 0, 60);
+            const a = clampInt(document.getElementById('a-input').value, 1, 0, 100000);
+            const b = clampInt(document.getElementById('b-input').value, 1, 0, 100000);
+            const m = clampInt(document.getElementById('m-input').value, 10, 1, 100000);
+            document.getElementById('n-input').value = n;
+            document.getElementById('a-input').value = a;
+            document.getElementById('b-input').value = b;
+            document.getElementById('m-input').value = m;
+            loadAll(n, a, b, m);
+        }
+        function loadExample(n) {
+            const ex = [{ n: 4, a: 1, b: 1, m: 10 }, { n: 5, a: 2, b: 3, m: 7 }][n];
+            document.getElementById('n-input').value = ex.n;
+            document.getElementById('a-input').value = ex.a;
+            document.getElementById('b-input').value = ex.b;
+            document.getElementById('m-input').value = ex.m;
+            loadAll(ex.n, ex.a, ex.b, ex.m);
+        }
+
+        document.addEventListener('keydown', (e) => {
+            const tag = (e.target.tagName || '').toLowerCase(); if (tag === 'input' || tag === 'textarea') return;
+            if (e.key === 'ArrowRight') { e.preventDefault(); pause(); nextStep(); }
+            else if (e.key === 'ArrowLeft') { e.preventDefault(); pause(); prevStep(); }
+            else if (e.key === ' ') { e.preventDefault(); togglePlay(); }
+        });
+        ['n-input', 'a-input', 'b-input', 'm-input'].forEach(id => document.getElementById(id).addEventListener('keydown', (e) => { if (e.key === 'Enter') loadCustom(); }));
+        window.addEventListener('resize', () => { if (steps.length) renderStep(stepIdx); });
+
+        buildCodePanel();
+        window.onload = () => loadExample(0);
+    </script>
+</body>
+</html>

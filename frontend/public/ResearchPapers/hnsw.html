@@ -1,0 +1,3330 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Efficient and robust approximate nearest-neighbour search using Hierarchical Navigable Small World graphs Malkov &amp; Yashunin, 2018</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;0,9..144,900;1,9..144,400&family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&family=Source+Serif+4:ital,opsz,wght@0,8..60,300;0,8..60,400;0,8..60,500;0,8..60,600;1,8..60,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"
+        onload="renderMathInElement(document.body,{delimiters:[{left:'$$',right:'$$',display:true},{left:'$',right:'$',display:false},{left:'\\\\(',right:'\\\\)',display:false},{left:'\\\\[',right:'\\\\]',display:true}],throwOnError:false});"></script>
+<style>
+/* ============================================================
+   DESIGN SYSTEM premium editorial · glassmorphism
+   ============================================================ */
+:root{
+  --bg: #fffbf0; --bg-raise: #fffef7; --bg-raise2: #fef3d8; --bg-sunk: #fde8b8;
+  --surf: rgba(75,55,12,0.05); --surf-hi: rgba(75,55,12,0.09); --surf-lo: rgba(75,55,12,0.028);
+  --line: rgba(75,55,12,0.13); --line-soft: rgba(75,55,12,0.075); --line-hard: rgba(75,55,12,0.22);
+  --ink: #2d3748; --ink-dim: #4a5568; --ink-faint: #718096; --ink-ghost: #a0aec0;
+  --c-mint: #5eead4; --c-sky: #67a3d9; --c-iris: #a38bfa; --c-rose: #f0729a; --c-amber: #f3c969;
+  --grad-spine: linear-gradient(90deg,#5eead4 0%,#67a3d9 30%,#a38bfa 60%,#f0729a 85%,#f3c969 100%);
+  --grad-head: linear-gradient(135deg,#2d3748 0%,#a38bfa 60%,#67a3d9 100%);
+  --grad-card: linear-gradient(165deg,rgba(255,255,255,0.72) 0%,rgba(255,255,255,0.38) 100%);
+  --grad-iris: linear-gradient(135deg,rgba(163,139,250,0.16) 0%,rgba(163,139,250,0.03) 100%);
+  --shadow-hi: 0 32px 96px -20px rgba(90,65,15,0.22), 0 8px 28px -8px rgba(90,65,15,0.14), 0 1px 0 rgba(255,255,255,0.6) inset;
+  --shadow-md: 0 16px 56px -18px rgba(90,65,15,0.18), 0 2px 8px -2px rgba(90,65,15,0.08);
+  --shadow-sm: 0 4px 16px -4px rgba(90,65,15,0.12), 0 1px 0 rgba(255,255,255,0.5) inset;
+  --r-xs: 8px; --r-sm: 12px; --r-md: 16px; --r-lg: 22px; --r-xl: 28px;
+  --max: 1180px; --reading: 760px;
+}
+
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth;scroll-padding-top:90px}
+body{
+  background:var(--bg);
+  color:var(--ink);
+  font-family:'Outfit',-apple-system,sans-serif;
+  font-size:16.5px;
+  line-height:1.72;
+  -webkit-font-smoothing:antialiased;
+  -moz-osx-font-smoothing:grayscale;
+  overflow-x:hidden;
+  text-rendering:optimizeLegibility;
+}
+
+/* Ambient aurora background GPU-cheap radial gradients, fixed */
+body::before{
+  content:"";
+  position:fixed;inset:0;z-index:-2;
+  background:
+    radial-gradient(70rem 40rem at 15% -5%, rgba(163,139,250,0.14), transparent 60%),
+    radial-gradient(60rem 35rem at 95% 15%, rgba(103,232,199,0.08), transparent 65%),
+    radial-gradient(55rem 30rem at 50% 100%, rgba(106,165,255,0.09), transparent 65%);
+  pointer-events:none;
+}
+body::after{
+  content:"";position:fixed;inset:0;z-index:-1;
+  background-image: radial-gradient(circle, rgba(45,55,72,0.09) 1px, transparent 1px);
+  background-size:28px 28px;
+  mask-image:radial-gradient(ellipse 90% 80% at 50% 40%, black 30%, transparent 85%);
+  -webkit-mask-image:radial-gradient(ellipse 90% 80% at 50% 40%, black 30%, transparent 85%);
+  pointer-events:none;
+}
+
+::selection{background:rgba(163,139,250,0.35);color:#2d3748}
+
+/* ============================================================
+   NAV glassmorphism
+   ============================================================ */
+nav{
+  position:fixed;top:0;left:0;right:0;z-index:50;
+  display:flex;align-items:center;justify-content:space-between;
+  padding:0.85rem 1.6rem;
+  background:rgba(255,252,242,0.88);backdrop-filter:blur(32px) saturate(1.5) brightness(1.02);
+  -webkit-backdrop-filter:blur(32px) saturate(1.5) brightness(1.02);
+  border-bottom:1px solid rgba(75,55,12,0.1);
+  box-shadow:0 1px 0 rgba(255,255,255,0.7) inset, 0 4px 24px rgba(90,65,15,0.07);
+}
+.nav-brand{display:flex;align-items:center;gap:10px;font-family:'JetBrains Mono',monospace;font-size:0.72rem;color:var(--ink-dim);letter-spacing:0.18em;text-transform:uppercase;text-decoration:none;}
+.nav-brand-mark{width:22px;height:22px;border-radius:6px;background:var(--grad-spine);position:relative;box-shadow:0 0 20px rgba(163,139,250,0.4);}
+.nav-brand-mark::after{content:"";position:absolute;inset:3px;border-radius:3px;background:var(--bg);}
+.nav-cite{font-family:'JetBrains Mono',monospace;font-size:0.7rem;color:var(--ink-faint);letter-spacing:0.04em;max-width:38vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.nav-actions{display:flex;gap:6px}
+.nav-btn{display:inline-flex;align-items:center;gap:6px;padding:0.42rem 0.95rem;border-radius:999px;border:1px solid rgba(75,55,12,0.12);background:rgba(255,255,255,0.5);color:var(--ink-dim);font-family:'JetBrains Mono',monospace;font-size:0.7rem;letter-spacing:0.05em;text-decoration:none;transition:all 0.22s cubic-bezier(.4,0,.2,1);cursor:pointer;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);box-shadow:0 1px 3px rgba(90,65,15,0.07), 0 1px 0 rgba(255,255,255,0.6) inset;}
+.nav-btn:hover{border-color:rgba(163,139,250,0.4);color:var(--c-iris);background:rgba(163,139,250,0.08);transform:translateY(-1px);box-shadow:0 4px 14px rgba(90,65,15,0.1), 0 1px 0 rgba(255,255,255,0.6) inset;}
+@media(max-width:720px){
+  .nav-cite{display:none}
+  nav{padding:0.7rem 1rem}
+}
+
+/* ============================================================
+   HERO magazine cover feel
+   ============================================================ */
+.hero{
+  position:relative;
+  min-height:96vh;
+  display:flex;flex-direction:column;justify-content:center;
+  padding:9rem 1.6rem 4rem;
+  overflow:hidden;
+}
+.hero-inner{
+  max-width:var(--max);
+  width:100%;
+  margin:0 auto;
+  position:relative;z-index:2;
+}
+.hero-kicker{
+  display:inline-flex;align-items:center;gap:10px;
+  margin-bottom:2.4rem;
+  font-family:'JetBrains Mono',monospace;
+  font-size:0.68rem;
+  letter-spacing:0.28em;
+  text-transform:uppercase;
+  color:var(--c-iris);
+}
+.hero-kicker .dot{
+  width:6px;height:6px;border-radius:50%;
+  background:var(--c-iris);
+  box-shadow:0 0 10px var(--c-iris);
+  animation:heartbeat 2.4s ease-in-out infinite;
+}
+.hero-kicker .bar{
+  width:40px;height:1px;
+  background:linear-gradient(90deg,var(--c-iris),transparent);
+}
+@keyframes heartbeat{
+  0%,100%{opacity:1;transform:scale(1)}
+  50%{opacity:0.35;transform:scale(0.6)}
+}
+
+h1.hero-title{
+  font-family:'Source Serif 4',serif;
+  font-optical-sizing:auto;
+  font-variation-settings:'opsz' 144;
+  font-weight:400;
+  font-size:clamp(2.4rem, 6.8vw, 5.4rem);
+  line-height:1.02;
+  letter-spacing:-0.035em;
+  margin-bottom:2rem;
+  max-width:20ch;
+}
+h1.hero-title em{
+  font-style:italic;
+  font-weight:300;
+  background:var(--grad-head);
+  -webkit-background-clip:text;
+  background-clip:text;
+  -webkit-text-fill-color:transparent;
+}
+
+.hero-meta{
+  display:flex;flex-wrap:wrap;gap:0.75rem;align-items:flex-start;
+  margin-bottom:2rem;
+  padding-bottom:2rem;
+  border-bottom:1px solid var(--line-soft);
+  max-width:700px;
+}
+.hero-meta-cell{
+  display:flex;flex-direction:column;gap:0.3rem;padding:0.65rem 1rem;border-radius:10px;background:var(--surf-lo);border:1px solid var(--line-soft);
+}
+.hero-meta-label{
+  font-family:'JetBrains Mono',monospace;
+  font-size:0.62rem;letter-spacing:0.22em;text-transform:uppercase;
+  color:var(--c-amber);opacity:0.7;
+}
+.hero-meta-val{
+  font-size:0.92rem;color:var(--ink);font-weight:500;
+  letter-spacing:-0.01em;
+}
+
+.hero-abstract{
+  font-family:'Source Serif 4',serif;
+  font-size:clamp(1.05rem,1.5vw,1.2rem);
+  line-height:1.7;
+  color:var(--ink-dim);
+  max-width:58ch;
+  margin-bottom:2.6rem;
+  font-weight:300;
+}
+.hero-abstract{line-height:1.84;max-width:100%;}.hero-abstract+.hero-abstract{margin-top:1.1rem;}.hero-abstract strong{color:var(--c-amber);font-weight:600}.hero-abstract em{color:var(--ink);}
+
+.hero-tags{
+  display:flex;flex-wrap:wrap;gap:0.5rem;
+}
+.hero-tag{
+  display:inline-flex;align-items:center;gap:6px;
+  padding:0.4rem 0.8rem;
+  border-radius:999px;
+  border:1px solid var(--line);
+  background:var(--surf-lo);
+  font-family:'JetBrains Mono',monospace;
+  font-size:0.68rem;
+  letter-spacing:0.06em;
+  color:var(--ink-dim);
+}
+.hero-tag.t-level{border-color:rgba(240,114,176,0.3);color:var(--c-rose);background:rgba(240,114,176,0.05)}
+.hero-tag.t-topic{border-color:rgba(163,139,250,0.3);color:var(--c-iris);background:rgba(163,139,250,0.05)}
+
+.hero-scroll{
+  position:fixed;bottom:2.4rem;left:50%;transform:translateX(-50%);
+  display:flex;flex-direction:column;gap:0.7rem;align-items:center;
+  color:var(--ink-ghost);
+  font-family:'JetBrains Mono',monospace;
+  font-size:0.64rem;letter-spacing:0.3em;text-transform:uppercase;
+  z-index:2;
+}
+.hero-scroll .line{
+  width:1px;height:40px;
+  background:linear-gradient(180deg,var(--c-iris),transparent);
+  animation:scrollLine 2.2s ease-in-out infinite;
+  transform-origin:top;
+}
+@keyframes scrollLine{
+  0%{transform:scaleY(0);opacity:0}
+  40%{transform:scaleY(1);opacity:1}
+  100%{transform:scaleY(1);opacity:0;transform-origin:bottom}
+}
+
+/* ============================================================
+   PAPER CONTEXT BAR a mini card with history
+   ============================================================ */
+.lineage{
+  max-width:var(--max);margin:0 auto;padding:0 1.6rem;
+  margin-top:-2rem;margin-bottom:4rem;position:relative;z-index:3;
+}
+.lineage-card{
+  background:var(--bg-raise);
+  border:1px solid var(--line);
+  border-radius:var(--r-lg);
+  padding:1.6rem 1.8rem;
+  box-shadow:var(--shadow-hi);
+  display:flex;align-items:center;gap:1.6rem;flex-wrap:wrap;
+  overflow-x:auto;
+}
+.lineage-label{
+  font-family:'JetBrains Mono',monospace;
+  font-size:0.62rem;letter-spacing:0.24em;text-transform:uppercase;
+  color:var(--ink-ghost);
+  flex-shrink:0;
+}
+.lineage-chain{
+  display:flex;align-items:center;gap:0.5rem;flex:1;min-width:0;
+}
+.lineage-node{
+  display:flex;flex-direction:column;align-items:center;gap:0.35rem;
+  padding:0.55rem 0.85rem;border-radius:10px;
+  border:1px solid var(--line-soft);background:var(--surf-lo);
+  flex-shrink:0;
+}
+.lineage-node.is-focus{
+  border-color:var(--c-iris);
+  background:rgba(163,139,250,0.08);
+  box-shadow:0 0 24px rgba(163,139,250,0.15);
+}
+.lineage-node.is-focus .ln-name{color:var(--c-iris)}
+.ln-name{font-family:'JetBrains Mono',monospace;font-size:0.72rem;font-weight:600;color:var(--ink)}
+.ln-year{font-family:'JetBrains Mono',monospace;font-size:0.6rem;color:var(--ink-faint)}
+.lineage-arrow{
+  color:var(--ink-ghost);font-family:'JetBrains Mono',monospace;font-size:0.8rem;
+  flex-shrink:0;
+}
+
+/* ============================================================
+   CONTENT FRAME
+   ============================================================ */
+.content{
+  max-width:var(--max);margin:0 auto;
+  padding:0 1.6rem 8rem;
+}
+.sec{
+  margin-bottom:6rem;
+  opacity:0;transform:translateY(24px);
+  transition:opacity 0.7s ease, transform 0.7s ease;
+}
+.sec.visible{opacity:1;transform:translateY(0)}
+
+.sec-head{
+  display:flex;align-items:center;gap:14px;
+  font-family:'JetBrains Mono',monospace;
+  font-size:0.66rem;letter-spacing:0.24em;text-transform:uppercase;
+  color:var(--c-iris);
+  margin-bottom:1.4rem;
+}
+.sec-head::after{
+  content:"";height:1px;flex:1;
+  background:linear-gradient(90deg,rgba(163,139,250,0.5),transparent);
+}
+.sec h2{
+  font-family:'Source Serif 4',serif;
+  font-variation-settings:'opsz' 96;
+  font-weight:400;
+  font-size:clamp(1.8rem,3.6vw,2.8rem);
+  line-height:1.08;
+  letter-spacing:-0.025em;
+  margin-bottom:1.1rem;
+  max-width:24ch;
+}
+.sec h2 em{
+  font-style:italic;
+  font-weight:300;
+  background:var(--grad-head);
+  -webkit-background-clip:text;background-clip:text;
+  -webkit-text-fill-color:transparent;
+}
+.sec-lead{
+  font-family:'Source Serif 4',serif;
+  font-size:1.08rem;
+  line-height:1.75;
+  color:var(--ink-dim);
+  max-width:var(--reading);
+  margin-bottom:2.4rem;
+  font-weight:300;
+}
+
+/* ============================================================
+   ENGINE TABS the Research Thinking Engine
+   ============================================================ */
+.engine{
+  position:relative;
+}
+.engine-bar{
+  position:static;z-index:10;
+  padding-top:0.5rem;padding-bottom:0.6rem;
+  background:linear-gradient(180deg,rgba(255,251,238,0.96) 60%,rgba(255,251,238,0) 100%);
+  backdrop-filter:blur(10px);
+  -webkit-backdrop-filter:blur(10px);
+  margin-bottom:1.4rem;
+}
+.tabs{display:flex;gap:4px;padding:5px;background:rgba(255,255,255,0.55);border:1px solid rgba(75,55,12,0.1);border-radius:16px;overflow-x:auto;scrollbar-width:none;box-shadow:var(--shadow-md), 0 1px 0 rgba(255,255,255,0.8) inset;backdrop-filter:blur(16px) saturate(1.3);-webkit-backdrop-filter:blur(16px) saturate(1.3);}
+.tabs::-webkit-scrollbar{display:none}
+.tab{flex:1;min-width:108px;padding:0.65rem 0.6rem;background:transparent;border:none;border-radius:11px;color:var(--ink-faint);font-family:'JetBrains Mono',monospace;font-size:0.66rem;letter-spacing:0.08em;text-transform:uppercase;font-weight:500;cursor:pointer;transition:all 0.22s cubic-bezier(.4,0,.2,1);position:relative;display:flex;align-items:center;justify-content:center;gap:6px;white-space:nowrap;}
+.tab:hover{color:var(--ink-dim);background:rgba(255,255,255,0.6);box-shadow:0 1px 4px rgba(90,65,15,0.07);}
+.tab.active{color:var(--c-iris);background:rgba(255,255,255,0.85);box-shadow:0 2px 10px rgba(90,65,15,0.1), inset 0 0 0 1px rgba(163,139,250,0.3), 0 1px 0 rgba(255,255,255,0.9) inset;}
+.tab .tab-dot{
+  width:5px;height:5px;border-radius:50%;
+  background:var(--c-iris);
+  opacity:0;transition:opacity 0.2s;
+}
+.tab.visited .tab-dot{opacity:0.6}
+.tab.active .tab-dot{opacity:1;box-shadow:0 0 8px var(--c-iris)}
+
+.tab-glyph{
+  font-size:0.95rem;line-height:1;
+  filter:grayscale(0.3);
+}
+
+.layer{display:none;animation:layerFade 0.45s ease}
+.layer.active{display:block}
+@keyframes layerFade{
+  from{opacity:0;transform:translateY(8px)}
+  to{opacity:1;transform:translateY(0)}
+}
+.layer-eyebrow{
+  font-family:'JetBrains Mono',monospace;
+  font-size:0.64rem;letter-spacing:0.26em;text-transform:uppercase;
+  color:var(--c-iris);
+  margin-bottom:1.4rem;padding-bottom:0.7rem;
+  border-bottom:1px solid var(--line-soft);
+  display:flex;align-items:center;gap:0.6rem;
+}
+.layer-eyebrow::before{
+  content:"";width:8px;height:8px;border-radius:50%;
+  background:var(--c-iris);box-shadow:0 0 10px var(--c-iris);
+}
+
+/* ============================================================
+   BRAIN DOWNLOAD
+   ============================================================ */
+.brain-grid{
+  display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;
+  margin-bottom:1.8rem;
+}
+@media(max-width:780px){.brain-grid{grid-template-columns:1fr}}
+.brain-card{position:relative;padding:1.6rem;border-radius:var(--r-md);background:var(--grad-card);border:1px solid rgba(75,55,12,0.1);overflow:hidden;transition:border-color 0.28s, transform 0.28s, box-shadow 0.28s;box-shadow:var(--shadow-sm);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);}
+.brain-card::before{content:"";position:absolute;top:0;left:0;right:0;height:2.5px;background:var(--accent,var(--c-iris));opacity:0.85;border-radius:2px 2px 0 0;}
+.brain-card:hover{transform:translateY(-5px);border-color:rgba(75,55,12,0.18);box-shadow:0 20px 60px -16px rgba(90,65,15,0.18), 0 4px 16px -4px rgba(90,65,15,0.1);}
+.brain-card[data-tone="problem"]{--accent:var(--c-rose)}
+.brain-card[data-tone="idea"]{--accent:var(--c-iris)}
+.brain-card[data-tone="impact"]{--accent:var(--c-mint)}
+.brain-label{
+  font-family:'JetBrains Mono',monospace;
+  font-size:0.6rem;letter-spacing:0.22em;text-transform:uppercase;
+  color:var(--accent,var(--c-iris));
+  margin-bottom:0.7rem;
+}
+.brain-text{
+  font-size:0.94rem;line-height:1.7;color:var(--ink-dim);
+}
+.brain-text strong{color:var(--ink);font-weight:600}
+
+.one-line{
+  padding:1.3rem 1.5rem;
+  border-radius:var(--r-md);
+  background:linear-gradient(135deg,rgba(163,139,250,0.08),rgba(103,232,199,0.04));
+  border:1px solid rgba(163,139,250,0.2);
+  margin-bottom:1.6rem;
+  font-family:'Source Serif 4',serif;
+  font-size:1.05rem;line-height:1.65;color:var(--ink);
+}
+.one-line-label{
+  font-family:'JetBrains Mono',monospace;
+  font-size:0.62rem;letter-spacing:0.22em;text-transform:uppercase;
+  color:var(--c-iris);
+  margin-bottom:0.5rem;display:block;
+}
+.one-line em{font-style:italic;color:var(--c-iris)}
+
+.cta-row{display:flex;gap:0.6rem;flex-wrap:wrap;margin-top:1rem}
+.cta-btn{padding:0.55rem 1.15rem;border-radius:999px;background:rgba(255,255,255,0.5);border:1px solid rgba(75,55,12,0.13);color:var(--ink-dim);font-family:'JetBrains Mono',monospace;font-size:0.7rem;letter-spacing:0.06em;cursor:pointer;transition:all 0.22s cubic-bezier(.4,0,.2,1);box-shadow:0 1px 3px rgba(90,65,15,0.07), 0 1px 0 rgba(255,255,255,0.65) inset;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);}
+.cta-btn:hover{border-color:rgba(163,139,250,0.45);color:var(--c-iris);background:rgba(163,139,250,0.08);transform:translateY(-1px);box-shadow:0 4px 14px rgba(90,65,15,0.1), 0 1px 0 rgba(255,255,255,0.65) inset;}
+.cta-btn.primary{background:linear-gradient(135deg,rgba(163,139,250,0.2) 0%,rgba(103,163,217,0.08) 100%);border-color:rgba(163,139,250,0.42);color:var(--c-iris);box-shadow:0 2px 10px rgba(163,139,250,0.15), 0 1px 0 rgba(255,255,255,0.5) inset;}
+
+/* ============================================================
+   VISUAL LAYER interactive SVG box
+   ============================================================ */
+.viz-frame{
+  border-radius:var(--r-lg);
+  background:linear-gradient(180deg,var(--bg-sunk),var(--bg-raise));
+  border:1px solid var(--line);
+  padding:1.6rem;
+  margin-bottom:1.4rem;
+  box-shadow:var(--shadow-md);
+}
+.viz-title{
+  font-family:'JetBrains Mono',monospace;
+  font-size:0.66rem;letter-spacing:0.2em;text-transform:uppercase;
+  color:var(--c-iris);margin-bottom:1.2rem;
+  display:flex;align-items:center;gap:0.6rem;
+}
+.viz-title::before{content:"▸";opacity:0.7}
+
+.viz-stage{
+  background:radial-gradient(ellipse at center, rgba(163,139,250,0.04), transparent 70%), var(--bg-sunk);
+  border:1px solid var(--line-soft);
+  border-radius:var(--r-md);padding:1.4rem 0.8rem;
+  overflow:hidden;
+}
+.viz-controls{
+  display:flex;align-items:center;gap:0.8rem;flex-wrap:wrap;
+  margin-top:1rem;
+}
+.viz-play{
+  padding:0.55rem 1.2rem;border-radius:999px;
+  background:rgba(163,139,250,0.1);
+  border:1.5px solid rgba(163,139,250,0.35);
+  color:var(--c-iris);
+  font-family:'JetBrains Mono',monospace;
+  font-size:0.74rem;letter-spacing:0.04em;font-weight:600;
+  cursor:pointer;transition:all 0.2s;
+}
+.viz-play:hover{background:rgba(163,139,250,0.18)}
+.viz-reset{
+  padding:0.5rem 1rem;border-radius:999px;
+  background:transparent;border:1px solid var(--line);color:var(--ink-faint);
+  font-family:'JetBrains Mono',monospace;font-size:0.72rem;cursor:pointer;
+  transition:all 0.2s;
+}
+.viz-reset:hover{border-color:var(--ink-faint);color:var(--ink-dim)}
+.viz-status{
+  flex:1;min-width:220px;text-align:right;
+  font-family:'JetBrains Mono',monospace;font-size:0.72rem;
+  color:var(--c-iris);
+  letter-spacing:0.02em;
+}
+
+/* ============================================================
+   CALLOUTS
+   ============================================================ */
+.callout{display:flex;gap:1rem;align-items:flex-start;padding:1.2rem 1.4rem;border-radius:var(--r-md);margin-bottom:1.2rem;border:1px solid var(--line);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);box-shadow:0 2px 12px rgba(90,65,15,0.05), 0 1px 0 rgba(255,255,255,0.55) inset;}
+.callout.k-map{background:linear-gradient(135deg,rgba(103,232,199,0.09) 0%,rgba(103,232,199,0.03) 100%);border-color:rgba(103,232,199,0.28);}
+.callout.k-warn{background:linear-gradient(135deg,rgba(245,166,35,0.09) 0%,rgba(245,166,35,0.03) 100%);border-color:rgba(245,166,35,0.28);}
+.callout.k-iris{background:linear-gradient(135deg,rgba(163,139,250,0.1) 0%,rgba(163,139,250,0.03) 100%);border-color:rgba(163,139,250,0.26);}
+.callout.k-sky{background:linear-gradient(135deg,rgba(106,165,255,0.09) 0%,rgba(106,165,255,0.03) 100%);border-color:rgba(106,165,255,0.26);}
+.callout.k-rose{background:linear-gradient(135deg,rgba(240,114,176,0.09) 0%,rgba(240,114,176,0.03) 100%);border-color:rgba(240,114,176,0.26);}
+.callout-icon{font-size:1.3rem;flex-shrink:0;line-height:1.2;margin-top:0.1rem}
+.callout-body h4{
+  font-size:0.95rem;font-weight:600;color:var(--ink);
+  margin-bottom:0.35rem;letter-spacing:-0.01em;
+}
+.callout-body p{
+  font-size:0.9rem;line-height:1.7;color:var(--ink-dim);
+}
+.callout-body code{
+  font-family:'JetBrains Mono',monospace;font-size:0.82rem;
+  background:rgba(45,55,72,0.06);padding:0.1rem 0.35rem;
+  border-radius:4px;color:var(--c-iris);
+}
+
+/* ============================================================
+   ACCORDION (deep dive, research thinking)
+   ============================================================ */
+.accordion{border:1px solid rgba(75,55,12,0.1);border-radius:var(--r-md);overflow:hidden;margin-bottom:0.7rem;background:rgba(255,255,255,0.48);transition:border-color 0.24s, box-shadow 0.24s;box-shadow:0 1px 4px rgba(90,65,15,0.05), 0 1px 0 rgba(255,255,255,0.65) inset;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);}
+.accordion:hover{border-color:rgba(75,55,12,0.2);box-shadow:0 4px 16px rgba(90,65,15,0.09), 0 1px 0 rgba(255,255,255,0.65) inset;}
+.accordion.open{border-color:rgba(163,139,250,0.4);box-shadow:0 4px 20px rgba(163,139,250,0.1), 0 1px 0 rgba(255,255,255,0.65) inset;}
+.acc-q{
+  padding:1.05rem 1.35rem;
+  font-size:0.94rem;font-weight:500;color:var(--ink);
+  cursor:pointer;
+  display:flex;justify-content:space-between;align-items:center;gap:1rem;
+  letter-spacing:-0.005em;
+}
+.acc-chev{color:var(--c-iris);transition:transform 0.25s;font-family:'JetBrains Mono',monospace;font-size:0.9rem}
+.accordion.open .acc-chev{transform:rotate(90deg)}
+.acc-a{
+  padding:0 1.35rem 1.2rem;
+  font-size:0.88rem;line-height:1.78;color:var(--ink-dim);
+  display:none;
+  border-top:1px solid var(--line-soft);
+  padding-top:1.2rem;
+  margin-top:-1px;
+}
+.accordion.open .acc-a{display:block}
+.acc-a strong{color:var(--ink);font-weight:600}
+.acc-a code{font-family:'JetBrains Mono',monospace;font-size:0.82rem;background:rgba(45,55,72,0.06);padding:0.1rem 0.35rem;border-radius:4px;color:var(--c-iris)}
+.acc-a ul{margin:0.6rem 0 0.6rem 1.2rem;font-size:0.86rem;line-height:1.75}
+.tldr{
+  display:inline-block;
+  font-family:'JetBrains Mono',monospace;font-size:0.7rem;
+  padding:0.35rem 0.75rem;border-radius:6px;margin-bottom:0.9rem;
+  background:rgba(163,139,250,0.08);border:1px solid rgba(163,139,250,0.2);
+  color:var(--c-iris);letter-spacing:0.02em;
+}
+.tldr::before{content:"⚡ TLDR  ";font-weight:700;opacity:0.9}
+
+/* math toggle sky (distinct from iris primary) */
+.math-toggle{margin-top:1rem;border:1px solid rgba(106,165,255,0.22);border-radius:var(--r-sm);background:rgba(106,165,255,0.04);overflow:hidden;}
+.math-head{display:flex;align-items:center;justify-content:space-between;padding:0.7rem 1rem;cursor:pointer;font-family:'JetBrains Mono',monospace;font-size:0.7rem;color:var(--c-sky);letter-spacing:0.14em;text-transform:uppercase;user-select:none;}
+.math-head:hover{background:rgba(106,165,255,0.08);}
+.math-head .math-chev{font-size:0.85rem;transition:transform 0.3s;}
+.math-toggle.open .math-head .math-chev{transform:rotate(90deg);}
+.math-body{max-height:0;overflow:hidden;transition:max-height 0.4s ease;padding:0 1rem;}
+.math-toggle.open .math-body{max-height:1800px;padding:0.3rem 1rem 1rem;}
+.math-body p{font-size:0.88rem;color:var(--ink-dim);line-height:1.75;margin-bottom:0.7rem;}
+.math-body p:last-child{margin-bottom:0;}
+.math-body .katex-display{margin:0.9rem 0;padding:0.85rem 0.7rem;background:var(--bg-raise);border-radius:var(--r-sm);border-left:2px solid var(--c-sky);overflow-x:auto;}
+.math-body strong{color:var(--c-sky);font-weight:600;}
+.math-body em{color:var(--ink);font-style:italic;}
+
+/* pitfall grid rose for warning */
+.pitfall-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:1rem;margin:1rem 0 1.8rem;}
+.pitfall-card{padding:1.2rem 1.25rem;border-radius:var(--r-md);background:rgba(240,114,176,0.04);border:1px solid rgba(240,114,176,0.22);position:relative;overflow:hidden;}
+.pitfall-card::before{content:"";position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,var(--c-rose),transparent);}
+.pf-label{font-family:'JetBrains Mono',monospace;font-size:0.6rem;color:var(--c-rose);letter-spacing:0.18em;text-transform:uppercase;margin-bottom:0.5rem;display:block;font-weight:600;}
+.pf-title{font-family:'Source Serif 4',serif;font-size:1.02rem;font-weight:500;color:var(--ink);margin-bottom:0.5rem;line-height:1.3;letter-spacing:-0.01em;}
+.pf-example{font-family:'JetBrains Mono',monospace;font-size:0.76rem;color:var(--ink-dim);background:var(--bg-raise);padding:0.5rem 0.7rem;border-radius:var(--r-xs);margin:0.55rem 0;border-left:2px solid var(--c-iris);display:block;}
+.pf-body{font-size:0.87rem;color:var(--ink-dim);line-height:1.65;}
+.pf-body strong{color:var(--ink);font-weight:600;}
+
+/* industry box iris primary with mint highlight */
+.industry-box{margin-top:2rem;padding:0;border-radius:var(--r-lg);background:var(--bg-raise);border:1px solid var(--line);overflow:hidden;box-shadow:var(--shadow-md);}
+.industry-header{padding:1.1rem 1.3rem;background:linear-gradient(135deg,rgba(163,139,250,0.08),rgba(103,232,199,0.04));border-bottom:1px solid var(--line);}
+.industry-eyebrow{font-family:'JetBrains Mono',monospace;font-size:0.66rem;color:var(--c-iris);letter-spacing:0.18em;text-transform:uppercase;margin-bottom:0.4rem;font-weight:600;}
+.industry-title{font-family:'Source Serif 4',serif;font-size:1.2rem;font-weight:500;color:var(--ink);letter-spacing:-0.015em;}
+.industry-rows{padding:0.4rem 0;}
+.irow{display:grid;grid-template-columns:180px 1fr;gap:1.2rem;padding:1rem 1.3rem;border-bottom:1px solid var(--line-soft);align-items:baseline;}
+.irow:last-child{border-bottom:none;}
+.irow-co{font-family:'Source Serif 4',serif;font-size:1.02rem;font-weight:500;color:var(--c-iris);}
+.irow-co-sub{font-family:'JetBrains Mono',monospace;font-size:0.6rem;color:var(--ink-faint);letter-spacing:0.08em;text-transform:uppercase;display:block;margin-top:2px;}
+.irow-verdict{font-size:0.9rem;color:var(--ink-dim);line-height:1.65;}
+.irow-verdict strong{color:var(--ink);font-weight:600;}
+.irow-verdict .v-yes{color:var(--c-mint);font-weight:600;}
+.irow-verdict .v-no{color:var(--c-rose);font-weight:600;}
+.irow-verdict .v-maybe{color:var(--c-amber);font-weight:600;}
+@media(max-width:640px){.irow{grid-template-columns:1fr;gap:0.3rem;}}
+
+/* replicate layer stack grid + code blocks */
+.stack-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:0.9rem;margin-bottom:2rem;}
+.stack-cell{padding:1rem 1.1rem;border-radius:var(--r-md);background:var(--surf-lo);border:1px solid var(--line);transition:border-color 0.2s, transform 0.15s;}
+.stack-cell:hover{border-color:var(--c-mint);transform:translateY(-1px);}
+.stack-label{font-family:'JetBrains Mono',monospace;font-size:0.62rem;letter-spacing:0.2em;text-transform:uppercase;color:var(--c-mint);margin-bottom:0.5rem;font-weight:600;}
+.stack-name{font-family:'Source Serif 4',serif;font-size:1rem;font-weight:500;color:var(--ink);margin-bottom:0.25rem;letter-spacing:-0.005em;}
+.stack-note{font-size:0.82rem;line-height:1.6;color:var(--ink-dim);}
+.stack-note code{font-family:'JetBrains Mono',monospace;font-size:0.78rem;background:var(--bg-raise);padding:0.1rem 0.35rem;border-radius:4px;color:var(--c-mint);}
+
+.code-block{background:var(--bg-raise);border:1px solid var(--line);border-radius:var(--r-md);margin:1rem 0 1.4rem;overflow:hidden;box-shadow:var(--shadow-md);}
+.code-head{display:flex;justify-content:space-between;align-items:center;padding:0.65rem 1rem;background:var(--surf-lo);border-bottom:1px solid var(--line-soft);}
+.code-title{font-family:'JetBrains Mono',monospace;font-size:0.72rem;color:var(--c-mint);letter-spacing:0.04em;}
+.code-copy{background:transparent;border:1px solid var(--line);color:var(--ink-faint);font-family:'JetBrains Mono',monospace;font-size:0.68rem;padding:0.3rem 0.7rem;border-radius:999px;cursor:pointer;transition:all 0.2s;letter-spacing:0.04em;}
+.code-copy:hover{border-color:var(--c-mint);color:var(--c-mint);background:rgba(103,232,199,0.05);}
+.code-copy.ok{border-color:var(--c-mint);color:var(--c-mint);background:rgba(103,232,199,0.08);}
+.code-body{padding:0.9rem 1.1rem;overflow-x:auto;max-height:480px;overflow-y:auto;}
+.code-body pre{margin:0;font-family:'JetBrains Mono',monospace;font-size:0.8rem;line-height:1.65;color:var(--ink);}
+.code-body .c-kw{color:var(--c-iris);font-weight:600;}
+.code-body .c-fn{color:var(--c-sky);}
+.code-body .c-str{color:var(--c-mint);}
+.code-body .c-cm{color:var(--ink-faint);font-style:italic;}
+.code-body .c-num{color:var(--c-rose);}
+
+.sub-head{font-family:'JetBrains Mono',monospace;font-size:0.75rem;letter-spacing:0.16em;text-transform:uppercase;color:var(--ink-faint);margin:1.8rem 0 0.9rem;font-weight:600;}
+
+/* ============================================================
+   PAPER LAYER the full breakdown
+   ============================================================ */
+.paper-intro{
+  display:flex;gap:1rem;align-items:flex-start;
+  padding:1.4rem 1.5rem;margin-bottom:2.4rem;
+  background:var(--grad-iris);
+  border:1px solid rgba(163,139,250,0.18);
+  border-radius:var(--r-md);
+}
+.paper-intro-icon{
+  font-size:1.6rem;flex-shrink:0;
+}
+.paper-intro-body{font-size:0.92rem;line-height:1.72;color:var(--ink-dim)}
+.paper-intro-body strong{color:var(--ink)}
+
+.psec{
+  padding:2rem 0 2.4rem;
+  border-bottom:1px solid var(--line-soft);
+}
+.psec:last-child{border-bottom:none}
+.psec-head{
+  display:flex;align-items:baseline;gap:1rem;margin-bottom:1.4rem;
+}
+.psec-num{
+  font-family:'Source Serif 4',serif;
+  font-style:italic;
+  font-size:1.8rem;font-weight:400;
+  color:var(--c-iris);
+  min-width:3rem;
+}
+.psec-title{
+  font-family:'Source Serif 4',serif;
+  font-size:clamp(1.3rem,2.4vw,1.7rem);
+  font-weight:400;line-height:1.2;color:var(--ink);
+  letter-spacing:-0.02em;
+}
+.psec-body{max-width:var(--reading)}
+.psec-body p{
+  font-family:'Source Serif 4',serif;
+  font-size:1.02rem;line-height:1.78;color:var(--ink-dim);
+  margin-bottom:1rem;font-weight:300;
+}
+.psec-body p strong{color:var(--ink);font-weight:500}
+.psec-body p em{color:var(--ink);font-style:italic}
+
+.compare-row{
+  display:grid;grid-template-columns:130px 1fr;gap:1rem;
+  padding:0.8rem 1rem;margin:0.35rem 0;
+  border-left:2px solid var(--c-rose);
+  background:rgba(240,114,176,0.035);
+  border-radius:0 10px 10px 0;
+}
+.cr-method{
+  font-family:'JetBrains Mono',monospace;
+  font-size:0.82rem;color:var(--c-rose);font-weight:600;
+  letter-spacing:0.02em;
+}
+.cr-fail{font-size:0.88rem;line-height:1.65;color:var(--ink-dim);font-family:'Outfit',sans-serif}
+
+.insight-box{
+  margin-top:1.6rem;
+  padding:1.3rem 1.5rem;
+  background:linear-gradient(135deg,rgba(163,139,250,0.08),rgba(103,232,199,0.03));
+  border-left:3px solid var(--c-iris);
+  border-radius:0 var(--r-sm) var(--r-sm) 0;
+}
+.insight-label{
+  font-family:'JetBrains Mono',monospace;
+  font-size:0.62rem;letter-spacing:0.2em;text-transform:uppercase;
+  color:var(--c-iris);margin-bottom:0.6rem;
+}
+.insight-box p{
+  font-family:'Source Serif 4',serif;
+  font-size:0.98rem;line-height:1.75;color:var(--ink);
+  font-weight:300;
+}
+
+/* Algorithm block the INSERT pseudocode */
+.algo{
+  margin:1.6rem 0;
+  border:1px solid var(--line);
+  border-radius:var(--r-md);
+  background:var(--bg-raise);
+  overflow:hidden;
+}
+.algo-head{
+  padding:0.9rem 1.4rem;
+  background:linear-gradient(90deg,rgba(163,139,250,0.08),transparent);
+  border-bottom:1px solid var(--line);
+  font-family:'JetBrains Mono',monospace;
+  font-size:0.76rem;color:var(--c-iris);
+  letter-spacing:0.02em;
+}
+.algo-step{
+  display:grid;grid-template-columns:minmax(220px,34%) 1fr;
+  gap:1rem;
+  padding:1rem 1.4rem;
+  border-top:1px solid var(--line-soft);
+  align-items:start;
+}
+.algo-step:first-of-type{border-top:none}
+.algo-step.hi{background:rgba(163,139,250,0.04)}
+.algo-step.lp{background:rgba(103,232,199,0.03)}
+.algo-step.ind{padding-left:2.6rem}
+.algo-code{
+  font-family:'JetBrains Mono',monospace;
+  font-size:0.84rem;line-height:1.6;
+  color:var(--ink);
+  white-space:pre-wrap;word-break:break-word;
+}
+.algo-code sub,.algo-code sup{font-size:0.7em}
+.algo-expl{
+  font-size:0.88rem;line-height:1.72;color:var(--ink-dim);
+}
+.algo-expl strong{color:var(--ink);font-weight:600}
+.algo-expl em{color:var(--ink);font-style:italic}
+.algo-expl ul{margin:0.5rem 0 0.5rem 1.1rem;font-size:0.84rem;line-height:1.78}
+@media(max-width:700px){
+  .algo-step{grid-template-columns:1fr}
+  .algo-step.ind{padding-left:1.4rem;border-left:2px solid rgba(103,232,199,0.3)}
+}
+
+/* Worked example */
+.example{
+  margin-top:1.8rem;
+  padding:1.4rem 1.6rem;
+  background:rgba(106,165,255,0.04);
+  border:1px solid rgba(106,165,255,0.2);
+  border-radius:var(--r-md);
+  position:relative;
+}
+.example::before{
+  content:"WORKED EXAMPLE";
+  position:absolute;top:-9px;left:1.3rem;
+  padding:0 0.6rem;
+  background:var(--bg);
+  font-family:'JetBrains Mono',monospace;
+  font-size:0.6rem;letter-spacing:0.2em;color:var(--c-sky);
+}
+.example-intro{font-size:0.9rem;color:var(--ink-dim);margin-bottom:1rem;line-height:1.7}
+.ex-step{
+  display:flex;gap:0.9rem;align-items:flex-start;
+  margin-bottom:0.8rem;
+}
+.ex-num{
+  flex-shrink:0;
+  width:26px;height:26px;border-radius:50%;
+  background:rgba(106,165,255,0.12);
+  border:1px solid rgba(106,165,255,0.35);
+  color:var(--c-sky);
+  font-family:'JetBrains Mono',monospace;font-size:0.72rem;font-weight:700;
+  display:flex;align-items:center;justify-content:center;
+  margin-top:0.1rem;
+}
+.ex-body{font-size:0.88rem;line-height:1.72;color:var(--ink-dim);flex:1}
+.ex-body strong{color:var(--ink);font-weight:600}
+
+/* Theorem */
+.theorem{
+  margin:1.6rem 0;
+  padding:1.6rem 1.8rem;
+  background:linear-gradient(135deg,rgba(163,139,250,0.08),rgba(163,139,250,0.02));
+  border:1px solid rgba(163,139,250,0.3);
+  border-radius:var(--r-md);
+  position:relative;
+}
+.theorem::before{
+  content:"THEOREM";
+  position:absolute;top:-9px;left:1.4rem;
+  padding:0 0.6rem;background:var(--bg);
+  font-family:'JetBrains Mono',monospace;font-size:0.6rem;letter-spacing:0.22em;
+  color:var(--c-iris);
+}
+.theorem-body{
+  font-family:'Source Serif 4',serif;
+  font-size:1.05rem;line-height:1.72;color:var(--ink);font-weight:300;
+}
+.theorem-body strong{color:var(--c-iris);font-weight:500}
+
+.math-block{
+  margin:1.2rem 0;
+  padding:1.2rem 1.4rem;
+  background:var(--bg-raise);
+  border:1px solid var(--line);
+  border-radius:var(--r-sm);
+}
+.math-block-label{
+  font-family:'JetBrains Mono',monospace;
+  font-size:0.64rem;letter-spacing:0.2em;text-transform:uppercase;
+  color:var(--c-sky);margin-bottom:0.8rem;
+}
+.math-line{
+  font-family:'JetBrains Mono',monospace;
+  font-size:0.92rem;color:var(--ink);
+  padding:0.6rem 0;text-align:center;
+  letter-spacing:0.03em;
+}
+.math-block p{
+  font-size:0.9rem;line-height:1.7;color:var(--ink-dim);
+  margin:0.5rem 0;
+}
+
+/* Experiment grid */
+.exp-grid{
+  display:grid;grid-template-columns:repeat(2,1fr);gap:1rem;
+  margin-bottom:1.4rem;
+}
+@media(max-width:680px){.exp-grid{grid-template-columns:1fr}}
+.exp-card{
+  padding:1.2rem 1.3rem;
+  background:var(--surf-lo);
+  border:1px solid var(--line);
+  border-radius:var(--r-sm);
+}
+.exp-dataset{
+  font-family:'JetBrains Mono',monospace;font-size:0.74rem;
+  color:var(--c-mint);margin-bottom:0.5rem;letter-spacing:0.04em;font-weight:600;
+}
+.exp-result{font-size:0.88rem;line-height:1.68;color:var(--ink-dim)}
+.exp-result strong{color:var(--ink);font-weight:600}
+
+/* Limit rows */
+.limit-row{
+  padding:0.9rem 1rem;
+  margin-bottom:0.5rem;
+  border-left:2px solid var(--c-amber);
+  background:rgba(245,166,35,0.03);
+  border-radius:0 8px 8px 0;
+}
+.limit-title{
+  font-size:0.92rem;color:var(--ink);font-weight:600;
+  margin-bottom:0.25rem;letter-spacing:-0.005em;
+}
+.limit-text{font-size:0.86rem;line-height:1.7;color:var(--ink-dim)}
+
+/* Timeline */
+.timeline{
+  margin-top:1rem;
+  padding-left:1.8rem;
+  border-left:1px solid var(--line);
+}
+.tl-item{
+  position:relative;
+  padding-bottom:1.3rem;
+}
+.tl-item::before{
+  content:"";
+  position:absolute;left:-2.25rem;top:0.3rem;
+  width:9px;height:9px;border-radius:50%;
+  background:var(--c-iris);
+  box-shadow:0 0 0 3px var(--bg), 0 0 12px rgba(163,139,250,0.5);
+}
+.tl-year{
+  font-family:'JetBrains Mono',monospace;font-size:0.8rem;
+  color:var(--c-iris);margin-bottom:0.3rem;font-weight:600;
+}
+.tl-content{font-size:0.9rem;line-height:1.7;color:var(--ink-dim)}
+.tl-content strong{color:var(--ink);font-weight:600}
+
+/* ============================================================
+   THINK LIKE RESEARCHER
+   ============================================================ */
+.sub-head{
+  font-family:'JetBrains Mono',monospace;
+  font-size:0.68rem;letter-spacing:0.2em;text-transform:uppercase;
+  color:var(--ink-faint);
+  margin:2rem 0 1rem;
+  padding-bottom:0.5rem;
+  border-bottom:1px solid var(--line-soft);
+  display:flex;align-items:center;gap:0.6rem;
+}
+.sub-head::before{content:"◆";color:var(--c-iris);font-size:0.6rem}
+
+.decision{
+  padding:1.4rem 1.5rem;
+  background:var(--grad-card);
+  border:1px solid var(--line);
+  border-radius:var(--r-md);
+  margin-bottom:1.2rem;
+}
+.decision-stem{
+  font-size:1rem;font-weight:500;color:var(--ink);
+  margin-bottom:1.1rem;line-height:1.55;letter-spacing:-0.005em;
+}
+.decision-opts{
+  display:grid;grid-template-columns:1fr 1fr;gap:0.6rem;
+  margin-bottom:0.7rem;
+}
+@media(max-width:620px){.decision-opts{grid-template-columns:1fr}}
+.d-opt{
+  padding:0.9rem 1rem;
+  border:1.5px solid var(--line);
+  border-radius:var(--r-sm);
+  background:var(--surf-lo);color:var(--ink-dim);
+  font-family:'Outfit',sans-serif;
+  font-size:0.88rem;line-height:1.55;
+  text-align:left;cursor:pointer;
+  transition:all 0.2s;
+}
+.d-opt:hover:not([disabled]){
+  border-color:var(--c-iris);
+  background:rgba(163,139,250,0.05);
+  color:var(--ink);
+}
+.d-opt.d-correct{
+  border-color:rgba(103,232,199,0.6);
+  background:rgba(103,232,199,0.06);
+  color:var(--ink);
+}
+.d-opt.d-wrong{
+  border-color:rgba(240,114,176,0.45);
+  background:rgba(240,114,176,0.04);
+  color:var(--ink-dim);
+}
+.d-reveal{
+  display:none;
+  margin-top:0.7rem;
+  padding:1rem 1.15rem;
+  background:var(--surf);
+  border:1px solid var(--line);
+  border-radius:var(--r-sm);
+  font-size:0.87rem;line-height:1.7;color:var(--ink-dim);
+}
+.d-reveal.open{display:block}
+.d-reveal strong{color:var(--ink)}
+
+.failure-box{
+  padding:1.2rem 1.4rem;
+  margin-bottom:0.8rem;
+  border-radius:var(--r-sm);
+  background:rgba(240,114,176,0.04);
+  border-left:3px solid var(--c-rose);
+}
+.fb-title{
+  font-size:0.92rem;font-weight:600;color:var(--c-rose);
+  margin-bottom:0.4rem;
+}
+.fb-text{font-size:0.88rem;line-height:1.72;color:var(--ink-dim)}
+.fb-text strong{color:var(--ink);font-weight:600}
+
+/* ============================================================
+   REALITY CHECK
+   ============================================================ */
+.reality{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1.6rem}
+@media(max-width:620px){.reality{grid-template-columns:1fr}}
+.rgl{
+  padding:1.2rem 1.3rem;border-radius:var(--r-md);
+  background:rgba(103,232,199,0.04);
+  border:1px solid rgba(103,232,199,0.2);
+}
+.rgr{
+  padding:1.2rem 1.3rem;border-radius:var(--r-md);
+  background:rgba(240,114,176,0.04);
+  border:1px solid rgba(240,114,176,0.18);
+}
+.rg-title{
+  font-family:'JetBrains Mono',monospace;
+  font-size:0.66rem;letter-spacing:0.18em;text-transform:uppercase;
+  font-weight:600;margin-bottom:0.8rem;
+}
+.rgl .rg-title{color:var(--c-mint)}
+.rgr .rg-title{color:var(--c-rose)}
+.rg-li{
+  font-size:0.86rem;line-height:1.75;color:var(--ink-dim);
+  padding-left:14px;position:relative;margin-bottom:0.3rem;
+}
+.rg-li::before{
+  content:"";position:absolute;left:0;top:10px;
+  width:5px;height:5px;border-radius:50%;
+  background:currentColor;opacity:0.5;
+}
+
+.cmp-table{
+  width:100%;border-collapse:collapse;
+  margin-top:1rem;
+  font-size:0.86rem;
+  background:var(--bg-raise);
+  border:1px solid var(--line);
+  border-radius:var(--r-md);
+  overflow:hidden;
+}
+.cmp-table th{
+  text-align:left;padding:0.85rem 1.1rem;
+  font-family:'JetBrains Mono',monospace;
+  font-size:0.62rem;letter-spacing:0.14em;text-transform:uppercase;
+  color:var(--ink-faint);font-weight:600;
+  border-bottom:1px solid var(--line);
+  background:var(--surf-lo);
+}
+.cmp-table td{
+  padding:0.8rem 1.1rem;
+  border-bottom:1px solid var(--line-soft);
+  color:var(--ink-dim);line-height:1.6;
+}
+.cmp-table td:first-child{color:var(--ink);font-weight:500}
+.cmp-table tr:last-child td{border-bottom:none}
+.cmp-table tr:hover td{background:var(--surf-lo)}
+.td-good{color:var(--c-mint)!important;font-weight:500}
+.td-bad{color:var(--c-rose)!important}
+
+/* ============================================================
+   BUILD IT
+   ============================================================ */
+.build-step{
+  display:flex;gap:1rem;align-items:flex-start;
+  padding:1.1rem 0;
+  border-top:1px solid var(--line-soft);
+}
+.build-step:first-child{border-top:none;padding-top:0}
+.bs-num{
+  flex-shrink:0;
+  width:30px;height:30px;border-radius:50%;
+  background:rgba(163,139,250,0.1);
+  border:1px solid rgba(163,139,250,0.3);
+  color:var(--c-iris);
+  font-family:'JetBrains Mono',monospace;font-size:0.78rem;font-weight:700;
+  display:flex;align-items:center;justify-content:center;
+  margin-top:0.15rem;
+}
+.bs-body{flex:1}
+.bs-title{
+  font-size:0.95rem;font-weight:600;color:var(--ink);
+  margin-bottom:0.3rem;letter-spacing:-0.005em;
+}
+.bs-desc{font-size:0.87rem;line-height:1.7;color:var(--ink-dim)}
+.bs-desc code{
+  font-family:'JetBrains Mono',monospace;font-size:0.82rem;
+  background:rgba(45,55,72,0.06);padding:0.1rem 0.35rem;
+  border-radius:4px;color:var(--c-iris);
+}
+.bs-skip{
+  font-family:'JetBrains Mono',monospace;font-size:0.72rem;
+  color:var(--c-amber);margin-top:0.4rem;
+}
+.bs-skip::before{content:"↓ skip: ";opacity:0.7}
+
+.idea-grid{
+  display:grid;grid-template-columns:repeat(3,1fr);gap:0.9rem;
+  margin-top:1.6rem;
+}
+@media(max-width:780px){.idea-grid{grid-template-columns:1fr}}
+.idea-card{padding:1.1rem 1.15rem;border-radius:var(--r-md)}
+.ic-a{background:rgba(103,232,199,0.05);border:1px solid rgba(103,232,199,0.22)}
+.ic-b{background:rgba(245,166,35,0.05);border:1px solid rgba(245,166,35,0.22)}
+.ic-c{background:rgba(163,139,250,0.05);border:1px solid rgba(163,139,250,0.22)}
+.ic-label{
+  font-family:'JetBrains Mono',monospace;
+  font-size:0.62rem;letter-spacing:0.2em;text-transform:uppercase;
+  font-weight:600;margin-bottom:0.55rem;
+}
+.ic-a .ic-label{color:var(--c-mint)}
+.ic-b .ic-label{color:var(--c-amber)}
+.ic-c .ic-label{color:var(--c-iris)}
+.ic-text{font-size:0.86rem;line-height:1.68;color:var(--ink-dim)}
+
+/* ============================================================
+   NOTES LAYER
+   ============================================================ */
+.notes-area{
+  width:100%;min-height:140px;
+  padding:1.1rem 1.2rem;
+  background:var(--surf-lo);border:1px solid var(--line);
+  border-radius:var(--r-md);
+  color:var(--ink);
+  font-family:'Source Serif 4',serif;font-size:1rem;line-height:1.65;
+  resize:vertical;margin-bottom:0.9rem;
+  transition:border-color 0.2s;
+}
+.notes-area:focus{outline:none;border-color:var(--c-iris)}
+.notes-area::placeholder{color:var(--ink-ghost);font-style:italic}
+
+.saved-note{
+  padding:1rem 1.2rem;
+  background:var(--surf-lo);
+  border:1px solid var(--line);
+  border-radius:var(--r-sm);
+  margin-top:0.6rem;
+  font-size:0.9rem;line-height:1.7;color:var(--ink-dim);
+}
+.note-ts{
+  font-family:'JetBrains Mono',monospace;font-size:0.66rem;
+  color:var(--ink-ghost);margin-bottom:0.3rem;letter-spacing:0.04em;
+}
+
+.progress-panel{
+  margin-top:2rem;padding:1.4rem 1.5rem;
+  background:var(--bg-raise);border:1px solid var(--line);
+  border-radius:var(--r-md);
+}
+.progress-panel-title{
+  font-family:'JetBrains Mono',monospace;
+  font-size:0.66rem;letter-spacing:0.2em;text-transform:uppercase;
+  color:var(--ink-faint);margin-bottom:1rem;
+}
+.prog-row{
+  display:grid;grid-template-columns:140px 1fr 40px;gap:0.8rem;align-items:center;
+  padding:0.4rem 0;
+}
+.prog-name{font-size:0.82rem;color:var(--ink-dim)}
+.prog-bar{
+  height:4px;background:var(--surf);border-radius:2px;overflow:hidden;
+}
+.prog-fill{
+  height:100%;width:0;background:var(--grad-spine);
+  transition:width 0.5s ease;
+}
+.prog-pct{
+  font-family:'JetBrains Mono',monospace;font-size:0.72rem;
+  color:var(--c-iris);text-align:right;
+}
+
+/* ============================================================
+   PDF SECTION
+   ============================================================ */
+/* Inline PDF viewer (paper rendered next to the breakdown) */
+.pdf-wrap{background:rgba(255,253,244,0.75);border:1px solid rgba(75,55,12,0.11);border-radius:var(--r-lg);overflow:hidden;box-shadow:var(--shadow-hi);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);}
+.pdf-head{display:flex;align-items:center;justify-content:space-between;padding:1rem 1.4rem;border-bottom:1px solid rgba(75,55,12,0.09);background:linear-gradient(135deg,rgba(163,139,250,0.12) 0%,rgba(103,163,217,0.05) 50%,rgba(94,234,212,0.04) 100%);}
+.pdf-title{font-family:'JetBrains Mono',monospace;font-size:0.76rem;color:var(--c-iris);letter-spacing:0.04em;}
+.pdf-open{padding:0.45rem 0.95rem;border-radius:999px;background:rgba(255,255,255,0.55);border:1px solid rgba(163,139,250,0.4);color:var(--c-iris);text-decoration:none;font-family:'JetBrains Mono',monospace;font-size:0.72rem;transition:all 0.22s cubic-bezier(.4,0,.2,1);box-shadow:0 1px 4px rgba(90,65,15,0.07), 0 1px 0 rgba(255,255,255,0.6) inset;}
+.pdf-open:hover{background:rgba(163,139,250,0.15);transform:translateY(-1px);box-shadow:0 4px 14px rgba(163,139,250,0.18), 0 1px 0 rgba(255,255,255,0.6) inset;}
+.pdf-frame{
+  width:100%;height:780px;border:none;display:block;
+  background:#f4ecdf;
+}
+
+/* Shown only when the <object> can't load the PDF (file missing, CORS blocked, etc.) */
+.pdf-fallback{
+  padding:3.5rem 2rem;text-align:center;
+  display:flex;flex-direction:column;align-items:center;gap:1rem;
+  min-height:500px;justify-content:center;
+  background:linear-gradient(180deg,var(--bg-raise),var(--bg-sunk));
+}
+.pdf-fallback-icon{font-size:2.4rem;opacity:0.6}
+.pdf-fallback-title{
+  font-family:'Source Serif 4',serif;
+  font-size:1.2rem;color:var(--ink);font-weight:500;
+  letter-spacing:-0.01em;
+}
+.pdf-fallback-sub{
+  font-size:0.92rem;line-height:1.7;color:var(--ink-dim);
+  max-width:48ch;
+}
+.pdf-fallback-sub code{
+  font-family:'JetBrains Mono',monospace;font-size:0.82rem;
+  background:rgba(45,55,72,0.06);padding:0.15rem 0.4rem;
+  border-radius:5px;color:var(--c-iris);
+}
+.pdf-fallback-actions{
+  display:flex;flex-direction:column;gap:0.6rem;
+  width:100%;max-width:380px;margin-top:0.6rem;
+}
+.pc-action{
+  display:flex;align-items:center;gap:0.95rem;
+  padding:0.95rem 1.1rem;
+  background:var(--surf-lo);
+  border:1px solid var(--line);
+  border-radius:var(--r-sm);
+  text-decoration:none;
+  transition:all 0.2s;
+  color:var(--ink);
+  text-align:left;
+}
+.pc-action:hover{
+  border-color:var(--c-iris);
+  background:rgba(163,139,250,0.05);
+  transform:translateX(2px);
+}
+.pc-action.primary{
+  background:linear-gradient(135deg,rgba(163,139,250,0.12),rgba(163,139,250,0.04));
+  border-color:rgba(163,139,250,0.35);
+}
+.pc-action.primary:hover{background:rgba(163,139,250,0.18)}
+.pc-action-icon{
+  flex-shrink:0;
+  width:36px;height:36px;border-radius:8px;
+  display:flex;align-items:center;justify-content:center;
+  font-family:'JetBrains Mono',monospace;font-size:1rem;
+  background:rgba(163,139,250,0.1);
+  border:1px solid rgba(163,139,250,0.25);
+  color:var(--c-iris);
+}
+.pc-action-body{display:flex;flex-direction:column;gap:0.15rem;flex:1;min-width:0}
+.pc-action-title{
+  font-size:0.92rem;font-weight:600;color:var(--ink);
+  letter-spacing:-0.005em;
+}
+.pc-action-sub{
+  font-family:'JetBrains Mono',monospace;
+  font-size:0.68rem;color:var(--ink-faint);letter-spacing:0.02em;
+}
+
+/* ============================================================
+   QUIZ
+   ============================================================ */
+.quiz-card{background:rgba(255,253,244,0.85);border:1px solid rgba(75,55,12,0.11);border-radius:var(--r-lg);padding:2.2rem;box-shadow:var(--shadow-hi);backdrop-filter:blur(12px) saturate(1.2);-webkit-backdrop-filter:blur(12px) saturate(1.2);}
+.quiz-title{
+  font-family:'Source Serif 4',serif;font-size:1.3rem;font-weight:500;
+  color:var(--ink);margin-bottom:0.3rem;letter-spacing:-0.015em;
+}
+.quiz-sub{
+  font-family:'JetBrains Mono',monospace;font-size:0.72rem;
+  color:var(--ink-faint);margin-bottom:1.6rem;letter-spacing:0.02em;
+}
+.qprog{margin-bottom:2rem}
+.qprog-bar{
+  height:3px;background:var(--surf);border-radius:2px;overflow:hidden;margin-bottom:0.5rem;
+}
+.qprog-fill{
+  height:100%;width:0;background:var(--grad-spine);
+  transition:width 0.5s ease;
+}
+.qprog-text{
+  font-family:'JetBrains Mono',monospace;font-size:0.7rem;color:var(--ink-faint);
+}
+.qq{
+  padding:1.6rem 0;
+  border-top:1px solid var(--line-soft);
+}
+.qq:first-of-type{border-top:none;padding-top:0}
+.qnum{
+  font-family:'JetBrains Mono',monospace;font-size:0.68rem;
+  color:var(--c-iris);letter-spacing:0.16em;text-transform:uppercase;
+  margin-bottom:0.5rem;
+}
+.qq h4{
+  font-family:'Source Serif 4',serif;
+  font-size:1.05rem;line-height:1.55;color:var(--ink);
+  margin-bottom:1.1rem;font-weight:400;letter-spacing:-0.005em;
+}
+.qo{display:flex;flex-direction:column;gap:0.5rem}
+.qob{padding:0.9rem 1.15rem;text-align:left;border:1.5px solid rgba(75,55,12,0.11);border-radius:var(--r-sm);background:rgba(255,255,255,0.55);color:var(--ink-dim);font-family:'Outfit',sans-serif;font-size:0.9rem;line-height:1.58;cursor:pointer;transition:all 0.22s cubic-bezier(.4,0,.2,1);box-shadow:0 1px 3px rgba(90,65,15,0.05), 0 1px 0 rgba(255,255,255,0.6) inset;}
+.qob:hover:not([disabled]){border-color:rgba(163,139,250,0.45);background:rgba(255,255,255,0.75);color:var(--ink);transform:translateX(3px);box-shadow:0 4px 16px rgba(90,65,15,0.08), 0 1px 0 rgba(255,255,255,0.6) inset;}
+.qob.ok{border-color:rgba(103,232,199,0.55);background:rgba(103,232,199,0.06);color:var(--ink)}
+.qob.no{border-color:rgba(240,114,176,0.45);background:rgba(240,114,176,0.05)}
+.qob[data-opt]::before{
+  content:attr(data-opt) " ";
+  font-family:'JetBrains Mono',monospace;font-weight:700;
+  color:var(--c-iris);margin-right:0.45rem;
+}
+.qfeed{
+  display:none;margin-top:0.9rem;padding:1.1rem 1.25rem;
+  border-radius:var(--r-sm);
+  font-size:0.87rem;line-height:1.7;
+}
+.qfeed.correct{background:rgba(103,232,199,0.05);border:1px solid rgba(103,232,199,0.22);color:var(--ink-dim)}
+.qfeed.wrong{background:rgba(240,114,176,0.04);border:1px solid rgba(240,114,176,0.2);color:var(--ink-dim)}
+.qfeed-head{
+  font-family:'JetBrains Mono',monospace;font-size:0.74rem;
+  margin-bottom:0.5rem;font-weight:600;letter-spacing:0.02em;
+}
+.qfeed.correct .qfeed-head{color:var(--c-mint)}
+.qfeed.wrong .qfeed-head{color:var(--c-rose)}
+.qfeed-why strong{color:var(--ink);font-weight:600}
+.quiz-score{
+  display:none;margin-top:2rem;padding:1.6rem;text-align:center;
+  background:var(--grad-iris);
+  border:1px solid rgba(163,139,250,0.25);
+  border-radius:var(--r-md);
+}
+.quiz-score h3{
+  font-family:'Source Serif 4',serif;font-size:2rem;font-weight:500;color:var(--ink);
+  margin-bottom:0.4rem;
+}
+.quiz-score p{color:var(--ink-dim);font-size:0.95rem}
+
+/* ============================================================
+   FOOTER
+   ============================================================ */
+footer{margin-top:6rem;padding:2.4rem 1.6rem;border-top:1px solid rgba(75,55,12,0.09);background:linear-gradient(180deg,rgba(254,240,200,0.7) 0%,var(--bg-sunk) 100%);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);}
+.footer-inner{
+  max-width:var(--max);margin:0 auto;
+  display:flex;justify-content:space-between;align-items:center;
+  flex-wrap:wrap;gap:1rem;
+  font-family:'JetBrains Mono',monospace;font-size:0.72rem;
+  color:var(--ink-faint);
+}
+.footer-inner a{color:var(--ink-dim);text-decoration:none;transition:color 0.2s}
+.footer-inner a:hover{color:var(--c-iris)}
+
+/* Print / responsive polish */
+@media(max-width:640px){
+  .hero{padding:7rem 1.2rem 3rem}
+  .content{padding:0 1.2rem 5rem}
+  .sec{margin-bottom:4rem}
+}
+
+/* ── Enhancement Pack ── */
+
+/* 1: Ambient orb drift */
+@keyframes orbFloat{0%,100%{transform:translate(0,0) scale(1)}30%{transform:translate(1.8%,1.2%) scale(1.03)}70%{transform:translate(-1.2%,1.8%) scale(0.98)}}
+body::before{animation:orbFloat 26s ease-in-out infinite;}
+
+/* 2: 3D magnetic tilt via JS-set --rx/--ry */
+.brain-grid{perspective:1400px;}
+.brain-card{transform-style:preserve-3d;will-change:transform;
+  opacity:0;transform:translateY(18px) scale(0.97);
+  transition:opacity .5s ease,transform .5s ease,border-color .28s,box-shadow .28s;}
+.brain-card.in{opacity:1;transform:translateY(0) scale(1);}
+.brain-card.in:hover{
+  transform:translateY(-5px) rotateX(var(--rx,0deg)) rotateY(var(--ry,0deg));
+  box-shadow:0 24px 72px -18px rgba(90,65,15,.22),0 6px 24px -6px rgba(90,65,15,.12);
+}
+
+/* 4: Shimmer on active tab */
+@keyframes tabShimmer{0%{background-position:250% center}100%{background-position:-250% center}}
+.tab{position:relative;overflow:hidden;}
+.tab.active::after{
+  content:"";position:absolute;inset:0;border-radius:inherit;
+  background:linear-gradient(90deg,transparent 15%,rgba(245,166,35,.3) 50%,transparent 85%);
+  background-size:250% 100%;animation:tabShimmer 2.6s linear infinite;pointer-events:none;
+}
+
+/* 8: Selection colour matches accent */
+::selection{background:rgba(245,166,35,.35);color:#2d3748;}
+html[data-accent="iris"] ::selection{background:rgba(163,139,250,.35);}
+html[data-accent="sky"]  ::selection{background:rgba(103,163,217,.35);}
+html[data-accent="rose"] ::selection{background:rgba(240,114,154,.35);}
+html[data-accent="mint"] ::selection{background:rgba(94,234,212,.35);}
+
+/* Font: Plus Jakarta Sans for body copy */
+body{font-family:'Outfit',-apple-system,sans-serif!important;}
+
+/* Dark mode */
+html[data-theme="dark"]{
+  --bg:#07090c;--bg-raise:#0d1117;--bg-raise2:#131a22;--bg-sunk:#050709;
+  --surf:rgba(255,255,255,0.025);--surf-hi:rgba(255,255,255,0.045);--surf-lo:rgba(255,255,255,0.012);
+  --line:rgba(255,255,255,0.07);--line-soft:rgba(255,255,255,0.04);--line-hard:rgba(255,255,255,0.12);
+  --ink:#f1f1f6;--ink-dim:#b9c2cc;--ink-faint:#7a8592;--ink-ghost:#4a5260;
+  --grad-card:linear-gradient(165deg,rgba(255,255,255,.06) 0%,rgba(255,255,255,.015) 100%);
+  --shadow-hi:0 32px 96px -20px rgba(0,0,0,.7),0 8px 28px -8px rgba(0,0,0,.5),0 1px 0 rgba(255,255,255,.04) inset;
+  --shadow-md:0 16px 56px -18px rgba(0,0,0,.6),0 2px 8px -2px rgba(0,0,0,.4);
+  --shadow-sm:0 4px 16px -4px rgba(0,0,0,.5),0 1px 0 rgba(255,255,255,.04) inset;
+}
+html[data-theme="dark"] nav{background:rgba(7,9,12,.96)!important;border-color:rgba(255,255,255,.07)!important;}
+html[data-theme="dark"] body::before{background:
+  radial-gradient(70rem 40rem at 15% -5%,rgba(94,234,212,.06),transparent 60%),
+  radial-gradient(60rem 35rem at 95% 15%,rgba(163,139,250,.05),transparent 65%),
+  radial-gradient(55rem 30rem at 50% 100%,rgba(103,163,217,.04),transparent 65%)!important;}
+html[data-theme="dark"] body::after{background-image:radial-gradient(circle,rgba(255,255,255,.04) 1px,transparent 1px)!important;}
+html[data-theme="dark"] .lineage-card{background:rgba(11,14,18,.92)!important;}
+html[data-theme="dark"] .brain-card{background:linear-gradient(165deg,rgba(255,255,255,.04) 0%,rgba(255,255,255,.01) 100%)!important;}
+html[data-theme="dark"] .tabs{background:rgba(10,13,17,.75)!important;}
+html[data-theme="dark"] .tab.active{background:rgba(14,18,24,.97)!important;}
+html[data-theme="dark"] .engine-bar{background:linear-gradient(180deg,rgba(7,9,12,.98) 60%,rgba(7,9,12,0) 100%)!important;}
+html[data-theme="dark"] .accordion{background:rgba(10,13,17,.65)!important;}
+html[data-theme="dark"] .viz-frame{background:linear-gradient(180deg,rgba(11,14,18,.92),rgba(7,10,14,.9))!important;}
+html[data-theme="dark"] .viz-stage{background:var(--bg-sunk)!important;}
+html[data-theme="dark"] .one-line{background:linear-gradient(135deg,rgba(94,234,212,.06) 0%,rgba(163,139,250,.03) 100%)!important;}
+html[data-theme="dark"] .callout{background:rgba(10,13,17,.6)!important;}
+html[data-theme="dark"] .nav-btn,.theme-btn-dark .nav-btn{background:rgba(255,255,255,.04)!important;border-color:rgba(255,255,255,.07)!important;}
+html[data-theme="dark"] .cta-btn{background:rgba(255,255,255,.04)!important;border-color:rgba(255,255,255,.07)!important;}
+html[data-theme="dark"] .hero-tag{background:rgba(255,255,255,.03)!important;border-color:rgba(255,255,255,.07)!important;}
+html[data-theme="dark"] .hero-meta-cell{background:rgba(255,255,255,0.025)!important;border-color:rgba(255,255,255,0.055)!important;}
+html[data-theme="dark"] ::selection{background:rgba(94,234,212,.18)!important;color:#f1f1f6!important;}
+
+/* Theme toggle button */
+.theme-toggle{
+  display:inline-flex;align-items:center;gap:5px;
+  padding:.4rem .85rem;border-radius:999px;
+  border:1px solid rgba(75,55,12,.12);background:rgba(255,255,255,.42);
+  color:var(--ink-dim);font-family:'JetBrains Mono',monospace;font-size:.68rem;
+  letter-spacing:.05em;cursor:pointer;
+  transition:all .22s cubic-bezier(.4,0,.2,1);
+  box-shadow:0 1px 3px rgba(90,65,15,.07),0 1px 0 rgba(255,255,255,.6) inset;
+  backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
+}
+.theme-toggle:hover{border-color:rgba(245,166,35,.5);color:var(--c-amber);background:rgba(245,166,35,.08);transform:translateY(-1px);}
+html[data-theme="dark"] .theme-toggle{border-color:rgba(255,255,255,.07)!important;background:rgba(255,255,255,.04)!important;}
+html[data-theme="dark"] .theme-toggle:hover{border-color:rgba(245,166,35,.4)!important;background:rgba(245,166,35,.1)!important;}
+
+/* Smooth cross-theme transitions */
+html,body,nav,.lineage-card,.brain-card,.accordion,.callout,.viz-frame,.one-line,
+.tabs,.tab,.engine-bar,.nav-btn,.cta-btn,.hero-tag{
+  transition:background .35s ease,background-color .35s ease,border-color .35s ease,
+             color .2s ease,box-shadow .35s ease;
+}
+
+/* ── Quiz dark mode ── */
+html[data-theme="dark"] .quiz-card{
+  background:rgba(11,14,18,.92)!important;
+  border-color:rgba(255,255,255,.07)!important;
+  box-shadow:0 32px 96px -20px rgba(0,0,0,.7),0 8px 28px -8px rgba(0,0,0,.5)!important;
+}
+html[data-theme="dark"] .qob{
+  background:rgba(255,255,255,.04)!important;
+  border-color:rgba(255,255,255,.08)!important;
+  color:var(--ink-dim)!important;
+}
+html[data-theme="dark"] .qob:hover:not([disabled]){
+  background:rgba(255,255,255,.07)!important;
+  border-color:rgba(163,139,250,.4)!important;
+  color:var(--ink)!important;
+  box-shadow:0 4px 16px rgba(0,0,0,.3)!important;
+}
+html[data-theme="dark"] .qob.ok{background:rgba(103,232,199,.07)!important;border-color:rgba(103,232,199,.45)!important;}
+html[data-theme="dark"] .qob.no{background:rgba(240,114,176,.06)!important;border-color:rgba(240,114,176,.38)!important;}
+html[data-theme="dark"] .d-opt{background:rgba(255,255,255,.04)!important;border-color:rgba(255,255,255,.08)!important;}
+html[data-theme="dark"] .d-opt:hover:not([disabled]){background:rgba(163,139,250,.07)!important;border-color:rgba(163,139,250,.35)!important;}
+html[data-theme="dark"] .decision{background:rgba(255,255,255,.025)!important;border-color:rgba(255,255,255,.07)!important;}
+html[data-theme="dark"] .quiz-score{background:rgba(163,139,250,.08)!important;border-color:rgba(163,139,250,.2)!important;}
+html[data-theme="dark"] .q-num,
+html[data-theme="dark"] .q-label{color:var(--ink-faint)!important;}
+</style>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400&display=swap" rel="stylesheet">
+<style id="meta-uniform-v1">
+/* nav flush to top, progress bar as clean top accent */
+nav{top:0!important;}
+.progress-rail{background:transparent!important;z-index:120!important;}
+.progress-fill{box-shadow:0 0 14px rgba(245,166,35,0.5)!important;}
+/* Uniform hero-meta: single row of 4 cards across all papers */
+.hero-meta{display:flex!important;flex-wrap:nowrap!important;gap:0.7rem!important;align-items:stretch!important;margin:0 0 2.2rem!important;padding:0 0 2rem!important;border-top:none!important;border-bottom:1px solid var(--line-soft)!important;max-width:100%!important;grid-template-columns:none!important;}
+.hero-meta-cell{display:flex!important;flex-direction:column!important;gap:0.3rem!important;padding:0.7rem 1rem!important;border-radius:12px!important;background:var(--surf-lo)!important;border:1px solid var(--line-soft)!important;min-width:0!important;justify-content:center!important;}
+.hero-meta-cell:nth-child(1){flex:2.4 1 0!important;}
+.hero-meta-cell:nth-child(2){flex:0.7 1 0!important;}
+.hero-meta-cell:nth-child(3){flex:1.3 1 0!important;}
+.hero-meta-cell:nth-child(4){flex:1.8 1 0!important;}
+.hero-meta-label{font-family:'JetBrains Mono',monospace!important;font-size:0.6rem!important;letter-spacing:0.18em!important;text-transform:uppercase!important;color:var(--c-amber)!important;opacity:0.8!important;}
+.hero-meta-val{font-size:0.9rem!important;color:var(--ink)!important;font-weight:500!important;line-height:1.42!important;word-break:break-word!important;}
+@media(max-width:700px){.hero-meta{flex-wrap:wrap!important;}.hero-meta-cell{flex:1 1 42%!important;}}
+</style>
+<style id="rpc-perf-v1">
+/* PERF: neutralise live backdrop-filter blur — the dominant first-paint &
+   scroll paint cost when these papers are embedded in the app's iframe. The
+   translucent panel backgrounds remain; only the expensive real-time blur is
+   dropped. */
+*,*::before,*::after{backdrop-filter:none!important;-webkit-backdrop-filter:none!important}
+</style>
+</head>
+<body>
+
+<nav>
+  <a class="nav-brand" href="#top">
+    <div class="nav-brand-mark"></div>
+    Research Paper
+  </a>
+  <span class="nav-cite">Malkov &amp; Yashunin · IEEE TPAMI · 2018</span>
+  <div class="nav-actions">
+    <a class="nav-btn" href="#spdf">PDF</a>
+    <a class="nav-btn" href="#squiz">Quiz</a>
+  </div>
+</nav>
+
+<!-- ─────────── HERO ─────────── -->
+<section class="hero" id="top">
+  <div class="hero-inner">
+    <div class="hero-kicker">
+      <span class="dot"></span>
+      Research Paper Breakdown
+      <span class="bar"></span>
+    </div>
+
+    <h1 class="hero-title">
+      Efficient and robust approximate nearest-neighbour search using <em>Hierarchical Navigable Small World</em> graphs
+    </h1>
+
+    <div class="hero-meta">
+      <div class="hero-meta-cell">
+        <span class="hero-meta-label">Authors</span>
+        <span class="hero-meta-val">Yury Malkov · Dmitry Yashunin</span>
+      </div>
+      <div class="hero-meta-cell">
+        <span class="hero-meta-label">Year</span>
+        <span class="hero-meta-val">2018</span>
+      </div>
+      <div class="hero-meta-cell">
+        <span class="hero-meta-label">Venue</span>
+        <span class="hero-meta-val">IEEE TPAMI</span>
+      </div>
+      <div class="hero-meta-cell">
+        <span class="hero-meta-label">arXiv</span>
+        <span class="hero-meta-val">1603.09320</span>
+      </div>
+    </div>
+
+    <p class="hero-abstract">
+      The paper that quietly powers most production RAG pipelines, vector databases and semantic search systems shipped since 2020 
+      <strong>Qdrant, Weaviate, Milvus</strong> use HNSW as their primary index; <strong>pgvector, Elasticsearch, FAISS</strong> offer it as one of several.
+      HNSW solves approximate nearest-neighbour search in <em>O(log N)</em> expected time under assumptions that mostly hold for moderate-dimensional embeddings by stacking navigable
+      small-world graphs into layers, like zoom levels on a map. This breakdown walks the algorithm, the
+      complexity proof and where it breaks, the experiments, the limitations the authors admit, and what happened after (including recent work arguing the hierarchy itself may be vestigial at high dimensions).
+    </p>
+
+    <div class="hero-tags">
+      <span class="hero-tag t-level">Level · Advanced</span>
+      <span class="hero-tag t-topic">Graph algorithms</span>
+      <span class="hero-tag t-topic">ANN retrieval</span>
+      <span class="hero-tag">~25 min read</span>
+      <span class="hero-tag">9-layer walkthrough</span>
+    </div>
+  </div>
+
+  <div class="hero-scroll">
+    <span>Scroll</span>
+    <div class="line"></div>
+  </div>
+</section>
+
+<!-- ─────────── LINEAGE STRIP ─────────── -->
+<div class="lineage">
+  <div class="lineage-card">
+    <span class="lineage-label">Algorithmic lineage</span>
+    <div class="lineage-chain">
+      <div class="lineage-node"><span class="ln-name">KD-tree</span><span class="ln-year">1975</span></div>
+      <span class="lineage-arrow">→</span>
+      <div class="lineage-node"><span class="ln-name">LSH</span><span class="ln-year">1999</span></div>
+      <span class="lineage-arrow">→</span>
+      <div class="lineage-node"><span class="ln-name">NSW</span><span class="ln-year">2014</span></div>
+      <span class="lineage-arrow">→</span>
+      <div class="lineage-node is-focus"><span class="ln-name">HNSW</span><span class="ln-year">2018</span></div>
+      <span class="lineage-arrow">→</span>
+      <div class="lineage-node"><span class="ln-name">DiskANN</span><span class="ln-year">2019</span></div>
+      <span class="lineage-arrow">→</span>
+      <div class="lineage-node"><span class="ln-name">ScaNN</span><span class="ln-year">2020</span></div>
+      <span class="lineage-arrow">→</span>
+      <div class="lineage-node"><span class="ln-name">CAPS</span><span class="ln-year">2023</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- ─────────── MAIN CONTENT ─────────── -->
+<div class="content">
+
+<!-- ENGINE SECTION -->
+<section class="sec visible" id="sengine">
+  <div class="sec-head">The Research Thinking Engine</div>
+  <h2>Nine ways to <em>read</em> this paper</h2>
+  <p class="sec-lead">
+    From a 2-minute brain download to a line-by-line walk of the INSERT algorithm,
+    from the complexity theorem proof to a decision scenario a staff engineer would face
+    on a live system. Pick any tab. You can jump around; progress is tracked per layer.
+  </p>
+
+  <div class="engine">
+    <div class="engine-bar">
+      <div class="tabs" role="tablist">
+        <button class="tab active" data-tab="brain" onclick="setTab('brain')">
+          <span class="tab-glyph">⚡</span>Brain<span class="tab-dot"></span>
+        </button>
+        <button class="tab" data-tab="visual" onclick="setTab('visual')">
+          <span class="tab-glyph">◎</span>Visual<span class="tab-dot"></span>
+        </button>
+        <button class="tab" data-tab="deep" onclick="setTab('deep')">
+          <span class="tab-glyph">↯</span>Deep dive<span class="tab-dot"></span>
+        </button>
+        <button class="tab" data-tab="paper" onclick="setTab('paper')">
+          <span class="tab-glyph">✎</span>The paper<span class="tab-dot"></span>
+        </button>
+        <button class="tab" data-tab="think" onclick="setTab('think')">
+          <span class="tab-glyph">✦</span>Researcher<span class="tab-dot"></span>
+        </button>
+        <button class="tab" data-tab="reality" onclick="setTab('reality')">
+          <span class="tab-glyph">⊛</span>Reality<span class="tab-dot"></span>
+        </button>
+        <button class="tab" data-tab="build" onclick="setTab('build')">
+          <span class="tab-glyph">⊞</span>Build it<span class="tab-dot"></span>
+        </button>
+        <button class="tab" data-tab="replicate" onclick="setTab('replicate')">
+          <span class="tab-glyph">⎈</span>Replicate<span class="tab-dot"></span>
+        </button>
+        <button class="tab" data-tab="notes" onclick="setTab('notes')">
+          <span class="tab-glyph">✐</span>Notes<span class="tab-dot"></span>
+        </button>
+      </div>
+    </div>
+
+
+    <!-- ═══════ LAYER: BRAIN ═══════ -->
+    <div class="layer active" id="layer-brain">
+      <div class="layer-eyebrow">2-minute brain download · for busy engineers</div>
+
+      <div class="brain-grid">
+        <div class="brain-card" data-tone="problem">
+          <div class="brain-label">The problem</div>
+          <div class="brain-text">
+            Finding nearest vectors in a <strong>1M-item database</strong> takes $O(N \cdot d)$ operations.
+            At $d=512$, $N=10^6$: that's 512 million multiplies <em>per query</em>.
+            Way too slow for real-time search, recommendations, or RAG.
+          </div>
+        </div>
+        <div class="brain-card" data-tone="idea">
+          <div class="brain-label">The idea</div>
+          <div class="brain-text">
+            Build a <strong>layered graph</strong>. Top layer is sparse a few long-range edges for
+            global leaps. Bottom layer is dense all nodes, fine-grained local connections.
+            Enter at top, descend greedily. Expected search cost: $O(\log N)$ in moderate-dimension regimes where the small-world assumption holds. (At very high intrinsic dimensions, the guarantee weakens; more on this below.)
+          </div>
+        </div>
+        <div class="brain-card" data-tone="impact">
+          <div class="brain-label">Why it matters</div>
+          <div class="brain-text">
+            HNSW ships as the default or primary index in <strong>Qdrant, Weaviate, Milvus</strong>, and as an option in <strong>pgvector, Elasticsearch, FAISS</strong>. Most semantic search, embedding-based recommendation, and RAG retrieval on modern open-source platforms touches HNSW at some point though the picture at closed-source vendors (Pinecone, Vertex AI) is less public.
+          </div>
+        </div>
+      </div>
+
+      <div class="one-line">
+        <span class="one-line-label">One-line intuition</span>
+        HNSW is <em>Google Maps zoom levels</em>. Navigate the motorway network first (sparse Layer 2),
+        then local streets (dense Layer 0). You never traverse the full city grid just enough roads
+        at each zoom level to reach your destination.
+      </div>
+
+      <div class="cta-row">
+        <button class="cta-btn primary" onclick="setTab('visual')">Go deeper →</button>
+        <button class="cta-btn" onclick="setTab('think')">Skip to researcher view →</button>
+        <button class="cta-btn" onclick="setTab('build')">Jump to build it →</button>
+      </div>
+    </div>
+
+    <!-- ═══════ LAYER: VISUAL ═══════ -->
+    <div class="layer" id="layer-visual">
+      <div class="layer-eyebrow">Interactive watch the greedy descent step by step</div>
+
+      <div class="viz-frame">
+        <div class="viz-title">HNSW search 5-step greedy descent from top layer to query match</div>
+        <div class="viz-stage">
+          <svg id="hnsw-svg" viewBox="0 0 860 270" xmlns="http://www.w3.org/2000/svg" style="width:100%;display:block">
+            <!-- Layer labels -->
+            <text x="12" y="30"  font-family="JetBrains Mono,monospace" font-size="9" fill="#738093">Layer 2 sparse (≈1% of nodes) · global leaps</text>
+            <text x="12" y="110" font-family="JetBrains Mono,monospace" font-size="9" fill="#738093">Layer 1 medium (≈10%) · mid-range</text>
+            <text x="12" y="185" font-family="JetBrains Mono,monospace" font-size="9" fill="#738093">Layer 0 all nodes · dense local search</text>
+
+            <!-- Layer 2 edges + nodes -->
+            <line x1="192" y1="50" x2="672" y2="50" stroke="rgba(163,139,250,0.45)" stroke-width="1" stroke-dasharray="5,3"/>
+            <circle cx="192" cy="50" r="12" fill="rgba(163,139,250,0.12)" stroke="#a38bfa" stroke-width="1.5"/>
+            <text x="192" y="54" font-family="JetBrains Mono,monospace" font-size="9" fill="#a38bfa" text-anchor="middle" font-weight="700">A</text>
+            <circle cx="672" cy="50" r="12" fill="rgba(163,139,250,0.12)" stroke="#a38bfa" stroke-width="1.5"/>
+            <text x="672" y="54" font-family="JetBrains Mono,monospace" font-size="9" fill="#a38bfa" text-anchor="middle" font-weight="700">F</text>
+
+            <!-- L2→L1 vertical dashes -->
+            <line x1="192" y1="62" x2="126" y2="118" stroke="rgba(163,139,250,0.35)" stroke-width="0.8" stroke-dasharray="3,3"/>
+            <line x1="672" y1="62" x2="672" y2="118" stroke="rgba(163,139,250,0.35)" stroke-width="0.8" stroke-dasharray="3,3"/>
+
+            <!-- Layer 1 edges -->
+            <line x1="118" y1="128" x2="268" y2="128" stroke="rgba(106,165,255,0.4)" stroke-width="1" stroke-dasharray="4,3"/>
+            <line x1="268" y1="128" x2="478" y2="128" stroke="rgba(106,165,255,0.4)" stroke-width="1" stroke-dasharray="4,3"/>
+            <line x1="478" y1="128" x2="672" y2="128" stroke="rgba(106,165,255,0.4)" stroke-width="1" stroke-dasharray="4,3"/>
+            <line x1="672" y1="128" x2="790" y2="128" stroke="rgba(106,165,255,0.4)" stroke-width="1" stroke-dasharray="4,3"/>
+
+            <circle cx="118" cy="128" r="11" fill="rgba(106,165,255,0.12)" stroke="#6aa5ff" stroke-width="1.5"/>
+            <text x="118" y="132" font-family="JetBrains Mono,monospace" font-size="8" fill="#6aa5ff" text-anchor="middle" font-weight="700">B</text>
+            <circle cx="268" cy="128" r="11" fill="rgba(106,165,255,0.12)" stroke="#6aa5ff" stroke-width="1.5"/>
+            <text x="268" y="132" font-family="JetBrains Mono,monospace" font-size="8" fill="#6aa5ff" text-anchor="middle" font-weight="700">C</text>
+            <circle cx="478" cy="128" r="11" fill="rgba(106,165,255,0.12)" stroke="#6aa5ff" stroke-width="1.5"/>
+            <text x="478" y="132" font-family="JetBrains Mono,monospace" font-size="8" fill="#6aa5ff" text-anchor="middle" font-weight="700">D</text>
+            <circle cx="672" cy="128" r="11" fill="rgba(106,165,255,0.12)" stroke="#6aa5ff" stroke-width="1.5"/>
+            <text x="672" y="132" font-family="JetBrains Mono,monospace" font-size="8" fill="#6aa5ff" text-anchor="middle" font-weight="700">E</text>
+            <circle cx="790" cy="128" r="11" fill="rgba(106,165,255,0.12)" stroke="#6aa5ff" stroke-width="1.5"/>
+            <text x="790" y="132" font-family="JetBrains Mono,monospace" font-size="8" fill="#6aa5ff" text-anchor="middle" font-weight="700">G</text>
+
+            <!-- L1→L0 dashes -->
+            <line x1="118" y1="140" x2="72"  y2="208" stroke="rgba(106,165,255,0.3)" stroke-width="0.8" stroke-dasharray="3,3"/>
+            <line x1="478" y1="140" x2="474" y2="208" stroke="rgba(106,165,255,0.3)" stroke-width="0.8" stroke-dasharray="3,3"/>
+            <line x1="672" y1="140" x2="634" y2="208" stroke="rgba(106,165,255,0.3)" stroke-width="0.8" stroke-dasharray="3,3"/>
+
+            <!-- Layer 0 edges -->
+            <g stroke="rgba(103,232,199,0.45)" stroke-width="1">
+              <line x1="70"  y1="215" x2="152" y2="215"/>
+              <line x1="152" y1="215" x2="232" y2="215"/>
+              <line x1="232" y1="215" x2="312" y2="215"/>
+              <line x1="312" y1="215" x2="392" y2="215"/>
+              <line x1="392" y1="215" x2="472" y2="215"/>
+              <line x1="472" y1="215" x2="552" y2="215"/>
+              <line x1="552" y1="215" x2="632" y2="215"/>
+              <line x1="632" y1="215" x2="712" y2="215"/>
+              <line x1="712" y1="215" x2="790" y2="215"/>
+            </g>
+            <g stroke="rgba(103,232,199,0.25)" stroke-width="0.6" stroke-dasharray="2,3">
+              <line x1="70"  y1="215" x2="232" y2="215"/>
+              <line x1="392" y1="215" x2="552" y2="215"/>
+            </g>
+
+            <!-- L0 nodes -->
+            <g>
+              <circle cx="70"  cy="215" r="10" fill="rgba(103,232,199,0.12)" stroke="#67e8c7" stroke-width="1.5"/>
+              <circle cx="152" cy="215" r="10" fill="rgba(103,232,199,0.12)" stroke="#67e8c7" stroke-width="1.5"/>
+              <circle cx="232" cy="215" r="10" fill="rgba(103,232,199,0.12)" stroke="#67e8c7" stroke-width="1.5"/>
+              <circle cx="312" cy="215" r="10" fill="rgba(103,232,199,0.12)" stroke="#67e8c7" stroke-width="1.5"/>
+              <circle cx="392" cy="215" r="10" fill="rgba(103,232,199,0.12)" stroke="#67e8c7" stroke-width="1.5"/>
+              <circle cx="552" cy="215" r="10" fill="rgba(103,232,199,0.12)" stroke="#67e8c7" stroke-width="1.5"/>
+              <circle cx="632" cy="215" r="10" fill="rgba(103,232,199,0.12)" stroke="#67e8c7" stroke-width="1.5"/>
+              <circle cx="712" cy="215" r="10" fill="rgba(103,232,199,0.12)" stroke="#67e8c7" stroke-width="1.5"/>
+              <circle cx="790" cy="215" r="10" fill="rgba(103,232,199,0.12)" stroke="#67e8c7" stroke-width="1.5"/>
+            </g>
+
+            <!-- Target star -->
+            <circle cx="472" cy="215" r="11" fill="rgba(245,166,35,0.2)" stroke="#f3c969" stroke-width="2"/>
+            <text x="472" y="219" font-family="JetBrains Mono,monospace" font-size="10" fill="#f3c969" text-anchor="middle" font-weight="700">★</text>
+            <text x="472" y="240" font-family="JetBrains Mono,monospace" font-size="8" fill="#f3c969" text-anchor="middle">target</text>
+
+            <!-- Animated query dot -->
+            <circle id="q-dot" cx="192" cy="50" r="9" fill="#f072b0" stroke="#fff" stroke-width="2" opacity="0"/>
+            <text id="q-label" x="192" y="54" font-family="JetBrains Mono,monospace" font-size="8" fill="white" text-anchor="middle" font-weight="700" opacity="0">Q</text>
+
+            <!-- Path trail -->
+            <line id="path1" x1="192" y1="50" x2="192" y2="50" stroke="#f072b0" stroke-width="2.5" opacity="0" stroke-dasharray="5,3"/>
+            <line id="path2" x1="672" y1="50" x2="672" y2="50" stroke="#f072b0" stroke-width="2.5" opacity="0" stroke-dasharray="5,3"/>
+            <line id="path3" x1="672" y1="128" x2="672" y2="128" stroke="#f072b0" stroke-width="2.5" opacity="0" stroke-dasharray="5,3"/>
+            <line id="path4" x1="478" y1="128" x2="478" y2="128" stroke="#f072b0" stroke-width="2.5" opacity="0" stroke-dasharray="5,3"/>
+            <line id="path5" x1="478" y1="215" x2="478" y2="215" stroke="#f072b0" stroke-width="2.5" opacity="0" stroke-dasharray="5,3"/>
+          </svg>
+        </div>
+
+        <div class="viz-controls">
+          <button class="viz-play" id="viz-play-btn" onclick="visStep()">▶ Start search</button>
+          <button class="viz-reset" onclick="visReset()">↺ Reset</button>
+          <span class="viz-status" id="vis-status">Click ▶ to watch the greedy descent</span>
+        </div>
+      </div>
+
+      <div class="callout k-map">
+        <div class="callout-icon">🗺️</div>
+        <div class="callout-body">
+          <h4>Two analogies that make HNSW click</h4>
+          <p><strong>Google Maps:</strong> Layer 2 = motorways (huge leaps, can't reach your door). Layer 0 = every street
+          (precise, but you'd never start here). HNSW routes you: motorways first, then arterial roads, then local streets.
+          Greedy rule: always take the turn that gets you closest to the destination.<br><br>
+          <strong>Probabilistic skip-list:</strong> HNSW is a skip-list generalised to high-dimensional space.
+          A skip-list has a fast lane (top level) and a slow lane (bottom level). HNSW has the same structure 
+          but each level is a navigable small-world graph rather than a sorted linked list. The layer assignment
+          probability is identical: geometric / exponential distribution, so upper layers stay sparse by construction.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════ LAYER: DEEP DIVE ═══════ -->
+    <div class="layer" id="layer-deep">
+      <div class="layer-eyebrow">Deep dive · four questions the paper never spells out</div>
+
+      <div class="accordion" onclick="toggleAcc(this)">
+        <div class="acc-q">
+          <span>Where does the layer assignment $l = \lfloor -\ln(U) \cdot m_L \rfloor$ actually come from?</span>
+          <span class="acc-chev">▸</span>
+        </div>
+        <div class="acc-a">
+          <div class="tldr">$P(\text{layer} \geq 2) = e^{-2/m_L} \approx 0.39\%$ at $M=16$. Most nodes live only at Layer 0.</div>
+          <p>For each new node $v$, draw $U \sim \text{Uniform}(0,1)$ and set its maximum layer to
+          $l_{\max} = \lfloor -\ln(U) \cdot m_L \rfloor$ where $m_L = 1/\ln(M)$.</p>
+          <p>This is the inverse-CDF construction of an <strong>exponential distribution</strong>.
+          Expected nodes at layer $l$: $\mathbb{E}[\text{Nodes}(l)] = N \cdot e^{-l/m_L}$.
+          With $M=16$, $m_L \approx 0.36$:</p>
+          <ul>
+            <li>$P(l_{\max} \geq 1) \approx 6.3\%$ about 63,000 nodes out of 1M</li>
+            <li>$P(l_{\max} \geq 2) \approx 0.39\%$ only ~3,900 nodes reach Layer 2</li>
+            <li>$P(l_{\max} \geq 3) \approx 0.024\%$ ~240 nodes</li>
+          </ul>
+          <p>This controlled sparsity is what keeps upper-layer navigation at $O(1)$ expected hops.
+          Number of layers until the graph empties out: $O(\log_M N)$ exactly the skip-list property.</p>
+
+          <div class="math-toggle" onclick="toggleMath(event, this);">
+            <div class="math-head"><span>∫ Show the math · layer distribution and the skip-list analogy formalised</span><span class="math-chev">▸</span></div>
+            <div class="math-body">
+              <p>Start from the inverse-CDF construction. If $U \sim \text{Uniform}(0,1)$, then $-\ln(U)$ is distributed as $\text{Exponential}(1)$ with density $f(x) = e^{-x}$ for $x \geq 0$.</p>
+              <p>Setting $l = \lfloor -\ln(U) \cdot m_L \rfloor$, the probability that a node's max layer is at least $k$ is:</p>
+              <p>$$P(l \geq k) = P(-\ln(U) \geq k/m_L) = P(U \leq e^{-k/m_L}) = e^{-k/m_L}$$</p>
+              <p>This is a <strong>geometric distribution</strong> with parameter $p = 1 - e^{-1/m_L}$. With $m_L = 1/\ln(M)$, we get $P(l \geq k) = M^{-k}$, which is exactly the skip-list probability structure (each level contains roughly $1/M$ of the level below).</p>
+              <p><strong>Expected number of layers in the index.</strong> For $N$ nodes, the highest occupied layer $L_{\max} = \max_i l_i$ follows an extreme-value distribution. Its expectation is:</p>
+              <p>$$\mathbb{E}[L_{\max}] \approx m_L \cdot \ln(N) = \frac{\ln(N)}{\ln(M)} = \log_M N$$</p>
+              <p>For $M = 16$, $N = 10^9$: $\mathbb{E}[L_{\max}] \approx 7.5$. The hierarchy is shallow even at billion scale which is also the argument for why the hierarchy overhead is bounded.</p>
+              <p><strong>Why this exact choice of $m_L$?</strong> The paper argues $m_L = 1/\ln(M)$ gives the optimal balance between (a) upper layers sparse enough to reach near the query in $O(1)$ hops, and (b) lower layers dense enough to find the true nearest neighbour. Other choices work too the authors note empirically that the performance curve is flat in a neighbourhood of $1/\ln(M)$, so the exact value isn't critical as long as it's in the right ballpark.</p>
+              <p><strong>What breaks this analysis.</strong> The $O(\log N)$ expected-layer-count depends on the <em>small-world property</em> of each layer's subgraph. When the intrinsic dimensionality of the data is very high (per-direction variance becomes uniform), the greedy search at each layer no longer benefits from scale separation this is the central point of the "Down with the Hierarchy" critique (arXiv 2412.01940), which argues the hierarchy becomes vestigial above $d \approx 32$.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="accordion" onclick="toggleAcc(this)">
+        <div class="acc-q">
+          <span>efConstruction vs. ef two completely independent knobs everyone confuses</span>
+          <span class="acc-chev">▸</span>
+        </div>
+        <div class="acc-a">
+          <div class="tldr">efConstruction = build quality (set once). ef = search quality (tune per query). ef &lt; K is a bug.</div>
+          <p><strong>efConstruction</strong> controls the search beam width during <em>index build</em>.
+          Higher = better graph (more candidates evaluated when wiring each new node's neighbours) but slower build.
+          Set once at index creation, never changed afterwards.</p>
+          <p><strong>ef</strong> (a.k.a. efSearch) controls the beam width at <em>query time</em>.
+          Higher = better recall, slower queries. Changed per-query without rebuilding.</p>
+          <p>Production defaults: <code>efConstruction = 200</code>. <code>ef ≥ K</code> is mandatory 
+          you cannot return K results from a candidate set smaller than K. <code>ef = 2K</code> gives ~95% recall
+          on most embedding datasets. The sweet spot is the "knee" of the ef-vs-recall curve, which you should plot
+          once per dataset.</p>
+
+          <div class="math-toggle" onclick="toggleMath(event, this);">
+            <div class="math-head"><span>∫ Show the math · SEARCH-LAYER as bounded best-first search</span><span class="math-chev">▸</span></div>
+            <div class="math-body">
+              <p>The paper's Algorithm 2 (SEARCH-LAYER) is a bounded best-first search. Given an entry point $ep$, a query $q$, a number of candidates $ef$, and a layer $l_c$, it maintains two sets:</p>
+              <p>$$C \;=\; \text{candidates to expand (max-heap by distance to } q)$$</p>
+              <p>$$W \;=\; \text{found so far (fixed size } ef \text{, max-heap by distance to } q)$$</p>
+              <p>The loop pops the nearest unexpanded candidate $c$, terminates early if $d(c, q) > \max_{w \in W} d(w, q)$ (no improvement possible), otherwise expands $c$'s neighbours and adds any strictly better than $W$'s worst.</p>
+              <p><strong>What $ef$ actually controls.</strong> The size of $W$. Larger $ef$ = wider exploration = higher probability of finding the true nearest neighbours at the cost of more distance calculations.</p>
+              <p><strong>Recall vs $ef$ relationship.</strong> Empirically (and consistent with small-world analysis), recall follows a saturating curve:</p>
+              <p>$$\text{recall}(ef) \approx 1 - (1-p)^{ef / ef_0}$$</p>
+              <p>Where $p$ is the per-candidate probability of being a true neighbour and $ef_0$ is a dataset-specific constant. Early returns on increasing $ef$ are steep; past the "knee," doubling $ef$ adds only fractional recall points.</p>
+              <p><strong>Why $ef &lt; K$ is definitionally wrong.</strong> $W$ has size $ef$. The algorithm returns the top-$K$ nearest elements in $W$. If $ef &lt; K$, then $|W| &lt; K$, so you cannot possibly return $K$ results. Some implementations silently return fewer than $K$; hnswlib raises an error. Always enforce $ef \geq K$ at the API boundary.</p>
+              <p><strong>efConstruction's independent role.</strong> During index build, each new node $v$ runs SEARCH-LAYER with $ef = ef_{\text{Construction}}$ to find candidates from which to select its $M$ neighbours. A bigger $ef_{\text{Construction}}$ means the neighbour selection heuristic has a richer pool to choose from better graph topology, higher recall achievable at query time, but slower build.</p>
+              <p><strong>The two parameters are independent because they run at different times.</strong> $ef_{\text{Construction}}$ is paid once, at build, and its effect is baked into the graph. $ef$ is paid per query, and its effect is tuned live. A common mistake: rebuilding the index every time recall needs tuning, when you should just raise $ef$ at query time.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="accordion" onclick="toggleAcc(this)">
+        <div class="acc-q">
+          <span>Why $M$ controls both recall AND the RAM wall</span>
+          <span class="acc-chev">▸</span>
+        </div>
+        <div class="acc-a">
+          <div class="tldr">Graph RAM $\approx N \cdot M \cdot 2 \cdot 8$ bytes. 1B vectors, $M=16$ → 256 GB. This is the wall DiskANN solves.</div>
+          <p>$M$ = max bidirectional links per node at layers above 0. Layer 0 uses $M_0 = 2M$ by default.</p>
+          <p><strong>Memory:</strong> $N \times M \times 2 \times 8$ bytes (one int64 per link, bidirectional = ×2).
+          For $N=10^6$, $M=16$ → 256 MB. For $N=10^9$, $M=16$ → <strong>256 GB</strong> the threshold at which
+          HNSW becomes operationally painful on a single node, and DiskANN's SSD-resident graph becomes the right answer.</p>
+          <p><strong>Recall/speed:</strong> higher $M$ means better recall and fewer search hops,
+          at the cost of more memory and slower build. $M=16$ is the production default;
+          drop to $M=4$-$8$ for memory-constrained edge deployments; raise to $M=32$-$48$ for recall-critical systems.
+          The paper proves search complexity is $O(M \log N)$ doubling $M$ doubles search time but significantly improves recall@10.</p>
+
+          <div class="math-toggle" onclick="toggleMath(event, this);">
+            <div class="math-head"><span>∫ Show the math · $O(\log N)$ search complexity proof sketch</span><span class="math-chev">▸</span></div>
+            <div class="math-body">
+              <p>The search complexity claim rests on three sub-arguments the paper sketches (rather than fully formalises). Each has conditions under which it holds.</p>
+              <p><strong>(1) Greedy search on each layer runs in $O(1)$ expected hops.</strong> On an NSW graph with degree $M$, each greedy step reduces distance-to-query by a constant fraction in expectation. Assuming the small-world property (power-law degree distribution with enough long-range links), the expected number of hops to reach a local minimum is:</p>
+              <p>$$\mathbb{E}[\text{hops per layer}] = O(1) \qquad \text{(under small-world assumption)}$$</p>
+              <p><strong>(2) Number of layers is $O(\log N)$.</strong> From the layer distribution derivation above: $\mathbb{E}[L_{\max}] = \log_M N$.</p>
+              <p><strong>(3) Each hop costs $O(M)$ distance computations</strong> (examining the neighbour list). Putting it together:</p>
+              <p>$$\mathbb{E}[\text{total work}] = \underbrace{\log_M N}_{\text{layers}} \times \underbrace{O(1)}_{\text{hops/layer}} \times \underbrace{O(M)}_{\text{cost/hop}} = O(M \log N)$$</p>
+              <p>For a bounded-beam search ($ef$-driven, not strictly greedy), the hop count becomes $O(\text{ef})$ per layer instead of $O(1)$, and total work scales as $O(\text{ef} \cdot M \log N)$.</p>
+              <p><strong>The small-world assumption is doing a lot of work.</strong> The proof requires that each layer's subgraph has the small-world property specifically, navigability guarantees from Kleinberg's 2000 result on navigable networks. In Euclidean space with low to moderate intrinsic dimensionality, the greedy step's expected contraction holds. At high intrinsic dimensionality (the "curse of dimensionality" regime), distances concentrate: most pairs of points have similar distances, and the greedy step no longer makes guaranteed progress.</p>
+              <p><strong>The "Down with the Hierarchy" observation.</strong> A 2024 paper (arXiv 2412.01940) argues the logarithmic scaling attributed to the hierarchy is actually mostly driven by the Layer 0 graph's own navigability, with the upper layers contributing only a small acceleration for $d \gtrsim 32$. Their FlatNav implementation matches HNSW's recall-speed curve on most high-dimensional benchmarks while using only Layer 0, saving the hierarchy's memory overhead. This doesn't invalidate Malkov's proof sketch the complexity claim holds but it does suggest the hierarchy's <em>practical</em> contribution at modern embedding dimensions (384, 768, 1536) may be smaller than the paper's presentation implies.</p>
+              <p><strong>What survives the critique.</strong> Even without the hierarchy, the NSW + heuristic-neighbour-selection parts of the algorithm remain among the best-performing ANN methods. The $O(M \log N)$ complexity result is unchallenged for Layer 0 alone, which is what actually does the work.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="accordion" onclick="toggleAcc(this)">
+        <div class="acc-q">
+          <span>SELECT-NEIGHBORS-HEURISTIC: why picking diverse beats picking nearest</span>
+          <span class="acc-chev">▸</span>
+        </div>
+        <div class="acc-a">
+          <div class="tldr">The heuristic picks diverse neighbours (different directions). Simple picks M nearest (same cluster). +1-3% recall.</div>
+          <p><strong>Simple:</strong> pick the $M$ nearest candidates from the beam as neighbours. Fast. But on clustered data,
+          the $M$ nearest often sit in the same cluster as the new node leaving other regions of space poorly connected.</p>
+          <p><strong>Heuristic:</strong> prune a candidate $e$ if it is closer to some already-selected neighbour
+          than to the current node $q$. Formally: keep $e$ only if $d(e, q) \leq d(e, r)$ for every $r$ already selected.
+          This produces a neighbour set pointing in many different directions the graph covers space more uniformly.</p>
+          <p><strong>Impact:</strong> +1-3% recall@10 in practice, especially on clustered or low-intrinsic-dimension data.
+          Cost: ~15% slower build. hnswlib and Milvus both ship the heuristic by default.
+          The flags <code>extendCandidates</code> and <code>keepPrunedConnections</code> in the paper are often omitted
+          in reimplementations that omission is the #1 source of recall gaps vs. the reference library.</p>
+
+          <div class="math-toggle" onclick="toggleMath(event, this);">
+            <div class="math-head"><span>∫ Show the math · the heuristic as an approximate Monotonic Search Network</span><span class="math-chev">▸</span></div>
+            <div class="math-body">
+              <p>The paper frames SELECT-NEIGHBORS-HEURISTIC as approximating a property called the <strong>relative neighbour graph</strong> (RNG). Formally, for a node $q$ with candidate set $C$, the heuristic accepts candidate $e \in C$ as a neighbour iff:</p>
+              <p>$$\forall r \in R:\; d(e, q) \leq d(e, r)$$</p>
+              <p>Where $R$ is the set of already-accepted neighbours. Equivalently, $e$ is closer to $q$ than to any previously-selected neighbour $e$ occupies a <em>different direction</em> from the others.</p>
+              <p><strong>Why this approximates the Delaunay graph.</strong> On a uniformly distributed point set in $\mathbb{R}^d$, the Delaunay triangulation connects points whose Voronoi cells share a face. Greedy search on the Delaunay graph is guaranteed to find the exact nearest neighbour. But the Delaunay graph is too dense to store its expected degree grows as $O(d^{d/2})$ in high dimensions.</p>
+              <p>The heuristic produces a sparser subgraph that preserves the key property: <em>from any starting point, greedy search finds the nearest neighbour of any query</em>. This is the Monotonic Search Network (MSN) condition:</p>
+              <p>$$\forall p, q:\; \exists \text{ greedy path from } p \text{ that reaches the nearest neighbour of } q$$</p>
+              <p>The heuristic doesn't perfectly produce an MSN, but it produces a much better approximation than simple top-$M$ selection, especially when candidates are clustered.</p>
+              <p><strong>Worked intuition.</strong> Suppose a new node $q$ sits near a cluster boundary, with candidates split between Cluster $A$ (close, many candidates) and Cluster $B$ (slightly farther, few candidates). Simple top-$M$ would pick all $M$ from Cluster $A$, leaving no link to $B$. If a future query arrives near Cluster $B$, greedy search from $q$ has no way to reach it the graph has a dead end.</p>
+              <p>The heuristic, in contrast, accepts the first candidate from $A$ (nearest to $q$), then checks subsequent $A$-candidates and rejects them because they're closer to the already-selected $A$-candidate than to $q$. Candidates from $B$ survive the check because they're in a different direction. The result: $q$'s neighbour set includes at least one link toward Cluster $B$, preserving global connectivity.</p>
+              <p><strong>Why <code>extendCandidates</code> and <code>keepPrunedConnections</code> matter.</strong> The extendCandidates flag expands the initial candidate set by adding neighbours-of-neighbours, giving the heuristic more diverse material to work with. keepPrunedConnections adds some of the heuristic-rejected candidates back if the final neighbour set is smaller than $M$ preventing under-connected nodes. Both flags are part of Algorithm 4 in the paper; dropping either causes the +1-3% recall gap seen in many reimplementations.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════ LAYER: THE PAPER ═══════ -->
+    <div class="layer" id="layer-paper">
+      <div class="layer-eyebrow">The paper · Malkov &amp; Yashunin 2018, explained end-to-end</div>
+
+      <div class="paper-intro">
+        <div class="paper-intro-icon">📄</div>
+        <div class="paper-intro-body">
+          <strong>What you're about to read.</strong> The full paper broken into six sections 
+          problem → algorithm → proof → results → limits → legacy.
+          You will understand every claim the paper makes, every figure, and what happened after.
+          No PhD required. Reading time: ~20 minutes.
+        </div>
+      </div>
+
+      <!-- §1 Problem -->
+      <div class="psec">
+        <div class="psec-head">
+          <span class="psec-num">§1</span>
+          <span class="psec-title">The problem why every method before 2018 failed</span>
+        </div>
+        <div class="psec-body">
+          <p>The paper opens with a concrete challenge:
+          <em>"Given a database of one billion 128-dimensional vectors, find the 10 nearest neighbours of any query in under 5 milliseconds."</em>
+          Every method known in 2016 failed at least one of those three constraints scale, dimensionality, or latency.</p>
+
+          <div class="compare-row">
+            <div class="cr-method">KD-tree</div>
+            <div class="cr-fail">Works beautifully in 2D. Fails above $d \approx 20$ due to the curse of dimensionality 
+            every point is approximately equidistant from every other, so tree splits provide essentially no pruning.</div>
+          </div>
+          <div class="compare-row">
+            <div class="cr-method">LSH</div>
+            <div class="cr-fail">Locality-Sensitive Hashing gives probabilistic guarantees but requires 2–4× the raw vector
+            storage for hash tables, and recall degrades sharply below 90% unacceptable for modern retrieval.</div>
+          </div>
+          <div class="compare-row">
+            <div class="cr-method">NSW (flat)</div>
+            <div class="cr-fail">Non-hierarchical Navigable Small World graphs HNSW's direct predecessor 
+            have $O(\sqrt{N})$ search complexity. At $N = 10^9$ that is ~31,622 hops per query. Far too slow.</div>
+          </div>
+
+          <div class="insight-box">
+            <div class="insight-label">The core insight</div>
+            <p>NSW search is slow because it starts from a <strong>random entry point</strong> and needs many hops to reach
+            the query's neighbourhood. The fix is elegant: add multiple layers. Upper layers are sparse they provide
+            a global coarse navigation structure. Lower layers are dense they provide precise local search.
+            This is the skip-list idea, extended to high-dimensional graphs.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- §2 Algorithm -->
+      <div class="psec">
+        <div class="psec-head">
+          <span class="psec-num">§2</span>
+          <span class="psec-title">The INSERT algorithm Algorithm 1, line by line</span>
+        </div>
+        <div class="psec-body">
+          <p>This is Algorithm 1 from Section 4 of the paper. Every line is reproduced below with a plain-English gloss,
+          followed by a worked example on a tiny graph.</p>
+
+          <div class="algo">
+            <div class="algo-head">Algorithm 1 · INSERT(hnsw, q, M, M<sub>max</sub>, efConstruction, m<sub>L</sub>)</div>
+
+            <div class="algo-step">
+              <div class="algo-code">W ← ∅</div>
+              <div class="algo-expl"><strong>Initialise the working candidate set.</strong>
+              $W$ is the set of nearest neighbours found so far during this insertion. It starts empty and grows as we
+              search each layer. The best candidates in $W$ become the new node's neighbours.</div>
+            </div>
+
+            <div class="algo-step">
+              <div class="algo-code">ep ← get-enter-point(hnsw)</div>
+              <div class="algo-expl"><strong>Get the global entry point.</strong>
+              A single node sits at the highest layer in the graph. Every search and every insertion starts there.
+              Only updated at the end of this algorithm, and only if the new node reaches a strictly higher layer.</div>
+            </div>
+
+            <div class="algo-step">
+              <div class="algo-code">L ← layer of ep</div>
+              <div class="algo-expl"><strong>Record the current top layer.</strong>
+              $L$ is how many layers currently exist. A new graph starts at $L=0$. For $N=10^6, M=16$ it grows to about 4-5.</div>
+            </div>
+
+            <div class="algo-step hi">
+              <div class="algo-code">l ← ⌊ −ln(unif(0,1)) · m<sub>L</sub> ⌋</div>
+              <div class="algo-expl"><strong>The key randomness assign the new node's max layer.</strong>
+              Draw $U \sim \text{Uniform}(0,1)$. Compute $l = \lfloor -\ln(U) \cdot m_L \rfloor$.
+              <br><br><strong>Why exponential?</strong> Gives geometric thinning: each layer has $\approx 1/M$ as many nodes
+              as the one below. With $M=16$, $m_L = 1/\ln(16) \approx 0.36$:
+              <ul>
+                <li>$P(l=0) \approx 93.9\%$ vast majority live only at layer 0</li>
+                <li>$P(l=1) \approx 5.8\%$ small fraction reach layer 1</li>
+                <li>$P(l=2) \approx 0.36\%$ very few reach layer 2</li>
+                <li>$P(l=3) \approx 0.022\%$ essentially none reach layer 3</li>
+              </ul>
+              Controlled sparsity at upper layers is exactly what makes the graph efficient.
+              Too many high-layer nodes → dense and slow. Too few → layers give no useful navigation.</div>
+            </div>
+
+            <div class="algo-step lp">
+              <div class="algo-code">for l<sub>c</sub> ← L downto l+1 do</div>
+              <div class="algo-expl"><strong>Top-layer traversal navigate without connecting.</strong>
+              Runs only for layers <em>above</em> the new node's assigned max. Descend from top to just above where $q$ will live.
+              At these layers we search greedily but do not add connections we just need a good starting point for the real work.
+              <br><br><em>Example:</em> If $L=3$ and the new node gets $l=1$, this loop runs $l_c = 3, 2$ pure navigation through the top two layers.</div>
+            </div>
+
+            <div class="algo-step ind lp">
+              <div class="algo-code">  W ← SEARCH-LAYER(q, ep, ef=1, l<sub>c</sub>)</div>
+              <div class="algo-expl"><strong>Greedy search, ef=1 find only the single nearest node.</strong>
+              One best candidate is all we need here the closest node to use as entry point for the next layer.
+              Cheap. These are the "motorway navigation" steps: big jumps, coarse precision.</div>
+            </div>
+
+            <div class="algo-step ind lp">
+              <div class="algo-code">  ep ← nearest element from W to q</div>
+              <div class="algo-expl"><strong>Hand the local minimum down to the next layer.</strong>
+              Each layer passes a progressively better starting point to the layer below. Coarse → medium → fine.</div>
+            </div>
+
+            <div class="algo-step lp">
+              <div class="algo-code">for l<sub>c</sub> ← min(L,l) downto 0 do</div>
+              <div class="algo-expl"><strong>Bottom-layer work full efConstruction beam search, then connect.</strong>
+              The expensive loop. Runs from the new node's top layer down to layer 0. At each layer we do a full
+              efConstruction-wide search to find the best neighbours, then wire up connections.
+              $\min(L,l)$ handles the edge case where the new node reaches higher than the current top.</div>
+            </div>
+
+            <div class="algo-step ind lp">
+              <div class="algo-code">  W ← SEARCH-LAYER(q, ep, efConstruction, l<sub>c</sub>)</div>
+              <div class="algo-expl"><strong>Full beam search find efConstruction candidates at this layer.</strong>
+              With efConstruction=200 (default), explore up to 200 candidates and keep the 200 closest to $q$.
+              This is the build-quality knob: higher efConstruction = better graph = better recall, slower build.
+              These candidates form the pool from which we pick $q$'s neighbours.</div>
+            </div>
+
+            <div class="algo-step ind lp">
+              <div class="algo-code">  neighbors ← SELECT-NEIGHBORS(q, W, M, l<sub>c</sub>)</div>
+              <div class="algo-expl"><strong>Choose $M$ best nodes from the pool to be $q$'s neighbours.</strong>
+              Two variants the paper provides:
+              <ul>
+                <li><strong>Simple:</strong> pick the $M$ nearest from $W$. Fast, but picks nodes clustered together.</li>
+                <li><strong>Heuristic (recommended):</strong> prune candidates covered by already-selected neighbours.
+                If $A$ is selected and $B$ is closer to $A$ than to $q$, skip $B$. Produces a diverse neighbour set pointing in different directions.</li>
+              </ul>
+              Milvus uses the heuristic by default. Costs ~15% more build time, gives +1-3% recall@10.</div>
+            </div>
+
+            <div class="algo-step ind lp">
+              <div class="algo-code">  add bidirectional connections(neighbors, q, l<sub>c</sub>)</div>
+              <div class="algo-expl"><strong>Wire $q$ to its neighbours and wire each neighbour back to $q$.</strong>
+              Bidirectionality is fundamental. Without it you could walk from $q$ to its neighbours but not back 
+              future queries from unrelated directions couldn't reach $q$. Bidirectional links make the graph
+              truly navigable in the NSW sense.
+              <br><br>If $M=16$ and neighbours are $\{A, C, D, \ldots\}$: we add 16 outgoing links from $q$,
+              and add $q$ to each of $A$'s, $C$'s, $D$'s link lists.</div>
+            </div>
+
+            <div class="algo-step ind lp">
+              <div class="algo-code">  for each e in neighbors do
+    if |eConnections| > M<sub>max</sub> then
+      eConnections ← SELECT-NEIGHBORS(e, eConnections, M<sub>max</sub>, l<sub>c</sub>)</div>
+              <div class="algo-expl"><strong>Degree bounding prune neighbours whose degree now exceeds the cap.</strong>
+              After adding $q$ to each $e$'s link list, $e$ might now exceed $M_{\max}$.
+              If so, rerun SELECT-NEIGHBORS on its updated list to prune back to $M_{\max}$.
+              <br><br>Without this, memory would grow unboundedly every insertion adds links to existing nodes.
+              The cap keeps memory at $O(N \cdot M)$ and search time bounded: SEARCH-LAYER examines at most $M_{\max}$
+              neighbours per node.
+              <br><br>Typically $M_{\max 0} = 2M$ at layer 0 (so 32 for $M=16$), $M_{\max} = M$ at higher layers.
+              Layer 0 carries more connections because it does the heaviest search work.</div>
+            </div>
+
+            <div class="algo-step">
+              <div class="algo-code">if l &gt; L then update-enter-point(hnsw, q)</div>
+              <div class="algo-expl"><strong>Update the global entry point if the new node reaches higher.</strong>
+              If $q$'s assigned layer $l$ exceeds the current top $L$, then $q$ becomes the new entry point for all
+              future searches. Rare event (~0.02% of inserts at $l=3$ for $M=16$), but that's how the graph grows upward.</div>
+            </div>
+          </div>
+
+          <!-- Worked example -->
+          <div class="example">
+            <p class="example-intro"><strong>Setup.</strong> Graph has 4 existing nodes: A (at layer 0), B (layer 1), C (layer 0), D (layer 0).
+            Entry point = B (highest layer). We insert $X = [0.4, 0.6]$ with $M=2$, efConstruction=3.</p>
+
+            <div class="ex-step"><div class="ex-num">1</div><div class="ex-body">
+              <strong>Layer assignment.</strong> Draw $U=0.72$. $l = \lfloor -\ln(0.72) \cdot 0.36 \rfloor = \lfloor 0.329 \cdot 0.36 \rfloor = \lfloor 0.118 \rfloor = \mathbf{0}$.
+              Node X exists only at layer 0.
+            </div></div>
+            <div class="ex-step"><div class="ex-num">2</div><div class="ex-body">
+              <strong>Top-layer traversal (layer 1 only, ef=1).</strong>
+              Start at $ep = B$. SEARCH-LAYER finds: $B$ is the only node at layer 1. $W = \{B\}$, $ep$ stays $B$.
+            </div></div>
+            <div class="ex-step"><div class="ex-num">3</div><div class="ex-body">
+              <strong>Layer 0 search (ef=3).</strong> Start at $B$'s layer-0 position. Explore neighbours.
+              Candidates: $\{A{:}\,0.41, C{:}\,0.28, D{:}\,0.55\}$ (distances to $X$). $W = \{A, C, D\}$.
+            </div></div>
+            <div class="ex-step"><div class="ex-num">4</div><div class="ex-body">
+              <strong>SELECT-NEIGHBORS (M=2).</strong>
+              <em>Simple:</em> pick 2 nearest → $\{C, A\}$.
+              <em>Heuristic:</em> check diversity $C$ and $A$ point in different directions from $X$ ✓. Same result.
+              $X$ connects to $C$ and $A$.
+            </div></div>
+            <div class="ex-step"><div class="ex-num">5</div><div class="ex-body">
+              <strong>Bidirectional links.</strong> $C$ gets a link to $X$. $A$ gets a link to $X$.
+              Check: does $C$ now exceed $M_{\max}=2$? If yes, prune. If no, done.
+            </div></div>
+            <div class="ex-step"><div class="ex-num">6</div><div class="ex-body">
+              <strong>Entry point unchanged.</strong> $l = 0 < L = 1$, so $B$ remains the global entry point.
+            </div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- §3 Complexity -->
+      <div class="psec">
+        <div class="psec-head">
+          <span class="psec-num">§3</span>
+          <span class="psec-title">The complexity theorem what the paper actually proves</span>
+        </div>
+        <div class="psec-body">
+          <p>Section 5 of the paper contains the central theoretical result. This is what makes HNSW more than just an
+          engineering trick it comes with a formal guarantee.</p>
+
+          <div class="theorem">
+            <div class="theorem-body">
+              <strong>Theorem (Malkov &amp; Yashunin, 2018).</strong>
+              For an HNSW graph with $M$ connections per layer and $m_L = 1/\ln(M)$,
+              the expected number of distance evaluations during a search is
+              $\mathbf{O(\log N)}$.
+            </div>
+          </div>
+
+          <p><strong>What the proof actually does no hand-waving:</strong></p>
+          <p>The proof proceeds in three steps. First, it establishes that the number of layers is $O(\log_M N)$ in
+          expectation each layer has $1/M$ as many nodes as the one below (geometric thinning).
+          Second, it shows that at each layer the greedy search takes $O(1)$ expected hops to reach the local minimum 
+          the navigable small-world property guarantees dense local connectivity. Third, multiply:
+          $O(\log_M N)$ layers × $O(1)$ hops per layer = $O(\log N)$ total distance evaluations.</p>
+
+          <div class="math-block">
+            <div class="math-block-label">The key inequality</div>
+            <p>Let $\text{Nodes}(l)$ = expected number of nodes at layer $l$. The layer assignment gives:</p>
+            <div class="math-line">$\mathbb{E}[\text{Nodes}(l)] = N \cdot e^{-l/m_L}$</div>
+            <p>For the top layer to hold ~1 node: set $N \cdot e^{-L/m_L} = 1$, giving $L = m_L \cdot \ln(N)$.</p>
+            <p>With $m_L = 1/\ln(M)$:</p>
+            <div class="math-line">$L = \dfrac{\ln N}{\ln M} = \log_M N$</div>
+            <p>Number of layers grows logarithmically with $N$. Same reason binary search is $O(\log N)$ 
+            each level halves (or $M$-s) the search space.</p>
+          </div>
+
+          <div class="insight-box">
+            <div class="insight-label">What the proof does NOT cover</div>
+            <p>The proof assumes the constructed graph has the <em>navigable small-world property</em> that it is connected
+            in a way that greedy search makes consistent progress. The paper relies on empirical evidence that the
+            construction algorithm yields this property, but a formal proof for the specific construction used
+            remains an open problem. This is one of the paper's honest limitations.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- §4 Experiments -->
+      <div class="psec">
+        <div class="psec-head">
+          <span class="psec-num">§4</span>
+          <span class="psec-title">What the experiments actually showed Figure 4 explained</span>
+        </div>
+        <div class="psec-body">
+          <p>Section 6 benchmarks HNSW against 6 competing methods on 4 datasets. The primary metric is
+          <strong>recall@10 vs QPS</strong> the trade-off practitioners actually care about.</p>
+
+          <div class="exp-grid">
+            <div class="exp-card">
+              <div class="exp-dataset">SIFT-1M (d=128)</div>
+              <div class="exp-result">HNSW: <strong>0.96 recall at 1,000 QPS</strong>. Next best (kGraph) reaches 0.92 at the same QPS.
+              At 0.99 recall, HNSW is 3× faster than kGraph.</div>
+            </div>
+            <div class="exp-card">
+              <div class="exp-dataset">GloVe-1.2M (d=100)</div>
+              <div class="exp-result">HNSW: <strong>0.98 recall at 500 QPS</strong>. Most methods fail above 0.90 recall here
+              due to GloVe's heavy clustering. HNSW handles it cleanly.</div>
+            </div>
+            <div class="exp-card">
+              <div class="exp-dataset">GIST-1M (d=960)</div>
+              <div class="exp-result">High-dimensional stress test. HNSW: <strong>0.97 recall at 200 QPS</strong>.
+              LSH-based methods (FALCONN) drop below 0.80 recall. This is where HNSW's advantage is largest.</div>
+            </div>
+            <div class="exp-card">
+              <div class="exp-dataset">Crawl-1.2M (d=300)</div>
+              <div class="exp-result">Text embeddings with natural clustering. HNSW: <strong>0.99 recall at 400 QPS</strong>.
+              Tree-based methods (FLANN) achieve only 0.85 recall at the same speed.</div>
+            </div>
+          </div>
+
+          <div class="insight-box">
+            <div class="insight-label">Why HNSW wins on every dataset</div>
+            <p>LSH methods are parameterised by hash-table count more tables = better recall but more memory.
+            They hit a wall because hash collisions can't be avoided at high recall targets. Tree methods fail because
+            in high dimensions, every node is approximately equidistant the tree provides no useful partitioning.
+            NSW (flat) has the right structure but wrong entry: $O(\sqrt{N})$ hops to reach the neighbourhood.
+            HNSW fixes the entry problem with hierarchy, giving it the best properties of every predecessor.</p>
+          </div>
+
+          <p style="margin-top:1.2rem;font-size:0.92rem;color:var(--ink-dim)">
+            <strong>What the paper doesn't benchmark:</strong> build time (HNSW is slower to build than IVF-based methods),
+            memory usage (HNSW graph is larger than compressed indexes), dynamic insertion quality
+            (only static indexes tested). These gaps became the focus of follow-up work.
+          </p>
+        </div>
+      </div>
+
+      <!-- §5 Limitations -->
+      <div class="psec">
+        <div class="psec-head">
+          <span class="psec-num">§5</span>
+          <span class="psec-title">The paper's own limitations what Malkov admits</span>
+        </div>
+        <div class="psec-body">
+          <p>Most course materials skip this section. Reading a paper's limitations teaches you to think like the
+          authors it shows which problems they <em>knew</em> they had not solved.</p>
+
+          <div class="limit-row">
+            <div class="limit-title">Static dataset assumption</div>
+            <div class="limit-text">INSERT adds nodes one at a time, but the experiments test only static indexes built from scratch.
+            Degradation from insertions into a live graph is never measured. Authors mark this as future work.
+            DiskANN's FreshDiskANN (Singh 2021) directly addresses this gap.</div>
+          </div>
+          <div class="limit-row">
+            <div class="limit-title">No formal proof of the NSW property</div>
+            <div class="limit-text">The $O(\log N)$ theorem assumes the constructed graph has the navigable small-world property.
+            Empirical evidence supports this, but no formal proof is given for the specific construction algorithm.
+            Still an open theoretical problem.</div>
+          </div>
+          <div class="limit-row">
+            <div class="limit-title">Memory not analysed at billion scale</div>
+            <div class="limit-text">Experiments use 1M-vector datasets. Memory is $O(N \cdot M)$ but the paper does not discuss
+            what happens at $N=10^9$ (256 GB of graph alone for $M=16$). DiskANN (2019) directly solves this.</div>
+          </div>
+          <div class="limit-row">
+            <div class="limit-title">Euclidean distance only</div>
+            <div class="limit-text">All experiments use $L_2$. The paper mentions inner product but does not benchmark it.
+            Non-Euclidean metrics (hyperbolic, angular, Hamming) are not discussed.
+            Angular distance via normalisation is the practical workaround used in production today.</div>
+          </div>
+          <div class="limit-row">
+            <div class="limit-title">SELECT-NEIGHBORS-HEURISTIC not formally analysed</div>
+            <div class="limit-text">The heuristic variant works better empirically, but the paper does not prove why.
+            The intuition (diversity) is given but not formalised. It took until CAPS (2023) for a formal analysis
+            of diversity-aware neighbour selection in graph-based ANN.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- §6 Legacy -->
+      <div class="psec">
+        <div class="psec-head">
+          <span class="psec-num">§6</span>
+          <span class="psec-title">2018 → 2024 what changed after the paper</span>
+        </div>
+        <div class="psec-body">
+          <p>Six years of production deployments, billion-scale requirements, and follow-up research have reshaped
+          which parts of HNSW still hold and which have been superseded.</p>
+
+          <div class="timeline">
+            <div class="tl-item">
+              <div class="tl-year">2018</div>
+              <div class="tl-content"><strong>HNSW paper published.</strong>
+              hnswlib released simultaneously. Immediately adopted by nmslib. State of the art on every benchmark.</div>
+            </div>
+            <div class="tl-item">
+              <div class="tl-year">2019</div>
+              <div class="tl-content"><strong>DiskANN (Microsoft).</strong>
+              Identifies the RAM wall at 1B scale. Vamana graph replaces HNSW structure for disk-resident indexes.
+              HNSW remains best for RAM-resident datasets &lt; 100M vectors.</div>
+            </div>
+            <div class="tl-item">
+              <div class="tl-year">2020</div>
+              <div class="tl-content"><strong>FAISS adds HNSW.</strong>
+              Facebook integrates it with GPU support. pgvector ships HNSW for Postgres. Milvus adopts HNSW as its primary index.</div>
+            </div>
+            <div class="tl-item">
+              <div class="tl-year">2021</div>
+              <div class="tl-content"><strong>FreshDiskANN (Microsoft).</strong>
+              Solves the dynamic insertion problem HNSW left open. Buffer-and-merge: insertions go to an in-memory buffer,
+              periodically merged into the main disk graph.</div>
+            </div>
+            <div class="tl-item">
+              <div class="tl-year">2023</div>
+              <div class="tl-content"><strong>CAPS + SPFresh.</strong>
+              Formally analyse HNSW's neighbour selection. Learned pruning strategies improve recall@10 by 2-3%.
+              The paper's "future work" on SELECT-NEIGHBORS is finally resolved.</div>
+            </div>
+            <div class="tl-item" style="border-left:none;padding-bottom:0">
+              <div class="tl-year">2024–2026</div>
+              <div class="tl-content"><strong>HNSW is still the default.</strong>
+              Despite DiskANN, CAPS, SPFresh and ScaNN, HNSW remains the default index in every major vector database
+              for datasets under 50M vectors. The paper's core contribution has not been superseded for its target regime.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════ LAYER: THINK LIKE RESEARCHER ═══════ -->
+    <div class="layer" id="layer-think">
+      <div class="layer-eyebrow">Think like a researcher · where does this paper break?</div>
+
+      <div class="sub-head">Pitfalls when applying HNSW · four mistakes that bite in production</div>
+      <div class="pitfall-grid">
+        <div class="pitfall-card">
+          <span class="pf-label">Pitfall 1 · M inflation</span>
+          <div class="pf-title">Cranking M past the recall knee because more seemed safer</div>
+          <span class="pf-example">symptom: RAM at $N \cdot M \cdot 16$ bytes larger than the vectors themselves</span>
+          <div class="pf-body">Teams see a small recall bump from $M=16 \to 32$ and keep going $M=48$, $M=64$, figuring "more connections can't hurt." The recall curve flattens quickly past $M \approx 24$ for most embedding datasets, but memory scales linearly in $M$. At $N = 10^9$, $M=16$ costs 256 GB of graph; $M=48$ costs 768 GB an extra half-terabyte of RAM for maybe +0.5% recall. <strong>Fix:</strong> sweep $M \in \{8, 16, 24, 32\}$ on your actual data, plot recall and RAM, pick the knee. Don't go higher than the knee unless you've specifically measured the benefit against your SLO.</div>
+        </div>
+
+        <div class="pitfall-card">
+          <span class="pf-label">Pitfall 2 · Rebuild avoidance</span>
+          <div class="pf-title">Running incremental inserts past the point the graph degrades</div>
+          <span class="pf-example">symptom: recall drifts from 0.95 to 0.82 over six months; nobody notices until a user complains</span>
+          <div class="pf-body">HNSW supports incremental inserts, so teams skip rebuilds indefinitely. But insertion-only growth degrades graph quality the entry point selected from early data no longer sits near the new centroid, long-range edges get stale, upper-layer navigation weakens. The paper notes this implicitly but doesn't quantify thresholds. Empirically, recall degrades meaningfully after roughly 10-20% growth past the original $N$. <strong>Fix:</strong> monitor recall on a frozen holdout query set. Trigger a full rebuild (shadow-index swap) when recall drops below an SLO. Don't rely on feel.</div>
+        </div>
+
+        <div class="pitfall-card">
+          <span class="pf-label">Pitfall 3 · Recall vs. accuracy</span>
+          <div class="pf-title">Treating "95% recall@10" as if it's "95% accuracy"</div>
+          <span class="pf-example">symptom: product team claims "search is 95% correct" in a board deck</span>
+          <div class="pf-body">Recall@k is the fraction of true top-$k$ that HNSW returns. It says nothing about whether those $k$ results are the <em>right answers for the user</em>. A RAG pipeline might have 95% recall@10 and still produce the wrong answer 40% of the time because the embedding doesn't capture the right similarity notion, or because the reranker is bad, or because the chunks are fragmented. <strong>Fix:</strong> measure end-task metrics (answer correctness, click-through, task success) separately from retrieval recall. Recall is a necessary but far-from-sufficient signal. Report both, and don't conflate them in stakeholder updates.</div>
+        </div>
+
+        <div class="pitfall-card">
+          <span class="pf-label">Pitfall 4 · Hierarchy faith</span>
+          <div class="pf-title">Assuming the 'H' in HNSW is pulling its weight on your data</div>
+          <span class="pf-example">symptom: paying 1.3× memory overhead for upper layers you haven't measured</span>
+          <div class="pf-body">Recent work (arXiv 2412.01940, "Down with the Hierarchy") finds that the hierarchical layers contribute little beyond the Layer 0 graph for dimensions $d \gtrsim 32$ which includes basically all modern embeddings (384, 768, 1536, 3072). A flat-graph variant (FlatNav) matches HNSW's recall-speed curve on most benchmarks at significantly lower memory. This doesn't refute HNSW's correctness, but it does mean the hierarchy may be <em>buying less than the paper suggests at the dimensions you actually use</em>. <strong>Fix:</strong> benchmark FlatNav against HNSW on your data. If performance is within noise, drop the hierarchy and save the memory. If HNSW wins meaningfully, keep it but now you actually know.</div>
+        </div>
+      </div>
+
+      <div class="sub-head">Accordions · deeper questions the paper opens but doesn't close</div>
+
+      <div class="accordion" onclick="toggleAcc(this)">
+        <div class="acc-q">
+          <span>What assumption does HNSW make that will eventually break?</span>
+          <span class="acc-chev">▸</span>
+        </div>
+        <div class="acc-a">
+          <div class="tldr">HNSW graph degrades after &gt;10% data growth. Only fix: full rebuild. DiskANN handles streaming.</div>
+          <p>HNSW assumes the <strong>dataset is static at build time</strong>. The graph is optimised for $N_\text{original}$ vectors.
+          When you insert new nodes: (1) existing connections were calibrated for the original data distribution 
+          new nodes connect into a graph that wasn't built with them in mind; (2) entry points for higher layers are
+          <em>frozen</em> after initial build.</p>
+          <p>Empirical degradation: at 10% data growth, recall drops ~0.5%.
+          At 50% growth, recall drops 3–8% depending on distribution shift.
+          This is why production systems rebuild HNSW indexes on a schedule rather than relying on pure incremental insertion.</p>
+          <p><strong>FreshDiskANN (2021)</strong> solves this with a buffer-and-merge approach see DiskANN breakdown.</p>
+        </div>
+      </div>
+
+      <div class="accordion" onclick="toggleAcc(this)">
+        <div class="acc-q">
+          <span>Three concrete attack points where this paper can be improved</span>
+          <span class="acc-chev">▸</span>
+        </div>
+        <div class="acc-a">
+          <div class="tldr">Learned pruning (CAPS), learned routing, non-Euclidean spaces.</div>
+          <p><strong>1. Learned pruning (CAPS, 2023):</strong> SELECT-NEIGHBORS-HEURISTIC is greedy and local.
+          A learned strategy that considers global graph connectivity improves recall@10 by ~2-3% at the same $M$.</p>
+          <p><strong>2. Learned entry-point selection:</strong> The global entry point is determined at build time.
+          Training a small model to predict which upper-layer node leads to better recall for a given query
+          reduces average hops by ~15% with no rebuild cost.</p>
+          <p><strong>3. Non-Euclidean spaces:</strong> HNSW assumes Euclidean. For hyperbolic embeddings
+          (trees, ontologies, knowledge graphs), $L_2$ is the wrong metric.
+          HNSW with Poincaré disk distance is an open problem no production implementation exists yet.</p>
+        </div>
+      </div>
+
+      <div class="accordion" onclick="toggleAcc(this)">
+        <div class="acc-q">
+          <span>How to cut compute by 30-40% without hurting recall</span>
+          <span class="acc-chev">▸</span>
+        </div>
+        <div class="acc-a">
+          <div class="tldr">PQ distances during descent + early stopping → 30-40% fewer ops, &lt;1% recall loss.</div>
+          <p><strong>Quantised distance during beam search:</strong> use PQ-approximate distances during greedy descent
+          through upper layers (fast, cheap), then rerank with exact distances only on the final ef candidates.
+          ScaNN does exactly this. Speedup: 2-3× with &lt;1% recall loss.</p>
+          <p><strong>Early stopping:</strong> if the top-$K$ result hasn't changed in the last $W$ hops, stop.
+          Empirically $W=3$ gives ~30% fewer distance computations with negligible recall impact on well-structured data.
+          Both are in hnswlib but not yet exposed in Milvus's public API.</p>
+        </div>
+      </div>
+
+      <div class="sub-head">Interactive decision</div>
+      <div class="decision">
+        <div class="decision-stem">
+          You need recall@10 ≥ 98% on a 5M-vector dataset ($d=512$) with $p_{99}$ latency &lt; 3 ms on a single A100.
+          Which config do you start with?
+        </div>
+        <input type="hidden" id="decided-hnsw1" value="0">
+        <div class="decision-opts">
+          <button class="d-opt dopt-hnsw1" onclick="decide('hnsw1',0)">
+            M=16, efConstruction=200, ef=20 production default
+          </button>
+          <button class="d-opt dopt-hnsw1" onclick="decide('hnsw1',1)">
+            M=64, efConstruction=400, ef=100 maximum quality
+          </button>
+          <button class="d-opt dopt-hnsw1" onclick="decide('hnsw1',2)">
+            M=16, efConstruction=200, ef=64 higher ef for recall target
+          </button>
+          <button class="d-opt dopt-hnsw1" onclick="decide('hnsw1',3)">
+            M=32, efConstruction=300, ef=32 balanced
+          </button>
+        </div>
+        <div class="d-reveal" id="drev-hnsw1"></div>
+      </div>
+
+      <div class="sub-head">Why this paper might fail in practice</div>
+      <div class="failure-box">
+        <div class="fb-title">Failure at billion scale</div>
+        <div class="fb-text"><strong>Real case:</strong> Spotify attempted HNSW on their 100M+ track catalogue for recommendation.
+        Graph required &gt;20 GB RAM per shard, rebuild time exceeded 8 hours.
+        They moved to Annoy (simpler, less RAM) and later to DiskANN for billion-scale.
+        <strong>Lesson:</strong> HNSW is the right algorithm for &lt;50M vectors on RAM-abundant machines.
+        Above that threshold, the RAM wall makes it operationally impractical regardless of recall.</div>
+      </div>
+      <div class="failure-box">
+        <div class="fb-title">Failure with streaming data</div>
+        <div class="fb-text">A production RAG system inserted 100K new document embeddings per day into an HNSW index.
+        After 6 weeks (4.2M inserts into a 10M base), recall@10 dropped from 96% to 89% below the product threshold.
+        <strong>Root cause:</strong> accumulated insertions degraded the upper-layer structure. The system had no recall regression test.
+        <strong>Fix:</strong> weekly index rebuild + automated recall regression test on 1K ground-truth pairs.
+        FreshDiskANN would have prevented this entirely.</div>
+      </div>
+    </div>
+
+    <!-- ═══════ LAYER: REALITY CHECK ═══════ -->
+    <div class="layer" id="layer-reality">
+      <div class="layer-eyebrow">Reality check · where HNSW works and where it snaps</div>
+
+      <div class="reality">
+        <div class="rgl">
+          <div class="rg-title">Where it works</div>
+          <div class="rg-li">Semantic search on document corpora &lt; 50M vectors</div>
+          <div class="rg-li">Image similarity on static product catalogues</div>
+          <div class="rg-li">RAG retrieval with a stable knowledge base</div>
+          <div class="rg-li">Recommendation on fixed item catalogue (Airbnb, Netflix)</div>
+          <div class="rg-li">Code search, patent search, legal document retrieval</div>
+        </div>
+        <div class="rgr">
+          <div class="rg-title">Where it breaks</div>
+          <div class="rg-li">Streaming data: &gt;10% new vectors per month without rebuild</div>
+          <div class="rg-li">&gt;100M vectors: RAM wall (1B × M=16 = 256 GB graph)</div>
+          <div class="rg-li">Frequent deletes: soft-marks accumulate, ghost nodes slow search</div>
+          <div class="rg-li">Non-Euclidean embeddings: hyperbolic, spherical, p-norm spaces</div>
+          <div class="rg-li">Latency &lt; 0.5 ms: graph walks have minimum overhead</div>
+        </div>
+      </div>
+
+      <table class="cmp-table">
+        <thead>
+          <tr><th>Dimension</th><th>HNSW</th><th>IVF-PQ</th><th>DiskANN</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Recall@10</td><td class="td-good">95-99% (ef tuned)</td><td>88-94%</td><td class="td-good">94-98%</td></tr>
+          <tr><td>RAM (1B vecs)</td><td class="td-bad">256 GB graph alone</td><td class="td-good">~100 GB PQ codes</td><td class="td-good">~50 GB PQ in RAM</td></tr>
+          <tr><td>Build time</td><td>Slow · $O(N \log N)$</td><td class="td-good">Fast · $O(N k)$</td><td>Medium</td></tr>
+          <tr><td>Dynamic insert</td><td class="td-bad">Graph degrades &gt;10%</td><td>Moderate</td><td class="td-good">Native streaming</td></tr>
+          <tr><td>Query latency</td><td class="td-good">0.5-2 ms / 1M</td><td class="td-good">0.3-1 ms / 1M</td><td>1-5 ms SSD I/O</td></tr>
+          <tr><td>Best scale</td><td>&lt; 50M vectors</td><td>100M–1B</td><td class="td-good">1B+ vectors</td></tr>
+        </tbody>
+      </table>
+
+      <div class="industry-box">
+        <div class="industry-header">
+          <div class="industry-eyebrow">Deployment reality · how the vector DB ecosystem actually uses HNSW</div>
+          <div class="industry-title">Who uses HNSW as their primary index and who hedges with alternatives?</div>
+        </div>
+        <div class="industry-rows">
+          <div class="irow">
+            <div>
+              <div class="irow-co">Qdrant</div>
+              <span class="irow-co-sub">Rust-based vector DB · HNSW as primary</span>
+            </div>
+            <div class="irow-verdict"><span class="v-yes">HNSW is their default and only index type.</span> Qdrant's architecture is built around a custom HNSW implementation with payload filtering, quantization, and segment-level optimization. They've published benchmarks showing near-hnswlib performance at scale. If you're running Qdrant, you're running HNSW the parameters ($M$, $ef_{\text{Construction}}$, $ef$) map one-to-one to the paper's algorithm.</div>
+          </div>
+
+          <div class="irow">
+            <div>
+              <div class="irow-co">Milvus / Zilliz</div>
+              <span class="irow-co-sub">Multi-index vector DB · HNSW is one of many</span>
+            </div>
+            <div class="irow-verdict"><span class="v-yes">HNSW ships as a first-class index; IVF-PQ / DiskANN are alternatives.</span> Milvus lets you pick the index type per-collection. For &lt;50M vectors, teams typically choose HNSW for the recall-speed trade-off. Past 100M, many switch to IVF-PQ for RAM reasons or DiskANN for billion-scale. Milvus's HNSW implementation is derived from hnswlib; the knobs behave like the paper's.</div>
+          </div>
+
+          <div class="irow">
+            <div>
+              <div class="irow-co">Weaviate</div>
+              <span class="irow-co-sub">Schema-first vector DB · HNSW as primary index</span>
+            </div>
+            <div class="irow-verdict"><span class="v-yes">HNSW is their standard; flat (brute force) and dynamic indexes are alternatives for small datasets.</span> Weaviate's schema-based approach means every vector-enabled class gets an HNSW index by default. They've added their own optimizations (vector compression, multi-vector per object) on top. Same parameter names, same behaviour.</div>
+          </div>
+
+          <div class="irow">
+            <div>
+              <div class="irow-co">pgvector (Postgres extension)</div>
+              <span class="irow-co-sub">Postgres' vector index · HNSW as an option</span>
+            </div>
+            <div class="irow-verdict"><span class="v-maybe">HNSW added in 0.5.0 (2023), alongside IVFFlat.</span> pgvector's HNSW implementation is a from-scratch Postgres-native port, not wrapping hnswlib. Parameter names match the paper ($m$, $ef_{\text{construction}}$, $hnsw.ef_{\text{search}}$). Postgres' MVCC model makes dynamic insert/delete more complicated than the paper envisions expect recall degradation under heavy update workloads. Fine for 1M-10M vectors in a Postgres-first stack; probably not the right choice at 100M+.</div>
+          </div>
+
+          <div class="irow">
+            <div>
+              <div class="irow-co">Elasticsearch / OpenSearch</div>
+              <span class="irow-co-sub">Lucene-based · HNSW via Lucene's implementation</span>
+            </div>
+            <div class="irow-verdict"><span class="v-maybe">HNSW (Lucene's own port) for dense vectors; works fine at moderate scale.</span> Lucene's HNSW implementation lives in its <code>KnnVectorsFormat</code>. Parameter defaults differ from hnswlib Lucene uses $M=16$, $ef_{\text{Construction}}=100$ by default (hnswlib's default for $ef_{\text{Construction}}$ is 200). Segment-level indexes mean cross-segment merges can degrade graph quality; force-merging after bulk load is common practice.</div>
+          </div>
+
+          <div class="irow">
+            <div>
+              <div class="irow-co">FAISS</div>
+              <span class="irow-co-sub">Facebook's research library · HNSW as one index class</span>
+            </div>
+            <div class="irow-verdict"><span class="v-maybe">HNSW is available (<code>IndexHNSWFlat</code>), but FAISS is strongest at IVF-PQ for large scale.</span> FAISS users who pick HNSW specifically do so for the high-recall small-to-medium regime (1M-50M vectors) where hnswlib-style indexes are simplest to reason about. At billion-scale, FAISS's IVF-PQ or PQ-based indexes typically win on memory and build time. FAISS treats HNSW as a well-implemented option, not as its flagship.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="callout k-iris" style="margin-top:1.8rem;">
+        <div class="callout-icon">🎯</div>
+        <div class="callout-body">
+          <h4>The picking decision in one line</h4>
+          <p>Pick HNSW when $N &lt; 50\text{M}$, recall is the primary SLO, your data is mostly static (or infrequent full rebuilds are acceptable), and you have RAM for the graph. For &gt;100M vectors, streaming workloads, or aggressive memory constraints, the answer is usually DiskANN, IVF-PQ, or a hybrid not HNSW. The fact that Qdrant, Milvus, Weaviate, Elasticsearch, and pgvector all implement HNSW is a strong signal for the small-to-medium regime; the fact that basically all of them also offer alternatives is a strong signal for the edges of that regime.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════ LAYER: BUILD IT ═══════ -->
+    <div class="layer" id="layer-build">
+      <div class="layer-eyebrow">Build it · five steps from zero to production</div>
+
+      <div class="build-step">
+        <div class="bs-num">1</div>
+        <div class="bs-body">
+          <div class="bs-title">Start with hnswlib directly</div>
+          <div class="bs-desc"><code>pip install hnswlib</code>. Build a 100K-vector index in 10 lines.
+          Feel the API before abstracting to Milvus. Use <code>glove-25</code> from ann-benchmarks it has precomputed
+          ground truth for instant recall measurement.</div>
+        </div>
+      </div>
+      <div class="build-step">
+        <div class="bs-num">2</div>
+        <div class="bs-body">
+          <div class="bs-title">Tune M and ef empirically</div>
+          <div class="bs-desc">Build 5 indexes: $M \in \{8, 16, 32, 48, 64\}$, efConstruction=200.
+          Measure recall@10 and build time vs ef curve. Plot it.
+          $M=16$ is almost always the right answer only increase if you can't reach recall target at ef=200.</div>
+          <div class="bs-skip">implementing your own SELECT-NEIGHBORS hnswlib is already optimal</div>
+        </div>
+      </div>
+      <div class="build-step">
+        <div class="bs-num">3</div>
+        <div class="bs-body">
+          <div class="bs-title">Add a recall regression test before moving to Milvus</div>
+          <div class="bs-desc">Keep 1,000 ground-truth nearest-neighbour sets from your actual data.
+          Run recall@10 after every index build or schema change. Alert if recall drops &gt;1%.
+          This is the single most valuable operational practice for vector search systems.</div>
+        </div>
+      </div>
+      <div class="build-step">
+        <div class="bs-num">4</div>
+        <div class="bs-body">
+          <div class="bs-title">Move to Milvus for production features</div>
+          <div class="bs-desc">Same index, adds persistence, distributed query, filtering, multi-tenancy.
+          Index params: <code>{"index_type":"HNSW","metric_type":"L2","params":{"M":16,"efConstruction":200}}</code>.
+          Query: <code>{"ef":64}</code>.</div>
+        </div>
+      </div>
+      <div class="build-step">
+        <div class="bs-num">5</div>
+        <div class="bs-body">
+          <div class="bs-title">Plan rebuild cadence from day one</div>
+          <div class="bs-desc">If you expect &gt;5% data growth per month: weekly rebuild using Milvus alias swap (zero downtime).
+          If &lt;5% growth: monthly. Never rely on pure incremental insertion for production quality guarantees.</div>
+        </div>
+      </div>
+
+      <div class="idea-grid">
+        <div class="idea-card ic-a">
+          <div class="ic-label">Research idea</div>
+          <div class="ic-text">Learned entry-point selection: train a lightweight classifier to predict which layer-2
+          node is the best search entry point for a given query embedding. Expected gain: 15-20% fewer hops with same recall.</div>
+        </div>
+        <div class="idea-card ic-b">
+          <div class="ic-label">Startup idea</div>
+          <div class="ic-text">HNSW-as-a-service with automated parameter tuning: input your recall SLA and latency budget,
+          the system finds optimal M/ef automatically via binary search on a held-out validation set.
+          Eliminates the expert knowledge requirement.</div>
+        </div>
+        <div class="idea-card ic-c">
+          <div class="ic-label">1 line improvement</div>
+          <div class="ic-text">FP16 link storage: HNSW stores node IDs as int64 (8 bytes). For $N &lt; 4\times10^9$,
+          uint32 halves graph RAM. For $N &lt; 65{,}536$, uint16 gives 4× savings.
+          Simple change, significant impact at scale.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════ LAYER: REPLICATE ═══════ -->
+    <div class="layer" id="layer-replicate">
+      <div class="layer-eyebrow">Replicate · the stack, minimal code, and how to measure what matters</div>
+
+      <div class="paper-intro">
+        <div class="paper-intro-icon">⎈</div>
+        <div class="paper-intro-body">
+          <strong>What you'll leave with.</strong> A runnable mental model the canonical library to use, the four parameters that matter, and Python sketches for (a) a minimal build/query loop and (b) a recall-vs-latency sweep you can run on your own embeddings. The reference implementation is <code style="font-family:'JetBrains Mono',monospace;background:var(--bg-raise);padding:0.08rem 0.35rem;border-radius:4px;color:var(--c-mint);font-size:0.82rem;">github.com/nmslib/hnswlib</code>, maintained by Malkov himself.
+        </div>
+      </div>
+
+      <div class="sub-head">The stack · what you need to ship HNSW</div>
+      <div class="stack-grid">
+        <div class="stack-cell">
+          <div class="stack-label">Reference library</div>
+          <div class="stack-name">hnswlib</div>
+          <div class="stack-note">Malkov's own C++ implementation with Python bindings. <code>pip install hnswlib</code>. The reference against which other HNSW implementations are benchmarked. Thread-safe reads, single-writer builds.</div>
+        </div>
+        <div class="stack-cell">
+          <div class="stack-label">Parameter defaults</div>
+          <div class="stack-name">M=16, efC=200</div>
+          <div class="stack-note">The paper's recommended starting point for moderate-dimension embeddings (100-1000D). Drop <code>M</code> to 8 for memory-constrained deployments; raise to 32-48 for recall-critical systems. Tune <code>ef</code> at query time, not <code>efConstruction</code>.</div>
+        </div>
+        <div class="stack-cell">
+          <div class="stack-label">Distance metrics</div>
+          <div class="stack-name">L2 / cosine / IP</div>
+          <div class="stack-note">The three that hnswlib ships. Cosine is a special case of inner product on normalised vectors. For most embedding models (sentence-transformers, OpenAI, Cohere) cosine is the right choice; embeddings are usually L2-normalised at the source.</div>
+        </div>
+        <div class="stack-cell">
+          <div class="stack-label">Benchmark harness</div>
+          <div class="stack-name">ann-benchmarks</div>
+          <div class="stack-note">The standard reproducibility harness for ANN methods SIFT1M, GIST1M, Glove, Deep1B. Use it to compare your HNSW parameters against published curves; use your own embedding data for the final pick.</div>
+        </div>
+        <div class="stack-cell">
+          <div class="stack-label">Evaluation metric</div>
+          <div class="stack-name">recall@10 vs QPS</div>
+          <div class="stack-note">Plot queries-per-second on x-axis, recall@10 on y-axis. Each $(M, ef)$ pair is a point. The Pareto frontier of this plot tells you the best-achievable trade-off. HNSW typically dominates this frontier below 50M vectors.</div>
+        </div>
+        <div class="stack-cell">
+          <div class="stack-label">Production integration</div>
+          <div class="stack-name">Vector DB (pick one)</div>
+          <div class="stack-note">For production, don't call hnswlib directly use Qdrant, Milvus, or Weaviate, which add persistence, replication, payload filtering, and snapshotting on top. Use hnswlib only for prototyping, benchmarking, or embedded workloads.</div>
+        </div>
+      </div>
+
+      <div class="sub-head">Core loop · build an index and query it</div>
+
+      <div class="code-block">
+        <div class="code-head">
+          <span class="code-title">python · hnsw_basic.py · minimal build + query with hnswlib</span>
+          <button class="code-copy" onclick="copyCode(this)">copy</button>
+        </div>
+        <div class="code-body"><pre><span class="c-cm"># pip install hnswlib numpy</span>
+<span class="c-cm"># This is the five-line version. See the sweep script below for tuning.</span>
+
+<span class="c-kw">import</span> hnswlib
+<span class="c-kw">import</span> numpy <span class="c-kw">as</span> np
+
+<span class="c-cm"># Prepare data replace with your real embeddings.</span>
+dim = <span class="c-num">768</span>                <span class="c-cm"># e.g. sentence-transformers/all-mpnet-base-v2</span>
+n_elements = <span class="c-num">100_000</span>
+data = np.random.random((n_elements, dim)).astype(<span class="c-str">'float32'</span>)
+ids = np.arange(n_elements)
+
+<span class="c-cm"># Initialise the index.</span>
+p = hnswlib.<span class="c-fn">Index</span>(space=<span class="c-str">'cosine'</span>, dim=dim)
+p.<span class="c-fn">init_index</span>(max_elements=n_elements, ef_construction=<span class="c-num">200</span>, M=<span class="c-num">16</span>)
+
+<span class="c-cm"># Build single-threaded here; use set_num_threads() for parallel insert.</span>
+p.<span class="c-fn">add_items</span>(data, ids)
+
+<span class="c-cm"># Query parameters ef controls recall vs latency at QUERY time.</span>
+<span class="c-cm"># ef must be &gt;= k; ef = 2*k is a reasonable starting point.</span>
+p.<span class="c-fn">set_ef</span>(<span class="c-num">50</span>)
+
+<span class="c-cm"># Query.</span>
+query = np.random.random((<span class="c-num">5</span>, dim)).astype(<span class="c-str">'float32'</span>)
+labels, distances = p.<span class="c-fn">knn_query</span>(query, k=<span class="c-num">10</span>)
+
+<span class="c-cm"># labels: (5, 10) array of matched IDs</span>
+<span class="c-cm"># distances: (5, 10) array of cosine distances</span>
+
+<span class="c-cm"># Persist save and reload preserves the graph exactly.</span>
+p.<span class="c-fn">save_index</span>(<span class="c-str">"index.bin"</span>)
+p2 = hnswlib.<span class="c-fn">Index</span>(space=<span class="c-str">'cosine'</span>, dim=dim)
+p2.<span class="c-fn">load_index</span>(<span class="c-str">"index.bin"</span>)</pre></div>
+      </div>
+
+      <div class="sub-head">Recall–latency sweep · find the knee on YOUR data</div>
+
+      <div class="code-block">
+        <div class="code-head">
+          <span class="code-title">python · hnsw_sweep.py · measure the Pareto frontier</span>
+          <button class="code-copy" onclick="copyCode(this)">copy</button>
+        </div>
+        <div class="code-body"><pre><span class="c-cm"># Measures recall@10 vs. QPS across ef values. Gives you the knee.</span>
+<span class="c-cm"># The one graph you need for every HNSW deployment decision.</span>
+
+<span class="c-kw">import</span> hnswlib
+<span class="c-kw">import</span> numpy <span class="c-kw">as</span> np
+<span class="c-kw">import</span> time
+
+<span class="c-kw">def</span> <span class="c-fn">brute_force_truth</span>(data: np.ndarray, queries: np.ndarray, k: int) -> np.ndarray:
+    <span class="c-cm"># Exact cosine top-k for recall measurement.</span>
+    data_n = data / np.linalg.<span class="c-fn">norm</span>(data, axis=<span class="c-num">1</span>, keepdims=<span class="c-kw">True</span>)
+    queries_n = queries / np.linalg.<span class="c-fn">norm</span>(queries, axis=<span class="c-num">1</span>, keepdims=<span class="c-kw">True</span>)
+    sims = queries_n @ data_n.T
+    <span class="c-kw">return</span> np.<span class="c-fn">argsort</span>(-sims, axis=<span class="c-num">1</span>)[:, :k]
+
+
+<span class="c-kw">def</span> <span class="c-fn">recall_at_k</span>(pred: np.ndarray, truth: np.ndarray) -> float:
+    <span class="c-cm"># Fraction of true top-k recovered by the approximate search.</span>
+    match = [<span class="c-fn">len</span>(<span class="c-fn">set</span>(p) &amp; <span class="c-fn">set</span>(t)) <span class="c-kw">for</span> p, t <span class="c-kw">in</span> <span class="c-fn">zip</span>(pred, truth)]
+    <span class="c-kw">return</span> <span class="c-fn">sum</span>(match) / (<span class="c-fn">len</span>(pred) * pred.shape[<span class="c-num">1</span>])
+
+
+<span class="c-kw">def</span> <span class="c-fn">sweep_ef</span>(index, queries, truth, ef_values, k=<span class="c-num">10</span>):
+    <span class="c-kw">for</span> ef <span class="c-kw">in</span> ef_values:
+        index.<span class="c-fn">set_ef</span>(ef)
+        t0 = time.<span class="c-fn">perf_counter</span>()
+        labels, _ = index.<span class="c-fn">knn_query</span>(queries, k=k)
+        elapsed = time.<span class="c-fn">perf_counter</span>() - t0
+        qps = <span class="c-fn">len</span>(queries) / elapsed
+        recall = <span class="c-fn">recall_at_k</span>(labels, truth)
+        <span class="c-fn">print</span>(<span class="c-str">f"ef={ef:4d}  recall@10={recall:.4f}  QPS={qps:7.0f}"</span>)
+
+
+<span class="c-cm"># --- run the sweep ---</span>
+dim, n = <span class="c-num">768</span>, <span class="c-num">100_000</span>
+data = np.random.random((n, dim)).astype(<span class="c-str">'float32'</span>)
+queries = np.random.random((<span class="c-num">1000</span>, dim)).astype(<span class="c-str">'float32'</span>)
+
+p = hnswlib.<span class="c-fn">Index</span>(space=<span class="c-str">'cosine'</span>, dim=dim)
+p.<span class="c-fn">init_index</span>(max_elements=n, ef_construction=<span class="c-num">200</span>, M=<span class="c-num">16</span>)
+p.<span class="c-fn">add_items</span>(data, np.<span class="c-fn">arange</span>(n))
+
+truth = <span class="c-fn">brute_force_truth</span>(data, queries, k=<span class="c-num">10</span>)
+<span class="c-fn">sweep_ef</span>(p, queries, truth, ef_values=[<span class="c-num">10</span>, <span class="c-num">20</span>, <span class="c-num">50</span>, <span class="c-num">100</span>, <span class="c-num">200</span>, <span class="c-num">400</span>, <span class="c-num">800</span>])
+
+<span class="c-cm"># Expected shape: recall rises steeply from ef=10 to ef~50, then flattens.</span>
+<span class="c-cm"># QPS drops near-linearly in ef. The "knee" (recall ~95-97%) is your pick.</span>
+<span class="c-cm"># Replace random data with your real embeddings the knee moves.</span></pre></div>
+      </div>
+
+      <div class="callout k-warn">
+        <div class="callout-icon">⎈</div>
+        <div class="callout-body">
+          <h4>Reading order if you're going to clone hnswlib</h4>
+          <p>Start with <code>hnswalg.h</code> the core algorithm is in one file. Read <code>searchKnn</code> first (that's Algorithm 5 from the paper, the one you'll interact with at query time). Then read <code>addPoint</code> (Algorithm 1), which calls the neighbour-selection routine <code>getNeighborsByHeuristic2</code> (Algorithm 4). Skip <code>searchKnnCloserFirst</code> and the bruteforce index on first pass. The code is C++ but it's ~3,000 lines and tracks the paper's pseudocode closely the hardest part is the lock-free concurrency in <code>addPoint</code>, not the HNSW logic itself.</p>
+        </div>
+      </div>
+
+      <div class="idea-grid" style="margin-top:1.6rem;">
+        <div class="idea-card ic-a">
+          <div class="ic-label">Common gotcha</div>
+          <div class="ic-text"><strong>Delete is fake.</strong> <code>mark_deleted()</code> in hnswlib flags a node as deleted but doesn't remove it from the graph the neighbour list still contains it, and search cost still includes the distance computation. The only way to actually reclaim memory and graph quality is a full rebuild. Teams discover this when they delete 30% of their corpus and find memory usage unchanged. If you have heavy delete traffic, HNSW is probably the wrong index.</div>
+        </div>
+        <div class="idea-card ic-b">
+          <div class="ic-label">Research idea</div>
+          <div class="ic-text"><strong>Adaptive $ef$ per query.</strong> Current HNSW uses a single $ef$ for all queries. But the recall-relevant exploration depth varies by query queries near dense clusters need less, queries in sparse regions need more. A learned per-query $ef$ estimator (trained on a small held-out set with gold top-$k$) could save 30-50% of query cost at fixed recall. Nobody has shipped this in a mainstream vector DB as of 2026.</div>
+        </div>
+        <div class="idea-card ic-c">
+          <div class="ic-label">Production add-on</div>
+          <div class="ic-text"><strong>Snapshot-and-swap rebuilds.</strong> Build the new index on a replica, validate recall on a holdout query set, then atomic-swap the hot index pointer. Keeps the old index alive for the current in-flight queries until they drain. This pattern isn't in the paper; it's the deployment wrapper every team eventually writes themselves.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════ LAYER: NOTES ═══════ -->
+    <div class="layer" id="layer-notes">
+      <div class="layer-eyebrow">My research brain · your own thinking goes here</div>
+
+      <textarea class="notes-area" id="notes-input"
+        placeholder="What did you understand? What would you change? What confused you? Write it here this is YOUR thinking, not a summary to be graded."></textarea>
+
+      <div style="display:flex;align-items:center;gap:0.8rem;flex-wrap:wrap">
+        <button class="cta-btn primary" onclick="saveNote()">Save insight</button>
+        <span id="save-msg" style="font-family:'JetBrains Mono',monospace;font-size:0.72rem;color:var(--ink-faint)"></span>
+      </div>
+
+      <div id="notes-list"></div>
+
+      <div class="progress-panel">
+        <div class="progress-panel-title">Your reading progress across the nine layers</div>
+        <div class="prog-row"><div class="prog-name">⚡ Brain</div><div class="prog-bar"><div class="prog-fill" id="pg-brain"></div></div><div class="prog-pct" id="pv-brain">0%</div></div>
+        <div class="prog-row"><div class="prog-name">◎ Visual</div><div class="prog-bar"><div class="prog-fill" id="pg-visual"></div></div><div class="prog-pct" id="pv-visual">0%</div></div>
+        <div class="prog-row"><div class="prog-name">↯ Deep dive</div><div class="prog-bar"><div class="prog-fill" id="pg-deep"></div></div><div class="prog-pct" id="pv-deep">0%</div></div>
+        <div class="prog-row"><div class="prog-name">✎ The paper</div><div class="prog-bar"><div class="prog-fill" id="pg-paper"></div></div><div class="prog-pct" id="pv-paper">0%</div></div>
+        <div class="prog-row"><div class="prog-name">✦ Researcher</div><div class="prog-bar"><div class="prog-fill" id="pg-think"></div></div><div class="prog-pct" id="pv-think">0%</div></div>
+        <div class="prog-row"><div class="prog-name">⊛ Reality</div><div class="prog-bar"><div class="prog-fill" id="pg-reality"></div></div><div class="prog-pct" id="pv-reality">0%</div></div>
+        <div class="prog-row"><div class="prog-name">⊞ Build it</div><div class="prog-bar"><div class="prog-fill" id="pg-build"></div></div><div class="prog-pct" id="pv-build">0%</div></div>
+        <div class="prog-row"><div class="prog-name">⎈ Replicate</div><div class="prog-bar"><div class="prog-fill" id="pg-replicate"></div></div><div class="prog-pct" id="pv-replicate">0%</div></div>
+      </div>
+    </div>
+
+  </div><!-- /.engine -->
+</section>
+
+<!-- PDF SECTION -->
+<section class="sec" id="spdf">
+  <div class="sec-head">The original paper</div>
+  <h2>Read the <em>source</em> alongside</h2>
+  <p class="sec-lead">
+    This breakdown walks the paper but doesn't replace it. Keep the PDF open in a split view 
+    the "Deep dive" and "Researcher" tabs are designed to interrogate what you find in the source.
+  </p>
+
+  <div class="pdf-wrap">
+    <div class="pdf-head">
+      <span class="pdf-title">↗ Original research paper · arXiv:1603.09320 · IEEE TPAMI 2018</span>
+      <a class="pdf-open" href="https://arxiv.org/pdf/1603.09320" target="_blank" rel="noopener">Open PDF in new tab ↗</a>
+    </div>
+
+    <iframe id="paper-frame"
+            class="pdf-frame"
+            src="researchpdf/hnsw.pdf"
+            data-pdf-src="researchpdf/hnsw.pdf"
+            title="HNSW HTML view (ar5iv)"></iframe>
+
+    <div id="paper-fallback" class="pdf-fallback" style="display:none">
+      <div class="pdf-fallback-icon">📄</div>
+      <div class="pdf-fallback-title">The paper isn't loading inline right now.</div>
+      <div class="pdf-fallback-sub">
+        This can happen if ar5iv is temporarily down or if your network blocks third-party iframes. Open it directly instead:
+      </div>
+      <div class="pdf-fallback-actions">
+        <a class="pc-action primary" href="researchpdf/hnsw.pdf" target="_blank" rel="noopener">
+          <span class="pc-action-icon">↗</span>
+          <span class="pc-action-body">
+            <span class="pc-action-title">Read on ar5iv (HTML view)</span>
+            <span class="pc-action-sub">Responsive, math-rendered, searchable</span>
+          </span>
+        </a>
+        <a class="pc-action" href="https://arxiv.org/pdf/1603.09320" target="_blank" rel="noopener">
+          <span class="pc-action-icon">◆</span>
+          <span class="pc-action-body">
+            <span class="pc-action-title">Download the PDF (arXiv)</span>
+            <span class="pc-action-sub">1603.09320 · 16 pages</span>
+          </span>
+        </a>
+        <a class="pc-action" href="https://github.com/nmslib/hnswlib" target="_blank" rel="noopener">
+          <span class="pc-action-icon">◆</span>
+          <span class="pc-action-body">
+            <span class="pc-action-title">Code · nmslib/hnswlib</span>
+            <span class="pc-action-sub">Author's reference implementation</span>
+          </span>
+        </a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- QUIZ SECTION -->
+<section class="sec" id="squiz">
+  <div class="sec-head">Assessment · eight deep questions</div>
+  <h2>Research <em>mastery</em> quiz</h2>
+  <p class="sec-lead">
+    Layer probability math, dynamic insertion degradation, RAM arithmetic at billion scale, heuristic vs greedy selection,
+    ef–recall relationships, index selection under constraints, and implementation debugging.
+    Eight questions. No time limit. One explanation per answer.
+  </p>
+
+  <div class="quiz-card">
+    <div class="quiz-title">HNSW mastery graph theory, math, implementation</div>
+    <div class="quiz-sub">8 questions · aim for 6+ correct before moving to DiskANN</div>
+
+    <div class="qprog">
+      <div class="qprog-bar"><div class="qprog-fill"></div></div>
+      <div class="qprog-text">0/8 answered</div>
+    </div>
+
+    <!-- Q1 -->
+    <div class="qq">
+      <div class="qnum">Question 1 of 8 · Layer probability</div>
+      <h4>HNSW assigns node $v$ to max layer $l_{\max} = \lfloor -\ln(U) \cdot m_L \rfloor$ where $U \sim \text{Uniform}(0,1)$ and $m_L = 1/\ln(M)$. For $M=16$, what is the expected proportion of nodes reaching layer 2 or above?</h4>
+      <div class="qo">
+        <button class="qob" data-opt="A" onclick="cq(this,0,false)">About 50% half of all nodes reach layer 2 by design.</button>
+        <button class="qob" data-opt="B" onclick="cq(this,0,true)">$m_L = 1/\ln 16 \approx 0.36$. $P(l \geq 2) = e^{-2/m_L} = e^{-5.55} \approx 0.39\%$. At $N=10^6$: about 3,900 nodes at layer 2+. This sparsity is what makes HNSW fast.</button>
+        <button class="qob" data-opt="C" onclick="cq(this,0,false)">Exactly $1/M = 6.25\%$ the layer probability equals the inverse branching factor.</button>
+        <button class="qob" data-opt="D" onclick="cq(this,0,false)">About 10% the geometric distribution assigns 10% per layer.</button>
+      </div>
+      <div class="qfeed"><div class="qfeed-head"></div><div class="qfeed-why"><strong>Derivation:</strong> $P(l \geq l_0) = P(-\ln U \cdot m_L \geq l_0) = P(U \leq e^{-l_0/m_L}) = e^{-l_0/m_L}$. For $l_0=2, m_L=0.36$: $e^{-5.55} \approx 0.0039$. The exponential distribution guarantees sparsity at higher layers the small-world property NSW originally exploited.</div></div>
+    </div>
+
+    <!-- Q2 -->
+    <div class="qq">
+      <div class="qnum">Question 2 of 8 · Dynamic insertion</div>
+      <h4>You have 10M vectors, $M=16$, efConstruction=200. After building, you insert 2M new vectors (20% growth). Recall@10 drops from 97% to 93%. What is the root cause and correct fix?</h4>
+      <div class="qo">
+        <button class="qob" data-opt="A" onclick="cq(this,1,false)">efConstruction=200 was too low rebuild with efConstruction=400.</button>
+        <button class="qob" data-opt="B" onclick="cq(this,1,true)">HNSW structure degrades with insertions: new nodes connect into a graph optimised for the original distribution, and upper-layer entry points are frozen at build time. The only correct fix is a full rebuild there is no incremental repair. In Milvus: build a new collection and swap the alias atomically. Plan quarterly rebuilds, or use DiskANN (FreshDiskANN) for streaming.</button>
+        <button class="qob" data-opt="C" onclick="cq(this,1,false)">$M=16$ needs to increase with $N$ rebuild with $M=24$.</button>
+        <button class="qob" data-opt="D" onclick="cq(this,1,false)">Milvus segment fragmentation run compaction to fix recall without rebuilding.</button>
+      </div>
+      <div class="qfeed"><div class="qfeed-head"></div><div class="qfeed-why"><strong>Static assumption:</strong> the graph is optimised during build for the $N$ vectors present at that time. Insertions add nodes but cannot retroactively reoptimise existing connections. Rebuilding is the only correct fix. FreshDiskANN (Singh 2021) solves this with a buffer-and-merge approach.</div></div>
+    </div>
+
+    <!-- Q3 -->
+    <div class="qq">
+      <div class="qnum">Question 3 of 8 · Memory arithmetic</div>
+      <h4>For 100M vectors at $d=768$ and $M=16$, calculate the RAM for the HNSW graph structure alone (excluding raw vectors). Why does this become the dominant cost at 1B scale?</h4>
+      <div class="qo">
+        <button class="qob" data-opt="A" onclick="cq(this,2,false)">$N \times M \times \text{sizeof(int32)} = 100\text{M} \times 16 \times 4 = 6.4$ GB. At 1B: 64 GB manageable on a single server.</button>
+        <button class="qob" data-opt="B" onclick="cq(this,2,true)">Each node stores $M$ bidirectional links. Each link = one int64 = 8 bytes. Bidirectional ⇒ each node appears in neighbours' lists too: total links $\approx N \cdot M \cdot 2$. RAM = $100\text{M} \times 16 \times 2 \times 8 = 25.6$ GB for graph alone. At 1B: graph = 256 GB, vectors = 3.07 TB. This is DiskANN's motivation: keep the graph on SSD, only a PQ-compressed (50–100× smaller) version of vectors in RAM.</button>
+        <button class="qob" data-opt="C" onclick="cq(this,2,false)">$N \times (M + d) \times 4 = 100\text{M} \times 784 \times 4 = 313$ GB. Both graph and vectors must fit in RAM.</button>
+        <button class="qob" data-opt="D" onclick="cq(this,2,false)">HNSW only stores upper-layer links in RAM. Layer 0 stays on disk total 128 MB.</button>
+      </div>
+      <div class="qfeed"><div class="qfeed-head"></div><div class="qfeed-why"><strong>The bidirectional ×2 is often forgotten.</strong> In hnswlib, $M_0$ (max links at layer 0) = $2M$ by default, so layer 0 uses 32 links per node for $M=16$. Real-world overhead is ~20-25% above the $N \cdot M \cdot 2 \cdot 8$ estimate. This is precisely why DiskANN is the recommended path above 50M vectors.</div></div>
+    </div>
+
+    <!-- Q4 -->
+    <div class="qq">
+      <div class="qnum">Question 4 of 8 · Heuristic vs greedy</div>
+      <h4>SELECT-NEIGHBORS-HEURISTIC differs from simple greedy. What does it do differently, and when does it matter?</h4>
+      <div class="qo">
+        <button class="qob" data-opt="A" onclick="cq(this,3,false)">Uses cosine similarity instead of $L_2$ for neighbour selection.</button>
+        <button class="qob" data-opt="B" onclick="cq(this,3,true)">Simple: pick $M$ nearest. Heuristic: prune candidates closer to an already-selected neighbour than to $q$. Produces a diverse neighbourhood selected nodes point in different directions, improving recall by covering different regions of space. Matters most on clustered data and at high recall targets (&gt;98%). Costs ~15% more build time, gives +1-3% recall@10. Milvus uses it by default.</button>
+        <button class="qob" data-opt="C" onclick="cq(this,3,false)">Limits connections to nodes within the same partition, reducing cross-partition edges.</button>
+        <button class="qob" data-opt="D" onclick="cq(this,3,false)">Selects neighbours by minimum spanning tree, guaranteeing connectivity.</button>
+      </div>
+      <div class="qfeed"><div class="qfeed-head"></div><div class="qfeed-why"><strong>Diversity in graph construction:</strong> if neighbour $A$ is already selected and candidate $B$ is closer to $A$ than to $X$, then $B$'s information is already "covered" by $A$. Related to maximum marginal relevance in information retrieval select for relevance AND diversity simultaneously.</div></div>
+    </div>
+
+    <!-- Q5 -->
+    <div class="qq">
+      <div class="qnum">Question 5 of 8 · Implementation</div>
+      <h4>Implement the HNSW layer assignment function in Python. Explain why the exponential distribution (not uniform) is the right choice.</h4>
+      <div class="qo">
+        <button class="qob" data-opt="A" onclick="cq(this,4,false)"><code>layer = int(random.random() * max_layer)</code>. Exponential gives the same result as uniform for large $N$.</button>
+        <button class="qob" data-opt="B" onclick="cq(this,4,true)"><code>def assign_layer(mL): return int(-math.log(random.random()) * mL)</code>. Exponential ensures each layer has $\approx 1/e$ as many nodes as the layer below geometric thinning. Uniform would assign equal nodes per layer, destroying the small-world property. With $m_L = 1/\ln M$: $E[l_{\max}] \approx 1.58 m_L$. Most nodes live only at layer 0, few reach layer 2+. This creates the coarse-to-fine navigation structure the $O(\log N)$ proof requires.</button>
+        <button class="qob" data-opt="C" onclick="cq(this,4,false)">Use geometric: <code>layer = 0 if random() &gt; 1/M else assign_layer(mL-1)</code>.</button>
+        <button class="qob" data-opt="D" onclick="cq(this,4,false)">Layer assignment should be deterministic based on node ID for reproducibility.</button>
+      </div>
+      <div class="qfeed"><div class="qfeed-head"></div><div class="qfeed-why"><strong>The distribution choice is fundamental.</strong> The paper proves $O(\log N)$ search requires the number of nodes per layer to decrease geometrically. Only an exponential assignment guarantees this. Lower $m_L$ = sharper pyramid = fewer upper-layer nodes = faster but potentially lower-quality search. Default $m_L = 1/\ln M$.</div></div>
+    </div>
+
+    <!-- Q6 -->
+    <div class="qq">
+      <div class="qnum">Question 6 of 8 · ef and recall</div>
+      <h4>You set efSearch=10 and want recall@10. Why might you still miss some of the true 10 nearest neighbours, and what is the minimum safe efSearch?</h4>
+      <div class="qo">
+        <button class="qob" data-opt="A" onclick="cq(this,5,false)">efSearch must equal $K$ exactly. efSearch=10 with $K$=10 always gives perfect recall.</button>
+        <button class="qob" data-opt="B" onclick="cq(this,5,true)">efSearch is the beam width candidates maintained in the priority queue. With efSearch=10, $K$=10: you explore exactly 10 candidates. But the true top-10 might require exploring 15+ nodes because greedy search can miss shortcuts (false local minima). Safe minimum: efSearch ≥ $K$ (necessary but not sufficient). Empirically efSearch = $2K$ gives 95%+ recall on well-distributed data; efSearch = $4K$ approaches 99%+. efSearch &lt; $K$ is a bug.</button>
+        <button class="qob" data-opt="C" onclick="cq(this,5,false)">efSearch only affects the top layer. For $K$=10, efSearch at layer 0 should be at least 50.</button>
+        <button class="qob" data-opt="D" onclick="cq(this,5,false)">efSearch and $K$ are independent always get $K$ results regardless.</button>
+      </div>
+      <div class="qfeed"><div class="qfeed-head"></div><div class="qfeed-why"><strong>The ef-recall curve is non-linear.</strong> Going from efSearch=10 to 20 improves recall significantly (say 90% → 96%), but from 100 to 200 has diminishing returns (98.5% → 99.2%). Profile your data to find the knee.</div></div>
+    </div>
+
+    <!-- Q7 -->
+    <div class="qq">
+      <div class="qnum">Question 7 of 8 · Index selection</div>
+      <h4>Engineer A: "HNSW is always better than IVF-PQ for semantic search." Engineer B: "IVF-PQ beats HNSW at large-scale recommendation." Who is right?</h4>
+      <div class="qo">
+        <button class="qob" data-opt="A" onclick="cq(this,6,false)">Engineer A HNSW always gives higher recall at the same latency.</button>
+        <button class="qob" data-opt="B" onclick="cq(this,6,true)">Both are partially correct answer depends on scale and access pattern. HNSW wins on: higher recall@10 (95-99% vs 88-94%), no training step, best &lt;50M vectors, robust to query distribution shift. IVF-PQ wins on: 10-20× less RAM, scales to 1B+ on single machine, faster to build, better for streaming. Engineer B is right for recommendation at 100M+ where RAM dominates and 90%+ recall is acceptable. Engineer A is right for semantic search &lt;50M where recall &gt;97% is required.</button>
+        <button class="qob" data-opt="C" onclick="cq(this,6,false)">Engineer B IVF-PQ is always more memory-efficient.</button>
+        <button class="qob" data-opt="D" onclick="cq(this,6,false)">Choice depends only on vector dimensionality, not scale.</button>
+      </div>
+      <div class="qfeed"><div class="qfeed-head"></div><div class="qfeed-why"><strong>Practical rule:</strong> &lt;10M and recall &gt;95% → HNSW. &gt;100M or RAM-constrained → IVF-PQ or DiskANN. 10-100M → benchmark both. At 1B vectors HNSW needs 256 GB RAM for the graph alone; IVF-PQ with $m=96$ sub-vectors fits in ~100 GB and serves from a 128 GB machine.</div></div>
+    </div>
+
+    <!-- Q8 -->
+    <div class="qq">
+      <div class="qnum">Question 8 of 8 · Debugging</div>
+      <h4>You implement HNSW from scratch. Recall@10 is 82% on glove-100 with $M=16$, ef=100 but hnswlib gets 96% with identical parameters. What bug do you look for first?</h4>
+      <div class="qo">
+        <button class="qob" data-opt="A" onclick="cq(this,7,false)">Distance function has a sign error you maximise instead of minimise.</button>
+        <button class="qob" data-opt="B" onclick="cq(this,7,true)">Most likely: SELECT-NEIGHBORS-HEURISTIC. If you shipped the simple greedy variant instead of the heuristic, recall drops 5-15% on real data. Second most likely: ef applied at the wrong layer ef should control beam width at ALL layers during INSERT, not just layer 0. Third: entry-point selection the global entry point must track the node with the highest assigned layer, not a fixed node. Diff your SELECT-NEIGHBORS against hnswlib's <code>getNeighborsByHeuristic2()</code> line by line.</button>
+        <button class="qob" data-opt="C" onclick="cq(this,7,false)">Float32 vs float64 precision hnswlib uses double precision internally.</button>
+        <button class="qob" data-opt="D" onclick="cq(this,7,false)">hnswlib uses a proprietary distance kernel that cannot be replicated.</button>
+      </div>
+      <div class="qfeed"><div class="qfeed-head"></div><div class="qfeed-why"><strong>Implementation debugging:</strong> SELECT-NEIGHBORS-HEURISTIC is the most commonly mis-implemented part. The pseudocode is correct but subtle the <code>extendCandidates</code> and <code>keepPrunedConnections</code> flags are often omitted. The entry-point issue is the second most common: many implementations initialise with node 0 as entry point, but it must track the max-layer node.</div></div>
+    </div>
+
+    <div class="quiz-score" id="quiz-score">
+      <h3 id="qscore-num">0/8 correct</h3>
+      <p id="qscore-msg"></p>
+    </div>
+  </div>
+</section>
+
+</div><!-- /.content -->
+
+<footer>
+  <div class="footer-inner">
+    <span>Research paper breakdown</span>
+    <span>Malkov &amp; Yashunin · IEEE TPAMI · 2018 · <a href="https://arxiv.org/abs/1603.09320" target="_blank">arXiv:1603.09320</a></span>
+  </div>
+</footer>
+
+<script>
+
+/* ═══════════════════════════════════════════════════════
+   Section fade-in
+   ═══════════════════════════════════════════════════════ */
+var obs=new IntersectionObserver(function(entries){
+  entries.forEach(function(e){if(e.isIntersecting)e.target.classList.add('visible');});
+},{threshold:0.08});
+document.querySelectorAll('.sec').forEach(function(s){obs.observe(s);});
+
+/* ═══════════════════════════════════════════════════════
+   Engine tabs
+   ═══════════════════════════════════════════════════════ */
+var visited = {brain:true};
+function setTab(id){
+  document.querySelectorAll('.layer').forEach(function(l){l.classList.remove('active');});
+  var tgt=document.getElementById('layer-'+id);
+  if(tgt)tgt.classList.add('active');
+  document.querySelectorAll('.tab').forEach(function(t){t.classList.remove('active');});
+  var btn=document.querySelector('.tab[data-tab="'+id+'"]');
+  if(btn){btn.classList.add('active');btn.classList.add('visited');}
+  visited[id]=true;
+  updateLayerProgress();
+  // Re-render math in newly visible layer
+  if(window.renderMathInElement){
+    try{ renderMathInElement(tgt,{delimiters:[{left:'$$',right:'$$',display:true},{left:'$',right:'$',display:false}],throwOnError:false}); }catch(e){}
+  }
+}
+
+/* ═══════════════════════════════════════════════════════
+   Accordion
+   ═══════════════════════════════════════════════════════ */
+function toggleAcc(el){
+  el.classList.toggle('open');
+}
+
+function toggleMath(ev, el){
+  ev.stopPropagation();
+  el.classList.toggle('open');
+  if(el.classList.contains('open') && !el.dataset.rendered){
+    var body = el.querySelector('.math-body');
+    if(body && typeof renderMathInElement === 'function'){
+      try {
+        renderMathInElement(body, {
+          delimiters:[
+            {left:'$$',right:'$$',display:true},
+            {left:'$',right:'$',display:false},
+            {left:'\\(',right:'\\)',display:false},
+            {left:'\\[',right:'\\]',display:true}
+          ],
+          throwOnError:false
+        });
+        el.dataset.rendered = '1';
+      } catch(e) { console.warn('KaTeX render failed', e); }
+    }
+  }
+}
+
+function copyCode(btn){
+  var pre = btn.closest('.code-block').querySelector('pre');
+  if(!pre) return;
+  var text = pre.textContent;
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(text).then(function(){
+      btn.textContent='✓ copied'; btn.classList.add('ok');
+      setTimeout(function(){ btn.textContent='copy'; btn.classList.remove('ok'); }, 1800);
+    }).catch(function(){});
+  } else {
+    var ta=document.createElement('textarea');ta.value=text;document.body.appendChild(ta);ta.select();
+    try{document.execCommand('copy');btn.textContent='✓ copied';btn.classList.add('ok');setTimeout(function(){btn.textContent='copy';btn.classList.remove('ok');},1800);}catch(e){}
+    document.body.removeChild(ta);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════
+   Decision question (research thinking layer)
+   ═══════════════════════════════════════════════════════ */
+var decisionData = {
+  hnsw1: {
+    correct: 2,
+    explanations: [
+      'ef=20 likely gives only ~95% recall@10 at 5M vectors not right for a 98% recall target. This is the default, not the right starting choice for this SLA.',
+      'M=64 quadruples memory (from ~400MB to ~1.6GB) and slows build 4×. Overkill as a starting point profile default M=16 first, increase M only if recall is insufficient.',
+      'Correct. M=16 is the standard default. efConstruction=200 gives good graph quality. ef=64 (6.4× K=10) is a sensible starting point for the 98% recall target. On 5M vectors at d=512 this typically gives 97-99% recall@10 in <2ms on A100. Adjust ef upward if recall falls short.',
+      'M=32 doubles memory vs M=16 with modest recall gain. Try M=16 first only upgrade to M=32 if the recall-ef curve shows you cannot hit 98% at acceptable ef values.'
+    ]
+  }
+};
+function decide(qid, chosenIdx){
+  var flag=document.getElementById('decided-'+qid);
+  if(flag && flag.value==='1')return;
+  if(flag)flag.value='1';
+  var data=decisionData[qid];
+  document.querySelectorAll('.dopt-'+qid).forEach(function(btn,i){
+    btn.setAttribute('disabled','');
+    if(i===data.correct)btn.classList.add('d-correct');
+    else if(i===chosenIdx)btn.classList.add('d-wrong');
+  });
+  var rev=document.getElementById('drev-'+qid);
+  if(rev){
+    rev.innerHTML='<strong>'+(chosenIdx===data.correct?'✓ Correct.':'✗ Not quite.')+'</strong> '+data.explanations[chosenIdx];
+    rev.classList.add('open');
+  }
+}
+
+/* ═══════════════════════════════════════════════════════
+   Notes
+   ═══════════════════════════════════════════════════════ */
+var notes=[];
+function saveNote(){
+  var ta=document.getElementById('notes-input');
+  if(!ta||!ta.value.trim())return;
+  notes.push({text:ta.value.trim(),ts:new Date().toLocaleTimeString()});
+  ta.value='';
+  var msg=document.getElementById('save-msg');
+  if(msg){msg.textContent='✓ Saved';setTimeout(function(){msg.textContent='';},2000);}
+  renderNotes();
+}
+function renderNotes(){
+  var c=document.getElementById('notes-list');
+  if(!c)return;
+  c.innerHTML=notes.map(function(n){
+    return '<div class="saved-note"><div class="note-ts">'+n.ts+'</div>'+n.text+'</div>';
+  }).join('');
+}
+
+/* ═══════════════════════════════════════════════════════
+   Copy BibTeX
+   ═══════════════════════════════════════════════════════ */
+function copyBib(btn){
+  var el=document.getElementById('bibtex-block');
+  if(!el)return;
+  var txt=el.innerText;
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(txt).then(function(){
+      var orig=btn.textContent;btn.textContent='✓ Copied';
+      setTimeout(function(){btn.textContent=orig;},1800);
+    }).catch(function(){ fallbackCopy(txt,btn); });
+  } else { fallbackCopy(txt,btn); }
+}
+function fallbackCopy(txt,btn){
+  var ta=document.createElement('textarea');
+  ta.value=txt;ta.style.position='fixed';ta.style.top='-9999px';
+  document.body.appendChild(ta);ta.select();
+  try{ document.execCommand('copy'); var orig=btn.textContent;btn.textContent='✓ Copied';
+       setTimeout(function(){btn.textContent=orig;},1800); }catch(e){}
+  document.body.removeChild(ta);
+}
+
+/* ═══════════════════════════════════════════════════════
+   Per-layer progress bars
+   ═══════════════════════════════════════════════════════ */
+function updateLayerProgress(){
+  ['brain','visual','deep','paper','think','reality','build','replicate'].forEach(function(id){
+    var fill=document.getElementById('pg-'+id);
+    var pct=document.getElementById('pv-'+id);
+    var v=visited[id]?100:0;
+    if(fill)fill.style.width=v+'%';
+    if(pct)pct.textContent=v+'%';
+  });
+}
+
+/* ═══════════════════════════════════════════════════════
+   Interactive visualisation 5-step HNSW search
+   ═══════════════════════════════════════════════════════ */
+(function(){
+  var step=0;
+  var steps=[
+    {dot:{x:192,y:50},status:'Step 1 / 5 Enter at Layer 2 entry point (node A)',
+     p1:{x2:192,y2:50},p2:{x2:192,y2:50},p3:{x2:192,y2:50},p4:{x2:192,y2:50},p5:{x2:192,y2:50}},
+    {dot:{x:672,y:50},status:'Step 2 / 5 Greedy hop at Layer 2: A → F is closer to target ★',
+     p1:{x2:672,y2:50},p2:{x2:672,y2:50},p3:{x2:672,y2:50},p4:{x2:672,y2:50},p5:{x2:672,y2:50}},
+    {dot:{x:672,y:128},status:'Step 3 / 5 Descend to Layer 1 at node E (same position, finer detail)',
+     p1:{x2:672,y2:50},p2:{x2:672,y2:128},p3:{x2:672,y2:128},p4:{x2:672,y2:128},p5:{x2:672,y2:128}},
+    {dot:{x:478,y:128},status:'Step 4 / 5 Greedy hop at Layer 1: E → D is closer to ★',
+     p1:{x2:672,y2:50},p2:{x2:672,y2:128},p3:{x2:478,y2:128},p4:{x2:478,y2:128},p5:{x2:478,y2:128}},
+    {dot:{x:472,y:215},status:'Step 5 / 5 Descend to Layer 0, local search finds target ★',
+     p1:{x2:672,y2:50},p2:{x2:672,y2:128},p3:{x2:478,y2:128},p4:{x2:478,y2:215},p5:{x2:472,y2:215}},
+  ];
+
+  window.visStep=function(){
+    if(step>=steps.length){visReset();return;}
+    var s=steps[step];
+    var d=document.getElementById('q-dot');
+    var ql=document.getElementById('q-label');
+    if(!d)return;
+    d.setAttribute('opacity','1');
+    ql.setAttribute('opacity','1');
+    d.setAttribute('cx',s.dot.x);d.setAttribute('cy',s.dot.y);
+    ql.setAttribute('x',s.dot.x);ql.setAttribute('y',s.dot.y+3);
+    ['p1','p2','p3','p4','p5'].forEach(function(pid){
+      var el=document.getElementById(pid);
+      if(!el||!s[pid])return;
+      el.setAttribute('opacity','0.85');
+      el.setAttribute('x2',s[pid].x2);
+      el.setAttribute('y2',s[pid].y2);
+    });
+    document.getElementById('vis-status').textContent=s.status;
+    var btn=document.getElementById('viz-play-btn');
+    step++;
+    if(step>=steps.length){
+      btn.textContent='✓ Search complete';
+      btn.style.borderColor='#67e8c7';
+      btn.style.color='#67e8c7';
+      btn.style.background='rgba(103,232,199,0.08)';
+    }else{
+      btn.textContent='▶ Next step ('+(step+1)+'/5)';
+    }
+  };
+
+  window.visReset=function(){
+    step=0;
+    ['q-dot','q-label'].forEach(function(id){
+      var el=document.getElementById(id);
+      if(el)el.setAttribute('opacity','0');
+    });
+    ['p1','p2','p3','p4','p5'].forEach(function(pid){
+      var el=document.getElementById(pid);
+      if(el){el.setAttribute('opacity','0');el.setAttribute('x2',el.getAttribute('x1'));el.setAttribute('y2',el.getAttribute('y1'));}
+    });
+    document.getElementById('vis-status').textContent='Click ▶ to watch the greedy descent';
+    var btn=document.getElementById('viz-play-btn');
+    btn.textContent='▶ Start search';
+    btn.style.borderColor='rgba(163,139,250,0.35)';
+    btn.style.color='#a38bfa';
+    btn.style.background='rgba(163,139,250,0.1)';
+  };
+})();
+
+/* ═══════════════════════════════════════════════════════
+   Main quiz
+   ═══════════════════════════════════════════════════════ */
+var qstate={};
+var qtotal=document.querySelectorAll('.qq').length;
+
+function cq(btn,qi,isCorrect){
+  if(qstate[qi]!==undefined)return;
+  qstate[qi]=isCorrect;
+  var qq=btn.closest('.qq');
+  var allBtns=qq.querySelectorAll('.qob');
+  allBtns.forEach(function(b){
+    b.setAttribute('disabled','');
+    // Find correct button by matching to the question's "true" handler
+    var onclickStr=b.getAttribute('onclick')||'';
+    if(/,\s*true\)/.test(onclickStr))b.classList.add('ok');
+    else if(b===btn&&!isCorrect)b.classList.add('no');
+  });
+  var feed=qq.querySelector('.qfeed');
+  if(feed){
+    feed.style.display='block';
+    feed.className='qfeed '+(isCorrect?'correct':'wrong');
+    var head=feed.querySelector('.qfeed-head');
+    if(head)head.textContent=isCorrect?'✓ Correct '+btn.getAttribute('data-opt')+' is right':'✗ Not quite option '+btn.getAttribute('data-opt')+' is wrong. See explanation below.';
+  }
+  updateQuizProgress();
+}
+function updateQuizProgress(){
+  var done=Object.keys(qstate).length;
+  var fill=document.querySelector('.qprog-fill');
+  var txt=document.querySelector('.qprog-text');
+  if(fill)fill.style.width=Math.round(done/qtotal*100)+'%';
+  if(txt)txt.textContent=done+'/'+qtotal+' answered';
+  if(done===qtotal)showQuizScore();
+}
+function showQuizScore(){
+  var c=Object.values(qstate).filter(function(v){return v;}).length;
+  var n=document.getElementById('qscore-num');
+  var m=document.getElementById('qscore-msg');
+  var box=document.getElementById('quiz-score');
+  if(n)n.textContent=c+' / '+qtotal+' correct';
+  if(m){
+    var msgs=['Review the deep dive and try again.','Keep going most concepts clicking.','Solid grasp of HNSW.','Strong research-level understanding.','Production-ready mastery.'];
+    var idx=c<=2?0:c<=4?1:c<=6?2:c===7?3:4;
+    m.textContent=msgs[idx];
+  }
+  if(box)box.style.display='block';
+}
+
+/* ═══════════════════════════════════════════════════════
+   Paper PDF fallback detection passive iframe load listener
+   ═══════════════════════════════════════════════════════ */
+(function(){
+  var frame = document.getElementById('paper-frame');
+  var fallback = document.getElementById('paper-fallback');
+  if (!frame || !fallback) return;
+  var loaded = false;
+  frame.addEventListener('load', function(){ loaded = true; });
+  frame.addEventListener('error', function(){
+    frame.style.display = 'none';
+    fallback.style.display = 'flex';
+  });
+  setTimeout(function(){
+    if (!loaded) {
+      frame.style.display = 'none';
+      fallback.style.display = 'flex';
+    }
+  }, 10000);
+})();
+
+/* ═══════════════════════════════════════════════════════
+   Boot
+   ═══════════════════════════════════════════════════════ */
+window.addEventListener('load',function(){
+  setTab('brain');
+  // Mark the first tab as visited on boot
+  document.querySelector('.tab[data-tab="brain"]').classList.add('visited');
+});
+</script>
+<script>
+(function(){
+  // Persist & apply theme before paint
+  var t=localStorage.getItem('paper-theme')||'dark';
+  document.documentElement.setAttribute('data-theme',t);
+
+  document.addEventListener('DOMContentLoaded',function(){
+    // Toggle button
+    var nav=document.querySelector('.nav-actions');
+    if(nav){
+      var btn=document.createElement('button');
+      btn.className='theme-toggle';
+      btn.setAttribute('aria-label','Toggle theme');
+      function sync(){btn.innerHTML=document.documentElement.getAttribute('data-theme')==='dark'?'&#9728; Light':'&#9685; Dark';}
+      sync();
+      btn.onclick=function(){
+        var nt=document.documentElement.getAttribute('data-theme')==='dark'?'light':'dark';
+        document.documentElement.setAttribute('data-theme',nt);
+        localStorage.setItem('paper-theme',nt);
+        sync();
+      };
+      nav.insertBefore(btn,nav.firstChild);
+    }
+
+    // 2: Magnetic 3-D tilt
+    document.querySelectorAll('.brain-card').forEach(function(c,i){
+      c.dataset.i=i;
+      c.addEventListener('mousemove',function(e){
+        var r=c.getBoundingClientRect();
+        var x=(e.clientX-r.left)/r.width-.5, y=(e.clientY-r.top)/r.height-.5;
+        c.style.setProperty('--rx',(-y*5)+'deg');
+        c.style.setProperty('--ry',(x*5)+'deg');
+      });
+      c.addEventListener('mouseleave',function(){
+        c.style.setProperty('--rx','0deg');c.style.setProperty('--ry','0deg');
+      });
+    });
+
+    // 9: Stagger reveal
+    var obs=new IntersectionObserver(function(es){
+      es.forEach(function(e){
+        if(!e.isIntersecting)return;
+        var i=parseInt(e.target.dataset.i||0);
+        setTimeout(function(){e.target.classList.add('in');},i*75);
+        obs.unobserve(e.target);
+      });
+    },{threshold:.08});
+    document.querySelectorAll('.brain-card').forEach(function(c){obs.observe(c);});
+  });
+})();
+</script>
+<script>
+(function(){var hs=document.querySelector(".hero-scroll");if(!hs)return;hs.style.transition="opacity 0.5s ease";window.addEventListener("scroll",function(){hs.style.opacity=window.scrollY>window.innerHeight*0.4?"0":"1";},{passive:true});})();
+</script>
+</body>
+</html>

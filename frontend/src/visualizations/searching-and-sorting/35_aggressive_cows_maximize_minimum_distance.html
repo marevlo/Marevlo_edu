@@ -1,0 +1,602 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Aggressive Cows &middot; Maximize Minimum Distance</title>
+    <style>
+        :root {
+            --bg-page: #070b14;
+            --bg-surface: rgba(255, 255, 255, 0.045);
+            --bg-input: rgba(255, 255, 255, 0.04);
+            --border-main: rgba(255, 255, 255, 0.10);
+            --btn-bg: rgba(255, 255, 255, 0.05);
+            --btn-hover: rgba(255, 255, 255, 0.10);
+            --text-main: #e8eefb;
+            --text-dim: #8b98b3;
+            --accent-orange: #f5a524;   /* mid probe                    */
+            --accent-blue:   #06b6d4;    /* hi bound / chrome             */
+            --accent-green:  #22c55e;    /* feasible / found              */
+            --accent-red:    #f43f5e;    /* infeasible / eliminated       */
+            --accent-purple: #a855f7;    /* lo bound                      */
+            --mono: ui-monospace, 'SF Mono', 'Cascadia Code', 'Courier New', monospace;
+            --sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+            --shell: 900px;
+        }
+
+        * { box-sizing: border-box; }
+        html, body { overflow-x: hidden; }
+        body {
+            background:
+                radial-gradient(1100px 600px at 15% -10%, rgba(6, 182, 212, 0.10), transparent 60%),
+                radial-gradient(900px 600px at 100% 10%, rgba(168, 85, 247, 0.10), transparent 55%),
+                linear-gradient(160deg, #070b14 0%, #0b1120 55%, #0a0f1c 100%);
+            background-attachment: fixed;
+            color: var(--text-main); font-family: var(--sans); margin: 0;
+            display: flex; flex-direction: column; align-items: center; min-height: 100vh;
+            padding-bottom: 48px; -webkit-font-smoothing: antialiased;
+        }
+        body::before, body::after { content: ''; position: fixed; border-radius: 50%; filter: blur(70px); pointer-events: none; z-index: 0; opacity: 0.45; }
+        body::before { width: 380px; height: 380px; top: 8%; left: -120px; background: radial-gradient(circle, rgba(6,182,212,0.30), transparent 70%); }
+        body::after  { width: 420px; height: 420px; bottom: 4%; right: -140px; background: radial-gradient(circle, rgba(168,85,247,0.22), transparent 70%); }
+        body > * { position: relative; z-index: 1; }
+
+        .input-bar {
+            width: 100%; background: rgba(10, 15, 28, 0.55);
+            backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+            padding: 14px 16px; display: flex; justify-content: center; align-items: center; gap: 10px;
+            border-bottom: 1px solid var(--border-main); flex-wrap: wrap; position: sticky; top: 0; z-index: 50;
+        }
+        label.ui-label, .ui-label { font-family: var(--mono); font-size: 13px; color: var(--text-dim); letter-spacing: 0.2px; }
+        input[type="text"], input[type="number"] {
+            background: var(--bg-input); border: 1px solid var(--border-main); color: var(--text-main);
+            height: 34px; border-radius: 9px; padding: 0 12px; font-size: 13px; font-family: var(--mono);
+            transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+        }
+        .arr-input { width: 240px; } .val-input { width: 70px; }
+        input:focus { outline: none; border-color: var(--accent-blue); box-shadow: 0 0 0 3px rgba(6,182,212,0.18); background: rgba(6,182,212,0.06); }
+
+        button {
+            height: 34px; border-radius: 9px; padding: 0 14px; background: var(--btn-bg);
+            border: 1px solid var(--border-main); color: var(--text-main); font-size: 13px; font-weight: 600; cursor: pointer;
+            transition: transform 0.15s ease, background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+        }
+        button:hover { background: var(--btn-hover); border-color: rgba(6, 182, 212, 0.5); box-shadow: 0 0 18px rgba(6, 182, 212, 0.18); transform: translateY(-1px); }
+        button:active { transform: translateY(0); }
+        #play-btn { background: linear-gradient(135deg, rgba(6,182,212,0.22), rgba(6,182,212,0.10)); border-color: rgba(6, 182, 212, 0.45); color: #a5f3fc; min-width: 80px; }
+
+        .shell { width: var(--shell); max-width: 95%; margin: 24px auto 0; display: flex; flex-direction: column; gap: 16px; }
+
+        .title-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+        .title-row h1 { font-size: 18px; font-weight: 800; margin: 0; letter-spacing: 0.2px; }
+        .title-row .sub { color: var(--text-dim); font-weight: 500; font-size: 13px; }
+        .step-badge { font-family: var(--mono); font-size: 12px; font-weight: 700; color: #a5f3fc; background: rgba(6,182,212,0.12); border: 1px solid rgba(6,182,212,0.3); padding: 4px 10px; border-radius: 999px; white-space: nowrap; }
+        .progress-track { height: 4px; width: 100%; background: rgba(255,255,255,0.07); border-radius: 999px; overflow: hidden; margin-top: -6px; }
+        .progress-fill { height: 100%; width: 0%; border-radius: 999px; background: linear-gradient(90deg, var(--accent-blue), var(--accent-purple)); box-shadow: 0 0 12px rgba(6,182,212,0.5); transition: width 0.45s cubic-bezier(0.34,1.1,0.64,1); }
+
+        .narration { background: var(--bg-surface); border: 1px solid rgba(6,182,212,0.22); border-radius: 12px; padding: 12px 18px; font-family: var(--mono); font-size: 14px; line-height: 1.5; color: #cfe9f5; min-height: 48px; display: flex; align-items: center; gap: 10px; transition: border-color 0.3s, background 0.3s; }
+        .narration::before { content: '\25B8'; color: var(--accent-blue); font-size: 13px; }
+        .narration.done { border-color: rgba(34,197,94,0.4); background: rgba(34,197,94,0.06); }
+        .narration.done::before { content: '\2713'; color: var(--accent-green); }
+        .narration.miss { border-color: rgba(244,63,94,0.4); background: rgba(244,63,94,0.06); }
+        .narration.miss::before { content: '\2717'; color: var(--accent-red); }
+        .narration code { background: rgba(6,182,212,0.14); color: #7dd3fc; padding: 1px 6px; border-radius: 5px; font-size: 12.5px; }
+        .narration b { color: #fff; }
+
+        .stage-card { background: var(--bg-surface); border: 1px solid var(--border-main); border-radius: 18px; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); box-shadow: 0 12px 38px rgba(0,0,0,0.4); overflow: hidden; }
+        .stage-screen { position: relative; margin: 14px; border-radius: 14px; background: radial-gradient(700px 300px at 50% -10%, rgba(6,182,212,0.08), transparent 70%), #090d18; padding: 26px 24px 28px; border: 1px solid rgba(255,255,255,0.06); display: flex; flex-direction: column; align-items: center; gap: 30px; overflow-x: auto; min-height: 200px; }
+
+        .stage-block { display: flex; flex-direction: column; align-items: center; gap: 0; width: 100%; }
+        .block-label { font-family: var(--mono); font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--text-dim); margin-bottom: 30px; align-self: flex-start; padding-left: 4px; }
+
+        /* ── ANSWER-RANGE RAIL (candidate distances 1..maxGap) ── */
+        .ans-rail { position: relative; display: flex; gap: 7px; padding-bottom: 44px; }
+        .acell { width: 38px; height: 44px; border-radius: 11px; display: flex; align-items: center; justify-content: center; position: relative;
+            font-family: var(--mono); font-weight: 800; font-size: 15px; will-change: transform;
+            border: 2px solid var(--border-main); background: rgba(255,255,255,0.05); color: var(--text-main);
+            transition: background 0.35s, border-color 0.35s, color 0.35s, box-shadow 0.35s, transform 0.3s, opacity 0.35s; }
+        .acell.range { border-color: rgba(6,182,212,0.4); background: rgba(6,182,212,0.06); }
+        .acell.mid { border-color: var(--accent-orange); background: rgba(245,165,36,0.16); color: #ffd591; box-shadow: 0 0 22px rgba(245,165,36,0.55); transform: translateY(-3px) scale(1.06); z-index: 3; }
+        .acell.feasible { border-color: var(--accent-green); background: rgba(34,197,94,0.12); color: #bbf7d0; }
+        .acell.best { border-color: var(--accent-green); background: linear-gradient(180deg, rgba(47,224,143,0.92), rgba(33,194,117,0.92)); color: #06251a; box-shadow: 0 0 20px rgba(34,197,94,0.5); }
+        .acell.out { opacity: 0.22; }
+
+        /* lo / hi (above) and mid (below) gliding pointer pills */
+        .bptr { position: absolute; left: 0; display: flex; flex-direction: column; align-items: center; opacity: 0; pointer-events: none; will-change: transform; z-index: 6; }
+        .bptr.lo, .bptr.hi { bottom: 100%; margin-bottom: 6px; flex-direction: column-reverse; }
+        .bptr.mid { top: 100%; margin-top: 6px; }
+        .bptr .tag { font-family: var(--mono); font-size: 11px; font-weight: 800; padding: 3px 9px; border-radius: 8px; white-space: nowrap; }
+        .bptr .stalk { width: 2px; height: 13px; }
+        .bptr.lo  .tag { background: var(--accent-purple); color: #1a0533; box-shadow: 0 0 14px rgba(168,85,247,0.6); } .bptr.lo .stalk { background: var(--accent-purple); }
+        .bptr.hi  .tag { background: var(--accent-blue);   color: #04222a; box-shadow: 0 0 14px rgba(6,182,212,0.6); }  .bptr.hi .stalk { background: var(--accent-blue); }
+        .bptr.mid .tag { background: var(--accent-orange); color: #3a2400; box-shadow: 0 0 14px rgba(245,165,36,0.6); } .bptr.mid .stalk { background: var(--accent-orange); }
+
+        /* ── STALLS NUMBER LINE (feasibility / greedy placement) ── */
+        .stall-line { position: relative; width: 100%; max-width: 760px; height: 78px; }
+        .stall-axis { position: absolute; left: 0; right: 0; top: 50%; height: 2px; background: rgba(255,255,255,0.12); border-radius: 2px; }
+        .stall { position: absolute; top: 50%; transform: translate(-50%, -50%); display: flex; flex-direction: column; align-items: center; gap: 6px; will-change: transform; transition: opacity 0.3s; }
+        .stall .dot { width: 26px; height: 26px; border-radius: 50%; border: 2px solid var(--border-main); background: rgba(255,255,255,0.05); display: flex; align-items: center; justify-content: center; font-family: var(--mono); font-size: 11px; font-weight: 800; color: var(--text-dim); transition: background 0.3s, border-color 0.3s, color 0.3s, box-shadow 0.3s, transform 0.3s; }
+        .stall .pos { position: absolute; top: 100%; margin-top: 4px; font-family: var(--mono); font-size: 10.5px; color: var(--text-dim); white-space: nowrap; }
+        .stall.cow .dot { border-color: var(--accent-green); background: rgba(34,197,94,0.18); color: #bbf7d0; box-shadow: 0 0 14px rgba(34,197,94,0.45); transform: scale(1.12); }
+        .stall.cow .dot::after { content: '\1F404'; font-size: 13px; }
+        .stall.cow .dot .lbl { display: none; }
+        .stall.cursor .dot { border-color: var(--accent-orange); box-shadow: 0 0 14px rgba(245,165,36,0.5); color: #ffd591; }
+        .stall.skip .dot { opacity: 0.5; }
+
+        .gap-band { position: absolute; top: 50%; transform: translateY(-50%); height: 26px; border-radius: 6px; background: rgba(34,197,94,0.10); border: 1px dashed rgba(34,197,94,0.5); pointer-events: none; transition: opacity 0.3s; }
+        .gap-band .glabel { position: absolute; top: -18px; left: 50%; transform: translateX(-50%); font-family: var(--mono); font-size: 10px; font-weight: 700; color: var(--accent-green); white-space: nowrap; }
+        .gap-band.bad { background: rgba(244,63,94,0.10); border-color: rgba(244,63,94,0.5); }
+        .gap-band.bad .glabel { color: var(--accent-red); }
+
+        .action-stage { position: relative; min-height: 84px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; }
+        .action-word { font-family: var(--mono); font-weight: 800; font-size: 18px; letter-spacing: 0.4px; min-height: 22px; text-align: center; transition: color 0.3s; }
+        #confetti { position: absolute; inset: 0; overflow: visible; pointer-events: none; }
+        .confetti-piece { position: absolute; top: 0; left: 50%; width: 8px; height: 13px; border-radius: 2px; opacity: 0; animation: confettiFall ease-out forwards; }
+
+        .controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: center; }
+        .controls .kbd-hint { font-size: 11px; color: var(--text-dim); font-family: var(--mono); margin-left: 4px; }
+        .kbd { background: rgba(255,255,255,0.07); border: 1px solid var(--border-main); border-radius: 5px; padding: 1px 6px; font-size: 10px; }
+        input[type="range"] { accent-color: var(--accent-blue); width: 110px; cursor: pointer; }
+
+        .details-toggle { align-self: center; height: 32px; padding: 0 16px; border-radius: 999px; cursor: pointer; background: rgba(255,255,255,0.04); border: 1px solid var(--border-main); color: var(--text-dim); font-family: var(--mono); font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; gap: 8px; transition: color 0.2s, border-color 0.2s, background 0.2s; }
+        .details-toggle:hover { color: var(--text-main); border-color: rgba(6,182,212,0.4); background: rgba(6,182,212,0.06); }
+        .details-toggle .chev { transition: transform 0.3s ease; }
+        .details-wrap.open .details-toggle .chev { transform: rotate(180deg); }
+        .details-body { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.4s ease; }
+        .details-wrap.open .details-body { grid-template-rows: 1fr; }
+        .details-inner { overflow: hidden; min-height: 0; }
+        .details-grid { display: flex; flex-direction: column; gap: 14px; padding-top: 14px; }
+
+        .panel-card { background: var(--bg-surface); border: 1px solid var(--border-main); border-radius: 16px; backdrop-filter: blur(10px); box-shadow: 0 8px 30px rgba(0,0,0,0.35); }
+        .panel-head { display: flex; align-items: center; gap: 8px; padding: 11px 16px; border-bottom: 1px solid var(--border-main); font-size: 11px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; color: var(--text-dim); }
+        .panel-head .pip { width: 7px; height: 7px; border-radius: 50%; background: var(--accent-blue); box-shadow: 0 0 8px var(--accent-blue); }
+        .code-body { padding: 12px 6px 14px; font-family: var(--mono); font-size: 12.5px; line-height: 1.7; }
+        .code-line { display: flex; gap: 12px; padding: 1px 16px; border-left: 2px solid transparent; transition: background 0.3s, border-color 0.3s; white-space: pre; }
+        .code-line .lno { color: #4b5772; width: 16px; text-align: right; user-select: none; }
+        .code-line .src { color: #c4cee0; }
+        .code-line .kw { color: #c792ea; }
+        .code-line .fn { color: #82aaff; }
+        .code-line.active { background: rgba(6,182,212,0.12); border-left-color: var(--accent-blue); }
+        .code-line.active .src, .code-line.active .lno { color: #e8eefb; }
+
+        .state-strip { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 0 2px; }
+        .pill { display: inline-flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 12px; color: var(--text-dim); background: rgba(255,255,255,0.04); border: 1px solid var(--border-main); border-radius: 999px; padding: 4px 11px; }
+        .pill b { color: var(--text-main); font-weight: 800; }
+        .pill.lo b { color: var(--accent-purple); } .pill.hi b { color: var(--accent-blue); } .pill.mid b { color: var(--accent-orange); } .pill.best b { color: var(--accent-green); }
+
+        .log-panel { border-radius: 14px; padding: 12px 16px; height: 110px; overflow-y: auto; font-family: var(--mono); font-size: 12.5px; line-height: 1.5; background: var(--bg-surface); border: 1px solid var(--border-main); }
+        .log-panel::-webkit-scrollbar { width: 8px; }
+        .log-panel::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 8px; }
+
+        @keyframes confettiFall { 0%{ opacity:1; transform: translate(-50%, 0) rotate(0deg); } 100%{ opacity:0; transform: translate(calc(-50% + var(--x)), 220px) rotate(var(--rot)); } }
+        @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; } }
+    </style>
+</head>
+<body>
+
+    <div class="input-bar">
+        <label class="ui-label">stalls =</label>
+        <input type="text" id="arr-input" class="arr-input" placeholder="1, 2, 4, 8, 9">
+        <label class="ui-label">cows =</label>
+        <input type="number" id="val-input" class="val-input" placeholder="3">
+        <button onclick="loadCustom()">Solve</button>
+        <span class="ui-label" style="opacity:.5">|</span>
+        <button onclick="loadExample(0)">Ex 1</button>
+        <button onclick="loadExample(1)">Ex 2</button>
+    </div>
+
+    <div class="shell">
+        <div class="title-row">
+            <h1>Aggressive Cows <span class="sub">&middot; binary search on the answer &middot; maximize the minimum gap &middot; O(n log D)</span></h1>
+            <span class="step-badge" id="step-badge">Step 1 / 1</span>
+        </div>
+        <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+
+        <div class="narration" id="main-panel">&mdash;</div>
+
+        <div class="stage-card">
+            <div class="stage-screen">
+                <div class="stage-block">
+                    <div class="block-label">Answer range &mdash; candidate minimum distances [1 &#8230; maxGap]</div>
+                    <div class="ans-rail" id="ans-rail"></div>
+                </div>
+                <div class="stage-block">
+                    <div class="block-label">Feasibility &mdash; greedily place cows keeping every gap &#8805; mid</div>
+                    <div class="stall-line" id="stall-line"><div class="stall-axis"></div></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="action-stage">
+            <div id="confetti"></div>
+            <div class="action-word" id="action-word"></div>
+        </div>
+
+        <div class="controls">
+            <button onclick="resetSim()">&#8634; Reset</button>
+            <button onclick="prevStep()">&#8592; Back</button>
+            <button onclick="togglePlay()" id="play-btn">Play</button>
+            <button onclick="nextStep()">Next &#8594;</button>
+            <span class="ui-label" style="margin-left:6px; font-size:11px">Speed</span>
+            <input type="range" id="speed" min="0" max="2" value="1">
+            <span class="kbd-hint"><span class="kbd">&#8592;</span> <span class="kbd">&#8594;</span> step &middot; <span class="kbd">space</span> play</span>
+        </div>
+
+        <div class="details-wrap" id="details-wrap">
+            <button class="details-toggle" onclick="toggleDetails()" aria-expanded="false">
+                <span id="details-label">Show code, state &amp; log</span> <span class="chev">&#9662;</span>
+            </button>
+            <div class="details-body">
+                <div class="details-inner">
+                    <div class="details-grid">
+                        <div class="state-strip">
+                            <span class="pill lo">lo <b id="st-lo">&mdash;</b></span>
+                            <span class="pill mid">mid <b id="st-mid">&mdash;</b></span>
+                            <span class="pill hi">hi <b id="st-hi">&mdash;</b></span>
+                            <span class="pill">cows <b id="st-cows">&mdash;</b></span>
+                            <span class="pill">placed <b id="st-placed">&mdash;</b></span>
+                            <span class="pill best">best <b id="st-best">&mdash;</b></span>
+                        </div>
+                        <div class="panel-card">
+                            <div class="panel-head"><span class="pip"></span> Algorithm</div>
+                            <div class="code-body" id="code-panel"></div>
+                        </div>
+                        <div class="log-panel" id="log"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        'use strict';
+
+        // ───────── Motion engine ─────────
+        const REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        const FRAME = 1000 / 60;
+        function sampleSpring(stiffness, damping, mass) {
+            const dt = 1 / 60; let x = 1, v = 0; const out = [];
+            for (let i = 0; i < 240; i++) { const a = (-stiffness * x - damping * v) / mass; v += a * dt; x += v * dt; out.push(1 - x); if (Math.abs(x) < 0.0015 && Math.abs(v) < 0.0015) break; }
+            out.push(1); return out;
+        }
+        const SPRING_POS = sampleSpring(320, 30, 1);
+        const durOf = (a) => a.length * FRAME;
+        const Motion = {
+            glide(el, x) {
+                const prev = el._x; el.style.opacity = '1';
+                const commit = `translateX(${x.toFixed(2)}px) translateX(-50%)`;
+                if (REDUCED || prev == null || Math.abs(x - prev) < 0.5) { el._x = x; el.style.transform = commit; return; }
+                const dx = x - prev;
+                const kf = SPRING_POS.map(p => ({ transform: `translateX(${(prev + dx * p).toFixed(2)}px) translateX(-50%)` }));
+                el.animate(kf, { duration: durOf(SPRING_POS), easing: 'linear' });
+                el._x = x; el.style.transform = commit;
+            },
+        };
+
+        // ───────── State ─────────
+        let arr = [1, 2, 4, 8, 9];   // sorted stall positions
+        let cows = 3;
+        let steps = [];
+        let stepIdx = 0;
+        let timer = null;
+        let confettiArmed = true;
+        const delays = [1500, 800, 380];
+        const aCellEls = {};   // answer-range cells keyed by distance value
+        const stallEls = {};   // stall nodes keyed by stall index
+        const ptrEls = {};
+        let maxGap = 1;
+
+        const CODE = [
+            [['kw','def '],['fn','aggressiveCows'],['src','(pos, cows):']],
+            [['src','  lo, hi = 1, pos[-1] - pos[0]']],
+            [['src','  best = 0']],
+            [['kw','  while '],['src','lo <= hi:']],
+            [['src','    mid = (lo + hi) // 2']],
+            [['kw','    if '],['fn','canPlace'],['src','(pos, cows, mid):']],
+            [['src','      best = mid']],
+            [['src','      lo = mid + 1   # try a larger gap']],
+            [['kw','    else'],['src',':']],
+            [['src','      hi = mid - 1   # gap too big']],
+            [['kw','  return '],['src','best']],
+            [['kw','def '],['fn','canPlace'],['src','(pos, cows, d):']],
+            [['src','  cnt, last = 1, pos[0]']],
+            [['kw','  for '],['src','p in pos[1:]:']],
+            [['kw','    if '],['src','p - last >= d:']],
+            [['src','      cnt += 1; last = p']],
+            [['kw','  return '],['src','cnt >= cows']],
+        ];
+        function buildCodePanel() {
+            const panel = document.getElementById('code-panel'); panel.innerHTML = '';
+            CODE.forEach((tokens, i) => {
+                const line = document.createElement('div'); line.className = 'code-line'; line.dataset.line = i;
+                const lno = document.createElement('span'); lno.className = 'lno'; lno.textContent = i + 1; line.appendChild(lno);
+                const src = document.createElement('span');
+                tokens.forEach(([cls, txt]) => { const s = document.createElement('span'); s.className = cls; s.textContent = txt; src.appendChild(s); });
+                line.appendChild(src); panel.appendChild(line);
+            });
+        }
+        function highlightCode(a) { document.querySelectorAll('.code-line').forEach(el => el.classList.toggle('active', a && a.includes(+el.dataset.line))); }
+        function toggleDetails() {
+            const wrap = document.getElementById('details-wrap'); const open = wrap.classList.toggle('open');
+            wrap.querySelector('.details-toggle').setAttribute('aria-expanded', open ? 'true' : 'false');
+            document.getElementById('details-label').textContent = open ? 'Hide code, state & log' : 'Show code, state & log';
+        }
+
+        // ───────── step generation ─────────
+        // Greedy feasibility: place cows keeping every consecutive gap >= d.
+        // Returns { ok, placed, cowsAt: [stallIdx...], gaps: [{from,to}...], failAt }
+        function canPlace(d) {
+            const cowsAt = [0]; const gaps = []; let last = arr[0]; let placed = 1; let failAt = -1;
+            for (let i = 1; i < arr.length; i++) {
+                if (arr[i] - last >= d) {
+                    gaps.push({ from: last, to: arr[i] });
+                    placed++; last = arr[i]; cowsAt.push(i);
+                    if (placed >= cows) break;
+                } else if (failAt < 0) {
+                    failAt = i; // first stall too close to the previous cow
+                }
+            }
+            return { ok: placed >= cows, placed, cowsAt, gaps, failAt };
+        }
+
+        function generateSteps() {
+            steps = [];
+            const n = arr.length;
+            maxGap = n > 1 ? arr[n - 1] - arr[0] : 0;
+
+            const snap = (extra) => Object.assign({
+                lo: 1, hi: maxGap, mid: -1, best: 0,
+                feasibleSet: [], eliminated: false, // answer-range visual flags filled per step
+                cowsAt: [0], gaps: [], failAt: -1, placed: 0, showStalls: false,
+                done: false, miss: false,
+            }, extra);
+
+            // current answer-range bounds, accumulated as the search runs
+            let lo = 1, hi = maxGap, best = 0;
+            const feasibleSet = []; // distances proven feasible (for green shading)
+
+            // START
+            steps.push(snap({ lo, hi, best, feasibleSet: [], code: [0, 1, 2],
+                action: 'START', actionColor: 'var(--accent-blue)',
+                panel: `Place <b>${cows}</b> cows in stalls <code>[${arr.join(', ')}]</code> to <b>maximize</b> the smallest gap. The answer lives in <code>[1 &#8230; ${maxGap}]</code> &#8594; binary search on the distance.`,
+                log: `init  lo=1 hi=${maxGap} cows=${cows}` }));
+
+            if (n < 2 || cows < 2) {
+                best = 0;
+                steps.push(snap({ lo, hi, best, feasibleSet: [], code: [10], done: true, action: '✓ trivial', actionColor: 'var(--accent-green)', confetti: true,
+                    panel: `Fewer than 2 cows (or stalls) &#8594; no pair to separate. Answer is <b>0</b>.`,
+                    log: `trivial -> best=0` }));
+                return;
+            }
+
+            while (lo <= hi) {
+                const mid = (lo + hi) >> 1;
+                steps.push(snap({ lo, hi, mid, best, feasibleSet: [...feasibleSet], code: [3, 4],
+                    action: `mid = ${mid}`, actionColor: 'var(--accent-orange)',
+                    panel: `Search space <code>[${lo} &#8230; ${hi}]</code>. Try <code>mid = (lo+hi)/2 = ${mid}</code> &#8594; can we keep every gap <code>&#8805; ${mid}</code>?`,
+                    log: `mid=${mid}  (lo=${lo} hi=${hi})` }));
+
+                const r = canPlace(mid);
+
+                // feasibility-check step: show the greedy placement on the stalls line
+                steps.push(snap({ lo, hi, mid, best, feasibleSet: [...feasibleSet], code: [5, 11, 12, 13, 14, 15, 16],
+                    showStalls: true, cowsAt: r.cowsAt, gaps: r.gaps, failAt: r.ok ? -1 : r.failAt, placed: r.placed,
+                    action: r.ok ? `placed ${r.placed} / ${cows}` : `only ${r.placed} / ${cows}`,
+                    actionColor: r.ok ? 'var(--accent-green)' : 'var(--accent-red)',
+                    panel: `Greedy with <code>d=${mid}</code>: drop a cow, then walk right placing the next cow only when the gap is <code>&#8805; ${mid}</code>. Placed <b>${r.placed}</b> cow${r.placed === 1 ? '' : 's'} (need <b>${cows}</b>).`,
+                    log: `canPlace(${mid}) -> placed ${r.placed}` }));
+
+                if (r.ok) {
+                    best = mid;
+                    feasibleSet.push(mid);
+                    const newLo = mid + 1;
+                    steps.push(snap({ lo: newLo, hi, mid: -1, best, feasibleSet: [...feasibleSet], code: [6, 7],
+                        showStalls: true, cowsAt: r.cowsAt, gaps: r.gaps, failAt: -1, placed: r.placed,
+                        action: 'FEASIBLE &#8594; go bigger', actionColor: 'var(--accent-green)',
+                        panel: `<code>${mid}</code> works &#8594; record <span style="color:var(--accent-green)">best = ${mid}</span>. A larger minimum gap might still fit, so push <code>lo = ${newLo}</code>.`,
+                        log: `feasible: best=${mid}, lo=${newLo}` }));
+                    lo = newLo;
+                } else {
+                    const newHi = mid - 1;
+                    steps.push(snap({ lo, hi: newHi, mid: -1, best, feasibleSet: [...feasibleSet], code: [8, 9],
+                        showStalls: true, cowsAt: r.cowsAt, gaps: r.gaps, failAt: r.failAt, placed: r.placed,
+                        action: 'INFEASIBLE &#8594; go smaller', actionColor: 'var(--accent-red)',
+                        panel: `<code>${mid}</code> is too wide &#8594; only <b>${r.placed}</b> of <b>${cows}</b> cows fit. Shrink the gap: <code>hi = ${newHi}</code>.`,
+                        log: `infeasible: hi=${newHi}` }));
+                    hi = newHi;
+                }
+            }
+
+            // DONE — best is the largest feasible distance
+            steps.push(snap({ lo, hi, mid: best, best, feasibleSet: [...feasibleSet], code: [10],
+                done: true, action: `✓ answer = ${best}`, actionColor: 'var(--accent-green)', confetti: true,
+                showStalls: true, cowsAt: canPlace(best).cowsAt, gaps: canPlace(best).gaps, failAt: -1, placed: cows,
+                panel: `<code>lo &gt; hi</code> &#8594; the search is done. The largest minimum gap that fits all ${cows} cows is <span style="color:var(--accent-green)"><b>${best}</b></span>.`,
+                log: `done -> answer = ${best}` }));
+        }
+
+        // ───────── render ─────────
+        function aCellCenterX(d) { const el = aCellEls[d]; return el ? el.offsetLeft + el.offsetWidth / 2 : 0; }
+
+        function renderStep(idx) {
+            stepIdx = idx; const step = steps[idx]; if (!step) return;
+
+            // ── answer-range rail (cells for distances 1..maxGap) ──
+            const rail = document.getElementById('ans-rail');
+            const feSet = new Set(step.feasibleSet || []);
+            const usedA = new Set();
+            for (let d = 1; d <= maxGap; d++) {
+                usedA.add(String(d));
+                let el = aCellEls[d];
+                if (!el) { el = document.createElement('div'); el.className = 'acell'; el.textContent = d; aCellEls[d] = el; rail.appendChild(el); }
+                const inRange = d >= step.lo && d <= step.hi;
+                let cls = 'acell';
+                if (step.done && d === step.best) cls += ' best';
+                else if (d === step.mid && step.mid >= 1) cls += ' mid';
+                else if (!inRange) {
+                    // out of the live window: green tint if it was proven feasible, else dim
+                    cls += feSet.has(d) ? ' feasible' : ' out';
+                } else {
+                    cls += ' range';
+                    if (feSet.has(d)) cls += ' feasible';
+                }
+                el.className = cls;
+            }
+            Object.keys(aCellEls).forEach(k => { if (!usedA.has(k)) { aCellEls[k].remove(); delete aCellEls[k]; } });
+
+            // pointer pills on the answer rail
+            const live = step.lo <= step.hi;
+            placePtr('lo', live ? step.lo : null);
+            placePtr('hi', live ? step.hi : null);
+            placePtr('mid', step.mid >= 1 ? step.mid : null);
+
+            // ── stalls number line (feasibility) ──
+            renderStalls(step);
+
+            // ── narration / action ──
+            const mp = document.getElementById('main-panel');
+            mp.innerHTML = step.panel || '&mdash;';
+            mp.classList.toggle('done', !!step.done);
+            mp.classList.toggle('miss', !!step.miss);
+            const aw = document.getElementById('action-word'); aw.innerHTML = step.action || ''; aw.style.color = step.actionColor || 'var(--text-dim)';
+            highlightCode(step.code);
+
+            if (step.confetti) { if (confettiArmed) { fireConfetti(); confettiArmed = false; } } else confettiArmed = true;
+
+            // ── state pills ──
+            document.getElementById('st-lo').textContent = step.lo;
+            document.getElementById('st-hi').textContent = step.hi;
+            document.getElementById('st-mid').textContent = step.mid >= 1 ? step.mid : '—';
+            document.getElementById('st-cows').textContent = cows;
+            document.getElementById('st-placed').textContent = step.showStalls ? step.placed : '—';
+            document.getElementById('st-best').textContent = step.best > 0 ? step.best : '—';
+            document.getElementById('step-badge').textContent = `Step ${idx + 1} / ${steps.length}`;
+            document.getElementById('progress-fill').style.width = `${(idx / Math.max(1, steps.length - 1)) * 100}%`;
+
+            const logEl = document.getElementById('log');
+            logEl.innerHTML = steps.slice(0, idx + 1).map(s => `<div style="margin:3px 0;white-space:pre-wrap;">${s.log}</div>`).join('');
+            logEl.scrollTop = logEl.scrollHeight;
+        }
+
+        function renderStalls(step) {
+            const line = document.getElementById('stall-line');
+            const W = line.clientWidth || 700;
+            const PAD = 26;
+            const lo = arr[0], hi = arr[arr.length - 1];
+            const span = Math.max(1, hi - lo);
+            const xOf = (p) => PAD + ((p - lo) / span) * (W - 2 * PAD);
+
+            const cowSet = new Set(step.showStalls ? step.cowsAt : []);
+            const usedS = new Set();
+            for (let i = 0; i < arr.length; i++) {
+                usedS.add(String(i));
+                let node = stallEls[i];
+                if (!node) {
+                    node = document.createElement('div'); node.className = 'stall';
+                    node.innerHTML = `<div class="dot"><span class="lbl"></span></div><div class="pos"></div>`;
+                    line.appendChild(node); stallEls[i] = node;
+                }
+                node.querySelector('.lbl').textContent = arr[i];
+                node.querySelector('.pos').textContent = arr[i];
+                node.style.left = xOf(arr[i]).toFixed(1) + 'px';
+                node.style.opacity = step.showStalls ? '1' : '0.35';
+                let cls = 'stall';
+                if (step.showStalls) {
+                    if (cowSet.has(i)) cls += ' cow';
+                    else if (i === step.failAt) cls += ' cursor';
+                    else cls += ' skip';
+                }
+                node.className = cls;
+            }
+            Object.keys(stallEls).forEach(k => { if (!usedS.has(k)) { stallEls[k].remove(); delete stallEls[k]; } });
+
+            // gap bands between consecutive placed cows
+            reapBands();
+            if (step.showStalls && step.gaps) {
+                step.gaps.forEach((g, gi) => {
+                    const band = document.createElement('div'); band.className = 'gap-band'; band.dataset.band = gi;
+                    const x1 = xOf(g.from), x2 = xOf(g.to);
+                    band.style.left = x1.toFixed(1) + 'px';
+                    band.style.width = Math.max(0, x2 - x1).toFixed(1) + 'px';
+                    band.innerHTML = `<span class="glabel">${g.to - g.from}</span>`;
+                    line.appendChild(band);
+                });
+            }
+        }
+        function reapBands() { document.querySelectorAll('#stall-line .gap-band').forEach(b => b.remove()); }
+
+        function placePtr(name, d) {
+            let pill = ptrEls[name];
+            if (!pill) {
+                pill = document.createElement('div'); pill.className = 'bptr ' + name;
+                pill.innerHTML = (name === 'mid') ? `<div class="stalk"></div><div class="tag">mid</div>` : `<div class="tag">${name}</div><div class="stalk"></div>`;
+                document.getElementById('ans-rail').appendChild(pill); ptrEls[name] = pill;
+            }
+            if (d == null || !aCellEls[d]) { pill.style.opacity = '0'; pill._x = null; return; }
+            Motion.glide(pill, aCellCenterX(d));
+        }
+
+        function fireConfetti() {
+            const host = document.getElementById('confetti'); if (!host || REDUCED) return;
+            const colors = ['#22c55e', '#06b6d4', '#a855f7', '#f5a524', '#f43f5e'];
+            for (let i = 0; i < 38; i++) {
+                const p = document.createElement('div'); p.className = 'confetti-piece';
+                p.style.setProperty('--x', ((Math.random() * 2 - 1) * 220) + 'px');
+                p.style.setProperty('--rot', ((Math.random() * 720 - 360)) + 'deg');
+                p.style.background = colors[i % colors.length];
+                p.style.animationDuration = (0.9 + Math.random() * 0.8) + 's';
+                p.style.animationDelay = (Math.random() * 0.15) + 's';
+                host.appendChild(p); setTimeout(() => p.remove(), 1900);
+            }
+        }
+
+        // ───────── controls ─────────
+        function nextStep() { if (stepIdx < steps.length - 1) renderStep(stepIdx + 1); else pause(); }
+        function prevStep() { if (stepIdx > 0) renderStep(stepIdx - 1); }
+        function resetSim() { pause(); renderStep(0); }
+        function togglePlay() {
+            const btn = document.getElementById('play-btn');
+            if (timer) { pause(); return; }
+            btn.textContent = 'Pause';
+            if (stepIdx >= steps.length - 1) renderStep(0);
+            timer = setInterval(() => { if (stepIdx < steps.length - 1) nextStep(); else pause(); }, delays[document.getElementById('speed').value]);
+        }
+        function pause() { clearInterval(timer); timer = null; document.getElementById('play-btn').textContent = 'Play'; }
+
+        function clearDom() {
+            Object.keys(aCellEls).forEach(k => { aCellEls[k].remove(); delete aCellEls[k]; });
+            Object.keys(stallEls).forEach(k => { stallEls[k].remove(); delete stallEls[k]; });
+            Object.keys(ptrEls).forEach(k => { ptrEls[k].remove(); delete ptrEls[k]; });
+            reapBands();
+            confettiArmed = true;
+        }
+        function loadData(a, c) { pause(); arr = a; cows = c; clearDom(); generateSteps(); renderStep(0); }
+        function loadCustom() {
+            const raw = (document.getElementById('arr-input').value || '').split(',').map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n));
+            const a = Array.from(new Set(raw)).slice(0, 14).sort((x, y) => x - y);
+            let c = parseInt(document.getElementById('val-input').value, 10);
+            if (isNaN(c)) c = 2;
+            c = Math.max(2, Math.min(c, a.length));
+            if (a.length >= 2) loadData(a, c);
+        }
+        function loadExample(n) {
+            const ex = [{ a: [1, 2, 4, 8, 9], c: 3 }, { a: [1, 3, 6, 11, 15], c: 2 }][n];
+            document.getElementById('arr-input').value = ex.a.join(', ');
+            document.getElementById('val-input').value = ex.c;
+            loadData([...ex.a], ex.c);
+        }
+
+        document.addEventListener('keydown', (e) => {
+            const tag = (e.target.tagName || '').toLowerCase(); if (tag === 'input' || tag === 'textarea') return;
+            if (e.key === 'ArrowRight') { e.preventDefault(); pause(); nextStep(); }
+            else if (e.key === 'ArrowLeft') { e.preventDefault(); pause(); prevStep(); }
+            else if (e.key === ' ') { e.preventDefault(); togglePlay(); }
+        });
+        ['arr-input', 'val-input'].forEach(id => document.getElementById(id).addEventListener('keydown', (e) => { if (e.key === 'Enter') loadCustom(); }));
+        window.addEventListener('resize', () => renderStep(stepIdx));
+
+        buildCodePanel();
+        window.onload = () => loadExample(0);
+    </script>
+</body>
+</html>

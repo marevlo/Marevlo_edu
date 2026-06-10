@@ -1,0 +1,675 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sliding Window Maximum</title>
+    <style>
+        :root {
+            --bg-page: #070b14;
+            --bg-surface: rgba(255, 255, 255, 0.045);
+            --bg-input: rgba(255, 255, 255, 0.04);
+            --border-main: rgba(255, 255, 255, 0.10);
+            --btn-bg: rgba(255, 255, 255, 0.05);
+            --btn-hover: rgba(255, 255, 255, 0.10);
+            --text-main: #e8eefb;
+            --text-dim: #8b98b3;
+            --accent-orange: #f5a524;   /* current element / window edge   */
+            --accent-blue:   #06b6d4;    /* chrome / deque                  */
+            --accent-green:  #22c55e;    /* window max / result             */
+            --accent-red:    #f43f5e;    /* evicted from deque              */
+            --accent-purple: #a855f7;    /* window band                     */
+            --mono: ui-monospace, 'SF Mono', 'Cascadia Code', 'Courier New', monospace;
+            --sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+            --shell: 880px;
+        }
+
+        * { box-sizing: border-box; }
+        html, body { overflow-x: hidden; }
+        body {
+            background:
+                radial-gradient(1100px 600px at 15% -10%, rgba(6, 182, 212, 0.10), transparent 60%),
+                radial-gradient(900px 600px at 100% 10%, rgba(168, 85, 247, 0.10), transparent 55%),
+                linear-gradient(160deg, #070b14 0%, #0b1120 55%, #0a0f1c 100%);
+            background-attachment: fixed;
+            color: var(--text-main); font-family: var(--sans); margin: 0;
+            display: flex; flex-direction: column; align-items: center; min-height: 100vh;
+            padding-bottom: 48px; -webkit-font-smoothing: antialiased;
+        }
+        body::before, body::after { content: ''; position: fixed; border-radius: 50%; filter: blur(70px); pointer-events: none; z-index: 0; opacity: 0.45; }
+        body::before { width: 380px; height: 380px; top: 8%; left: -120px; background: radial-gradient(circle, rgba(6,182,212,0.30), transparent 70%); }
+        body::after  { width: 420px; height: 420px; bottom: 4%; right: -140px; background: radial-gradient(circle, rgba(168,85,247,0.22), transparent 70%); }
+        body > * { position: relative; z-index: 1; }
+
+        .input-bar {
+            width: 100%; background: rgba(10, 15, 28, 0.55);
+            backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+            padding: 14px 16px; display: flex; justify-content: center; align-items: center; gap: 10px;
+            border-bottom: 1px solid var(--border-main); flex-wrap: wrap; position: sticky; top: 0; z-index: 50;
+        }
+        label.ui-label, .ui-label { font-family: var(--mono); font-size: 13px; color: var(--text-dim); letter-spacing: 0.2px; }
+        input[type="text"], input[type="number"] {
+            background: var(--bg-input); border: 1px solid var(--border-main); color: var(--text-main);
+            height: 34px; border-radius: 9px; padding: 0 12px; font-size: 13px; font-family: var(--mono);
+            transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+        }
+        input[type="text"] { width: 300px; }
+        input[type="number"] { width: 64px; }
+        input:focus { outline: none; border-color: var(--accent-blue); box-shadow: 0 0 0 3px rgba(6,182,212,0.18); background: rgba(6,182,212,0.06); }
+
+        button {
+            height: 34px; border-radius: 9px; padding: 0 14px; background: var(--btn-bg);
+            border: 1px solid var(--border-main); color: var(--text-main); font-size: 13px; font-weight: 600; cursor: pointer;
+            transition: transform 0.15s ease, background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+        }
+        button:hover { background: var(--btn-hover); border-color: rgba(6, 182, 212, 0.5); box-shadow: 0 0 18px rgba(6, 182, 212, 0.18); transform: translateY(-1px); }
+        button:active { transform: translateY(0); }
+        #play-btn { background: linear-gradient(135deg, rgba(6,182,212,0.22), rgba(6,182,212,0.10)); border-color: rgba(6, 182, 212, 0.45); color: #a5f3fc; min-width: 80px; }
+        .op-btn.load { border-color: rgba(6,182,212,0.4); color: #a5f3fc; font-family: var(--mono); }
+
+        .shell { width: var(--shell); max-width: 95%; margin: 24px auto 0; display: flex; flex-direction: column; gap: 16px; }
+
+        .title-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+        .title-row h1 { font-size: 18px; font-weight: 800; margin: 0; letter-spacing: 0.2px; }
+        .title-row .sub { color: var(--text-dim); font-weight: 500; font-size: 13px; }
+        .step-badge { font-family: var(--mono); font-size: 12px; font-weight: 700; color: #a5f3fc; background: rgba(6,182,212,0.12); border: 1px solid rgba(6,182,212,0.3); padding: 4px 10px; border-radius: 999px; white-space: nowrap; }
+        .progress-track { height: 4px; width: 100%; background: rgba(255,255,255,0.07); border-radius: 999px; overflow: hidden; margin-top: -6px; }
+        .progress-fill { height: 100%; width: 0%; border-radius: 999px; background: linear-gradient(90deg, var(--accent-purple), var(--accent-blue)); box-shadow: 0 0 12px rgba(6,182,212,0.5); transition: width 0.45s cubic-bezier(0.34,1.1,0.64,1); }
+
+        .op-feed { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+        .op-chip { font-family: var(--mono); font-size: 11px; font-weight: 700; padding: 4px 9px; border-radius: 8px; border: 1px solid var(--border-main); color: var(--text-dim); background: rgba(255,255,255,0.03); transition: all 0.3s; white-space: nowrap; }
+        .op-chip.done { opacity: 0.45; }
+        .op-chip.current { color: #fff; border-color: rgba(6,182,212,0.6); background: rgba(6,182,212,0.16); box-shadow: 0 0 12px rgba(6,182,212,0.3); }
+
+        .narration { background: var(--bg-surface); border: 1px solid rgba(6,182,212,0.22); border-radius: 12px; padding: 12px 18px; font-family: var(--mono); font-size: 14px; line-height: 1.5; color: #cfe9f5; min-height: 48px; display: flex; align-items: center; gap: 10px; transition: border-color 0.3s, background 0.3s; }
+        .narration::before { content: '\25B8'; color: var(--accent-blue); font-size: 13px; }
+        .narration.done { border-color: rgba(34,197,94,0.4); background: rgba(34,197,94,0.06); }
+        .narration.done::before { content: '\2713'; color: var(--accent-green); }
+        .narration.evict { border-color: rgba(244,63,94,0.4); background: rgba(244,63,94,0.06); }
+        .narration.evict::before { content: '\2717'; color: var(--accent-red); }
+        .narration code { background: rgba(6,182,212,0.14); color: #7dd3fc; padding: 1px 6px; border-radius: 5px; font-size: 12.5px; }
+        .narration b { color: #fff; }
+
+        .stage-card { background: var(--bg-surface); border: 1px solid var(--border-main); border-radius: 18px; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); box-shadow: 0 12px 38px rgba(0,0,0,0.4); overflow: hidden; }
+        .stage-screen { position: relative; margin: 14px; border-radius: 14px; background: radial-gradient(700px 300px at 50% -10%, rgba(6,182,212,0.08), transparent 70%), #090d18; padding: 44px 24px 40px; border: 1px solid rgba(255,255,255,0.06); display: flex; justify-content: center; overflow-x: auto; }
+
+        .lanes { display: flex; flex-direction: column; gap: 30px; align-items: flex-start; }
+        .lane-label { font-family: var(--mono); font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--text-dim); margin-bottom: 26px; }
+        .lane-label .hint { text-transform: none; letter-spacing: 0.2px; font-weight: 600; color: #6b7a99; }
+
+        /* ── array row with sliding window band ── */
+        .array-row { position: relative; display: flex; gap: 8px; padding-top: 4px; }
+        .cell { width: 54px; height: 54px; border-radius: 12px; display: flex; align-items: center; justify-content: center; position: relative;
+            font-family: var(--mono); font-weight: 800; font-size: 19px; will-change: transform;
+            border: 2px solid var(--border-main); background: rgba(255,255,255,0.04); color: var(--text-main);
+            transition: background 0.35s, border-color 0.35s, color 0.35s, box-shadow 0.35s, transform 0.3s; }
+        .cell.scanned { border-color: rgba(255,255,255,0.18); background: rgba(255,255,255,0.06); color: #c8d3e8; }
+        .cell.inwin { border-color: rgba(168,85,247,0.45); background: rgba(168,85,247,0.10); color: #ead6ff; }
+        .cell.cur { border-color: var(--accent-orange); background: rgba(245,165,36,0.16); color: #ffd591; box-shadow: 0 0 22px rgba(245,165,36,0.55); }
+        .cell.max { border-color: var(--accent-green); background: rgba(34,197,94,0.16); color: #d6ffe8; box-shadow: 0 0 22px rgba(34,197,94,0.45); }
+        .cell .ci { position: absolute; top: -22px; left: 0; right: 0; text-align: center; font-size: 11px; color: var(--text-dim); font-weight: 700; }
+        .cell.max .ci { color: var(--accent-green); }
+        .cell.cur .ci { color: var(--accent-orange); }
+
+        /* sliding window band glides behind the cells */
+        .window-band { position: absolute; top: 22px; height: 62px; border-radius: 14px; left: 0; opacity: 0;
+            border: 2px dashed rgba(168,85,247,0.55); background: rgba(168,85,247,0.07);
+            box-shadow: 0 0 26px rgba(168,85,247,0.25) inset; pointer-events: none; will-change: transform, width; z-index: 0; }
+        .array-row .cell { z-index: 1; }
+
+        /* ── deque row of indices ── */
+        .deque-zone { position: relative; min-height: 78px; width: 100%; }
+        .deque-rail { position: relative; display: flex; gap: 8px; min-height: 58px; align-items: center; }
+        .deque-rail .empty-hint { font-family: var(--mono); font-size: 12.5px; color: #5b6781; padding: 18px 6px; }
+        .dq-tile { width: 54px; height: 54px; border-radius: 12px; display: flex; flex-direction: column; align-items: center; justify-content: center;
+            font-family: var(--mono); font-weight: 800; position: relative; will-change: transform, opacity;
+            border: 2px solid rgba(6,182,212,0.5); background: rgba(6,182,212,0.12); color: #a5f3fc;
+            transition: background 0.35s, border-color 0.35s, color 0.35s, box-shadow 0.35s; }
+        .dq-tile .dv { font-size: 19px; line-height: 1; }
+        .dq-tile .di { font-size: 10px; color: var(--text-dim); margin-top: 3px; font-weight: 700; }
+        .dq-tile.head { border-color: var(--accent-green); background: rgba(34,197,94,0.16); color: #d6ffe8; box-shadow: 0 0 20px rgba(34,197,94,0.4); }
+        .dq-tile.head .di { color: var(--accent-green); }
+        .dq-tile.evicting { border-color: var(--accent-red); background: rgba(244,63,94,0.18); color: #fecdd3; box-shadow: 0 0 22px rgba(244,63,94,0.5); }
+        .dq-end { font-family: var(--mono); font-size: 10px; font-weight: 800; color: #6b7a99; align-self: center; padding: 0 2px; letter-spacing: 0.5px; }
+
+        /* ── result row ── */
+        .result-rail { position: relative; display: flex; gap: 8px; min-height: 54px; align-items: center; padding-top: 4px; }
+        .result-rail .empty-hint { font-family: var(--mono); font-size: 12.5px; color: #5b6781; padding: 16px 6px; }
+        .res-tile { width: 48px; height: 48px; border-radius: 11px; display: flex; align-items: center; justify-content: center;
+            font-family: var(--mono); font-weight: 800; font-size: 18px; will-change: transform, opacity;
+            border: 2px solid rgba(34,197,94,0.45); background: rgba(34,197,94,0.10); color: #d6ffe8; }
+        .res-tile.fresh { border-color: var(--accent-green); box-shadow: 0 0 20px rgba(34,197,94,0.55); }
+
+        #confetti { position: absolute; inset: 0; overflow: visible; pointer-events: none; }
+        .confetti-piece { position: absolute; top: 0; left: 50%; width: 8px; height: 13px; border-radius: 2px; opacity: 0; animation: confettiFall ease-out forwards; }
+
+        .controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: center; }
+        .controls .kbd-hint { font-size: 11px; color: var(--text-dim); font-family: var(--mono); margin-left: 4px; }
+        .kbd { background: rgba(255,255,255,0.07); border: 1px solid var(--border-main); border-radius: 5px; padding: 1px 6px; font-size: 10px; }
+        input[type="range"] { accent-color: var(--accent-blue); width: 110px; cursor: pointer; }
+
+        .details-toggle { align-self: center; height: 32px; padding: 0 16px; border-radius: 999px; cursor: pointer; background: rgba(255,255,255,0.04); border: 1px solid var(--border-main); color: var(--text-dim); font-family: var(--mono); font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; gap: 8px; transition: color 0.2s, border-color 0.2s, background 0.2s; }
+        .details-toggle:hover { color: var(--text-main); border-color: rgba(6,182,212,0.4); background: rgba(6,182,212,0.06); }
+        .details-toggle .chev { transition: transform 0.3s ease; }
+        .details-wrap.open .details-toggle .chev { transform: rotate(180deg); }
+        .details-body { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.4s ease; }
+        .details-wrap.open .details-body { grid-template-rows: 1fr; }
+        .details-inner { overflow: hidden; min-height: 0; }
+        .details-grid { display: flex; flex-direction: column; gap: 14px; padding-top: 14px; }
+
+        .panel-card { background: var(--bg-surface); border: 1px solid var(--border-main); border-radius: 16px; backdrop-filter: blur(10px); box-shadow: 0 8px 30px rgba(0,0,0,0.35); }
+        .panel-head { display: flex; align-items: center; gap: 8px; padding: 11px 16px; border-bottom: 1px solid var(--border-main); font-size: 11px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; color: var(--text-dim); }
+        .panel-head .pip { width: 7px; height: 7px; border-radius: 50%; background: var(--accent-blue); box-shadow: 0 0 8px var(--accent-blue); }
+        .code-body { padding: 12px 6px 14px; font-family: var(--mono); font-size: 12.5px; line-height: 1.7; }
+        .code-line { display: flex; gap: 12px; padding: 1px 16px; border-left: 2px solid transparent; transition: background 0.3s, border-color 0.3s; white-space: pre; }
+        .code-line .lno { color: #4b5772; width: 16px; text-align: right; user-select: none; }
+        .code-line .src { color: #c4cee0; }
+        .code-line .kw { color: #c792ea; }
+        .code-line .fn { color: #82aaff; }
+        .code-line.active { background: rgba(6,182,212,0.12); border-left-color: var(--accent-blue); }
+        .code-line.active .src, .code-line.active .lno { color: #e8eefb; }
+
+        .state-strip { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 0 2px; }
+        .pill { display: inline-flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 12px; color: var(--text-dim); background: rgba(255,255,255,0.04); border: 1px solid var(--border-main); border-radius: 999px; padding: 4px 11px; }
+        .pill b { color: var(--text-main); font-weight: 800; }
+        .pill.i b { color: var(--accent-orange); } .pill.w b { color: var(--accent-purple); } .pill.d b { color: var(--accent-blue); } .pill.m b { color: var(--accent-green); }
+
+        .log-panel { border-radius: 14px; padding: 12px 16px; height: 110px; overflow-y: auto; font-family: var(--mono); font-size: 12.5px; line-height: 1.5; background: var(--bg-surface); border: 1px solid var(--border-main); }
+        .log-panel::-webkit-scrollbar { width: 8px; }
+        .log-panel::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 8px; }
+
+        @keyframes confettiFall { 0%{ opacity:1; transform: translate(-50%, 0) rotate(0deg); } 100%{ opacity:0; transform: translate(calc(-50% + var(--x)), 220px) rotate(var(--rot)); } }
+        @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; } }
+    </style>
+</head>
+<body>
+
+    <div class="input-bar">
+        <label class="ui-label">nums</label>
+        <input type="text" id="nums-input" value="[1,3,-1,-3,5,3,6,7]">
+        <label class="ui-label">k</label>
+        <input type="number" id="k-input" value="3" min="1" max="9">
+        <button class="op-btn load" onclick="loadCustom()">Load</button>
+        <span class="ui-label" style="opacity:.5">|</span>
+        <button onclick="loadExample(0)">Example 1</button>
+        <button onclick="loadExample(1)">Example 2</button>
+        <button onclick="resetSim()">&#8634; Reset</button>
+    </div>
+
+    <div class="shell">
+        <div class="title-row">
+            <h1>Sliding Window Maximum <span class="sub">&middot; monotonic decreasing deque of indices &middot; each element pushed &amp; popped once &#8594; O(n)</span></h1>
+            <span class="step-badge" id="step-badge">Step 1 / 1</span>
+        </div>
+        <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+
+        <div class="op-feed" id="op-feed"></div>
+
+        <div class="narration" id="main-panel">&mdash;</div>
+
+        <div class="stage-card">
+            <div class="stage-screen">
+                <div class="lanes">
+                    <div>
+                        <div class="lane-label">Array <span class="hint">&middot; window of size k slides left &#8594; right</span></div>
+                        <div class="array-row" id="array-row">
+                            <div class="window-band" id="window-band"></div>
+                        </div>
+                    </div>
+                    <div style="width:100%">
+                        <div class="lane-label">Monotonic deque <span class="hint">&middot; indices, front = window max &middot; pop back while smaller, pop front when out of window</span></div>
+                        <div class="deque-zone">
+                            <div class="deque-rail" id="deque-rail"></div>
+                        </div>
+                    </div>
+                    <div style="width:100%">
+                        <div class="lane-label">Result <span class="hint">&middot; one max per window</span></div>
+                        <div class="result-rail" id="result-rail"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="confetti"></div>
+
+        <div class="controls">
+            <button onclick="resetSim()">&#8634; Reset</button>
+            <button onclick="prevStep()">&#8592; Back</button>
+            <button onclick="togglePlay()" id="play-btn">Play</button>
+            <button onclick="nextStep()">Next &#8594;</button>
+            <span class="ui-label" style="margin-left:6px; font-size:11px">Speed</span>
+            <input type="range" id="speed" min="0" max="2" value="1">
+            <span class="kbd-hint"><span class="kbd">&#8592;</span> <span class="kbd">&#8594;</span> step &middot; <span class="kbd">space</span> play</span>
+        </div>
+
+        <div class="details-wrap" id="details-wrap">
+            <button class="details-toggle" onclick="toggleDetails()" aria-expanded="false">
+                <span id="details-label">Show code, state &amp; log</span> <span class="chev">&#9662;</span>
+            </button>
+            <div class="details-body">
+                <div class="details-inner">
+                    <div class="details-grid">
+                        <div class="state-strip">
+                            <span class="pill i">i <b id="st-i">&minus;</b></span>
+                            <span class="pill w">window <b id="st-win">&minus;</b></span>
+                            <span class="pill d">deque <b id="st-dq">[]</b></span>
+                            <span class="pill m">max <b id="st-max">&minus;</b></span>
+                        </div>
+                        <div class="panel-card">
+                            <div class="panel-head"><span class="pip"></span> Algorithm</div>
+                            <div class="code-body" id="code-panel"></div>
+                        </div>
+                        <div class="log-panel" id="log"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        'use strict';
+
+        // ───────── Motion engine ─────────
+        const REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        const FRAME = 1000 / 60;
+        function sampleSpring(stiffness, damping, mass) {
+            const dt = 1 / 60; let x = 1, v = 0; const out = [];
+            for (let i = 0; i < 240; i++) { const a = (-stiffness * x - damping * v) / mass; v += a * dt; x += v * dt; out.push(1 - x); if (Math.abs(x) < 0.0015 && Math.abs(v) < 0.0015) break; }
+            out.push(1); return out;
+        }
+        const SPRING_POS = sampleSpring(320, 30, 1);
+        const SPRING_POP = sampleSpring(520, 17, 1);
+        const durOf = (a) => a.length * FRAME;
+        const Motion = {
+            glide(el, x, w) {
+                const prev = el._x; el.style.opacity = '1';
+                const commit = `translateX(${x.toFixed(2)}px)`;
+                if (w != null) el.style.width = w.toFixed(2) + 'px';
+                if (REDUCED || prev == null || Math.abs(x - prev) < 0.5) { el._x = x; el.style.transform = commit; return; }
+                const dx = x - prev;
+                const kf = SPRING_POS.map(p => ({ transform: `translateX(${(prev + dx * p).toFixed(2)}px)` }));
+                el.animate(kf, { duration: durOf(SPRING_POS), easing: 'linear' });
+                el._x = x; el.style.transform = commit;
+            },
+            pop(el) {
+                if (REDUCED) { el.style.opacity = '1'; return; }
+                const kf = SPRING_POP.map(p => ({ opacity: Math.min(1, p * 2).toFixed(3), transform: `translateY(${(-14 * (1 - p)).toFixed(2)}px) scale(${(0.4 + 0.6 * p).toFixed(3)})` }));
+                el.animate(kf, { duration: durOf(SPRING_POP), easing: 'linear', fill: 'backwards' });
+            },
+        };
+
+        // ───────── State ─────────
+        let nums = [];
+        let k = 3;
+        let steps = [];
+        let stepIdx = 0;
+        let timer = null;
+        let confettiArmed = true;
+        const delays = [1500, 800, 380];
+        const cellEls = {};   // array cells keyed by index
+        const dqEls = {};     // deque tiles keyed by array-index
+        const resEls = {};    // result tiles keyed by window number
+
+        const CODE = [
+            [['src','dq = deque()    # holds indices, values decreasing']],
+            [['src','res = []']],
+            [['kw','for '],['src','i '],['kw','in '],['fn','range'],['src','(n):']],
+            [['kw','  while '],['src','dq and dq[0] <= i - k:']],
+            [['src','    dq.popleft()        # front left the window']],
+            [['kw','  while '],['src','dq and nums[dq[-1]] <= nums[i]:']],
+            [['src','    dq.pop()            # back is smaller']],
+            [['src','  dq.append(i)']],
+            [['kw','  if '],['src','i >= k - 1:']],
+            [['src','    res.append(nums[dq[0]])  # front = window max']],
+        ];
+        function buildCodePanel() {
+            const panel = document.getElementById('code-panel'); panel.innerHTML = '';
+            CODE.forEach((tokens, i) => {
+                const line = document.createElement('div'); line.className = 'code-line'; line.dataset.line = i;
+                const lno = document.createElement('span'); lno.className = 'lno'; lno.textContent = i + 1; line.appendChild(lno);
+                const src = document.createElement('span');
+                tokens.forEach(([cls, txt]) => { const s = document.createElement('span'); s.className = cls; s.textContent = txt; src.appendChild(s); });
+                line.appendChild(src); panel.appendChild(line);
+            });
+        }
+        function highlightCode(arr) { document.querySelectorAll('.code-line').forEach(el => el.classList.toggle('active', arr && arr.includes(+el.dataset.line))); }
+        function toggleDetails() {
+            const wrap = document.getElementById('details-wrap'); const open = wrap.classList.toggle('open');
+            wrap.querySelector('.details-toggle').setAttribute('aria-expanded', open ? 'true' : 'false');
+            document.getElementById('details-label').textContent = open ? 'Hide code, state & log' : 'Show code, state & log';
+        }
+
+        // ───────── step generation (monotonic decreasing deque of indices) ─────────
+        function generateSteps() {
+            steps = [];
+            const n = nums.length;
+            const dq = [];        // indices, nums values strictly decreasing front->back
+            const res = [];       // window maxima
+            let winNo = 0;        // result slot counter
+
+            // snapshot helper. evictIdx = index currently flashing red; curIdx = element being processed.
+            const snap = (extra) => Object.assign({
+                i: null, curIdx: null, winLo: null, winHi: null,
+                dq: [...dq], res: [...res], evictIdx: null, headIdx: (dq.length ? dq[0] : null),
+                freshRes: null, code: [], opIdx: null,
+            }, extra);
+
+            steps.push(snap({
+                code: [0, 1], action: 'init',
+                panel: `<b>Sliding Window Maximum.</b> Keep a deque of <b>indices</b> whose values are strictly decreasing front&#8594;back. The <b>front</b> is always the max of the current window; each index is pushed once and popped once &#8594; <b>O(n)</b>.`,
+                log: `init  nums = [${nums.join(', ')}], k = ${k}, deque = []`,
+            }));
+
+            for (let i = 0; i < n; i++) {
+                const winLo = i - k + 1, winHi = i;
+
+                // step: arrive at i
+                steps.push(snap({
+                    i, curIdx: i, winLo: (i >= k - 1 ? winLo : null), winHi, opIdx: i, code: [2],
+                    panel: `<b>i = ${i}</b> &middot; element <code>nums[${i}] = ${nums[i]}</code> enters. ${i >= k - 1 ? `Window covers indices <b>[${winLo}..${winHi}]</b>.` : `Window not full yet (need ${k} elements).`}`,
+                    log: `i=${i}  nums[${i}] = ${nums[i]}`,
+                }));
+
+                // 1) pop the front while it is out of the window
+                while (dq.length > 0 && dq[0] <= i - k) {
+                    const gone = dq[0];
+                    steps.push(snap({
+                        i, curIdx: i, winLo: (i >= k - 1 ? winLo : null), winHi, opIdx: i, code: [3, 4],
+                        dq: [...dq], evictIdx: gone, evict: true, headIdx: gone,
+                        panel: `Front index <b>${gone}</b> is now outside the window (<code>${gone} &#8804; ${i} &minus; ${k}</code>). <b>Pop it from the front.</b>`,
+                        log: `  pop front ${gone}  (left window)`,
+                    }));
+                    dq.shift();
+                }
+
+                // 2) pop the back while its value <= nums[i]  (it can never be a future max)
+                while (dq.length > 0 && nums[dq[dq.length - 1]] <= nums[i]) {
+                    const gone = dq[dq.length - 1];
+                    steps.push(snap({
+                        i, curIdx: i, winLo: (i >= k - 1 ? winLo : null), winHi, opIdx: i, code: [5, 6],
+                        dq: [...dq], evictIdx: gone, evict: true,
+                        panel: `Back value <code>nums[${gone}] = ${nums[gone]} &#8804; ${nums[i]}</code>, so index ${gone} can never be a future max. <b>Pop it from the back.</b>`,
+                        log: `  pop back ${gone}  (nums[${gone}]=${nums[gone]} <= ${nums[i]})`,
+                    }));
+                    dq.pop();
+                }
+
+                // 3) push i at the back
+                dq.push(i);
+                steps.push(snap({
+                    i, curIdx: i, winLo: (i >= k - 1 ? winLo : null), winHi, opIdx: i, code: [7],
+                    dq: [...dq], pushIdx: i,
+                    panel: `<b>Push index ${i}</b> at the back. Deque values stay decreasing front&#8594;back: <code>[${dq.map(d => nums[d]).join(', ')}]</code>.`,
+                    log: `  push ${i}  ->  deque = [${dq.join(', ')}]`,
+                }));
+
+                // 4) once the window is full, record the front as the max
+                if (i >= k - 1) {
+                    const mx = nums[dq[0]];
+                    res.push(mx); const slot = winNo++;
+                    steps.push(snap({
+                        i, curIdx: i, winLo, winHi, opIdx: i, code: [8, 9],
+                        dq: [...dq], res: [...res], headIdx: dq[0], freshRes: slot,
+                        panel: `Window <b>[${winLo}..${winHi}]</b> is full &#8594; its max is the deque front <code>nums[${dq[0]}] = ${mx}</code>. <b>Record ${mx}.</b>`,
+                        log: `  window [${winLo}..${winHi}] max = ${mx}`,
+                    }));
+                }
+            }
+
+            steps.push(snap({
+                complete: true, confetti: true, action: 'done',
+                dq: [...dq], res: [...res], headIdx: (dq.length ? dq[0] : null),
+                panel: `All ${Math.max(0, n - k + 1)} windows processed. <b>Result:</b> <code>[${res.join(', ')}]</code>. Every index was pushed and popped at most once, so the whole scan is <b>O(n)</b>.`,
+                log: `done  result = [${res.join(', ')}]`,
+            }));
+        }
+
+        // ───────── render ─────────
+        function cellLeft(i) { const el = cellEls[i]; return el ? el.offsetLeft : 0; }
+        function cellWidth(i) { const el = cellEls[i]; return el ? el.offsetWidth : 54; }
+
+        function renderStep(idx) {
+            stepIdx = idx; const step = steps[idx]; if (!step) return;
+            const arrRow = document.getElementById('array-row');
+
+            // ── array cells (persistent, keyed by index) ──
+            const dqSet = new Set(step.dq);
+            const used = new Set();
+            for (let i = 0; i < nums.length; i++) {
+                used.add(String(i));
+                let el = cellEls[i];
+                if (!el) {
+                    el = document.createElement('div'); el.className = 'cell';
+                    el.innerHTML = `<span class="ci"></span><span class="cv"></span>`;
+                    cellEls[i] = el; arrRow.appendChild(el);
+                }
+                el.querySelector('.ci').textContent = i;
+                el.querySelector('.cv').textContent = nums[i];
+                const inWin = step.winLo != null && i >= step.winLo && i <= step.winHi;
+                let cls = 'cell';
+                if (step.headIdx === i && inWin) cls += ' max';
+                else if (step.curIdx === i) cls += ' cur';
+                else if (inWin) cls += ' inwin';
+                else if (step.i != null && i <= step.i) cls += ' scanned';
+                el.className = cls;
+            }
+            Object.keys(cellEls).forEach(key => { if (!used.has(key)) { cellEls[key].remove(); delete cellEls[key]; } });
+
+            // ── sliding window band ──
+            const band = document.getElementById('window-band');
+            if (!band.parentElement) arrRow.appendChild(band);
+            if (step.winLo != null && cellEls[step.winLo] && cellEls[step.winHi]) {
+                const x = cellLeft(step.winLo) - 4;
+                const w = (cellLeft(step.winHi) + cellWidth(step.winHi)) - cellLeft(step.winLo) + 8;
+                Motion.glide(band, x, w);
+                band.style.opacity = '1';
+            } else {
+                band.style.opacity = '0'; band._x = null;
+            }
+
+            // ── deque rail (persistent tiles keyed by array index) ──
+            renderDeque(step);
+
+            // ── result rail ──
+            renderResult(step);
+
+            // ── narration / chrome ──
+            const mp = document.getElementById('main-panel');
+            mp.innerHTML = step.panel || '&mdash;';
+            mp.classList.toggle('done', !!step.complete);
+            mp.classList.toggle('evict', !!step.evict);
+            highlightCode(step.code);
+
+            if (step.confetti) { if (confettiArmed) { fireConfetti(); confettiArmed = false; } } else confettiArmed = true;
+
+            renderOpFeed(step.opIdx, step.complete);
+
+            // state strip
+            document.getElementById('st-i').textContent = step.i != null ? step.i : '−';
+            document.getElementById('st-win').textContent = step.winLo != null ? `[${step.winLo}..${step.winHi}]` : '−';
+            document.getElementById('st-dq').textContent = '[' + step.dq.join(', ') + ']';
+            document.getElementById('st-max').textContent = (step.headIdx != null && step.winLo != null) ? nums[step.headIdx] : '−';
+
+            document.getElementById('step-badge').textContent = `Step ${idx + 1} / ${steps.length}`;
+            document.getElementById('progress-fill').style.width = `${(idx / Math.max(1, steps.length - 1)) * 100}%`;
+
+            const logEl = document.getElementById('log');
+            logEl.innerHTML = steps.slice(0, idx + 1).map(s => `<div style="margin:3px 0;white-space:pre-wrap;">${s.log}</div>`).join('');
+            logEl.scrollTop = logEl.scrollHeight;
+        }
+
+        function renderDeque(step) {
+            const rail = document.getElementById('deque-rail');
+            const order = step.dq.slice();
+            // evicting index is not in step.dq yet (it is shown before removal) — include it for the flash
+            const showList = order.slice();
+            if (step.evictIdx != null && !showList.includes(step.evictIdx)) {
+                // figure where it sat: front pop -> prepend, back pop -> append
+                if (step.code && step.code.includes(3)) showList.unshift(step.evictIdx);
+                else showList.push(step.evictIdx);
+            }
+
+            const used = new Set();
+            // empty hint
+            let hint = rail.querySelector('.empty-hint');
+            if (showList.length === 0) {
+                if (!hint) { hint = document.createElement('div'); hint.className = 'empty-hint'; hint.textContent = 'deque empty'; rail.appendChild(hint); }
+            } else if (hint) { hint.remove(); }
+
+            // end markers (front / back) as stable nodes
+            let frontTag = rail.querySelector('.dq-front'); let backTag = rail.querySelector('.dq-back');
+            if (showList.length > 0) {
+                if (!frontTag) { frontTag = document.createElement('div'); frontTag.className = 'dq-end dq-front'; frontTag.textContent = 'front →'; rail.insertBefore(frontTag, rail.firstChild); }
+                if (!backTag) { backTag = document.createElement('div'); backTag.className = 'dq-end dq-back'; backTag.textContent = '← back'; rail.appendChild(backTag); }
+            } else { if (frontTag) frontTag.remove(); if (backTag) backTag.remove(); }
+
+            showList.forEach((arrIdx, pos) => {
+                used.add(String(arrIdx));
+                let tile = dqEls[arrIdx];
+                const isNew = !tile;
+                if (!tile) {
+                    tile = document.createElement('div'); tile.className = 'dq-tile';
+                    tile.innerHTML = `<span class="dv"></span><span class="di"></span>`;
+                    dqEls[arrIdx] = tile;
+                }
+                tile.querySelector('.dv').textContent = nums[arrIdx];
+                tile.querySelector('.di').textContent = 'i=' + arrIdx;
+                let cls = 'dq-tile';
+                if (arrIdx === step.evictIdx) cls += ' evicting';
+                else if (pos === 0 && step.evictIdx == null && step.winLo != null && order.length && order[0] === arrIdx) cls += ' head';
+                tile.className = cls;
+                // place in correct DOM order (after frontTag)
+                const ref = backTag || null;
+                rail.insertBefore(tile, ref);
+                if (isNew && arrIdx === step.pushIdx) Motion.pop(tile);
+            });
+            // reorder: ensure tiles are between frontTag and backTag in showList order
+            showList.forEach(arrIdx => { const t = dqEls[arrIdx]; if (t && backTag) rail.insertBefore(t, backTag); else if (t) rail.appendChild(t); });
+            if (backTag) rail.appendChild(backTag);
+
+            Object.keys(dqEls).forEach(key => { if (!used.has(key)) { dqEls[key].remove(); delete dqEls[key]; } });
+        }
+
+        function renderResult(step) {
+            const rail = document.getElementById('result-rail');
+            const used = new Set();
+            let hint = rail.querySelector('.empty-hint');
+            if (step.res.length === 0) {
+                if (!hint) { hint = document.createElement('div'); hint.className = 'empty-hint'; hint.textContent = 'no full window yet'; rail.appendChild(hint); }
+            } else if (hint) hint.remove();
+
+            step.res.forEach((val, slot) => {
+                used.add(String(slot));
+                let tile = resEls[slot];
+                const isNew = !tile;
+                if (!tile) { tile = document.createElement('div'); tile.className = 'res-tile'; resEls[slot] = tile; rail.appendChild(tile); }
+                tile.textContent = val;
+                tile.className = 'res-tile' + (slot === step.freshRes ? ' fresh' : '');
+                if (isNew && slot === step.freshRes) Motion.pop(tile);
+            });
+            Object.keys(resEls).forEach(key => { if (!used.has(key)) { resEls[key].remove(); delete resEls[key]; } });
+        }
+
+        function renderOpFeed(currentOpIdx, complete) {
+            const feed = document.getElementById('op-feed'); feed.innerHTML = '';
+            nums.forEach((v, i) => {
+                const chip = document.createElement('div');
+                let st = '';
+                if (currentOpIdx === i && !complete) st = ' current';
+                else if (complete || (currentOpIdx != null && i < currentOpIdx)) st = ' done';
+                chip.className = 'op-chip' + st;
+                chip.textContent = `[${i}]=${v}`;
+                feed.appendChild(chip);
+            });
+        }
+
+        function fireConfetti() {
+            const host = document.getElementById('confetti'); if (!host || REDUCED) return;
+            const colors = ['#22c55e', '#06b6d4', '#a855f7', '#f5a524', '#f43f5e'];
+            for (let i = 0; i < 38; i++) {
+                const p = document.createElement('div'); p.className = 'confetti-piece';
+                p.style.setProperty('--x', ((Math.random() * 2 - 1) * 220) + 'px');
+                p.style.setProperty('--rot', ((Math.random() * 720 - 360)) + 'deg');
+                p.style.background = colors[i % colors.length];
+                p.style.animationDuration = (0.9 + Math.random() * 0.8) + 's';
+                p.style.animationDelay = (Math.random() * 0.15) + 's';
+                host.appendChild(p); setTimeout(() => p.remove(), 1900);
+            }
+        }
+
+        // ───────── controls ─────────
+        function nextStep() { if (stepIdx < steps.length - 1) renderStep(stepIdx + 1); else pause(); }
+        function prevStep() { if (stepIdx > 0) renderStep(stepIdx - 1); }
+        function resetSim() { pause(); renderStep(0); }
+        function togglePlay() {
+            const btn = document.getElementById('play-btn');
+            if (timer) { pause(); return; }
+            btn.textContent = 'Pause';
+            if (stepIdx >= steps.length - 1) renderStep(0);
+            timer = setInterval(() => { if (stepIdx < steps.length - 1) nextStep(); else pause(); }, delays[document.getElementById('speed').value]);
+        }
+        function pause() { clearInterval(timer); timer = null; document.getElementById('play-btn').textContent = 'Play'; }
+
+        function clearDom() {
+            Object.keys(cellEls).forEach(k => { cellEls[k].remove(); delete cellEls[k]; });
+            Object.keys(dqEls).forEach(k => { dqEls[k].remove(); delete dqEls[k]; });
+            Object.keys(resEls).forEach(k => { resEls[k].remove(); delete resEls[k]; });
+            const rail = document.getElementById('deque-rail'); rail.querySelectorAll('.dq-end, .empty-hint').forEach(e => e.remove());
+            const rrail = document.getElementById('result-rail'); rrail.querySelectorAll('.empty-hint').forEach(e => e.remove());
+            const band = document.getElementById('window-band'); band.style.opacity = '0'; band._x = null;
+            confettiArmed = true;
+        }
+
+        function loadData(arr, kk) {
+            pause();
+            nums = arr.slice();
+            k = Math.max(1, Math.min(kk, nums.length || 1));
+            clearDom();
+            generateSteps();
+            renderStep(0);
+        }
+
+        function loadCustom() {
+            try {
+                const parsed = JSON.parse(document.getElementById('nums-input').value);
+                const kv = parseInt(document.getElementById('k-input').value, 10);
+                if (!Array.isArray(parsed) || parsed.length === 0 || parsed.some(x => typeof x !== 'number') || isNaN(kv) || kv < 1) {
+                    flashInputError(); return;
+                }
+                document.getElementById('k-input').value = Math.max(1, Math.min(kv, parsed.length));
+                loadData(parsed, kv);
+            } catch (e) { flashInputError(); }
+        }
+        function flashInputError() {
+            const inp = document.getElementById('nums-input');
+            inp.style.borderColor = 'var(--accent-red)';
+            inp.style.boxShadow = '0 0 0 3px rgba(244,63,94,0.18)';
+            setTimeout(() => { inp.style.borderColor = ''; inp.style.boxShadow = ''; }, 900);
+        }
+
+        const examples = [
+            { nums: [1, 3, -1, -3, 5, 3, 6, 7], k: 3 },
+            { nums: [5, 4, 3, 2, 1], k: 2 },
+        ];
+        function loadExample(n) {
+            const ex = examples[n];
+            document.getElementById('nums-input').value = JSON.stringify(ex.nums);
+            document.getElementById('k-input').value = ex.k;
+            loadData(ex.nums, ex.k);
+        }
+
+        document.addEventListener('keydown', (e) => {
+            const tag = (e.target.tagName || '').toLowerCase(); if (tag === 'input' || tag === 'textarea') return;
+            if (e.key === 'ArrowRight') { e.preventDefault(); pause(); nextStep(); }
+            else if (e.key === 'ArrowLeft') { e.preventDefault(); pause(); prevStep(); }
+            else if (e.key === ' ') { e.preventDefault(); togglePlay(); }
+        });
+        document.getElementById('nums-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') loadCustom(); });
+        document.getElementById('k-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') loadCustom(); });
+        window.addEventListener('resize', () => renderStep(stepIdx));
+
+        buildCodePanel();
+        window.onload = () => loadExample(0);
+    </script>
+</body>
+</html>

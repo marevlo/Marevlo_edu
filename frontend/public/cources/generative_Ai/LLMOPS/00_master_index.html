@@ -1,0 +1,1656 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Nexus — The LLMOps Deep Dive · Marevlo Research</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Source+Serif+4:ital,opsz,wght@0,8..60,300;0,8..60,400;0,8..60,500;0,8..60,600;1,8..60,400&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#08090b;
+  --bg-2:#0b0f1a;
+  --bg-3:#111827;
+  --panel:#0d1117;
+  --panel-2:#111827;
+  --line:#1e2330;
+  --line-2:#2a3142;
+  --ink:#e8eaed;
+  --ink-2:#a8aeb8;
+  --ink-3:#6b7280;
+  --ink-4:#454b58;
+  --accent:#6366f1;       /* indigo — primary accent */
+  --accent-2:#818cf8;
+  --accent-glow:rgba(99,102,241,0.18);
+  --plan:#f59e0b;        /* planning / cognition */
+  --tool:#10b981;        /* tool execution */
+  --observe:#8b5cf6;     /* observation */
+  --fail:#f7768e;
+  --success:#10b981;
+  --serif:'Source Serif 4', Georgia, serif;
+  --sans:'Outfit', -apple-system, sans-serif;
+  --mono:'JetBrains Mono', monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{
+  background:var(--bg);
+  color:var(--ink);
+  font-family:var(--sans);
+  font-weight:400;
+  line-height:1.65;
+  -webkit-font-smoothing:antialiased;
+  overflow-x:hidden;
+}
+body::before{
+  content:'';position:fixed;inset:0;
+  background:
+    radial-gradient(ellipse 80% 50% at 42% -15%, rgba(99,102,241,0.1), transparent 60%),
+    radial-gradient(ellipse 60% 40% at 100% 100%, rgba(99,102,241,0.04), transparent 60%);
+  pointer-events:none;z-index:0;
+}
+body::after{
+  content:'';position:fixed;inset:0;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='300' height='300' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E");
+  background-size:300px 300px;
+  opacity:0.025;
+  pointer-events:none;z-index:0;
+}
+
+/* ============== LAYOUT ============== */
+.shell{position:relative;z-index:1;display:grid;grid-template-columns:280px 1fr;min-height:100vh}
+.sidebar{
+  position:sticky;top:0;height:100vh;
+  border-right:1px solid transparent;
+  background:linear-gradient(180deg, rgba(13,17,23,0.92) 0%, rgba(8,9,11,0.96) 100%);
+  backdrop-filter:blur(20px) saturate(1.4);
+  -webkit-backdrop-filter:blur(20px) saturate(1.4);
+  padding:36px 22px 28px;
+  overflow-y:auto;
+  box-shadow:inset -1px 0 0 rgba(255,255,255,0.04), 1px 0 32px rgba(0,0,0,0.5);
+  display:flex;flex-direction:column;
+}
+.sidebar::before{
+  content:'';
+  position:absolute;left:0;top:0;bottom:0;width:2px;
+  background:linear-gradient(180deg,
+    transparent 0%,
+    rgba(99,102,241,0.5) 20%,
+    rgba(99,102,241,0.3) 60%,
+    transparent 100%);
+  pointer-events:none;z-index:2;
+}
+.sidebar::-webkit-scrollbar{width:3px}
+.sidebar::-webkit-scrollbar-track{background:transparent}
+.sidebar::-webkit-scrollbar-thumb{background:linear-gradient(180deg, var(--accent), transparent);border-radius:3px;opacity:0.5}
+.brand{
+  display:flex;align-items:center;gap:10px;margin-bottom:8px;
+  position:relative;
+}
+.brand::before{
+  content:'';
+  position:absolute;top:-28px;left:-22px;right:-22px;height:90px;
+  background:radial-gradient(ellipse 70% 60% at 40% 0%, rgba(99,102,241,0.18), transparent 70%);
+  pointer-events:none;z-index:0;
+  border-radius:50%;
+}
+.brand > *{position:relative;z-index:1}
+.brand-mark{
+  width:36px;height:36px;border-radius:8px;
+  background:linear-gradient(135deg, var(--accent), var(--accent-2));
+  display:grid;place-items:center;
+  overflow:hidden;
+  flex-shrink:0;
+  font-family:var(--mono);
+  font-weight:700;
+  font-size:13px;
+  color:#1a1a1f;
+}
+.brand-mark img{
+  width:100%;
+  height:100%;
+  object-fit:contain;
+  mix-blend-mode:screen;
+  display:block;
+}
+.brand-name{font-size:13px;font-weight:600;letter-spacing:0.02em;color:var(--ink)}
+.brand-sub{font-size:11px;color:var(--ink-3);margin-top:2px;letter-spacing:0.04em}
+.brand-divider{
+  height:1px;
+  margin:18px 0 4px;
+  background:linear-gradient(90deg, transparent 0%, rgba(99,102,241,0.25) 40%, rgba(99,102,241,0.25) 60%, transparent 100%);
+}
+.module-tag{
+  margin-top:24px;padding:13px 15px;
+  background:linear-gradient(135deg, rgba(99,102,241,0.06) 0%, rgba(13,17,23,0.9) 100%);
+  border:1px solid rgba(99,102,241,0.18);
+  border-radius:9px;
+  box-shadow:0 1px 12px rgba(0,0,0,0.25);
+}
+.module-tag-label{font-size:10px;color:var(--ink-3);letter-spacing:0.04em;margin-bottom:4px}
+.module-tag-title{font-family:var(--serif);font-size:13px;color:var(--ink);font-weight:400}
+.toc{margin-top:24px}
+.toc-label{font-size:10px;color:var(--ink-3);letter-spacing:0.05em;margin-bottom:12px;padding-left:10px}
+.toc a{
+  display:flex;align-items:center;gap:10px;
+  padding:9px 11px;color:var(--ink-2);text-decoration:none;font-size:13px;
+  border-radius:6px;border-left:2px solid transparent;
+  transition:background 0.18s ease, color 0.18s ease, border-color 0.18s ease;
+  position:relative;
+}
+.toc a:hover{
+  background:rgba(255,255,255,0.03);
+  color:var(--ink);
+}
+.toc a.active{
+  background:linear-gradient(90deg, rgba(99,102,241,0.12) 0%, transparent 100%);
+  color:var(--accent);
+  border-left-color:var(--accent);
+  box-shadow:inset 0 0 0 1px rgba(99,102,241,0.08);
+}
+.toc a.past{
+  opacity:0.38;
+  color:var(--ink-4);
+}
+.toc a.past .toc-num{color:var(--ink-4)}
+.toc-num{font-family:var(--mono);font-size:11px;color:var(--ink-4);width:24px;transition:color 0.18s}
+.toc a.active .toc-num{color:var(--accent-2)}
+.progress-rail{
+  margin-top:28px;padding:15px 16px;
+  background:linear-gradient(135deg, rgba(99,102,241,0.05) 0%, rgba(13,17,23,0.8) 100%);
+  border:1px solid rgba(99,102,241,0.14);
+  border-radius:9px;
+  box-shadow:0 1px 10px rgba(0,0,0,0.2);
+}
+.progress-bar{
+  height:3px;background:rgba(255,255,255,0.05);border-radius:2px;overflow:hidden;margin-top:10px;
+  box-shadow:inset 0 1px 2px rgba(0,0,0,0.4);
+}
+.progress-fill{
+  height:100%;width:0%;
+  background:linear-gradient(90deg, var(--accent), var(--accent-2));
+  transition:width 0.5s cubic-bezier(0.4,0,0.2,1);
+  box-shadow:0 0 8px rgba(99,102,241,0.5);
+}
+.progress-text{font-size:11px;color:var(--ink-3);font-family:var(--serif)}
+
+.main{padding:80px 80px 200px;max-width:980px;position:relative;z-index:1}
+@media (max-width: 1100px){
+  .shell{grid-template-columns:1fr}
+  .sidebar{position:relative;height:auto;border-right:none;border-bottom:1px solid var(--line)}
+  .main{padding:48px 32px 120px}
+}
+
+/* ============== HERO ============== */
+.hero{margin-bottom:80px;position:relative;min-height:50vh;display:flex;flex-direction:column;justify-content:center}
+#heroCanvas{position:absolute;inset:0;width:100%;height:100%;z-index:0;pointer-events:none}
+.hero-inner{position:relative;z-index:1}
+.hero-meta{
+  display:inline-flex;align-items:center;gap:0;
+  margin-bottom:36px;
+  font-family:var(--mono);font-size:11px;color:var(--ink-3);letter-spacing:0.05em;
+  background:linear-gradient(135deg, rgba(99,102,241,0.07) 0%, rgba(13,17,23,0.6) 100%);
+  border:1px solid rgba(99,102,241,0.2);
+  border-radius:100px;
+  padding:7px 16px;
+  backdrop-filter:blur(8px);
+  box-shadow:0 0 0 1px rgba(255,255,255,0.03), 0 4px 24px rgba(0,0,0,0.3), 0 0 32px rgba(99,102,241,0.06);
+}
+.hero-meta span{white-space:nowrap;padding:0 2px}
+.hero-meta .sep{
+  width:1px;height:10px;
+  background:rgba(255,255,255,0.08);
+  flex-shrink:0;margin:0 12px;
+}
+.hero-meta .track-label{color:var(--accent-2);font-weight:500}
+.hero-meta .eyedot{
+  width:6px;height:6px;border-radius:50%;
+  background:var(--success);
+  box-shadow:0 0 6px var(--success);
+  flex-shrink:0;margin-right:8px;
+}
+
+.hero h1{
+  font-family:var(--serif);font-weight:400;font-size:clamp(40px, 5.5vw, 68px);
+  line-height:1.05;letter-spacing:-0.022em;margin-bottom:24px;
+}
+.hero h1 .gradient{
+  background: linear-gradient(90deg, var(--accent), var(--accent-2), var(--observe), var(--plan));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.hero h1 em {
+  font-style:italic;font-weight:400;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2), var(--observe), var(--plan));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.hero-sub{
+  font-family:var(--serif);font-size:21px;line-height:1.55;color:var(--ink-2);
+  max-width:680px;font-weight:300;margin-bottom:32px;
+}
+.hero-sub strong{color:var(--ink);font-weight:500}
+
+/* ============== SECTIONS ============== */
+section{margin-bottom:88px;scroll-margin-top:32px;opacity:0;transform:translateY(20px);transition:all 0.6s ease}
+section.visible{opacity:1;transform:none}
+section:nth-child(3n){margin-bottom:104px}
+section:nth-child(2n){margin-bottom:96px}
+.sec-head{margin-bottom:28px;padding-bottom:18px;border-bottom:1px solid var(--line)}
+.sec-num{font-family:var(--mono);font-size:11px;color:var(--accent);letter-spacing:0.15em}
+.sec h2{
+  font-family:var(--serif);font-size:36px;font-weight:400;line-height:1.15;
+  letter-spacing:-.01em;margin-top:8px;
+}
+.sec h2 em{
+  font-style:italic;font-weight:400;color:var(--accent-2);
+}
+.sec-sub{font-family:var(--serif);font-size:17px;line-height:1.73;color:var(--ink-2);margin-top:16px;font-weight:300}
+p{font-family:var(--serif);font-size:17px;line-height:1.73;color:var(--ink-2);margin-bottom:20px;font-weight:300}
+p strong, li strong{color:var(--ink);font-weight:500}
+p em{color:var(--accent);font-style:italic}
+
+/* ============== HERO STATS ============== */
+.hero-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  margin-top: 48px;
+}
+.hero-stat {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  padding: 24px;
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+}
+.hero-stat::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0; height: 2px;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+}
+.hero-stat-num {
+  font-family: var(--serif);
+  font-size: 2.4rem;
+  font-weight: 700;
+  line-height: 1;
+  margin-bottom: 8px;
+}
+.hero-stat-num.a1{color:var(--accent)}
+.hero-stat-num.a2{color:var(--observe)}
+.hero-stat-num.a3{color:var(--tool)}
+.hero-stat-num.a4{color:var(--plan)}
+.hero-stat-lbl {
+  font-family: var(--mono);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--ink-3);
+  font-weight: 500;
+}
+@media(max-width:768px){
+  .hero-stats{grid-template-columns:repeat(2,1fr)}
+}
+
+/* ============== CASE STUDY ============== */
+.case {
+  position: relative;
+  padding: 40px;
+  background: linear-gradient(135deg, rgba(99,102,241,0.05), rgba(139,92,246,0.03));
+  border: 1px solid rgba(99,102,241,0.16);
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.25);
+  margin-top: 32px;
+}
+.case-tag {
+  display: inline-block;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--accent-2);
+  font-weight: 600;
+  margin-bottom: 20px;
+}
+.case h3 {
+  font-family: var(--sans);
+  font-size: 24px;
+  font-weight: 600;
+  color: var(--ink);
+  margin-top: 0;
+  margin-bottom: 16px;
+}
+.case p {
+  font-size: 15px;
+  color: var(--ink-2);
+  line-height: 1.68;
+  margin-bottom: 16px;
+}
+.case-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  margin-top: 32px;
+  position: relative;
+  z-index: 1;
+}
+.case-cell {
+  padding: 20px 16px;
+  background: rgba(0,0,0,0.3);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  text-align: center;
+}
+.case-cell-num {
+  font-family: var(--serif);
+  font-size: 1.8rem;
+  font-weight: 600;
+  color: var(--accent-2);
+  margin-bottom: 4px;
+}
+.case-cell-lbl {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  color: var(--ink-3);
+  text-transform: uppercase;
+}
+@media(max-width:768px){
+  .case{padding:24px}
+  .case-grid{grid-template-columns:repeat(2,1fr)}
+}
+
+/* ============== PILLARS ============== */
+.pillars {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+  margin-top: 32px;
+}
+.pillar-card {
+  padding: 32px 28px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+}
+.pillar-card::before {
+  content: "";
+  position: absolute;
+  top: 0; left: 0; right: 0; height: 2px;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+}
+.pillar-card .pill-num {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.15em;
+  color: var(--accent-2);
+  margin-bottom: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+.pillar-card h4 {
+  font-family: var(--sans);
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--ink);
+  margin-top: 0;
+  margin-bottom: 12px;
+}
+.pillar-card p {
+  font-size: 14px;
+  color: var(--ink-2);
+  line-height: 1.6;
+  margin-bottom: 0;
+}
+@media(max-width:880px){
+  .pillars{grid-template-columns:1fr}
+}
+
+/* ============== CURRICULUM ============== */
+.modules {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+  margin-top: 32px;
+}
+.mod {
+  display: grid;
+  grid-template-columns: 80px 1fr 220px;
+  gap: 32px;
+  padding: 32px 32px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  transition: background 0.25s, border-color 0.25s;
+  position: relative;
+}
+.mod:hover {
+  background: linear-gradient(90deg, rgba(99,102,241,0.04) 0%, transparent 100%);
+  border-color: rgba(99,102,241,0.25);
+}
+.mod-num {
+  font-family: var(--serif);
+  font-size: 3rem;
+  font-weight: 300;
+  line-height: 1;
+  color: var(--ink-4);
+  transition: color 0.3s;
+}
+.mod:hover .mod-num {
+  color: var(--accent-2);
+}
+.mod-body h3 {
+  font-family: var(--sans);
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--ink);
+  margin-top: 0;
+  margin-bottom: 10px;
+}
+.mod-cap {
+  font-family: var(--serif);
+  font-size: 14px;
+  color: var(--ink-2);
+  line-height: 1.6;
+  margin-bottom: 14px;
+}
+.mod-topics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.mod-topic {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  padding: 4px 9px;
+  border-radius: 6px;
+  background: var(--bg-3);
+  color: var(--ink-2);
+  border: 1px solid var(--line-2);
+}
+.mod-topic.hl {
+  color: var(--accent-2);
+  border-color: rgba(99,102,241,0.3);
+  background: rgba(99,102,241,0.08);
+}
+.mod-topic.hl2 {
+  color: var(--tool);
+  border-color: rgba(16,185,129,0.3);
+  background: rgba(16,185,129,0.08);
+}
+.mod-right {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-end;
+  justify-content: space-between;
+}
+.mod-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.mod-action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  font-weight: 600;
+  text-decoration: none;
+  border: 1px solid var(--line-2);
+  transition: all 0.2s;
+}
+.mod-action-btn.learn {
+  color: var(--accent-2);
+  background: rgba(99,102,241,0.08);
+  border-color: rgba(99,102,241,0.25);
+}
+.mod-action-btn.learn:hover {
+  background: rgba(99,102,241,0.16);
+  border-color: rgba(99,102,241,0.4);
+}
+.mod-action-btn.practice {
+  color: var(--tool);
+  background: rgba(16,185,129,0.08);
+  border-color: rgba(16,185,129,0.25);
+}
+.mod-action-btn.practice:hover {
+  background: rgba(16,185,129,0.16);
+  border-color: rgba(16,185,129,0.4);
+}
+.mod-phase {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  font-weight: 500;
+}
+.mod-nexus {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--observe);
+  text-align: right;
+  line-height: 1.4;
+  font-weight: 500;
+}
+.mod-arrow {
+  font-size: 1.3rem;
+  color: var(--ink-4);
+  transition: color 0.3s, transform 0.3s;
+}
+.mod:hover .mod-arrow {
+  color: var(--accent-2);
+  transform: translateX(4px);
+}
+@media(max-width:880px){
+  .mod {
+    grid-template-columns: 60px 1fr;
+    gap: 20px;
+    padding: 24px;
+  }
+  .mod-num { font-size: 2.2rem; }
+  .mod-right {
+    grid-column: 2;
+    flex-direction: row;
+    justify-content: flex-start;
+    gap: 14px;
+    align-items: center;
+  }
+  .mod-actions { justify-content: flex-start; }
+}
+
+/* ============== TECHNIQUE ATLAS ============== */
+.tech-map {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+  margin-top: 32px;
+}
+.tech {
+  padding: 20px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  transition: all 0.2s;
+  position: relative;
+  overflow: hidden;
+}
+.tech:hover {
+  border-color: var(--line-2);
+  background: var(--panel-2);
+  transform: translateY(-2px);
+}
+.tech-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.tech-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+.tech.c1 .tech-dot { background: var(--accent); box-shadow: 0 0 8px var(--accent); }
+.tech.c2 .tech-dot { background: var(--observe); box-shadow: 0 0 8px var(--observe); }
+.tech.c3 .tech-dot { background: var(--tool); box-shadow: 0 0 8px var(--tool); }
+.tech.c4 .tech-dot { background: var(--plan); box-shadow: 0 0 8px var(--plan); }
+.tech-ttl {
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--ink);
+}
+.tech-desc {
+  font-family: var(--serif);
+  font-size: 13px;
+  color: var(--ink-2);
+  line-height: 1.5;
+  font-weight: 300;
+}
+.tech-ref {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--ink-4);
+  letter-spacing: 0.05em;
+}
+@media(max-width:900px){ .tech-map { grid-template-columns: repeat(2, 1fr); } }
+@media(max-width:500px){ .tech-map { grid-template-columns: 1fr; } }
+
+/* ============== DIAGRAM PREVIEW ============== */
+.arch-preview {
+  padding: 40px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  margin-top: 40px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+}
+.arch-preview svg {
+  width: 100%;
+  max-width: 100%;
+  display: block;
+}
+
+/* ============== OUTCOMES ============== */
+.outcomes {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 24px;
+  margin-top: 32px;
+}
+.out {
+  display: flex;
+  gap: 18px;
+  padding: 22px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+}
+.out-ic {
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  background: rgba(99, 102, 241, 0.08);
+  border: 1px solid rgba(99, 102, 241, 0.2);
+  font-family: var(--serif);
+  font-weight: 700;
+  color: var(--accent-2);
+}
+.out h4 {
+  font-family: var(--sans);
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: 6px;
+  color: var(--ink);
+}
+.out p {
+  font-family: var(--serif);
+  font-size: 14px;
+  color: var(--ink-2);
+  line-height: 1.55;
+  font-weight: 300;
+  margin-bottom: 0;
+}
+@media(max-width:768px){ .outcomes { grid-template-columns: 1fr; } }
+
+/* ============== LEARN & PRACTICE ============== */
+.learn-practice-wrap {
+  max-width: 900px;
+  margin: 0 auto;
+}
+.lp-title {
+  font-family: var(--serif);
+  font-size: 32px;
+  font-weight: 400;
+  line-height: 1.1;
+  text-align: center;
+  margin-bottom: 10px;
+  color: var(--ink);
+}
+.lp-title .accent {
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.lp-sub {
+  text-align: center;
+  color: var(--ink-2);
+  font-family: var(--serif);
+  font-size: 15px;
+  font-weight: 300;
+  margin-bottom: 28px;
+}
+.lp-mod {
+  padding: 18px 0 6px;
+}
+.lp-mod-title {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  margin-bottom: 14px;
+  font-weight: 600;
+}
+.lp-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+.lp-card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 24px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+}
+.lp-card.learn { border-color: rgba(99, 102, 241, 0.2); }
+.lp-card.practice { border-color: rgba(16, 185, 129, 0.2); }
+.lp-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.lp-dot {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  display: grid;
+  place-items: center;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 700;
+}
+.lp-card.learn .lp-dot {
+  color: var(--accent-2);
+  background: rgba(99, 102, 241, 0.08);
+  border: 1px solid rgba(99, 102, 241, 0.25);
+}
+.lp-card.practice .lp-dot {
+  color: var(--tool);
+  background: rgba(16, 185, 129, 0.08);
+  border: 1px solid rgba(16, 185, 129, 0.25);
+}
+.lp-head h4 {
+  font-family: var(--sans);
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.lp-help {
+  font-family: var(--serif);
+  font-size: 13px;
+  color: var(--ink-3);
+  margin-bottom: 8px;
+}
+.lp-link-title {
+  font-family: var(--mono);
+  font-size: 13px;
+  color: var(--ink-2);
+  font-weight: 500;
+  line-height: 1.4;
+  margin-bottom: 16px;
+  word-break: break-all;
+}
+.lp-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 14px;
+  border-radius: 6px;
+  text-decoration: none;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  font-weight: 600;
+  border: 1px solid var(--line-2);
+  transition: all 0.2s;
+}
+.lp-card.learn .lp-btn {
+  color: var(--accent-2);
+  border-color: rgba(99, 102, 241, 0.25);
+  background: rgba(99, 102, 241, 0.08);
+}
+.lp-card.learn .lp-btn:hover { background: rgba(99, 102, 241, 0.16); }
+.lp-card.practice .lp-btn {
+  color: var(--tool);
+  border-color: rgba(16, 185, 129, 0.25);
+  background: rgba(16, 185, 129, 0.08);
+}
+.lp-card.practice .lp-btn:hover { background: rgba(16, 185, 129, 0.16); }
+
+@media(max-width:768px){
+  .lp-grid { grid-template-columns: 1fr; }
+  .lp-card { padding: 18px; }
+}
+
+/* ============== FOOTER ============== */
+.footer {
+  margin-top: 80px;
+  padding-top: 48px;
+  border-top: 1px solid var(--line);
+  color: var(--ink-3);
+  font-size: 13px;
+  font-family: var(--sans);
+}
+.foot-grid {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr;
+  gap: 48px;
+  margin-bottom: 48px;
+  text-align: left;
+}
+.foot h5 {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink);
+  margin-bottom: 18px;
+  font-weight: 600;
+}
+.foot p {
+  font-family: var(--serif);
+  font-size: 14px;
+  color: var(--ink-2);
+  line-height: 1.6;
+}
+.foot ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.foot li {
+  margin-bottom: 8px;
+}
+.foot a {
+  color: var(--ink-2);
+  text-decoration: none;
+  font-size: 14px;
+  transition: color 0.15s;
+}
+.foot a:hover {
+  color: var(--accent);
+}
+.foot-bot {
+  display: flex;
+  justify-content: space-between;
+  padding-top: 24px;
+  border-top: 1px solid var(--line);
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-3);
+}
+@media(max-width:768px){
+  .foot-grid { grid-template-columns: 1fr; gap: 32px; }
+  .foot-bot { flex-direction: column; gap: 12px; }
+}
+
+/* ============== SIDEBAR FOOTER ============== */
+.sidebar-footer{
+  margin-top:auto;
+  padding-top:24px;
+  border-top:1px solid rgba(255,255,255,0.04);
+}
+.depth-badge{
+  display:flex;align-items:center;gap:9px;
+  padding:11px 13px;
+  background:linear-gradient(135deg, rgba(99,102,241,0.06) 0%, rgba(13,17,23,0.8) 100%);
+  border:1px solid rgba(99,102,241,0.14);
+  border-radius:9px;
+  font-size:11px;font-family:var(--mono);
+  color:var(--ink-3);letter-spacing:0.03em;
+  box-shadow:0 1px 10px rgba(0,0,0,0.2);
+}
+.depth-badge .pulse{
+  width:5px;height:5px;flex-shrink:0;border-radius:50%;background:var(--accent);
+  box-shadow:0 0 6px rgba(99,102,241,0.7);
+  animation:pulse 2s infinite;
+}
+.depth-badge .badge-text{color:var(--ink-3);line-height:1.4}
+.depth-badge .badge-text strong{display:block;color:var(--ink-2);font-weight:500;font-size:11px;margin-bottom:1px}
+@keyframes pulse{0%,100%{opacity:0.5;transform:scale(1)}50%{opacity:1;transform:scale(1.3)}}
+
+::selection{background:var(--accent);color:#1a1a1a}
+</style>
+</head>
+<body>
+
+<div class="shell">
+<!-- ============ SIDEBAR ============ -->
+<aside class="sidebar">
+  <div class="brand">
+    <div class="brand-mark"><img src="../../../logo/Logo_Marevlo.png" alt="Marevlo" onerror="this.style.display='none'; this.parentElement.innerText='Mv';" /></div>
+    <div>
+      <div class="brand-name">Marevlo Research</div>
+      <div class="brand-sub">LLMOps Track</div>
+    </div>
+  </div>
+  <div class="brand-divider"></div>
+  <div class="module-tag">
+    <div class="module-tag-label">Track 1 · Module 00</div>
+    <div class="module-tag-title">Nexus Master Index</div>
+  </div>
+  <nav class="toc">
+    <div class="toc-label">In this module</div>
+    <a href="#case" class="toc-link"><span class="toc-num">01</span>Meet Nexus</a>
+    <a href="#pillars" class="toc-link"><span class="toc-num">02</span>The Three Pillars</a>
+    <a href="#modules" class="toc-link"><span class="toc-num">03</span>Curriculum</a>
+    <a href="#techniques" class="toc-link"><span class="toc-num">04</span>Technique Atlas</a>
+    <a href="#outcomes" class="toc-link"><span class="toc-num">05</span>Learning Outcomes</a>
+    <a href="#learn-practice" class="toc-link"><span class="toc-num">06</span>Learn &amp; Practice</a>
+  </nav>
+  <div class="progress-rail">
+    <div class="progress-text">Reading progress</div>
+    <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+  </div>
+  <div class="sidebar-footer">
+    <div class="depth-badge">
+      <span class="pulse"></span>
+      <div class="badge-text">
+        <strong>Marevlo &middot; LLMOps Track</strong>
+        Module 0 of 8
+      </div>
+    </div>
+  </div>
+</aside>
+
+<!-- ============ MAIN ============ -->
+<main class="main">
+
+<!-- HERO -->
+<header class="hero">
+  <canvas id="heroCanvas"></canvas>
+  <div class="hero-inner">
+    <div class="hero-meta">
+      <span class="eyedot"></span>
+      <span class="track-label">The LLMOps Deep Dive</span>
+      <span class="sep"></span>
+      <span>2026 Edition</span>
+    </div>
+    <h1>Serving <span class="gradient">billion-parameter</span> models in production.</h1>
+    <p class="hero-sub">Eight modules that take you from the physics of GPU memory bandwidth to the full system design of a 10-million-request-per-day LLM platform. Every concept anchored in <strong>Nexus</strong> — a fictional real-time fraud-detection LLM we will architect together, one optimization layer at a time.</p>
+    <div class="hero-stats">
+      <div class="hero-stat"><div class="hero-stat-num a1">8</div><div class="hero-stat-lbl">Premium Modules</div></div>
+      <div class="hero-stat"><div class="hero-stat-num a2">47</div><div class="hero-stat-lbl">Optimization Techniques</div></div>
+      <div class="hero-stat"><div class="hero-stat-num a3">18</div><div class="hero-stat-lbl">Architecture Diagrams</div></div>
+      <div class="hero-stat"><div class="hero-stat-num a4">1</div><div class="hero-stat-lbl">Production System</div></div>
+    </div>
+  </div>
+</header>
+
+<!-- CASE STUDY -->
+<section class="sec" id="case">
+  <div class="sec-head">
+    <div class="sec-num">00 · The Thread That Runs Through Everything</div>
+    <h2>Meet <em>Nexus</em>.</h2>
+  </div>
+  <p class="sec-sub">A large financial services firm has hired you to build their next-generation fraud detection platform. Rules engines miss novel attack patterns. Classical ML requires constant feature engineering. The mandate: deploy an LLM that reads transaction context — merchant history, device telemetry, session patterns, free-text chargeback reasons — and outputs a fraud score in under 80 ms, twenty-four hours a day, across three continents.</p>
+
+  <div class="case">
+    <div class="case-tag">Case Study · Nexus v0</div>
+    <h3>The naive deployment failed on day one.</h3>
+    <p>The platform team took a fine-tuned 70B-parameter model, wrapped it in a FastAPI server, and pointed production traffic at it. The first hour produced a predictable disaster: <strong>p99 latency at 4.2 seconds</strong>, <strong>GPU memory utilization at 34%</strong>, <strong>throughput capped at 1,100 tokens/sec</strong>, and a <strong>cloud bill projected at $2.8M per month</strong> for a single region. Fraud analysts rejected the deployment within 48 hours.</p>
+    <p>Over the next eight modules you will rebuild Nexus from first principles — applying every technique in the modern inference stack. By the final module, the same workload runs at <strong>p99 &lt; 60 ms</strong>, <strong>GPU utilization above 88%</strong>, <strong>throughput above 40,000 tokens/sec per node</strong>, and <strong>cost reduced by 23×</strong>. Each module ends with a "Nexus progresses" checkpoint showing exactly which lever moved which metric.</p>
+    <div class="case-grid">
+      <div class="case-cell"><div class="case-cell-num">4,200ms</div><div class="case-cell-lbl">Day-1 p99</div></div>
+      <div class="case-cell"><div class="case-cell-num">1.1k t/s</div><div class="case-cell-lbl">Day-1 Throughput</div></div>
+      <div class="case-cell"><div class="case-cell-num">34%</div><div class="case-cell-lbl">GPU Utilization</div></div>
+      <div class="case-cell"><div class="case-cell-num">$2.8M/mo</div><div class="case-cell-lbl">Projected Cost</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- PILLARS -->
+<section class="sec" id="pillars">
+  <div class="sec-head">
+    <div class="sec-num">The Three Pillars</div>
+    <h2>What sets this course <em>apart</em>.</h2>
+  </div>
+  <p class="sec-sub">Every module is engineered around three non-negotiables that we believe separate world-class LLMOps material from generic tutorials.</p>
+  
+  <div class="pillars">
+    <div class="pillar-card">
+      <div class="pill-num">Pillar 01</div>
+      <h4>First-principles internals</h4>
+      <p>We do not just tell you that PagedAttention is faster. We derive the memory math, show the block table layout, compare fragmentation under identical workloads, and walk through the actual vLLM source. You leave understanding why — not just what.</p>
+    </div>
+    <div class="pillar-card">
+      <div class="pill-num">Pillar 02</div>
+      <h4>A living case study</h4>
+      <p>Nexus is not a toy example bolted on at the end. Every chapter adds one concrete architectural decision to the Nexus platform. By module eight, you have co-designed a production-grade fraud detection LLM, end to end, with measurable improvements at every step.</p>
+    </div>
+    <div class="pillar-card">
+      <div class="pill-num">Pillar 03</div>
+      <h4>Real numbers, real code</h4>
+      <p>No pseudocode. Every technique ships with production-grade vLLM, PyTorch, TensorRT-LLM, or Triton code. Every claim comes with benchmarks — tokens per second, dollars per million tokens, p50/p99 latency across H100, H200, A100, and MI300X. The numbers match published results.</p>
+    </div>
+  </div>
+</section>
+
+<!-- MODULES -->
+<section class="sec" id="modules">
+  <div class="sec-head">
+    <div class="sec-num">The Curriculum · 8 Modules · 60+ Hours</div>
+    <h2>From roofline to <em>production</em>.</h2>
+  </div>
+  <p class="sec-sub">Each module is a standalone premium HTML experience with interactive visualizations, live code, system design exercises, and a Nexus checkpoint. Read in order for the full narrative or jump to any module as a reference.</p>
+
+  <div class="modules">
+
+    <div class="mod">
+      <div class="mod-num">01</div>
+      <div class="mod-body">
+        <h3>Foundations & The Physics of Inference</h3>
+        <p class="mod-cap">Why naive LLM serving falls apart. The autoregressive bottleneck, roofline models, memory-bandwidth-bound vs compute-bound regimes, arithmetic intensity, and the inference stack map. Build Nexus v1 — and watch it fail — so you understand exactly which problem each later module solves.</p>
+        <div class="mod-topics">
+          <span class="mod-topic hl">Roofline Model</span>
+          <span class="mod-topic">Memory Bandwidth</span>
+          <span class="mod-topic">TTFT vs TPOT</span>
+          <span class="mod-topic">Arithmetic Intensity</span>
+          <span class="mod-topic">Autoregressive Cost</span>
+          <span class="mod-topic">Serving Metrics</span>
+          <span class="mod-topic hl2">Nexus v1</span>
+        </div>
+      </div>
+      <div class="mod-right">
+        <span class="mod-phase">Phase 1 · Foundations</span>
+        <div class="mod-actions"></div>
+        <span class="mod-nexus">p99: 4,200ms<br>→ 4,200ms (baseline)</span>
+        <span class="mod-arrow">→</span>
+      </div>
+    </div>
+
+    <div class="mod">
+      <div class="mod-num">02</div>
+      <div class="mod-body">
+        <h3>Quantization — From FP32 to 1.58-bit</h3>
+        <p class="mod-cap">The complete quantization stack. Weight-only vs weight-activation, symmetric vs asymmetric, per-tensor vs per-channel vs per-group. GPTQ, AWQ, SmoothQuant, QAT, FP8, INT4, 2-bit QuIP#, BitNet. Calibration dataset design, outlier handling, mixed-precision strategies, and the accuracy-memory-speed frontier.</p>
+        <div class="mod-topics">
+          <span class="mod-topic hl">GPTQ</span>
+          <span class="mod-topic hl">AWQ</span>
+          <span class="mod-topic">SmoothQuant</span>
+          <span class="mod-topic">FP8 / E4M3 / E5M2</span>
+          <span class="mod-topic">INT4 Groupwise</span>
+          <span class="mod-topic">QuIP#</span>
+          <span class="mod-topic">BitNet 1.58</span>
+          <span class="mod-topic">QAT vs PTQ</span>
+          <span class="mod-topic hl2">Nexus v2</span>
+        </div>
+      </div>
+      <div class="mod-right">
+        <span class="mod-phase">Phase 2 · Compression</span>
+        <div class="mod-actions"></div>
+        <span class="mod-nexus">GPU memory: 140GB<br>→ 38GB (INT4)</span>
+        <span class="mod-arrow">→</span>
+      </div>
+    </div>
+
+    <div class="mod">
+      <div class="mod-num">03</div>
+      <div class="mod-body">
+        <h3>Attention Engineering — Tiling, GQA, MLA, Ring</h3>
+        <p class="mod-cap">The attention mechanism is where inference spends most of its time and memory. FlashAttention-1/2/3 tiling derivation, the SRAM vs HBM hierarchy, online softmax. Multi-Query Attention, Grouped-Query Attention, DeepSeek's Multi-head Latent Attention. Ring Attention for million-token context. Sparse attention patterns for long documents.</p>
+        <div class="mod-topics">
+          <span class="mod-topic hl">FlashAttention-3</span>
+          <span class="mod-topic hl">Multi-head Latent (MLA)</span>
+          <span class="mod-topic">Grouped-Query (GQA)</span>
+          <span class="mod-topic">Multi-Query (MQA)</span>
+          <span class="mod-topic">Ring Attention</span>
+          <span class="mod-topic">Online Softmax</span>
+          <span class="mod-topic">SRAM Tiling</span>
+          <span class="mod-topic">Sparse Attention</span>
+          <span class="mod-topic hl2">Nexus v3</span>
+        </div>
+      </div>
+      <div class="mod-right">
+        <span class="mod-phase">Phase 3 · Compute</span>
+        <div class="mod-actions"></div>
+        <span class="mod-nexus">Context: 8K<br>→ 128K (MLA)</span>
+        <span class="mod-arrow">→</span>
+      </div>
+    </div>
+
+    <div class="mod">
+      <div class="mod-num">04</div>
+      <div class="mod-body">
+        <h3>KV Cache Engineering — The Memory System</h3>
+        <p class="mod-cap">The single biggest throughput lever in LLM serving. PagedAttention block tables and fragmentation math. RadixAttention prefix caching with the automatic trie. KV cache quantization. Disaggregated prefill/decode serving. Chunked prefill scheduling. Offloading to CPU and NVMe. KV compression via SnapKV and H2O.</p>
+        <div class="mod-topics">
+          <span class="mod-topic hl">PagedAttention</span>
+          <span class="mod-topic hl">RadixAttention</span>
+          <span class="mod-topic">Disaggregated Prefill</span>
+          <span class="mod-topic">Chunked Prefill</span>
+          <span class="mod-topic">KV Quantization</span>
+          <span class="mod-topic">SnapKV / H2O</span>
+          <span class="mod-topic">CPU Offloading</span>
+          <span class="mod-topic">NVMe Tiering</span>
+          <span class="mod-topic hl2">Nexus v4</span>
+        </div>
+      </div>
+      <div class="mod-right">
+        <span class="mod-phase">Phase 3 · Compute</span>
+        <div class="mod-actions"></div>
+        <span class="mod-nexus">Throughput: 4.2k t/s<br>→ 18k t/s</span>
+        <span class="mod-arrow">→</span>
+      </div>
+    </div>
+
+    <div class="mod">
+      <div class="mod-num">05</div>
+      <div class="mod-body">
+        <h3>Batching, Scheduling & Speculative Decoding</h3>
+        <p class="mod-cap">How the serving engine decides who runs next. Continuous batching (Orca) versus static batching math. Iteration-level scheduling. Speculative decoding rejection sampling proof. Medusa heads, EAGLE-2, Lookahead decoding, self-speculation. Draft model selection. Latency-throughput Pareto curves.</p>
+        <div class="mod-topics">
+          <span class="mod-topic hl">Continuous Batching</span>
+          <span class="mod-topic hl">Speculative Decoding</span>
+          <span class="mod-topic">Medusa Heads</span>
+          <span class="mod-topic">EAGLE-2</span>
+          <span class="mod-topic">Lookahead Decoding</span>
+          <span class="mod-topic">Rejection Sampling</span>
+          <span class="mod-topic">Priority Scheduling</span>
+          <span class="mod-topic hl2">Nexus v5</span>
+        </div>
+      </div>
+      <div class="mod-right">
+        <span class="mod-phase">Phase 4 · Scheduling</span>
+        <div class="mod-actions"></div>
+        <span class="mod-nexus">p99: 1,400ms<br>→ 180ms</span>
+        <span class="mod-arrow">→</span>
+      </div>
+    </div>
+
+    <div class="mod">
+      <div class="mod-num">06</div>
+      <div class="mod-body">
+        <h3>Pruning, Distillation & Mixture-of-Experts</h3>
+        <p class="mod-cap">Making the model itself smaller. Structured vs unstructured pruning, magnitude vs movement pruning. SparseGPT and Wanda one-shot pruning. NVIDIA 2:4 structured sparsity. Knowledge distillation — response, feature, and relation-based. MoE routing, expert parallelism, DeepSeek-V3 shared experts, load balancing and auxiliary losses.</p>
+        <div class="mod-topics">
+          <span class="mod-topic hl">SparseGPT</span>
+          <span class="mod-topic hl">Wanda</span>
+          <span class="mod-topic">2:4 Sparsity</span>
+          <span class="mod-topic">Response Distillation</span>
+          <span class="mod-topic">Feature Distillation</span>
+          <span class="mod-topic">MoE Routing</span>
+          <span class="mod-topic">Expert Parallelism</span>
+          <span class="mod-topic">Auxiliary Loss</span>
+          <span class="mod-topic hl2">Nexus v6</span>
+        </div>
+      </div>
+      <div class="mod-right">
+        <span class="mod-phase">Phase 2 · Compression</span>
+        <div class="mod-actions"></div>
+        <span class="mod-nexus">Params: 70B → 38B<br>Quality: 99.2% retained</span>
+        <span class="mod-arrow">→</span>
+      </div>
+    </div>
+
+    <div class="mod">
+      <div class="mod-num">07</div>
+      <div class="mod-body">
+        <h3>Production System Design — End to End</h3>
+        <p class="mod-cap">The system design interview. Multi-region deployment topology. Autoscaling on queue depth vs GPU utilization. A/B testing LLMs safely. Shadow mode, canary releases, progressive rollout. Observability: latency percentiles, quality drift detection, cost attribution per tenant. Kubernetes, KServe, Ray Serve, Istio sidecars, the whole stack.</p>
+        <div class="mod-topics">
+          <span class="mod-topic hl">System Design</span>
+          <span class="mod-topic">Multi-Region</span>
+          <span class="mod-topic">Autoscaling</span>
+          <span class="mod-topic">A/B Testing</span>
+          <span class="mod-topic">Shadow Mode</span>
+          <span class="mod-topic">Canary Release</span>
+          <span class="mod-topic">KServe / Ray Serve</span>
+          <span class="mod-topic">Observability</span>
+          <span class="mod-topic hl2">Nexus v7</span>
+        </div>
+      </div>
+      <div class="mod-right">
+        <span class="mod-phase">Phase 5 · Production</span>
+        <div class="mod-actions"></div>
+        <span class="mod-nexus">Regions: 1 → 3<br>SLO: 99.95%</span>
+        <span class="mod-arrow">→</span>
+      </div>
+    </div>
+
+    <div class="mod">
+      <div class="mod-num">08</div>
+      <div class="mod-body">
+        <h3>Scale, Cost & War Stories</h3>
+        <p class="mod-cap">Real production failures and the fixes that held. H100 vs H200 vs MI300X vs Trainium2 vs TPU v5p — the full hardware selection matrix. Cost-per-token optimization ladder. Capacity planning for traffic spikes. The final Nexus architecture, end to end, with a cost model you can defend to the CFO.</p>
+        <div class="mod-topics">
+          <span class="mod-topic hl">Hardware Selection</span>
+          <span class="mod-topic">H100 / H200 / MI300X</span>
+          <span class="mod-topic">Cost Model</span>
+          <span class="mod-topic">Capacity Planning</span>
+          <span class="mod-topic">Incident Response</span>
+          <span class="mod-topic">SRE Runbooks</span>
+          <span class="mod-topic hl2">Nexus v8 · Final</span>
+        </div>
+      </div>
+      <div class="mod-right">
+        <span class="mod-phase">Phase 5 · Production</span>
+        <div class="mod-actions"></div>
+        <span class="mod-nexus">Cost: $2.8M/mo<br>→ $122K/mo</span>
+        <span class="mod-arrow">→</span>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<!-- TECHNIQUES MAP -->
+<section class="sec" id="techniques">
+  <div class="sec-head">
+    <div class="sec-num">The Technique Atlas · 47 Methods</div>
+    <h2>Every optimization <em>lever</em> in one map.</h2>
+  </div>
+  <p class="sec-sub">The modern LLM serving stack is deep. This is the complete set of techniques covered across the course, organized by the layer of the stack they operate on.</p>
+
+  <div class="tech-map">
+    <!-- Layer 1: Numerics / Compression -->
+    <div class="tech c1"><span class="tech-ref">M2</span><div class="tech-head"><span class="tech-dot"></span><span class="tech-ttl">GPTQ</span></div><div class="tech-desc">Layer-wise OBS-based 4-bit quantization using Hessian approximation.</div></div>
+    <div class="tech c1"><span class="tech-ref">M2</span><div class="tech-head"><span class="tech-dot"></span><span class="tech-ttl">AWQ</span></div><div class="tech-desc">Activation-aware weight quantization protecting salient channels.</div></div>
+    <div class="tech c1"><span class="tech-ref">M2</span><div class="tech-head"><span class="tech-dot"></span><span class="tech-ttl">SmoothQuant</span></div><div class="tech-desc">Migrate activation outliers into weights for W8A8.</div></div>
+    <div class="tech c1"><span class="tech-ref">M2</span><div class="tech-head"><span class="tech-dot"></span><span class="tech-ttl">FP8 E4M3 / E5M2</span></div><div class="tech-desc">Hopper-native 8-bit float formats with different dynamic ranges.</div></div>
+    <div class="tech c1"><span class="tech-ref">M2</span><div class="tech-head"><span class="tech-dot"></span><span class="tech-ttl">QuIP#</span></div><div class="tech-desc">2-bit quantization via lattice codebooks and incoherence processing.</div></div>
+    <div class="tech c1"><span class="tech-ref">M2</span><div class="tech-head"><span class="tech-dot"></span><span class="tech-ttl">BitNet b1.58</span></div><div class="tech-desc">Ternary {-1, 0, 1} weights with matmul-free inference.</div></div>
+    <div class="tech c1"><span class="tech-ref">M2</span><div class="tech-head"><span class="tech-dot"></span><span class="tech-ttl">QAT</span></div><div class="tech-desc">Quantization-aware training with straight-through estimators.</div></div>
+    <div class="tech c1"><span class="tech-ref">M2</span><div class="tech-head"><span class="tech-dot"></span><span class="tech-ttl">KV Quantization</span></div><div class="tech-desc">Per-channel INT4/INT8 quantization of the KV cache.</div></div>
+
+    <!-- Layer 2: Compute / Attention -->
+    <div class="tech c2"><span class="tech-ref">M3</span><div class="tech-head"><span class="tech-dot"></span><span class="tech-ttl">FlashAttention-2</span></div><div class="tech-desc">Work-partitioning + reduced non-matmul FLOPs over v1.</div></div>
+    <div class="tech c2"><span class="tech-ref">M3</span><div class="tech-head"><span class="tech-dot"></span><span class="tech-ttl">FlashAttention-3</span></div><div class="tech-desc">Async GEMM + softmax overlap, FP8 support on Hopper.</div></div>
+    <div class="tech c2"><span class="tech-ref">M3</span><div class="tech-head"><span class="tech-dot"></span><span class="tech-ttl">Multi-Head Latent</span></div><div class="tech-desc">DeepSeek's low-rank KV compression — 93% KV memory reduction.</div></div>
+    <div class="tech c2"><span class="tech-ref">M3</span><div class="tech-head"><span class="tech-dot"></span><span class="tech-ttl">Grouped-Query Attn</span></div><div class="tech-desc">Share K/V heads across groups of Q heads.</div></div>
+    <div class="tech c2"><span class="tech-ref">M3</span><div class="tech-head"><span class="tech-dot"></span><span class="tech-ttl">Multi-Query Attn</span></div><div class="tech-desc">Single KV head shared across all Q heads (aggressive).</div></div>
+    <div class="tech c2"><span class="tech-ref">M3</span><div class="tech-head"><span class="tech-dot"></span><span class="tech-ttl">Ring Attention</span></div><div class="tech-desc">Sequence-parallel attention with ring communication.</div></div>
+    <div class="tech c2"><span class="tech-ref">M3</span><div class="tech-head"><span class="tech-dot"></span><span class="tech-ttl">Sliding Window</span></div><div class="tech-desc">Local attention for long context (Mistral-7B, Longformer).</div></div>
+    <div class="tech c2"><span class="tech-ref">M3</span><div class="tech-head"><span class="tech-dot"></span><span class="tech-ttl">Sparse Attention</span></div><div class="tech-desc">BigBird / StreamingLLM attention sink patterns.</div></div>
+
+    <!-- Layer 3: Memory / KV -->
+    <div class="tech c3"><span class="tech-ref">M4</span><div class="tech-head"><span class="tech-dot"></span><span class="tech-ttl">PagedAttention</span></div><div class="tech-desc">OS-style paged KV memory with block tables.</div></div>
+    <div class="tech c3"><span class="tech-ref">M4</span><div class="tech-head"><span class="tech-dot"></span><span class="tech-ttl">RadixAttention</span></div><div class="tech-desc">SGLang's automatic prefix cache via a radix trie.</div></div>
+    <div class="tech c3"><span class="tech-ref">M4</span><div class="tech-head"><span class="tech-dot"></span><span class="tech-ttl">Disaggregated P/D</span></div><div class="tech-desc">Separate prefill and decode pools with KV transfer.</div></div>
+    <div class="tech c3"><span class="tech-ref">M4</span><div class="tech-head"><span class="tech-dot"></span><span class="tech-ttl">Chunked Prefill</span></div><div class="tech-desc">Split long prefills to share compute with decode batches.</div></div>
+    <div class="tech c3"><span class="tech-ref">M4</span><div class="tech-head"><span class="tech-dot"></span><span class="tech-ttl">SnapKV</span></div><div class="tech-desc">Observation-window-based KV compression at prefill end.</div></div>
+    <div class="tech c3"><span class="tech-ref">M4</span><div class="tech-head"><span class="tech-dot"></span><span class="tech-ttl">H2O / Scissorhands</span></div><div class="tech-desc">Heavy-hitter eviction policies for streaming KV.</div></div>
+    <div class="tech c3"><span class="tech-ref">M4</span><div class="tech-head"><span class="tech-dot"></span><span class="tech-ttl">CPU / NVMe Offload</span></div><div class="tech-desc">Tier inactive KV pages to cheaper memory.</div></div>
+
+    <!-- Layer 4: Scheduling / Decoding -->
+    <div class="tech c4"><span class="tech-ref">M5</span><div class="tech-head"><span class="tech-dot"></span><span class="tech-ttl">Continuous Batching</span></div><div class="tech-desc">Iteration-level scheduling (Orca, 2022).</div></div>
+    <div class="tech c4"><span class="tech-ref">M5</span><div class="tech-head"><span class="tech-dot"></span><span class="tech-ttl">Speculative Decoding</span></div><div class="tech-desc">Draft-and-verify with rejection sampling.</div></div>
+    <div class="tech c4"><span class="tech-ref">M5</span><div class="tech-head"><span class="tech-dot"></span><span class="tech-ttl">Medusa Heads</span></div><div class="tech-desc">Multiple decoding heads predicting several tokens ahead.</div></div>
+    <div class="tech c4"><span class="tech-ref">M5</span><div class="tech-head"><span class="tech-dot"></span><span class="tech-ttl">EAGLE-2</span></div><div class="tech-desc">Dynamic draft tree based on confidence.</div></div>
+    <div class="tech c4"><span class="tech-ref">M5</span><div class="tech-head"><span class="tech-dot"></span><span class="tech-ttl">Lookahead Decoding</span></div><div class="tech-desc">Self-speculative n-gram based drafting.</div></div>
+    <div class="tech c4"><span class="tech-ref">M5</span><div class="tech-head"><span class="tech-dot"></span><span class="tech-ttl">Priority Queues</span></div><div class="tech-desc">SLO-aware scheduling with preemption.</div></div>
+
+    <!-- Layer 5: Model / Architecture -->
+    <div class="tech c1"><span class="tech-ref">M6</span><div class="tech-head"><span class="tech-dot"></span><span class="tech-ttl">Magnitude Pruning</span></div><div class="tech-desc">Zero out smallest-magnitude weights.</div></div>
+    <div class="tech c1"><span class="tech-ref">M6</span><div class="tech-head"><span class="tech-dot"></span><span class="tech-ttl">SparseGPT</span></div><div class="tech-desc">One-shot post-training pruning with Hessian updates.</div></div>
+    <div class="tech c1"><span class="tech-ref">M6</span><div class="tech-head"><span class="tech-dot"></span><span class="tech-ttl">Wanda</span></div><div class="tech-desc">Pruning by |W| × ||X||, no retraining.</div></div>
+    <div class="tech c1"><span class="tech-ref">M6</span><div class="tech-head"><span class="tech-dot"></span><span class="tech-ttl">2:4 Sparsity</span></div><div class="tech-desc">Hardware-accelerated structured sparsity on Ampere+.</div></div>
+    <div class="tech c1"><span class="tech-ref">M6</span><div class="tech-head"><span class="tech-dot"></span><span class="tech-ttl">Response Distill</span></div><div class="tech-desc">Student matches teacher outputs on prompts.</div></div>
+    <div class="tech c1"><span class="tech-ref">M6</span><div class="tech-head"><span class="tech-dot"></span><span class="tech-ttl">Feature Distill</span></div><div class="tech-desc">Match intermediate hidden representations.</div></div>
+    <div class="tech c1"><span class="tech-ref">M6</span><div class="tech-head"><span class="tech-dot"></span><span class="tech-ttl">MoE Routing</span></div><div class="tech-desc">Top-K gating, shared experts, auxiliary load balance loss.</div></div>
+    <div class="tech c1"><span class="tech-ref">M6</span><div class="tech-head"><span class="tech-dot"></span><span class="tech-ttl">Expert Parallelism</span></div><div class="tech-desc">All-to-all dispatch across GPUs for MoE.</div></div>
+
+    <!-- Layer 6: Systems / Production -->
+    <div class="tech c3"><span class="tech-ref">M7</span><div class="tech-head"><span class="tech-dot"></span><span class="tech-ttl">Tensor Parallel</span></div><div class="tech-desc">Shard matmul across GPUs (Megatron-style).</div></div>
+    <div class="tech c3"><span class="tech-ref">M7</span><div class="tech-head"><span class="tech-dot"></span><span class="tech-ttl">Pipeline Parallel</span></div><div class="tech-desc">Layer-group sharding with microbatch pipelining.</div></div>
+    <div class="tech c3"><span class="tech-ref">M7</span><div class="tech-head"><span class="tech-dot"></span><span class="tech-ttl">Autoscaling</span></div><div class="tech-desc">Scale on queue depth and KV-cache utilization, not CPU.</div></div>
+    <div class="tech c3"><span class="tech-ref">M7</span><div class="tech-head"><span class="tech-dot"></span><span class="tech-ttl">Shadow Mode</span></div><div class="tech-desc">Send traffic to new model without serving its outputs.</div></div>
+    <div class="tech c3"><span class="tech-ref">M7</span><div class="tech-head"><span class="tech-dot"></span><span class="tech-ttl">Canary Release</span></div><div class="tech-desc">Progressive traffic ramp with SLO gates.</div></div>
+
+    <!-- Layer 7: Hardware -->
+    <div class="tech c4"><span class="tech-ref">M8</span><div class="tech-head"><span class="tech-dot"></span><span class="tech-ttl">H100 vs H200</span></div><div class="tech-desc">80GB HBM3 vs 141GB HBM3e — when it matters.</div></div>
+    <div class="tech c4"><span class="tech-ref">M8</span><div class="tech-head"><span class="tech-dot"></span><span class="tech-ttl">MI300X</span></div><div class="tech-desc">192GB HBM3 — the memory-capacity alternative.</div></div>
+    <div class="tech c4"><span class="tech-ref">M8</span><div class="tech-head"><span class="tech-dot"></span><span class="tech-ttl">Trainium2 / TPU v5p</span></div><div class="tech-desc">Custom silicon tradeoffs for inference workloads.</div></div>
+    <div class="tech c4"><span class="tech-ref">M8</span><div class="tech-head"><span class="tech-dot"></span><span class="tech-ttl">NVLink Topology</span></div><div class="tech-desc">NVSwitch all-to-all vs PCIe — bandwidth math.</div></div>
+  </div>
+
+  <!-- ARCHITECTURE PREVIEW SVG: Full Nexus inference stack -->
+  <div class="arch-preview">
+    <svg viewBox="0 0 1200 520" xmlns="http://www.w3.org/2000/svg" aria-label="The Full Nexus Inference Stack">
+      <defs>
+        <linearGradient id="pg1" x1="0" x2="1" y1="0" y2="1"><stop offset="0" stop-color="#6366f1" stop-opacity=".12"/><stop offset="1" stop-color="#6366f1" stop-opacity=".02"/></linearGradient>
+        <linearGradient id="pg2" x1="0" x2="1" y1="0" y2="1"><stop offset="0" stop-color="#8b5cf6" stop-opacity=".12"/><stop offset="1" stop-color="#8b5cf6" stop-opacity=".02"/></linearGradient>
+        <linearGradient id="pg3" x1="0" x2="1" y1="0" y2="1"><stop offset="0" stop-color="#10b981" stop-opacity=".12"/><stop offset="1" stop-color="#10b981" stop-opacity=".02"/></linearGradient>
+        <linearGradient id="pg4" x1="0" x2="1" y1="0" y2="1"><stop offset="0" stop-color="#f59e0b" stop-opacity=".12"/><stop offset="1" stop-color="#f59e0b" stop-opacity=".02"/></linearGradient>
+        <marker id="arr" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#6b7280"/></marker>
+      </defs>
+
+      <!-- TITLE -->
+      <text x="600" y="28" font-family="Source Serif 4,serif" font-size="16" font-style="italic" fill="#e8eaed" text-anchor="middle" font-weight="600">The Nexus Inference Stack</text>
+      <text x="600" y="48" font-family="JetBrains Mono,monospace" font-size="10" fill="#6b7280" text-anchor="middle" letter-spacing="2">ONE REQUEST · SEVEN LAYERS · EIGHT MODULES OF OPTIMIZATION</text>
+
+      <!-- Layer 1: Client / Ingress -->
+      <rect x="40" y="70" width="1120" height="54" rx="8" fill="url(#pg1)" stroke="#6366f1" stroke-opacity=".3"/>
+      <text x="60" y="92" font-family="JetBrains Mono,monospace" font-size="10" fill="#818cf8" font-weight="600" letter-spacing="1">LAYER 1 · INGRESS</text>
+      <text x="60" y="110" font-family="Outfit,sans-serif" font-size="11" fill="#a8aeb8">Load balancer  ·  Rate limiter  ·  Auth  ·  Request router  ·  Token budget check</text>
+      <text x="1140" y="102" font-family="JetBrains Mono,monospace" font-size="9" fill="#818cf8" text-anchor="end" letter-spacing="1">M7 · M8</text>
+
+      <!-- Layer 2: Scheduler -->
+      <rect x="40" y="134" width="1120" height="54" rx="8" fill="url(#pg4)" stroke="#f59e0b" stroke-opacity=".3"/>
+      <text x="60" y="156" font-family="JetBrains Mono,monospace" font-size="10" fill="#f59e0b" font-weight="600" letter-spacing="1">LAYER 2 · SCHEDULER</text>
+      <text x="60" y="174" font-family="Outfit,sans-serif" font-size="11" fill="#a8aeb8">Continuous batching  ·  Priority queues  ·  Chunked prefill  ·  Disaggregated P/D  ·  SLO-aware preemption</text>
+      <text x="1140" y="166" font-family="JetBrains Mono,monospace" font-size="9" fill="#f59e0b" text-anchor="end" letter-spacing="1">M4 · M5</text>
+
+      <!-- Layer 3: Decoding -->
+      <rect x="40" y="198" width="1120" height="54" rx="8" fill="url(#pg2)" stroke="#8b5cf6" stroke-opacity=".3"/>
+      <text x="60" y="220" font-family="JetBrains Mono,monospace" font-size="10" fill="#8b5cf6" font-weight="600" letter-spacing="1">LAYER 3 · DECODING</text>
+      <text x="60" y="238" font-family="Outfit,sans-serif" font-size="11" fill="#a8aeb8">Speculative decoding  ·  Medusa  ·  EAGLE-2  ·  Lookahead  ·  Rejection sampling</text>
+      <text x="1140" y="230" font-family="JetBrains Mono,monospace" font-size="9" fill="#8b5cf6" text-anchor="end" letter-spacing="1">M5</text>
+
+      <!-- Layer 4: KV Memory -->
+      <rect x="40" y="262" width="1120" height="54" rx="8" fill="url(#pg3)" stroke="#10b981" stroke-opacity=".3"/>
+      <text x="60" y="284" font-family="JetBrains Mono,monospace" font-size="10" fill="#10b981" font-weight="600" letter-spacing="1">LAYER 4 · KV MEMORY</text>
+      <text x="60" y="302" font-family="Outfit,sans-serif" font-size="11" fill="#a8aeb8">PagedAttention  ·  RadixAttention prefix cache  ·  KV quantization  ·  SnapKV / H2O  ·  CPU/NVMe offload</text>
+      <text x="1140" y="294" font-family="JetBrains Mono,monospace" font-size="9" fill="#10b981" text-anchor="end" letter-spacing="1">M4</text>
+
+      <!-- Layer 5: Attention Kernel -->
+      <rect x="40" y="326" width="1120" height="54" rx="8" fill="url(#pg2)" stroke="#8b5cf6" stroke-opacity=".3"/>
+      <text x="60" y="348" font-family="JetBrains Mono,monospace" font-size="10" fill="#8b5cf6" font-weight="600" letter-spacing="1">LAYER 5 · ATTENTION</text>
+      <text x="60" y="366" font-family="Outfit,sans-serif" font-size="11" fill="#a8aeb8">FlashAttention-3  ·  MLA (DeepSeek)  ·  GQA / MQA  ·  Ring Attention  ·  Sliding window</text>
+      <text x="1140" y="358" font-family="JetBrains Mono,monospace" font-size="9" fill="#8b5cf6" text-anchor="end" letter-spacing="1">M3</text>
+
+      <!-- Layer 6: Weights / Model -->
+      <rect x="40" y="390" width="1120" height="54" rx="8" fill="url(#pg1)" stroke="#6366f1" stroke-opacity=".3"/>
+      <text x="60" y="412" font-family="JetBrains Mono,monospace" font-size="10" fill="#818cf8" font-weight="600" letter-spacing="1">LAYER 6 · WEIGHTS</text>
+      <text x="60" y="430" font-family="Outfit,sans-serif" font-size="11" fill="#a8aeb8">GPTQ / AWQ  ·  SmoothQuant  ·  FP8  ·  SparseGPT  ·  Wanda  ·  2:4  ·  MoE routing  ·  Distillation</text>
+      <text x="1140" y="422" font-family="JetBrains Mono,monospace" font-size="9" fill="#818cf8" text-anchor="end" letter-spacing="1">M2 · M6</text>
+
+      <!-- Layer 7: Hardware -->
+      <rect x="40" y="454" width="1120" height="54" rx="8" fill="url(#pg4)" stroke="#f59e0b" stroke-opacity=".3"/>
+      <text x="60" y="476" font-family="JetBrains Mono,monospace" font-size="10" fill="#f59e0b" font-weight="600" letter-spacing="1">LAYER 7 · HARDWARE</text>
+      <text x="60" y="494" font-family="Outfit,sans-serif" font-size="11" fill="#a8aeb8">H100 / H200 / MI300X / Trainium2  ·  NVLink  ·  Tensor + Pipeline parallel  ·  HBM3e bandwidth</text>
+      <text x="1140" y="486" font-family="JetBrains Mono,monospace" font-size="9" fill="#f59e0b" text-anchor="end" letter-spacing="1">M1 · M8</text>
+    </svg>
+  </div>
+</section>
+
+<!-- OUTCOMES -->
+<section class="sec" id="outcomes">
+  <div class="sec-head">
+    <div class="sec-num">Learning Outcomes</div>
+    <h2>What you will be able to do <em>after</em>.</h2>
+  </div>
+
+  <div class="outcomes">
+    <div class="out"><div class="out-ic">A</div><div><h4>Derive the roofline model from scratch</h4><p>Given any GPU and model, compute arithmetic intensity, identify the bottleneck regime, and predict peak achievable throughput before writing a single line of code.</p></div></div>
+    <div class="out"><div class="out-ic">B</div><div><h4>Choose the right quantization method</h4><p>Select between GPTQ, AWQ, SmoothQuant, FP8, or QAT based on target hardware, accuracy budget, and calibration data availability — and defend the choice with numbers.</p></div></div>
+    <div class="out"><div class="out-ic">C</div><div><h4>Configure vLLM and TensorRT-LLM for any workload</h4><p>Tune PagedAttention block size, enable RadixAttention prefix caching, set up disaggregated prefill/decode, and benchmark speculative decoding acceptance rates for your domain.</p></div></div>
+    <div class="out"><div class="out-ic">D</div><div><h4>Prune and distill models in production</h4><p>Apply SparseGPT and Wanda for one-shot pruning, design a two-stage distillation pipeline, and configure 2:4 sparsity kernels with measurable quality retention.</p></div></div>
+    <div class="out"><div class="out-ic">E</div><div><h4>Design MoE serving infrastructure</h4><p>Lay out expert parallelism across GPUs, balance load with auxiliary losses, handle all-to-all communication overhead, and debug hot-expert skew in production.</p></div></div>
+    <div class="out"><div class="out-ic">F</div><div><h4>Own an LLM system design interview</h4><p>Walk any interviewer from a napkin sketch to a production-grade multi-region architecture with capacity math, failure modes, observability, and a defensible cost model.</p></div></div>
+  </div>
+</section>
+
+<!-- LEARN & PRACTICE -->
+<section class="sec" id="learn-practice">
+  <div class="learn-practice-wrap">
+    <h2 class="lp-title">Learn &amp; <span class="accent">Practice</span></h2>
+    <p class="lp-sub">Explore curated resources and practice with real code for this module.</p>
+    <div id="learn-practice-list"></div>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer class="foot footer">
+  <div class="foot-grid">
+    <div>
+      <h5>Marevlo Research</h5>
+      <p>Premium AI and machine learning education — built in India, for serious engineers. Every course is written to be the best in the world at what it covers. Nexus is our deepest dive into production LLMOps.</p>
+    </div>
+    <div>
+      <h5>The Course</h5>
+      <ul>
+        <li><a href="#case">Case Study</a></li>
+        <li><a href="#modules">Modules</a></li>
+        <li><a href="#techniques">Techniques</a></li>
+        <li><a href="#outcomes">Outcomes</a></li>
+      </ul>
+    </div>
+    <div>
+      <h5>Related Tracks</h5>
+      <ul>
+        <li><a href="#">Quantization Deep Dive</a></li>
+        <li><a href="#">Vectorless RAG</a></li>
+        <li><a href="#">LangGraph Mastery</a></li>
+        <li><a href="#">Bayesian Statistics</a></li>
+      </ul>
+    </div>
+  </div>
+  <div class="foot-bot">
+    <span>© 2026 Marevlo Research Pvt Ltd</span>
+    <span>v1.0 · NEXUS · 2026 Edition</span>
+  </div>
+</footer>
+
+</main>
+</div>
+
+<script>
+  const moduleResources = {
+    "01": {
+      moduleTitle: "Foundations & The Physics of Inference",
+      article: "https://www.spheron.network/blog/ai-memory-wall-inference-latency-guide-2026/",
+      articleLabel: "AI's Memory Wall Problem: Why More GPUs Don't Fix Inference Latency",
+      github: "https://github.com/vllm-project/vllm/tree/main/benchmarks"
+    },
+    "02": {
+      moduleTitle: "Quantization — From FP32 to 1.58-bit",
+      article: "https://newsletter.maartengrootendorst.com/p/which-quantization-method-is-right",
+      articleLabel: "Which Quantization Method is Right for You? GPTQ vs GGUF vs AWQ",
+      github: "https://github.com/vllm-project/llm-compressor"
+    },
+    "03": {
+      moduleTitle: "Attention Engineering — Tiling, GQA, MLA, Ring",
+      article: "https://gordicaleksa.medium.com/eli5-flash-attention-5c44017022ad",
+      articleLabel: "ELI5: Flash Attention",
+      github: "https://github.com/Dao-AILab/flash-attention"
+    },
+    "04": {
+      moduleTitle: "KV Cache Engineering — The Memory System",
+      article: "https://hamzaelshafie.bearblog.dev/paged-attention-from-first-principles-a-view-inside-vllm/",
+      articleLabel: "Paged Attention from First Principles: A View Inside vLLM",
+      github: "https://github.com/vllm-project/vllm"
+    },
+    "05": {
+      moduleTitle: "Batching, Scheduling & Speculative Decoding",
+      article: "https://bentoml.com/llm/inference-optimization/speculative-decoding",
+      articleLabel: "Speculative Decoding | LLM Inference Handbook",
+      github: "https://github.com/vllm-project/vllm"
+    },
+    "06": {
+      moduleTitle: "Pruning, Distillation & Mixture-of-Experts",
+      article: "https://newsletter.maartengrootendorst.com/p/a-visual-guide-to-mixture-of-experts",
+      articleLabel: "A Visual Guide to Mixture of Experts (MoE)",
+      github: "https://github.com/locuslab/wanda"
+    },
+    "07": {
+      moduleTitle: "Production System Design — End to End",
+      article: "https://www.zartis.com/scaling-llm-workloads-on-kubernetes-a-production-engineers-guide/",
+      articleLabel: "Scaling LLM Workloads on Kubernetes: A Production Engineer's Guide",
+      github: "https://github.com/kserve/kserve"
+    },
+    "08": {
+      moduleTitle: "Scale, Cost & War Stories",
+      article: "https://brlikhon.engineer/blog/gpu-economics-2026-h100-vs-a100-vs-l40s-complete-cost-performance-analysis-for-ai-workloads",
+      articleLabel: "GPU Economics 2026: H100 vs A100 vs L40S",
+      github: "https://github.com/ray-project/llmperf"
+    }
+  };
+
+  function makeActionButton(url, text, cls) {
+    if (!url) return null;
+    const a = document.createElement("a");
+    a.href = url;
+    a.target = "_blank";
+    a.rel = "noopener noreferrer";
+    a.className = "mod-action-btn " + cls;
+    a.textContent = text;
+    return a;
+  }
+
+  document.querySelectorAll(".modules .mod").forEach((moduleCard) => {
+    const modNum = moduleCard.querySelector(".mod-num")?.textContent?.trim();
+    const actions = moduleCard.querySelector(".mod-actions");
+    const links = moduleResources[modNum];
+    if (!actions || !links) return;
+
+    const learnBtn = makeActionButton(links.article, "Learn More", "learn");
+    const practiceBtn = makeActionButton(links.github, "Practice", "practice");
+
+    if (learnBtn) actions.appendChild(learnBtn);
+    if (practiceBtn) actions.appendChild(practiceBtn);
+    if (!learnBtn && !practiceBtn) actions.style.display = "none";
+  });
+
+  function makeResourceCard(type, title, helper, itemLabel, url, buttonText) {
+    if (!url) return "";
+    const icon = type === "learn" ? "L" : "G";
+    return `
+      <div class="lp-card ${type}">
+        <div class="lp-head">
+          <span class="lp-dot">${icon}</span>
+          <h4>${title}</h4>
+        </div>
+        <p class="lp-help">${helper}</p>
+        <p class="lp-link-title">${itemLabel || url}</p>
+        <a class="lp-btn" href="${url}" target="_blank" rel="noopener noreferrer">${buttonText}</a>
+      </div>
+    `;
+  }
+
+  const learnPracticeList = document.getElementById("learn-practice-list");
+  if (learnPracticeList) {
+    const module00Resource = {
+      moduleTitle: "Master Index",
+      article: "https://www.spheron.network/blog/ai-memory-wall-inference-latency-guide-2026/",
+      articleLabel: "AI's Memory Wall Problem: Why More GPUs Don't Fix Inference Latency",
+      github: "https://github.com/vllm-project/vllm/tree/main/benchmarks"
+    };
+
+    const learnCard = makeResourceCard(
+      "learn",
+      "Progressive Article",
+      "Stuck? Start here - beginner-friendly explanation",
+      module00Resource.articleLabel,
+      module00Resource.article,
+      "Learn More"
+    );
+    const practiceCard = makeResourceCard(
+      "practice",
+      "GitHub Repository",
+      "Hands-on - reference implementation & examples",
+      module00Resource.github,
+      module00Resource.github,
+      "Practice"
+    );
+    const cards = [learnCard, practiceCard].filter(Boolean).join("");
+    learnPracticeList.innerHTML = cards ? `
+      <div class="lp-mod">
+        <div class="lp-mod-title">Module 00 · ${module00Resource.moduleTitle}</div>
+        <div class="lp-grid">${cards}</div>
+      </div>
+    ` : "";
+  }
+
+  // ===== TOC active state on scroll =====
+  const sections = document.querySelectorAll('section');
+  const tocLinks = document.querySelectorAll('.toc-link');
+  const progressFill = document.getElementById('progressFill');
+
+  function updateActiveSection(){
+    let current = '';
+    let currentIndex = -1;
+    sections.forEach((s, i)=>{
+      const top = s.getBoundingClientRect().top;
+      if(top < 200){ current = s.id; currentIndex = i; }
+    });
+    tocLinks.forEach((l, i)=>{
+      const isActive = l.getAttribute('href') === '#'+current;
+      const isPast = currentIndex > -1 && i < currentIndex;
+      l.classList.toggle('active', isActive);
+      l.classList.toggle('past', isPast && !isActive);
+    });
+    // progress
+    const docHeight = document.documentElement.scrollHeight - window.innerHeight;
+    const scrolled = window.scrollY / docHeight * 100;
+    progressFill.style.width = Math.min(100, scrolled) + '%';
+  }
+  window.addEventListener('scroll', updateActiveSection);
+  updateActiveSection();
+
+  // ===== Intersection Observer =====
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach((entry) => {
+      if (entry.isIntersecting) entry.target.classList.add("visible");
+    });
+  }, { threshold: 0.08 });
+  document.querySelectorAll("section").forEach((el) => observer.observe(el));
+
+  // ===== Hero Animation =====
+  const heroCanvas = document.getElementById("heroCanvas");
+  const hctx = heroCanvas.getContext("2d");
+  let stars = [];
+  function resizeHero() {
+    heroCanvas.width = heroCanvas.parentElement.clientWidth;
+    heroCanvas.height = heroCanvas.parentElement.clientHeight;
+    stars = Array.from({ length: 64 }, () => ({
+      x: Math.random() * heroCanvas.width,
+      y: Math.random() * heroCanvas.height,
+      vx: (Math.random() - 0.5) * 0.35,
+      vy: (Math.random() - 0.5) * 0.35,
+      r: 1.2 + Math.random() * 2
+    }));
+  }
+  function animateHero() {
+    hctx.clearRect(0, 0, heroCanvas.width, heroCanvas.height);
+    for (const s of stars) {
+      s.x += s.vx;
+      s.y += s.vy;
+      if (s.x < 0 || s.x > heroCanvas.width) s.vx *= -1;
+      if (s.y < 0 || s.y > heroCanvas.height) s.vy *= -1;
+    }
+    for (let i = 0; i < stars.length; i++) {
+      for (let j = i + 1; j < stars.length; j++) {
+        const a = stars[i], b = stars[j];
+        const d = Math.hypot(a.x - b.x, a.y - b.y);
+        if (d < 120) {
+          hctx.strokeStyle = "rgba(99,102,241," + (0.16 - d / 900) + ")";
+          hctx.beginPath();
+          hctx.moveTo(a.x, a.y);
+          hctx.lineTo(b.x, b.y);
+          hctx.stroke();
+        }
+      }
+    }
+    for (const s of stars) {
+      hctx.fillStyle = "rgba(255,255,255,.78)";
+      hctx.beginPath();
+      hctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+      hctx.fill();
+    }
+    requestAnimationFrame(animateHero);
+  }
+
+  window.addEventListener("resize", () => {
+    resizeHero();
+  });
+
+  resizeHero();
+  animateHero();
+</script>
+
+</body>
+</html>

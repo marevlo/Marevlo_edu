@@ -1,0 +1,735 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Median from a Data Stream</title>
+    <style>
+        :root {
+            --bg-page: #070b14;
+            --bg-surface: rgba(255, 255, 255, 0.045);
+            --bg-input: rgba(255, 255, 255, 0.04);
+            --border-main: rgba(255, 255, 255, 0.10);
+            --btn-bg: rgba(255, 255, 255, 0.05);
+            --btn-hover: rgba(255, 255, 255, 0.10);
+            --text-main: #e8eefb;
+            --text-dim: #8b98b3;
+            --accent-orange: #f5a524;   /* lower / max-heap / value in motion */
+            --accent-blue:   #06b6d4;    /* upper / min-heap / edges / chrome  */
+            --accent-green:  #22c55e;    /* median / settled                   */
+            --accent-red:    #f43f5e;    /* removed                            */
+            --accent-purple: #a855f7;    /* current node / chrome              */
+            --mono: ui-monospace, 'SF Mono', 'Cascadia Code', 'Courier New', monospace;
+            --sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+            --shell: 940px;
+        }
+
+        * { box-sizing: border-box; }
+        html, body { overflow-x: hidden; }
+        body {
+            background:
+                radial-gradient(1100px 600px at 15% -10%, rgba(168, 85, 247, 0.12), transparent 60%),
+                radial-gradient(900px 600px at 100% 10%, rgba(6, 182, 212, 0.10), transparent 55%),
+                linear-gradient(160deg, #070b14 0%, #0b1120 55%, #0a0f1c 100%);
+            background-attachment: fixed;
+            color: var(--text-main); font-family: var(--sans); margin: 0;
+            display: flex; flex-direction: column; align-items: center; min-height: 100vh;
+            padding-bottom: 48px; -webkit-font-smoothing: antialiased;
+        }
+        body::before, body::after { content: ''; position: fixed; border-radius: 50%; filter: blur(70px); pointer-events: none; z-index: 0; opacity: 0.45; }
+        body::before { width: 380px; height: 380px; top: 8%; left: -120px; background: radial-gradient(circle, rgba(168,85,247,0.30), transparent 70%); }
+        body::after  { width: 420px; height: 420px; bottom: 4%; right: -140px; background: radial-gradient(circle, rgba(6,182,212,0.22), transparent 70%); }
+        body > * { position: relative; z-index: 1; }
+
+        .input-bar {
+            width: 100%; background: rgba(10, 15, 28, 0.55);
+            backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+            padding: 14px 16px; display: flex; justify-content: center; align-items: center; gap: 10px;
+            border-bottom: 1px solid var(--border-main); flex-wrap: wrap; position: sticky; top: 0; z-index: 50;
+        }
+        label.ui-label, .ui-label { font-family: var(--mono); font-size: 13px; color: var(--text-dim); letter-spacing: 0.2px; }
+        input[type="number"] {
+            background: var(--bg-input); border: 1px solid var(--border-main); color: var(--text-main);
+            height: 34px; border-radius: 9px; padding: 0 12px; font-size: 13px; font-family: var(--mono); width: 90px;
+            transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+        }
+        input:focus { outline: none; border-color: var(--accent-purple); box-shadow: 0 0 0 3px rgba(168,85,247,0.18); background: rgba(168,85,247,0.06); }
+
+        button {
+            height: 34px; border-radius: 9px; padding: 0 14px; background: var(--btn-bg);
+            border: 1px solid var(--border-main); color: var(--text-main); font-size: 13px; font-weight: 600; cursor: pointer;
+            transition: transform 0.15s ease, background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+        }
+        button:hover { background: var(--btn-hover); border-color: rgba(168, 85, 247, 0.5); box-shadow: 0 0 18px rgba(168, 85, 247, 0.18); transform: translateY(-1px); }
+        button:active { transform: translateY(0); }
+        #play-btn { background: linear-gradient(135deg, rgba(168,85,247,0.22), rgba(168,85,247,0.10)); border-color: rgba(168, 85, 247, 0.45); color: #e9d5ff; min-width: 80px; }
+        .op-btn.add { border-color: rgba(245,165,36,0.4); color: #ffe2b0; font-family: var(--mono); }
+
+        .shell { width: var(--shell); max-width: 95%; margin: 24px auto 0; display: flex; flex-direction: column; gap: 16px; }
+
+        .title-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+        .title-row h1 { font-size: 18px; font-weight: 800; margin: 0; letter-spacing: 0.2px; }
+        .title-row .sub { color: var(--text-dim); font-weight: 500; font-size: 13px; }
+        .step-badge { font-family: var(--mono); font-size: 12px; font-weight: 700; color: #e9d5ff; background: rgba(168,85,247,0.12); border: 1px solid rgba(168,85,247,0.3); padding: 4px 10px; border-radius: 999px; white-space: nowrap; }
+        .progress-track { height: 4px; width: 100%; background: rgba(255,255,255,0.07); border-radius: 999px; overflow: hidden; margin-top: -6px; }
+        .progress-fill { height: 100%; width: 0%; border-radius: 999px; background: linear-gradient(90deg, var(--accent-purple), var(--accent-blue)); box-shadow: 0 0 12px rgba(168,85,247,0.5); transition: width 0.45s cubic-bezier(0.34,1.1,0.64,1); }
+
+        .op-feed { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+        .op-chip { font-family: var(--mono); font-size: 11px; font-weight: 700; padding: 4px 9px; border-radius: 8px; border: 1px solid var(--border-main); color: var(--text-dim); background: rgba(255,255,255,0.03); transition: all 0.3s; white-space: nowrap; }
+        .op-chip.done { opacity: 0.45; }
+        .op-chip.current { color: #fff; border-color: rgba(245,165,36,0.6); background: rgba(245,165,36,0.16); box-shadow: 0 0 12px rgba(245,165,36,0.3); }
+
+        .narration { background: var(--bg-surface); border: 1px solid rgba(168,85,247,0.22); border-radius: 12px; padding: 12px 18px; font-family: var(--mono); font-size: 14px; line-height: 1.5; color: #ede9fe; min-height: 48px; display: flex; align-items: center; gap: 10px; transition: border-color 0.3s, background 0.3s; }
+        .narration::before { content: '\25B8'; color: var(--accent-purple); font-size: 13px; }
+        .narration.done { border-color: rgba(34,197,94,0.4); background: rgba(34,197,94,0.06); }
+        .narration.done::before { content: '\2713'; color: var(--accent-green); }
+        .narration code { background: rgba(168,85,247,0.14); color: #d8b4fe; padding: 1px 6px; border-radius: 5px; font-size: 12.5px; }
+        .narration b { color: #fff; }
+
+        .stage-card { background: var(--bg-surface); border: 1px solid var(--border-main); border-radius: 18px; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); box-shadow: 0 12px 38px rgba(0,0,0,0.4); overflow: hidden; }
+        .stage-screen { position: relative; margin: 14px; border-radius: 14px; background: radial-gradient(700px 300px at 50% -10%, rgba(168,85,247,0.08), transparent 70%), #090d18; border: 1px solid rgba(255,255,255,0.06); }
+
+        /* stream rail across the top */
+        .stream-zone { padding: 12px 16px 6px; }
+        .stream-rail { display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; align-items: center; min-height: 38px; }
+        .scell { min-width: 34px; height: 34px; padding: 0 8px; border-radius: 9px; display: flex; align-items: center; justify-content: center;
+            font-family: var(--mono); font-weight: 800; font-size: 15px; border: 2px solid var(--border-main); background: rgba(255,255,255,0.04); color: var(--text-dim);
+            transition: background 0.35s, border-color 0.35s, color 0.35s, box-shadow 0.35s, transform 0.2s; }
+        .scell.done { color: var(--text-main); }
+        .scell.cur { border-color: var(--accent-orange); background: rgba(245,165,36,0.18); color: #ffd591; box-shadow: 0 0 18px rgba(245,165,36,0.5); transform: translateY(-2px); }
+        .scell.pending { opacity: 0.4; border-style: dashed; }
+        .stream-empty { color: var(--text-dim); font-family: var(--mono); font-size: 13px; }
+
+        /* two heaps side by side */
+        .heaps-row { display: flex; gap: 12px; padding: 6px 12px 4px; }
+        .heap-col { flex: 1 1 0; min-width: 0; border-radius: 12px; border: 1px solid rgba(255,255,255,0.06); background: rgba(255,255,255,0.015); display: flex; flex-direction: column; }
+        .heap-col.lower { box-shadow: inset 0 0 0 1px rgba(245,165,36,0.10); }
+        .heap-col.upper { box-shadow: inset 0 0 0 1px rgba(6,182,212,0.10); }
+        .heap-head { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 8px 10px 2px; font-family: var(--mono); font-size: 11px; font-weight: 800; letter-spacing: 0.6px; text-transform: uppercase; }
+        .heap-head .dot { width: 8px; height: 8px; border-radius: 50%; }
+        .heap-col.lower .heap-head { color: #ffd591; }
+        .heap-col.lower .dot { background: var(--accent-orange); box-shadow: 0 0 8px var(--accent-orange); }
+        .heap-col.upper .heap-head { color: #a5f3fc; }
+        .heap-col.upper .dot { background: var(--accent-blue); box-shadow: 0 0 8px var(--accent-blue); }
+        .heap-sub { text-align: center; font-family: var(--mono); font-size: 9.5px; color: var(--text-dim); margin-top: 1px; letter-spacing: 0.3px; }
+
+        .tree-stage { position: relative; width: 100%; height: 184px; overflow: auto; scrollbar-width: thin; }
+        .tree-stage::-webkit-scrollbar { height: 7px; width: 7px; }
+        .tree-stage::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 8px; }
+        .tree-canvas { position: relative; margin: 0 auto; }
+        .edges { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; z-index: 1; }
+        .edge-ln { stroke: var(--accent-blue); stroke-width: 2.2; fill: none; opacity: 0.40; transition: stroke 0.3s, opacity 0.3s; }
+        .heap-col.lower .edge-ln { stroke: var(--accent-orange); }
+        .edge-ln.active { stroke: var(--accent-orange); opacity: 1; filter: drop-shadow(0 0 6px rgba(245,165,36,0.6)); }
+        .heap-empty-msg { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--text-dim); font-family: var(--mono); font-size: 12px; pointer-events: none; }
+
+        .hnode { position: absolute; width: 40px; height: 40px; margin: -20px 0 0 -20px; display: flex; align-items: center; justify-content: center;
+            border-radius: 50%; font-family: var(--mono); font-weight: 800; font-size: 15px;
+            border: 2px solid var(--border-main); background: rgba(255,255,255,0.06); color: var(--text-main);
+            z-index: 2; will-change: transform; transition: background 0.35s, border-color 0.35s, color 0.35s, box-shadow 0.35s; }
+        .hnode.root.lower { border-color: var(--accent-orange); }
+        .hnode.root.upper { border-color: var(--accent-blue); }
+        .hnode.top { border-color: var(--accent-green); background: rgba(34,197,94,0.14); color: #bbf7d0; box-shadow: 0 0 16px rgba(34,197,94,0.45); }
+        .hnode.cur { border-color: var(--accent-purple); background: rgba(168,85,247,0.16); color: #e9d5ff; box-shadow: 0 0 20px rgba(168,85,247,0.55); }
+        .hnode.cmp { border-color: var(--accent-blue); background: rgba(6,182,212,0.16); color: #a5f3fc; box-shadow: 0 0 20px rgba(6,182,212,0.5); }
+        .hnode.swap { border-color: var(--accent-orange); background: rgba(245,165,36,0.18); color: #ffd591; box-shadow: 0 0 22px rgba(245,165,36,0.6); }
+        .hnode.new { border-color: var(--accent-orange); background: rgba(245,165,36,0.16); color: #ffd591; box-shadow: 0 0 22px rgba(245,165,36,0.55); }
+        .hnode .idx { position: absolute; top: -7px; right: -7px; min-width: 14px; height: 14px; padding: 0 3px; border-radius: 8px; background: rgba(10,15,28,0.85); color: var(--text-dim); font-size: 8.5px; font-weight: 800; display: flex; align-items: center; justify-content: center; border: 1px solid var(--border-main); }
+
+        .array-zone { padding: 2px 10px 12px; }
+        .array-label { font-family: var(--mono); font-size: 9.5px; font-weight: 700; letter-spacing: 0.6px; text-transform: uppercase; color: var(--text-dim); text-align: center; margin-bottom: 8px; }
+        .array-rail { display: flex; gap: 5px; justify-content: center; flex-wrap: wrap; min-height: 38px; }
+        .acell { width: 36px; height: 36px; border-radius: 9px; display: flex; align-items: center; justify-content: center; position: relative;
+            font-family: var(--mono); font-weight: 800; font-size: 14px; border: 2px solid var(--border-main); background: rgba(255,255,255,0.04); color: var(--text-main);
+            transition: background 0.35s, border-color 0.35s, color 0.35s, box-shadow 0.35s; }
+        .acell.top { border-color: var(--accent-green); background: rgba(34,197,94,0.12); color: #bbf7d0; }
+        .acell.cur { border-color: var(--accent-purple); background: rgba(168,85,247,0.16); color: #e9d5ff; box-shadow: 0 0 14px rgba(168,85,247,0.45); }
+        .acell.cmp { border-color: var(--accent-blue); background: rgba(6,182,212,0.14); color: #a5f3fc; }
+        .acell.swap { border-color: var(--accent-orange); background: rgba(245,165,36,0.16); color: #ffd591; }
+        .acell .ai { position: absolute; bottom: -15px; left: 0; right: 0; text-align: center; font-size: 9px; color: var(--text-dim); font-weight: 700; }
+        .arr-empty { color: var(--text-dim); font-family: var(--mono); font-size: 12px; }
+
+        .action-stage { position: relative; min-height: 90px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; }
+        .median-track { display: flex; gap: 12px; align-items: center; min-height: 44px; flex-wrap: wrap; justify-content: center; }
+        .median-box { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+        .median-cap { font-family: var(--mono); font-size: 10px; letter-spacing: 1px; text-transform: uppercase; color: var(--text-dim); }
+        .median-tile { min-width: 56px; height: 46px; padding: 0 14px; border-radius: 11px; display: flex; align-items: center; justify-content: center; font-family: var(--mono); font-size: 22px; font-weight: 800; border: 2px solid var(--accent-green); background: rgba(34,197,94,0.14); color: #bbf7d0; box-shadow: 0 0 18px rgba(34,197,94,0.25); transition: background 0.3s, box-shadow 0.3s; }
+        .median-tile.empty { border-color: var(--border-main); background: rgba(255,255,255,0.03); color: var(--text-dim); box-shadow: none; }
+        .median-formula { font-family: var(--mono); font-size: 12px; color: var(--text-dim); }
+        .median-formula b { color: var(--accent-green); }
+        .action-word { font-family: var(--mono); font-weight: 800; font-size: 18px; letter-spacing: 0.4px; min-height: 22px; text-align: center; transition: color 0.3s; }
+        #confetti { position: absolute; inset: 0; overflow: visible; pointer-events: none; }
+        .confetti-piece { position: absolute; top: 0; left: 50%; width: 8px; height: 13px; border-radius: 2px; opacity: 0; animation: confettiFall ease-out forwards; }
+
+        .controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: center; }
+        .controls .kbd-hint { font-size: 11px; color: var(--text-dim); font-family: var(--mono); margin-left: 4px; }
+        .kbd { background: rgba(255,255,255,0.07); border: 1px solid var(--border-main); border-radius: 5px; padding: 1px 6px; font-size: 10px; }
+        input[type="range"] { accent-color: var(--accent-purple); width: 110px; cursor: pointer; }
+
+        .details-toggle { align-self: center; height: 32px; padding: 0 16px; border-radius: 999px; cursor: pointer; background: rgba(255,255,255,0.04); border: 1px solid var(--border-main); color: var(--text-dim); font-family: var(--mono); font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; gap: 8px; transition: color 0.2s, border-color 0.2s, background 0.2s; }
+        .details-toggle:hover { color: var(--text-main); border-color: rgba(168,85,247,0.4); background: rgba(168,85,247,0.06); }
+        .details-toggle .chev { transition: transform 0.3s ease; }
+        .details-wrap.open .details-toggle .chev { transform: rotate(180deg); }
+        .details-body { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.4s ease; }
+        .details-wrap.open .details-body { grid-template-rows: 1fr; }
+        .details-inner { overflow: hidden; min-height: 0; }
+        .details-grid { display: flex; flex-direction: column; gap: 14px; padding-top: 14px; }
+
+        .panel-card { background: var(--bg-surface); border: 1px solid var(--border-main); border-radius: 16px; backdrop-filter: blur(10px); box-shadow: 0 8px 30px rgba(0,0,0,0.35); }
+        .panel-head { display: flex; align-items: center; gap: 8px; padding: 11px 16px; border-bottom: 1px solid var(--border-main); font-size: 11px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; color: var(--text-dim); }
+        .panel-head .pip { width: 7px; height: 7px; border-radius: 50%; background: var(--accent-purple); box-shadow: 0 0 8px var(--accent-purple); }
+        .code-body { padding: 12px 6px 14px; font-family: var(--mono); font-size: 12.5px; line-height: 1.7; }
+        .code-line { display: flex; gap: 12px; padding: 1px 16px; border-left: 2px solid transparent; transition: background 0.3s, border-color 0.3s; white-space: pre; }
+        .code-line .lno { color: #4b5772; width: 16px; text-align: right; user-select: none; }
+        .code-line .src { color: #c4cee0; }
+        .code-line .kw { color: #c792ea; }
+        .code-line .fn { color: #82aaff; }
+        .code-line.active { background: rgba(168,85,247,0.12); border-left-color: var(--accent-purple); }
+        .code-line.active .src, .code-line.active .lno { color: #e8eefb; }
+
+        .log-panel { border-radius: 14px; padding: 12px 16px; height: 110px; overflow-y: auto; font-family: var(--mono); font-size: 12.5px; line-height: 1.5; background: var(--bg-surface); border: 1px solid var(--border-main); }
+        .log-panel::-webkit-scrollbar { width: 8px; }
+        .log-panel::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 8px; }
+
+        @keyframes confettiFall { 0%{ opacity:1; transform: translate(-50%, 0) rotate(0deg); } 100%{ opacity:0; transform: translate(calc(-50% + var(--x)), 220px) rotate(var(--rot)); } }
+        @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; } }
+        @media (max-width: 560px) { .heaps-row { flex-direction: column; } }
+    </style>
+</head>
+<body>
+
+    <div class="input-bar">
+        <input type="number" id="val-input" placeholder="value" min="-99" max="99">
+        <button class="op-btn add" onclick="doAdd()">Add Number</button>
+        <span class="ui-label" style="opacity:.5">|</span>
+        <button onclick="loadExample(0)">Example 1</button>
+        <button onclick="loadExample(1)">Example 2</button>
+        <button onclick="resetSim()">&#8634; Reset</button>
+    </div>
+
+    <div class="shell">
+        <div class="title-row">
+            <h1>Median from a Data Stream <span class="sub">&middot; two heaps &middot; lower max-heap | upper min-heap &middot; balanced so |sizes| differ by &#8804; 1 &middot; addNum O(log n), median O(1)</span></h1>
+            <span class="step-badge" id="step-badge">Step 1 / 1</span>
+        </div>
+        <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+
+        <div class="op-feed" id="op-feed"></div>
+
+        <div class="narration" id="main-panel">&mdash;</div>
+
+        <div class="stage-card">
+            <div class="stage-screen">
+                <div class="stream-zone">
+                    <div class="array-label">incoming stream</div>
+                    <div class="stream-rail" id="stream-rail"></div>
+                </div>
+                <div class="heaps-row">
+                    <div class="heap-col lower">
+                        <div class="heap-head"><span class="dot"></span> Lower &middot; Max-Heap</div>
+                        <div class="heap-sub">holds the smaller half &middot; top = largest of the low side</div>
+                        <div class="tree-stage" id="lower-stage">
+                            <div class="tree-canvas" id="lower-canvas"><svg class="edges" id="lower-edges"></svg></div>
+                        </div>
+                        <div class="array-zone">
+                            <div class="array-label">backing array</div>
+                            <div class="array-rail" id="lower-rail"></div>
+                        </div>
+                    </div>
+                    <div class="heap-col upper">
+                        <div class="heap-head"><span class="dot"></span> Upper &middot; Min-Heap</div>
+                        <div class="heap-sub">holds the larger half &middot; top = smallest of the high side</div>
+                        <div class="tree-stage" id="upper-stage">
+                            <div class="tree-canvas" id="upper-canvas"><svg class="edges" id="upper-edges"></svg></div>
+                        </div>
+                        <div class="array-zone">
+                            <div class="array-label">backing array</div>
+                            <div class="array-rail" id="upper-rail"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="action-stage">
+            <div id="confetti"></div>
+            <div class="median-track">
+                <div class="median-box">
+                    <span class="median-cap">running median</span>
+                    <span class="median-tile empty" id="median-tile">&mdash;</span>
+                </div>
+                <span class="median-formula" id="median-formula"></span>
+            </div>
+            <div class="action-word" id="action-word"></div>
+        </div>
+
+        <div class="controls">
+            <button onclick="resetSim()">&#8634; Reset</button>
+            <button onclick="prevStep()">&#8592; Back</button>
+            <button onclick="togglePlay()" id="play-btn">Play</button>
+            <button onclick="nextStep()">Next &#8594;</button>
+            <span class="ui-label" style="margin-left:6px; font-size:11px">Speed</span>
+            <input type="range" id="speed" min="0" max="2" value="1">
+            <span class="kbd-hint"><span class="kbd">&#8592;</span> <span class="kbd">&#8594;</span> step &middot; <span class="kbd">space</span> play</span>
+        </div>
+
+        <div class="details-wrap" id="details-wrap">
+            <button class="details-toggle" onclick="toggleDetails()" aria-expanded="false">
+                <span id="details-label">Show code &amp; log</span> <span class="chev">&#9662;</span>
+            </button>
+            <div class="details-body">
+                <div class="details-inner">
+                    <div class="details-grid">
+                        <div class="panel-card">
+                            <div class="panel-head"><span class="pip"></span> Algorithm</div>
+                            <div class="code-body" id="code-panel"></div>
+                        </div>
+                        <div class="log-panel" id="log"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        'use strict';
+
+        // ───────── Motion engine ─────────
+        const REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        const FRAME = 1000 / 60;
+        function sampleSpring(stiffness, damping, mass) {
+            const dt = 1 / 60; let x = 1, v = 0; const out = [];
+            for (let i = 0; i < 240; i++) { const a = (-stiffness * x - damping * v) / mass; v += a * dt; x += v * dt; out.push(1 - x); if (Math.abs(x) < 0.0015 && Math.abs(v) < 0.0015) break; }
+            out.push(1); return out;
+        }
+        const SPRING_POS = sampleSpring(320, 30, 1);
+        const SPRING_POP = sampleSpring(520, 17, 1);
+        const durOf = (a) => a.length * FRAME;
+        const Motion = {
+            move(el, x, y) {
+                const px = el._x, py = el._y;
+                const commit = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px)`;
+                if (REDUCED || px == null || (Math.abs(x - px) < 0.5 && Math.abs(y - py) < 0.5)) { el._x = x; el._y = y; el.style.transform = commit; return; }
+                const dx = x - px, dy = y - py;
+                const kf = SPRING_POS.map(p => ({ transform: `translate(${(px + dx * p).toFixed(1)}px, ${(py + dy * p).toFixed(1)}px)` }));
+                el.animate(kf, { duration: durOf(SPRING_POS), easing: 'linear' });
+                el._x = x; el._y = y; el.style.transform = commit;
+            },
+            pop(el) {
+                if (REDUCED) { el.style.opacity = '1'; return; }
+                const kf = SPRING_POP.map(p => ({ opacity: Math.min(1, p * 2).toFixed(3), transform: `translate(${el._x.toFixed(1)}px, ${el._y.toFixed(1)}px) scale(${(0.3 + 0.7 * p).toFixed(3)})` }));
+                const a = el.animate(kf, { duration: durOf(SPRING_POP), easing: 'linear' });
+                a.onfinish = () => { el.style.transform = `translate(${el._x.toFixed(1)}px, ${el._y.toFixed(1)}px)`; };
+            },
+        };
+
+        // ───────── State ─────────
+        let stream = [];       // the data stream (numbers in arrival order)
+        let steps = [];
+        let stepIdx = 0;
+        let timer = null;
+        let confettiArmed = true;
+        const delays = [1500, 820, 400];
+        // persistent-DOM stores keyed per side
+        const dom = {
+            lower: { node: {}, edge: {}, acell: {} },
+            upper: { node: {}, edge: {}, acell: {} },
+        };
+
+        const CODE = [
+            [['src','  '],['fn','addNum'],['src','(x):']],
+            [['kw','    if '],['src','lo empty or x <= -lo[0]:']],
+            [['src','      push(lo, '],['kw','-'],['src','x)   # max-heap (negated)']],
+            [['kw','    else'],['src',':']],
+            [['src','      push(hi, x)        # min-heap']],
+            [['kw','    if '],['src','len(lo) > len(hi)+1:']],
+            [['src','      push(hi, '],['kw','-'],['src','pop(lo))  # rebalance']],
+            [['kw','    elif '],['src','len(hi) > len(lo):']],
+            [['src','      push(lo, '],['kw','-'],['src','pop(hi))  # rebalance']],
+            [['src','  '],['fn','findMedian'],['src','():']],
+            [['kw','    if '],['src','len(lo) > len(hi): '],['kw','return '],['src','-lo[0]']],
+            [['kw','    return '],['src','(-lo[0] + hi[0]) / 2']],
+        ];
+        function buildCodePanel() {
+            const panel = document.getElementById('code-panel'); panel.innerHTML = '';
+            CODE.forEach((tokens, i) => {
+                const line = document.createElement('div'); line.className = 'code-line'; line.dataset.line = i;
+                const lno = document.createElement('span'); lno.className = 'lno'; lno.textContent = i + 1; line.appendChild(lno);
+                const src = document.createElement('span');
+                tokens.forEach(([cls, txt]) => { const s = document.createElement('span'); s.className = cls; s.textContent = txt; src.appendChild(s); });
+                line.appendChild(src); panel.appendChild(line);
+            });
+        }
+        function highlightCode(arr) { document.querySelectorAll('.code-line').forEach(el => el.classList.toggle('active', arr && arr.includes(+el.dataset.line))); }
+        function toggleDetails() {
+            const wrap = document.getElementById('details-wrap'); const open = wrap.classList.toggle('open');
+            wrap.querySelector('.details-toggle').setAttribute('aria-expanded', open ? 'true' : 'false');
+            document.getElementById('details-label').textContent = open ? 'Hide code & log' : 'Show code & log';
+        }
+
+        // ───────── binary-heap helpers (operate on a plain array) ─────────
+        const par = (i) => (i - 1) >> 1;
+        // lo stores NEGATED values so a min-heap on negatives behaves as a max-heap.
+        // hi stores plain values as a min-heap. Both use the same min-heap primitives.
+        function siftUp(h, i) { while (i > 0 && h[i] < h[par(i)]) { [h[i], h[par(i)]] = [h[par(i)], h[i]]; i = par(i); } }
+        function heapPush(h, v) { h.push(v); siftUp(h, h.length - 1); }
+        function heapPop(h) {
+            const top = h[0]; const last = h.pop();
+            if (h.length) { h[0] = last; let i = 0;
+                while (true) { const l = 2*i+1, r = 2*i+2; let s = i;
+                    if (l < h.length && h[l] < h[s]) s = l;
+                    if (r < h.length && h[r] < h[s]) s = r;
+                    if (s === i) break; [h[i], h[s]] = [h[s], h[i]]; i = s; } }
+            return top;
+        }
+
+        // ───────── step generation ─────────
+        function fmtMed(m) { return Number.isInteger(m) ? String(m) : m.toFixed(1); }
+
+        function generateSteps() {
+            steps = [];
+            const lo = [];   // max-heap, stored negated
+            const hi = [];   // min-heap, plain
+            const consumed = [];   // numbers pulled from the stream so far
+            const medians = [];
+
+            // a snapshot maps internal arrays to display arrays.
+            const snap = (extra) => Object.assign({
+                lo: lo.map(v => -v),                 // display lower as positives
+                hi: [...hi],
+                consumed: [...consumed],
+                streamIdx: -1,                       // index of the number being processed
+                median: medians.length ? medians[medians.length - 1] : null,
+                loFx: { cur: -1, cmp: -1, swap: null, newIdx: -1, top: false },
+                hiFx: { cur: -1, cmp: -1, swap: null, newIdx: -1, top: false },
+                opIdx: null,
+            }, extra);
+
+            steps.push(snap({ code: [], action: 'TWO HEAPS', actionColor: 'var(--accent-purple)',
+                panel: `Keep the stream split in half. A <b>max-heap</b> (lower) holds the smaller numbers; a <b>min-heap</b> (upper) holds the larger ones. The median sits right where they meet &#8594; the median is O(1) to read.`,
+                log: `init  lower=[], upper=[]` }));
+
+            stream.forEach((x, oi) => {
+                consumed.push(x);
+                const si = consumed.length - 1;
+                const loTopBefore = lo.length ? -lo[0] : null;
+
+                // step: number arrives
+                steps.push(snap({ opIdx: oi, streamIdx: si, code: [0], action: 'ADD ' + x, actionColor: 'var(--accent-orange)',
+                    panel: `<code>addNum(${x})</code> arrives from the stream. Decide which half it belongs to, then rebalance so the two heaps stay within one element of each other.`,
+                    log: `addNum(${x})` }));
+
+                // decide which heap
+                const goesLower = (lo.length === 0 || x <= loTopBefore);
+                if (goesLower) {
+                    steps.push(snap({ opIdx: oi, streamIdx: si, code: [1, 2], action: 'to LOWER', actionColor: 'var(--accent-orange)',
+                        loFx: { cur: -1, cmp: lo.length ? 0 : -1, swap: null, newIdx: -1, top: lo.length > 0 },
+                        panel: `${lo.length === 0 ? `Lower heap is empty` : `<code>${x} &#8804; ${loTopBefore}</code> (lower's top)`} &#8594; <b>${x}</b> belongs in the <span style="color:var(--accent-orange)">lower max-heap</span>. Push it (stored as <code>${-x}</code>) and sift up.`,
+                        log: `  ${lo.length === 0 ? 'lower empty' : x + ' <= ' + loTopBefore} -> push lower` }));
+                    pushWithTrace(lo, -x, 'lower', oi, si, snap, steps, x);
+                } else {
+                    steps.push(snap({ opIdx: oi, streamIdx: si, code: [3, 4], action: 'to UPPER', actionColor: 'var(--accent-blue)',
+                        hiFx: { cur: -1, cmp: hi.length ? 0 : -1, swap: null, newIdx: -1, top: hi.length > 0 },
+                        panel: `<code>${x} &gt; ${loTopBefore}</code> (lower's top) &#8594; <b>${x}</b> belongs in the <span style="color:var(--accent-blue)">upper min-heap</span>. Push it and sift up.`,
+                        log: `  ${x} > ${loTopBefore} -> push upper` }));
+                    pushWithTrace(hi, x, 'upper', oi, si, snap, steps, x);
+                }
+
+                // rebalance
+                if (lo.length > hi.length + 1) {
+                    const movedNeg = lo[0]; const moved = -movedNeg;
+                    steps.push(snap({ opIdx: oi, streamIdx: si, code: [5, 6], action: 'REBALANCE &#8594;', actionColor: 'var(--accent-purple)',
+                        loFx: { cur: 0, cmp: -1, swap: null, newIdx: -1, top: true },
+                        panel: `Lower has <b>${lo.length}</b> vs upper's <b>${hi.length}</b> &#8594; lower is too big. Pop its top <code>${moved}</code> and move it to the upper heap.`,
+                        log: `  rebalance: pop lower top ${moved} -> upper` }));
+                    heapPop(lo);
+                    steps.push(snap({ opIdx: oi, streamIdx: si, code: [6], action: 'sift upper', actionColor: 'var(--accent-blue)',
+                        panel: `Lower's top <code>${moved}</code> removed. Now push it into the <span style="color:var(--accent-blue)">upper min-heap</span> and sift up.`,
+                        log: `  push upper ${moved}` }));
+                    pushWithTrace(hi, moved, 'upper', oi, si, snap, steps, moved);
+                } else if (hi.length > lo.length) {
+                    const moved = hi[0];
+                    steps.push(snap({ opIdx: oi, streamIdx: si, code: [7, 8], action: '&#8592; REBALANCE', actionColor: 'var(--accent-purple)',
+                        hiFx: { cur: 0, cmp: -1, swap: null, newIdx: -1, top: true },
+                        panel: `Upper has <b>${hi.length}</b> vs lower's <b>${lo.length}</b> &#8594; upper is bigger. Pop its top <code>${moved}</code> and move it to the lower heap.`,
+                        log: `  rebalance: pop upper top ${moved} -> lower` }));
+                    heapPop(hi);
+                    steps.push(snap({ opIdx: oi, streamIdx: si, code: [8], action: 'sift lower', actionColor: 'var(--accent-orange)',
+                        panel: `Upper's top <code>${moved}</code> removed. Push it into the <span style="color:var(--accent-orange)">lower max-heap</span> (stored as <code>${-moved}</code>) and sift up.`,
+                        log: `  push lower ${moved}` }));
+                    pushWithTrace(lo, -moved, 'lower', oi, si, snap, steps, moved);
+                }
+
+                // compute median
+                let median, formula;
+                if (lo.length > hi.length) { median = -lo[0]; formula = `odd count &#8594; median = lower's top = <b>${fmtMed(median)}</b>`; }
+                else { median = (-lo[0] + hi[0]) / 2; formula = `even count &#8594; median = (${-lo[0]} + ${hi[0]}) / 2 = <b>${fmtMed(median)}</b>`; }
+                medians.push(median);
+                const codeMed = lo.length > hi.length ? [9, 10] : [9, 11];
+                steps.push(snap({ opIdx: oi, streamIdx: si, code: codeMed, action: 'MEDIAN = ' + fmtMed(median), actionColor: 'var(--accent-green)',
+                    loFx: { cur: -1, cmp: -1, swap: null, newIdx: -1, top: true },
+                    hiFx: { cur: -1, cmp: -1, swap: null, newIdx: -1, top: hi.length > 0 },
+                    median, medianFormula: formula,
+                    panel: `Heaps balanced: lower has <b>${lo.length}</b>, upper has <b>${hi.length}</b>. ${lo.length > hi.length ? `Odd total &#8594; the median is lower's top <code>${fmtMed(median)}</code>.` : `Even total &#8594; the median is the average of the two tops <code>(${-lo[0]} + ${hi[0]}) / 2 = ${fmtMed(median)}</code>.`}`,
+                    log: `  median = ${fmtMed(median)}` }));
+            });
+
+            steps.push(snap({ complete: true, confetti: true, code: [9],
+                action: medians.length ? '✓ DONE' : '✓ EMPTY', actionColor: 'var(--accent-green)',
+                loFx: { cur: -1, cmp: -1, swap: null, newIdx: -1, top: lo.length > 0 },
+                hiFx: { cur: -1, cmp: -1, swap: null, newIdx: -1, top: hi.length > 0 },
+                panel: `Whole stream processed. The running medians were <code>[${medians.map(fmtMed).join(', ') || ' '}]</code>. Each <code>addNum</code> was O(log n); every <code>findMedian</code> was O(1).`,
+                log: `done  medians = [${medians.map(fmtMed).join(', ')}]` }));
+        }
+
+        // push v into heap `h` of the given side, emitting a sift-up trace.
+        function pushWithTrace(h, v, side, oi, si, snap, out, displayVal) {
+            h.push(v);
+            let i = h.length - 1;
+            const mkFx = (fx) => side === 'lower' ? { loFx: fx } : { hiFx: fx };
+            const tint = side === 'lower' ? 'var(--accent-orange)' : 'var(--accent-blue)';
+            out.push(snap(Object.assign({ opIdx: oi, streamIdx: si, code: side === 'lower' ? [2] : [4],
+                action: 'append', actionColor: tint,
+                panel: `Append <b>${displayVal}</b> at index <b>${i}</b> of the ${side} heap, then sift up to restore the heap property.`,
+                log: `    append ${displayVal} @ ${i}` }, mkFx({ cur: -1, cmp: -1, swap: null, newIdx: i, top: i === 0 }))));
+            while (i > 0) {
+                const p = par(i);
+                const aDisp = side === 'lower' ? -h[i] : h[i];
+                const bDisp = side === 'lower' ? -h[p] : h[p];
+                const need = h[i] < h[p]; // min-heap test on stored values
+                const relation = side === 'lower'
+                    ? (need ? `${aDisp} &gt; ${bDisp}` : `${aDisp} &#8804; ${bDisp}`)   // max-heap reads larger-is-up
+                    : (need ? `${aDisp} &lt; ${bDisp}` : `${aDisp} &#8805; ${bDisp}`);   // min-heap reads smaller-is-up
+                out.push(snap(Object.assign({ opIdx: oi, streamIdx: si, code: side === 'lower' ? [2] : [4],
+                    action: `cmp ${aDisp} · ${bDisp}`, actionColor: 'var(--accent-blue)',
+                    panel: `Compare with parent: <code>${relation}</code>? ${need ? '<span style="color:var(--accent-orange)">out of order &#8594; swap up.</span>' : '<span style="color:var(--accent-green)">in order &#8594; stop.</span>'}`,
+                    log: `    cmp ${aDisp} vs ${bDisp}` }, mkFx({ cur: i, cmp: p, swap: null, newIdx: -1, top: false }))));
+                if (!need) break;
+                [h[i], h[p]] = [h[p], h[i]];
+                out.push(snap(Object.assign({ opIdx: oi, streamIdx: si, code: side === 'lower' ? [2] : [4],
+                    action: 'swap up', actionColor: 'var(--accent-orange)',
+                    panel: `Swap up: index <code>${i}</code> &#8596; index <code>${p}</code>. Continue from <b>${p}</b>.`,
+                    log: `    swap ${i} <-> ${p}` }, mkFx({ cur: p, cmp: -1, swap: [i, p], newIdx: -1, top: p === 0 }))));
+                i = p;
+            }
+        }
+
+        // ───────── layout (complete binary tree by heap index) ─────────
+        const ROW = 50, PADY = 26;
+        function layout(n, stageW) {
+            if (n === 0) return { pos: [], width: stageW, height: 120 };
+            const maxLevel = Math.floor(Math.log2(n));
+            const wide = Math.pow(2, maxLevel);
+            const slot = 50;
+            const width = Math.max(wide * slot, stageW - 8);
+            const pos = [];
+            for (let i = 0; i < n; i++) {
+                const L = Math.floor(Math.log2(i + 1));
+                const levelStart = Math.pow(2, L) - 1;
+                const posInLevel = i - levelStart;
+                const countInLevel = Math.pow(2, L);
+                const x = (posInLevel + 0.5) / countInLevel * width;
+                const y = L * ROW + PADY;
+                pos.push({ x, y });
+            }
+            const height = maxLevel * ROW + PADY * 2;
+            return { pos, width, height };
+        }
+
+        // ───────── render one heap side (tree + array) ─────────
+        function renderHeapSide(side, arr, fx) {
+            const store = dom[side];
+            const canvas = document.getElementById(side + '-canvas');
+            const stage = document.getElementById(side + '-stage');
+            const svg = document.getElementById(side + '-edges');
+            const rail = document.getElementById(side + '-rail');
+            const n = arr.length;
+            const stageW = stage.clientWidth || 280;
+            const { pos, width, height } = layout(n, stageW);
+            canvas.style.width = width + 'px';
+            canvas.style.height = Math.max(height, 120) + 'px';
+            svg.setAttribute('width', width); svg.setAttribute('height', Math.max(height, 120));
+
+            // empty-state message
+            let msg = stage.querySelector('.heap-empty-msg');
+            if (n === 0) { if (!msg) { msg = document.createElement('div'); msg.className = 'heap-empty-msg'; msg.textContent = 'empty'; stage.appendChild(msg); } }
+            else if (msg) msg.remove();
+
+            const swapSet = new Set(fx.swap || []);
+            // nodes
+            const used = new Set();
+            for (let i = 0; i < n; i++) {
+                const key = 'n:' + i; used.add(key);
+                let el = store.node[key]; const fresh = !el;
+                if (!el) { el = document.createElement('div'); el.className = 'hnode'; el.innerHTML = `<span class="hv"></span><span class="idx"></span>`; canvas.appendChild(el); store.node[key] = el; }
+                el.querySelector('.hv').textContent = arr[i];
+                el.querySelector('.idx').textContent = i;
+                let cls = 'hnode';
+                if (i === 0) cls += ' root ' + side;
+                if (swapSet.has(i)) cls += ' swap';
+                else if (i === fx.cur) cls += ' cur';
+                else if (i === fx.cmp) cls += ' cmp';
+                else if (i === 0 && fx.top) cls += ' top';
+                if (i === fx.newIdx) cls += ' new';
+                el.className = cls;
+                if (fresh) { el._x = pos[i].x; el._y = pos[i].y; el.style.transform = `translate(${pos[i].x}px, ${pos[i].y}px)`; el.style.opacity = '0'; Motion.pop(el); }
+                else Motion.move(el, pos[i].x, pos[i].y);
+            }
+            Object.keys(store.node).forEach(k => { if (!used.has(k)) { store.node[k].remove(); delete store.node[k]; } });
+
+            // edges
+            const usedE = new Set();
+            for (let i = 1; i < n; i++) {
+                const p = (i - 1) >> 1; const key = 'e:' + i; usedE.add(key);
+                let ln = store.edge[key];
+                if (!ln) { ln = document.createElementNS('http://www.w3.org/2000/svg', 'line'); ln.setAttribute('class', 'edge-ln'); svg.appendChild(ln); store.edge[key] = ln; }
+                ln.setAttribute('x1', pos[p].x); ln.setAttribute('y1', pos[p].y); ln.setAttribute('x2', pos[i].x); ln.setAttribute('y2', pos[i].y);
+                const onPath = (swapSet.has(i) && swapSet.has(p)) || ((i === fx.cur || i === fx.cmp) && (p === fx.cur || p === fx.cmp));
+                ln.setAttribute('class', 'edge-ln' + (onPath ? ' active' : ''));
+            }
+            Object.keys(store.edge).forEach(k => { if (!usedE.has(k)) { store.edge[k].remove(); delete store.edge[k]; } });
+
+            // array view
+            const usedA = new Set();
+            let emptyNote = rail.querySelector('.arr-empty');
+            if (n > 0 && emptyNote) emptyNote.remove();
+            for (let i = 0; i < n; i++) {
+                const key = 'a:' + i; usedA.add(key);
+                let el = store.acell[key];
+                if (!el) { el = document.createElement('div'); el.className = 'acell'; el.innerHTML = `<span class="av"></span><span class="ai"></span>`; rail.appendChild(el); store.acell[key] = el; }
+                el.querySelector('.av').textContent = arr[i];
+                el.querySelector('.ai').textContent = i;
+                let cls = 'acell';
+                if (swapSet.has(i)) cls += ' swap';
+                else if (i === fx.cur) cls += ' cur';
+                else if (i === fx.cmp) cls += ' cmp';
+                else if (i === 0 && fx.top) cls += ' top';
+                el.className = cls;
+            }
+            Object.keys(store.acell).forEach(k => { if (!usedA.has(k)) { store.acell[k].remove(); delete store.acell[k]; } });
+            if (n === 0 && !rail.querySelector('.arr-empty')) { const s = document.createElement('span'); s.className = 'arr-empty'; s.textContent = '[ ]'; rail.appendChild(s); }
+        }
+
+        // ───────── stream rail ─────────
+        function renderStream(consumed, streamIdx) {
+            const rail = document.getElementById('stream-rail'); rail.innerHTML = '';
+            if (stream.length === 0) { rail.innerHTML = '<span class="stream-empty">no stream loaded</span>'; return; }
+            stream.forEach((v, i) => {
+                const c = document.createElement('div'); c.className = 'scell';
+                if (i === streamIdx) c.classList.add('cur');
+                else if (i < consumed.length) c.classList.add('done');
+                else c.classList.add('pending');
+                c.textContent = v; rail.appendChild(c);
+            });
+        }
+
+        // ───────── render step ─────────
+        function renderStep(idx) {
+            stepIdx = idx; const step = steps[idx]; if (!step) return;
+
+            renderStream(step.consumed, step.streamIdx);
+            renderHeapSide('lower', step.lo, step.loFx);
+            renderHeapSide('upper', step.hi, step.hiFx);
+
+            // median readout
+            const tile = document.getElementById('median-tile');
+            const formula = document.getElementById('median-formula');
+            if (step.median == null) { tile.textContent = '—'; tile.classList.add('empty'); }
+            else { tile.textContent = fmtMed(step.median); tile.classList.remove('empty'); }
+            formula.innerHTML = step.medianFormula || '';
+
+            // narration / chrome
+            const mp = document.getElementById('main-panel');
+            mp.innerHTML = step.panel || '&mdash;';
+            mp.classList.toggle('done', !!step.complete);
+            const aw = document.getElementById('action-word'); aw.innerHTML = step.action || ''; aw.style.color = step.actionColor || 'var(--text-dim)';
+            highlightCode(step.code);
+
+            if (step.confetti) { if (confettiArmed) { fireConfetti(); confettiArmed = false; } } else confettiArmed = true;
+
+            renderOpFeed(step.opIdx);
+            document.getElementById('step-badge').textContent = `Step ${idx + 1} / ${steps.length}`;
+            document.getElementById('progress-fill').style.width = `${(idx / Math.max(1, steps.length - 1)) * 100}%`;
+
+            const logEl = document.getElementById('log');
+            logEl.innerHTML = steps.slice(0, idx + 1).map(s => `<div style="margin:3px 0;white-space:pre-wrap;">${s.log}</div>`).join('');
+            logEl.scrollTop = logEl.scrollHeight;
+        }
+
+        function renderOpFeed(currentOpIdx) {
+            const feed = document.getElementById('op-feed'); feed.innerHTML = '';
+            stream.forEach((v, i) => {
+                const chip = document.createElement('div');
+                chip.className = 'op-chip' + (currentOpIdx === i ? ' current' : (currentOpIdx != null && i < currentOpIdx ? ' done' : ''));
+                chip.textContent = 'add ' + v; feed.appendChild(chip);
+            });
+        }
+
+        function fireConfetti() {
+            const host = document.getElementById('confetti'); if (!host || REDUCED) return;
+            const colors = ['#22c55e', '#06b6d4', '#a855f7', '#f5a524', '#f43f5e'];
+            for (let i = 0; i < 38; i++) {
+                const p = document.createElement('div'); p.className = 'confetti-piece';
+                p.style.setProperty('--x', ((Math.random() * 2 - 1) * 220) + 'px');
+                p.style.setProperty('--rot', ((Math.random() * 720 - 360)) + 'deg');
+                p.style.background = colors[i % colors.length];
+                p.style.animationDuration = (0.9 + Math.random() * 0.8) + 's';
+                p.style.animationDelay = (Math.random() * 0.15) + 's';
+                host.appendChild(p); setTimeout(() => p.remove(), 1900);
+            }
+        }
+
+        // ───────── controls ─────────
+        function nextStep() { if (stepIdx < steps.length - 1) renderStep(stepIdx + 1); else pause(); }
+        function prevStep() { if (stepIdx > 0) renderStep(stepIdx - 1); }
+        function resetSim() { pause(); renderStep(0); }
+        function togglePlay() {
+            const btn = document.getElementById('play-btn');
+            if (timer) { pause(); return; }
+            btn.textContent = 'Pause';
+            if (stepIdx >= steps.length - 1) renderStep(0);
+            timer = setInterval(() => { if (stepIdx < steps.length - 1) nextStep(); else pause(); }, delays[document.getElementById('speed').value]);
+        }
+        function pause() { clearInterval(timer); timer = null; document.getElementById('play-btn').textContent = 'Play'; }
+
+        function clearDom() {
+            ['lower', 'upper'].forEach(side => {
+                const s = dom[side];
+                Object.keys(s.node).forEach(k => { s.node[k].remove(); delete s.node[k]; });
+                Object.keys(s.edge).forEach(k => { s.edge[k].remove(); delete s.edge[k]; });
+                Object.keys(s.acell).forEach(k => { s.acell[k].remove(); delete s.acell[k]; });
+                document.getElementById(side + '-rail').innerHTML = '';
+            });
+            confettiArmed = true;
+        }
+        function loadStream(arr) { pause(); stream = arr.slice(); clearDom(); generateSteps(); renderStep(0); }
+        function doAdd() {
+            const input = document.getElementById('val-input');
+            const value = parseInt(input.value, 10);
+            if (isNaN(value)) { input.focus(); return; }
+            loadStream([...stream, value]);
+            renderStep(steps.length - 1);
+            input.value = '';
+        }
+        function loadExample(n) {
+            const exs = [
+                [5, 3, 8, 2],
+                [1, 2, 3, 4, 5],
+            ];
+            loadStream(exs[n]);
+        }
+
+        document.addEventListener('keydown', (e) => {
+            const tag = (e.target.tagName || '').toLowerCase(); if (tag === 'input' || tag === 'textarea') return;
+            if (e.key === 'ArrowRight') { e.preventDefault(); pause(); nextStep(); }
+            else if (e.key === 'ArrowLeft') { e.preventDefault(); pause(); prevStep(); }
+            else if (e.key === ' ') { e.preventDefault(); togglePlay(); }
+        });
+        document.getElementById('val-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') doAdd(); });
+        window.addEventListener('resize', () => renderStep(stepIdx));
+
+        buildCodePanel();
+        window.onload = () => loadExample(0);
+    </script>
+</body>
+</html>

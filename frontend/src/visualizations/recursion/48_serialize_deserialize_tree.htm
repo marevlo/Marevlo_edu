@@ -1,0 +1,710 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Serialize &amp; Deserialize Binary Tree</title>
+    <style>
+        :root {
+            --bg-page: #070b14;
+            --bg-surface: rgba(255, 255, 255, 0.045);
+            --bg-input: rgba(255, 255, 255, 0.04);
+            --border-main: rgba(255, 255, 255, 0.10);
+            --btn-bg: rgba(255, 255, 255, 0.05);
+            --btn-hover: rgba(255, 255, 255, 0.10);
+            --text-main: #e8eefb;
+            --text-dim: #8b98b3;
+            --accent-orange: #f5a524;   /* node being visited / appended   */
+            --accent-blue:   #06b6d4;   /* edges / chrome / read pointer    */
+            --accent-green:  #22c55e;   /* built / settled / result         */
+            --accent-red:    #f43f5e;   /* null marker                      */
+            --accent-purple: #a855f7;   /* current recursion node / root    */
+            --mono: ui-monospace, 'SF Mono', 'Cascadia Code', 'Courier New', monospace;
+            --sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+            --shell: 940px;
+        }
+
+        * { box-sizing: border-box; }
+        html, body { overflow-x: hidden; }
+        body {
+            background:
+                radial-gradient(1100px 600px at 15% -10%, rgba(168, 85, 247, 0.12), transparent 60%),
+                radial-gradient(900px 600px at 100% 10%, rgba(6, 182, 212, 0.10), transparent 55%),
+                linear-gradient(160deg, #070b14 0%, #0b1120 55%, #0a0f1c 100%);
+            background-attachment: fixed;
+            color: var(--text-main); font-family: var(--sans); margin: 0;
+            display: flex; flex-direction: column; align-items: center; min-height: 100vh;
+            padding-bottom: 48px; -webkit-font-smoothing: antialiased;
+        }
+        body::before, body::after { content: ''; position: fixed; border-radius: 50%; filter: blur(70px); pointer-events: none; z-index: 0; opacity: 0.45; }
+        body::before { width: 380px; height: 380px; top: 8%; left: -120px; background: radial-gradient(circle, rgba(168,85,247,0.30), transparent 70%); }
+        body::after  { width: 420px; height: 420px; bottom: 4%; right: -140px; background: radial-gradient(circle, rgba(6,182,212,0.22), transparent 70%); }
+        body > * { position: relative; z-index: 1; }
+
+        .input-bar {
+            width: 100%; background: rgba(10, 15, 28, 0.55);
+            backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+            padding: 14px 16px; display: flex; justify-content: center; align-items: center; gap: 10px;
+            border-bottom: 1px solid var(--border-main); flex-wrap: wrap; position: sticky; top: 0; z-index: 50;
+        }
+        label.ui-label, .ui-label { font-family: var(--mono); font-size: 13px; color: var(--text-dim); letter-spacing: 0.2px; }
+        input[type="text"] {
+            background: var(--bg-input); border: 1px solid var(--border-main); color: var(--text-main);
+            height: 34px; border-radius: 9px; padding: 0 12px; font-size: 13px; font-family: var(--mono); width: 330px; max-width: 60vw;
+            transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+        }
+        input:focus { outline: none; border-color: var(--accent-purple); box-shadow: 0 0 0 3px rgba(168,85,247,0.18); background: rgba(168,85,247,0.06); }
+
+        button {
+            height: 34px; border-radius: 9px; padding: 0 14px; background: var(--btn-bg);
+            border: 1px solid var(--border-main); color: var(--text-main); font-size: 13px; font-weight: 600; cursor: pointer;
+            transition: transform 0.15s ease, background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+        }
+        button:hover { background: var(--btn-hover); border-color: rgba(168, 85, 247, 0.5); box-shadow: 0 0 18px rgba(168, 85, 247, 0.18); transform: translateY(-1px); }
+        button:active { transform: translateY(0); }
+        #play-btn { background: linear-gradient(135deg, rgba(168,85,247,0.22), rgba(168,85,247,0.10)); border-color: rgba(168, 85, 247, 0.45); color: #e9d5ff; min-width: 80px; }
+        .op-btn.load { border-color: rgba(6,182,212,0.4); color: #a5f3fc; font-family: var(--mono); }
+
+        .shell { width: var(--shell); max-width: 95%; margin: 24px auto 0; display: flex; flex-direction: column; gap: 16px; }
+
+        .title-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+        .title-row h1 { font-size: 18px; font-weight: 800; margin: 0; letter-spacing: 0.2px; }
+        .title-row .sub { color: var(--text-dim); font-weight: 500; font-size: 13px; }
+        .step-badge { font-family: var(--mono); font-size: 12px; font-weight: 700; color: #e9d5ff; background: rgba(168,85,247,0.12); border: 1px solid rgba(168,85,247,0.3); padding: 4px 10px; border-radius: 999px; white-space: nowrap; }
+        .progress-track { height: 4px; width: 100%; background: rgba(255,255,255,0.07); border-radius: 999px; overflow: hidden; margin-top: -6px; }
+        .progress-fill { height: 100%; width: 0%; border-radius: 999px; background: linear-gradient(90deg, var(--accent-purple), var(--accent-blue)); box-shadow: 0 0 12px rgba(168,85,247,0.5); transition: width 0.45s cubic-bezier(0.34,1.1,0.64,1); }
+
+        .phase-feed { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+        .phase-chip { font-family: var(--mono); font-size: 11px; font-weight: 700; padding: 4px 9px; border-radius: 8px; border: 1px solid var(--border-main); color: var(--text-dim); background: rgba(255,255,255,0.03); transition: all 0.3s; white-space: nowrap; }
+        .phase-chip.done { opacity: 0.45; }
+        .phase-chip.current { color: #fff; border-color: rgba(168,85,247,0.6); background: rgba(168,85,247,0.16); box-shadow: 0 0 12px rgba(168,85,247,0.3); }
+
+        .narration { background: var(--bg-surface); border: 1px solid rgba(168,85,247,0.22); border-radius: 12px; padding: 12px 18px; font-family: var(--mono); font-size: 14px; line-height: 1.5; color: #ede9fe; min-height: 48px; display: flex; align-items: center; gap: 10px; transition: border-color 0.3s, background 0.3s; }
+        .narration::before { content: '\25B8'; color: var(--accent-purple); font-size: 13px; }
+        .narration.done { border-color: rgba(34,197,94,0.4); background: rgba(34,197,94,0.06); }
+        .narration.done::before { content: '\2713'; color: var(--accent-green); }
+        .narration code { background: rgba(168,85,247,0.14); color: #d8b4fe; padding: 1px 6px; border-radius: 5px; font-size: 12.5px; }
+        .narration b { color: #fff; }
+
+        .stage-card { background: var(--bg-surface); border: 1px solid var(--border-main); border-radius: 18px; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); box-shadow: 0 12px 38px rgba(0,0,0,0.4); overflow: hidden; }
+        .stage-screen { position: relative; margin: 14px; border-radius: 14px; background: radial-gradient(700px 300px at 50% -10%, rgba(168,85,247,0.08), transparent 70%), #090d18; border: 1px solid rgba(255,255,255,0.06); }
+
+        .tree-stage { position: relative; width: 100%; height: 300px; overflow: auto; scrollbar-width: thin; }
+        .tree-stage::-webkit-scrollbar { height: 7px; width: 7px; }
+        .tree-stage::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 8px; }
+        .tree-canvas { position: relative; margin: 0 auto; }
+        #edges { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; z-index: 1; }
+        .edge-ln { stroke: var(--accent-blue); stroke-width: 2.2; fill: none; opacity: 0.30; transition: stroke 0.3s, opacity 0.3s; }
+        .edge-ln.built { opacity: 0.55; }
+        .edge-ln.active { stroke: var(--accent-orange); opacity: 1; filter: drop-shadow(0 0 6px rgba(245,165,36,0.6)); }
+
+        .tnode { position: absolute; width: 44px; height: 44px; margin: -22px 0 0 -22px; display: flex; align-items: center; justify-content: center;
+            border-radius: 50%; font-family: var(--mono); font-weight: 800; font-size: 16px;
+            border: 2px dashed var(--border-main); background: rgba(255,255,255,0.03); color: var(--text-dim);
+            z-index: 2; will-change: transform; transition: background 0.35s, border-color 0.35s, color 0.35s, box-shadow 0.35s, opacity 0.35s; }
+        .tnode.root { }
+        .tnode.built { border-style: solid; border-color: rgba(255,255,255,0.18); background: rgba(255,255,255,0.06); color: var(--text-main); }
+        .tnode.cur { border-style: solid; border-color: var(--accent-purple); background: rgba(168,85,247,0.18); color: #e9d5ff; box-shadow: 0 0 22px rgba(168,85,247,0.55); }
+        .tnode.visit { border-style: solid; border-color: var(--accent-orange); background: rgba(245,165,36,0.18); color: #ffd591; box-shadow: 0 0 22px rgba(245,165,36,0.6); }
+        .tnode.done { border-style: solid; border-color: var(--accent-green); background: rgba(34,197,94,0.16); color: #bbf7d0; box-shadow: 0 0 16px rgba(34,197,94,0.35); }
+        .tnode.nullmark { width: 28px; height: 28px; margin: -14px 0 0 -14px; font-size: 11px; }
+        .tnode.nullmark.cur { border-color: var(--accent-red); background: rgba(244,63,94,0.16); color: #fecdd3; box-shadow: 0 0 18px rgba(244,63,94,0.5); }
+        .tnode.nullmark.visit { border-color: var(--accent-red); background: rgba(244,63,94,0.16); color: #fecdd3; box-shadow: 0 0 18px rgba(244,63,94,0.5); }
+        .tnode.nullmark.done { border-color: rgba(244,63,94,0.4); background: rgba(244,63,94,0.08); color: #fda4af; box-shadow: none; }
+
+        .tape-zone { padding: 2px 16px 14px; }
+        .tape-label { font-family: var(--mono); font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--text-dim); text-align: center; margin-bottom: 8px; }
+        .tape-rail { display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; min-height: 40px; }
+        .tcell { min-width: 38px; height: 38px; padding: 0 8px; border-radius: 9px; display: flex; align-items: center; justify-content: center; position: relative;
+            font-family: var(--mono); font-weight: 800; font-size: 14px; border: 2px solid var(--border-main); background: rgba(255,255,255,0.04); color: var(--text-main);
+            transition: background 0.35s, border-color 0.35s, color 0.35s, box-shadow 0.35s; }
+        .tcell.nul { color: var(--text-dim); font-weight: 700; }
+        .tcell.cur { border-color: var(--accent-orange); background: rgba(245,165,36,0.16); color: #ffd591; box-shadow: 0 0 14px rgba(245,165,36,0.45); }
+        .tcell.cur.nul { border-color: var(--accent-red); background: rgba(244,63,94,0.14); color: #fecdd3; box-shadow: 0 0 14px rgba(244,63,94,0.4); }
+        .tcell.read { border-color: var(--accent-green); background: rgba(34,197,94,0.12); color: #bbf7d0; }
+        .tape-empty { color: var(--text-dim); font-family: var(--mono); font-size: 13px; align-self: center; }
+
+        .controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: center; }
+        .controls .kbd-hint { font-size: 11px; color: var(--text-dim); font-family: var(--mono); margin-left: 4px; }
+        .kbd { background: rgba(255,255,255,0.07); border: 1px solid var(--border-main); border-radius: 5px; padding: 1px 6px; font-size: 10px; }
+        input[type="range"] { accent-color: var(--accent-purple); width: 110px; cursor: pointer; }
+
+        .details-toggle { align-self: center; height: 32px; padding: 0 16px; border-radius: 999px; cursor: pointer; background: rgba(255,255,255,0.04); border: 1px solid var(--border-main); color: var(--text-dim); font-family: var(--mono); font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; gap: 8px; transition: color 0.2s, border-color 0.2s, background 0.2s; }
+        .details-toggle:hover { color: var(--text-main); border-color: rgba(168,85,247,0.4); background: rgba(168,85,247,0.06); }
+        .details-toggle .chev { transition: transform 0.3s ease; }
+        .details-wrap.open .details-toggle .chev { transform: rotate(180deg); }
+        .details-body { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.4s ease; }
+        .details-wrap.open .details-body { grid-template-rows: 1fr; }
+        .details-inner { overflow: hidden; min-height: 0; }
+        .details-grid { display: flex; flex-direction: column; gap: 14px; padding-top: 14px; }
+
+        .panel-card { background: var(--bg-surface); border: 1px solid var(--border-main); border-radius: 16px; backdrop-filter: blur(10px); box-shadow: 0 8px 30px rgba(0,0,0,0.35); }
+        .panel-head { display: flex; align-items: center; gap: 8px; padding: 11px 16px; border-bottom: 1px solid var(--border-main); font-size: 11px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; color: var(--text-dim); }
+        .panel-head .pip { width: 7px; height: 7px; border-radius: 50%; background: var(--accent-purple); box-shadow: 0 0 8px var(--accent-purple); }
+        .state-pills { display: flex; gap: 8px; flex-wrap: wrap; padding: 12px 16px; }
+        .pill { font-family: var(--mono); font-size: 11.5px; border: 1px solid var(--border-main); background: rgba(255,255,255,0.03); border-radius: 8px; padding: 5px 10px; color: var(--text-dim); }
+        .pill b { color: var(--text-main); font-weight: 800; }
+        .code-body { padding: 12px 6px 14px; font-family: var(--mono); font-size: 12.5px; line-height: 1.7; }
+        .code-line { display: flex; gap: 12px; padding: 1px 16px; border-left: 2px solid transparent; transition: background 0.3s, border-color 0.3s; white-space: pre; }
+        .code-line .lno { color: #4b5772; width: 16px; text-align: right; user-select: none; }
+        .code-line .src { color: #c4cee0; }
+        .code-line .kw { color: #c792ea; }
+        .code-line .fn { color: #82aaff; }
+        .code-line.active { background: rgba(168,85,247,0.12); border-left-color: var(--accent-purple); }
+        .code-line.active .src, .code-line.active .lno { color: #e8eefb; }
+
+        .log-panel { border-radius: 14px; padding: 12px 16px; height: 130px; overflow-y: auto; font-family: var(--mono); font-size: 12.5px; line-height: 1.5; background: var(--bg-surface); border: 1px solid var(--border-main); }
+        .log-panel::-webkit-scrollbar { width: 8px; }
+        .log-panel::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 8px; }
+
+        @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; } }
+    </style>
+</head>
+<body>
+
+    <div class="input-bar">
+        <label class="ui-label">Preorder with nulls =</label>
+        <input type="text" id="tree-input" value="1,2,4,null,null,5,null,null,3,null,null">
+        <button class="op-btn load" onclick="loadCustom()">Load</button>
+        <span class="ui-label" style="opacity:.5">|</span>
+        <button onclick="loadExample(0)">Ex 1</button>
+        <button onclick="loadExample(1)">Ex 2 (null)</button>
+    </div>
+
+    <div class="shell">
+        <div class="title-row">
+            <h1>Serialize &amp; Deserialize Binary Tree <span class="sub">&middot; pre-order DFS with <code style="font-family:var(--mono)">null</code> markers &middot; round-trip a tree through a string</span></h1>
+            <span class="step-badge" id="step-badge">Step 1 / 1</span>
+        </div>
+        <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+
+        <div class="phase-feed" id="phase-feed"></div>
+
+        <div class="narration" id="main-panel">&mdash;</div>
+
+        <div class="stage-card">
+            <div class="stage-screen">
+                <div class="tree-stage" id="tree-stage">
+                    <div class="tree-canvas" id="tree-canvas">
+                        <svg id="edges"></svg>
+                    </div>
+                </div>
+                <div class="tape-zone">
+                    <div class="tape-label" id="tape-label">serialized tape &middot; pre-order(root, left, right), <span style="color:var(--accent-red)">null</span> = empty subtree</div>
+                    <div class="tape-rail" id="tape-rail"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="controls">
+            <button onclick="resetSim()">&#8634; Reset</button>
+            <button onclick="prevStep()">&#8592; Back</button>
+            <button onclick="togglePlay()" id="play-btn">Play</button>
+            <button onclick="nextStep()">Next &#8594;</button>
+            <span class="ui-label" style="margin-left:6px; font-size:11px">Speed</span>
+            <input type="range" id="speed" min="0" max="2" value="1">
+            <span class="kbd-hint"><span class="kbd">&#8592;</span> <span class="kbd">&#8594;</span> step &middot; <span class="kbd">space</span> play</span>
+        </div>
+
+        <div class="details-wrap" id="details-wrap">
+            <button class="details-toggle" onclick="toggleDetails()" aria-expanded="false">
+                <span id="details-label">Show code &amp; log</span> <span class="chev">&#9662;</span>
+            </button>
+            <div class="details-body">
+                <div class="details-inner">
+                    <div class="details-grid">
+                        <div class="panel-card">
+                            <div class="panel-head"><span class="pip"></span> Algorithm</div>
+                            <div class="code-body" id="code-panel"></div>
+                            <div class="state-pills" id="state-pills"></div>
+                        </div>
+                        <div class="log-panel" id="log"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        'use strict';
+
+        // ───────── Motion engine ─────────
+        const REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        const FRAME = 1000 / 60;
+        function sampleSpring(stiffness, damping, mass) {
+            const dt = 1 / 60; let x = 1, v = 0; const out = [];
+            for (let i = 0; i < 240; i++) { const a = (-stiffness * x - damping * v) / mass; v += a * dt; x += v * dt; out.push(1 - x); if (Math.abs(x) < 0.0015 && Math.abs(v) < 0.0015) break; }
+            out.push(1); return out;
+        }
+        const SPRING_POS = sampleSpring(320, 30, 1);
+        const SPRING_POP = sampleSpring(520, 17, 1);
+        const durOf = (a) => a.length * FRAME;
+        const Motion = {
+            move(el, x, y) {
+                const px = el._x, py = el._y;
+                const commit = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px)`;
+                if (REDUCED || px == null || (Math.abs(x - px) < 0.5 && Math.abs(y - py) < 0.5)) { el._x = x; el._y = y; el.style.transform = commit; return; }
+                const dx = x - px, dy = y - py;
+                const kf = SPRING_POS.map(p => ({ transform: `translate(${(px + dx * p).toFixed(1)}px, ${(py + dy * p).toFixed(1)}px)` }));
+                el.animate(kf, { duration: durOf(SPRING_POS), easing: 'linear' });
+                el._x = x; el._y = y; el.style.transform = commit;
+            },
+            pop(el) {
+                if (REDUCED) { el.style.opacity = '1'; return; }
+                const kf = SPRING_POP.map(p => ({ opacity: Math.min(1, p * 2).toFixed(3), transform: `translate(${el._x.toFixed(1)}px, ${el._y.toFixed(1)}px) scale(${(0.3 + 0.7 * p).toFixed(3)})` }));
+                const a = el.animate(kf, { duration: durOf(SPRING_POP), easing: 'linear' });
+                a.onfinish = () => { el.style.transform = `translate(${el._x.toFixed(1)}px, ${el._y.toFixed(1)}px)`; };
+            },
+        };
+
+        // ───────── State ─────────
+        let preorderStr = "1,2,4,null,null,5,null,null,3,null,null";
+        let tree = null;        // {id, val, x, y, left, right, isNull}
+        let nodeList = [];       // flat list of all tree nodes incl. null sentinels, in build order
+        let steps = [];
+        let stepIdx = 0;
+        let timer = null;
+        const delays = [1400, 760, 360];
+        const nodeEls = {};
+        const edgeEls = {};
+        const cellEls = {};
+
+        // ───────── Code panel (the real algorithm) ─────────
+        const CODE = [
+            [['src','  def '],['fn','serialize'],['src','(node, out):']],
+            [['kw','    if '],['src','node is None: out.append("null"); '],['kw','return']],
+            [['src','    out.append(str(node.val))']],
+            [['fn','    serialize'],['src','(node.left, out)']],
+            [['fn','    serialize'],['src','(node.right, out)']],
+            [['src','  def '],['fn','deserialize'],['src','(it):']],
+            [['src','    tok = next(it)']],
+            [['kw','    if '],['src','tok == "null": '],['kw','return '],['src','None']],
+            [['src','    node = Node(int(tok))']],
+            [['fn','    node.left  = deserialize'],['src','(it)']],
+            [['fn','    node.right = deserialize'],['src','(it)']],
+            [['kw','    return '],['src','node']],
+        ];
+        function buildCodePanel() {
+            const panel = document.getElementById('code-panel'); panel.innerHTML = '';
+            CODE.forEach((tokens, i) => {
+                const line = document.createElement('div'); line.className = 'code-line'; line.dataset.line = i;
+                const lno = document.createElement('span'); lno.className = 'lno'; lno.textContent = i + 1; line.appendChild(lno);
+                const src = document.createElement('span');
+                tokens.forEach(([cls, txt]) => { const s = document.createElement('span'); s.className = cls; s.textContent = txt; src.appendChild(s); });
+                line.appendChild(src); panel.appendChild(line);
+            });
+        }
+        function highlightCode(arr) { document.querySelectorAll('.code-line').forEach(el => el.classList.toggle('active', arr && arr.includes(+el.dataset.line))); }
+        function toggleDetails() {
+            const wrap = document.getElementById('details-wrap'); const open = wrap.classList.toggle('open');
+            wrap.querySelector('.details-toggle').setAttribute('aria-expanded', open ? 'true' : 'false');
+            document.getElementById('details-label').textContent = open ? 'Hide code & log' : 'Show code & log';
+        }
+
+        // ───────── Build the real tree from a preorder-with-nulls token stream ─────────
+        let _nid = 0;
+        function buildTree(tokens) {
+            _nid = 0; nodeList = [];
+            let p = 0;
+            function build() {
+                if (p >= tokens.length) return null;
+                const tok = tokens[p++];
+                if (tok === 'null') {
+                    const node = { id: 'k' + (_nid++), val: 'null', isNull: true, left: null, right: null };
+                    nodeList.push(node);
+                    return node;
+                }
+                const node = { id: 'k' + (_nid++), val: tok, isNull: false, left: null, right: null };
+                nodeList.push(node);
+                node.left = build();
+                node.right = build();
+                return node;
+            }
+            return build();
+        }
+
+        // ───────── Layout: assign x,y to every node (incl. null sentinels) ─────────
+        const ROWY = 64, PADY = 34;
+        function layoutTree(root) {
+            if (!root) return { width: 320, height: 120 };
+            let leafX = 0;
+            const SLOT = 56;
+            function assign(node, depth) {
+                if (!node) return;
+                assign(node.left, depth + 1);
+                node.x = (leafX + 0.5) * SLOT;
+                node.y = depth * ROWY + PADY;
+                node._depth = depth;
+                leafX++;
+                assign(node.right, depth + 1);
+            }
+            assign(root, 0);
+            let maxDepth = 0, maxX = 0;
+            nodeList.forEach(n => { if (n.x > maxX) maxX = n.x; if (n._depth > maxDepth) maxDepth = n._depth; });
+            const width = Math.max(maxX + SLOT, 320);
+            const height = maxDepth * ROWY + PADY * 2;
+            return { width, height };
+        }
+
+        // ───────── Step generation: genuinely simulate serialize then deserialize ─────────
+        function generateSteps() {
+            steps = [];
+            const tokens = preorderStr.split(',').map(t => t.trim());
+            tree = buildTree(tokens);
+            layoutTree(tree);
+
+            // Cleared/visited state per node id, the serialized tape, and the read pointer.
+            const built = new Set();          // node ids whose value is "placed" on screen
+            const tapeBuilt = [];             // tokens appended to serialized tape so far
+            const readMarks = new Set();      // tape indices already consumed by deserialize
+            const stack = [];                 // recursion frame labels (for narration / pills)
+
+            const snap = (extra) => Object.assign({
+                phase: 'serialize',
+                curId: null, visitId: null,
+                built: new Set(built),
+                tape: tapeBuilt.slice(),
+                tapePtr: -1,
+                readMarks: new Set(readMarks),
+                stackDepth: stack.length,
+                code: [], panel: '', log: ''
+            }, extra);
+
+            // ── intro ──
+            steps.push(snap({
+                code: [], action: 'OVERVIEW', panel:
+                    `Serialize a binary tree to <b>one string</b>, then rebuild the exact tree from it. ` +
+                    `We use <b>pre-order DFS</b> (visit <b>root</b>, then <b>left</b>, then <b>right</b>) and emit <code>null</code> for every empty subtree &mdash; ` +
+                    `those markers are what let us reconstruct the shape unambiguously.`,
+                log: `serialize(root)  &middot;  deserialize(tape)`
+            }));
+
+            // ── PHASE 1: serialize via genuine pre-order recursion over the real tree ──
+            steps.push(snap({
+                code: [0], action: 'SERIALIZE', panel:
+                    `<b>Phase 1 &mdash; serialize.</b> Walk the tree in pre-order. At each node, append its value to the tape, ` +
+                    `then recurse left, then right. A <code>None</code> child appends <code>null</code> and returns.`,
+                log: `--- serialize() ---`
+            }));
+
+            function serialize(node) {
+                stack.push(node ? ('ser(' + node.val + ')') : 'ser(None)');
+                if (!node || node.isNull) {
+                    // base case → append "null"
+                    tapeBuilt.push('null');
+                    built.add(node.id);
+                    steps.push(snap({
+                        code: [0, 1], curId: node.id, visitId: node.id,
+                        action: 'append null', panel:
+                            `Reached an <b>empty subtree</b> &rarr; append <code>null</code> and return. ` +
+                            `Tape is now length <b>${tapeBuilt.length}</b>.`,
+                        log: `  null   (empty subtree)`
+                    }));
+                    stack.pop();
+                    return;
+                }
+                // visit value
+                tapeBuilt.push(node.val);
+                built.add(node.id);
+                steps.push(snap({
+                    code: [0, 2], curId: node.id, visitId: node.id,
+                    action: 'append ' + node.val, panel:
+                        `Visit node <code>${node.val}</code> (pre-order) &rarr; <b>append ${node.val}</b> to the tape. ` +
+                        `Now recurse into its left child.`,
+                    log: `  ${node.val}`
+                }));
+                // recurse left
+                steps.push(snap({
+                    code: [3], curId: node.id,
+                    action: 'recurse left', panel:
+                        `Go <b>left</b> from node <code>${node.val}</code>: <code>serialize(${node.val}.left)</code>.`,
+                    log: `  -> left of ${node.val}`
+                }));
+                serialize(node.left);
+                // recurse right
+                steps.push(snap({
+                    code: [4], curId: node.id,
+                    action: 'recurse right', panel:
+                        `Left subtree of <code>${node.val}</code> done. Go <b>right</b>: <code>serialize(${node.val}.right)</code>.`,
+                    log: `  -> right of ${node.val}`
+                }));
+                serialize(node.right);
+                stack.pop();
+            }
+            serialize(tree);
+
+            const serializedOut = tapeBuilt.join(',');
+            steps.push(snap({
+                code: [0], action: 'TAPE READY', panel:
+                    `<b>Serialization complete.</b> The full tape is <code>${serializedOut}</code> ` +
+                    `(${tapeBuilt.length} tokens). This single string fully captures the tree.`,
+                log: `serialized = "${serializedOut}"`
+            }));
+
+            // ── PHASE 2: deserialize via genuine recursion consuming the tape left→right ──
+            // Reset on-screen tree to "unbuilt" so we can watch it being rebuilt.
+            built.clear();
+            let ptr = 0;
+            steps.push(snap({
+                phase: 'deserialize', code: [5], action: 'DESERIALIZE', panel:
+                    `<b>Phase 2 &mdash; deserialize.</b> Read the tape left&rarr;right with one pointer. ` +
+                    `<code>null</code> &rarr; this child is empty (return <code>None</code>); any number &rarr; ` +
+                    `make a node, then recursively build its left and right from the following tokens.`,
+                log: `--- deserialize() ---`
+            }));
+
+            // Map tape positions back to the node objects (build order == tape order).
+            function deserialize() {
+                const tapeIdx = ptr;
+                const tok = tapeBuilt[ptr];
+                const node = nodeList[tapeIdx];   // same order as serialize produced
+                stack.push('de()');
+                if (tok === 'null') {
+                    readMarks.add(tapeIdx);
+                    ptr++;
+                    built.add(node.id);
+                    steps.push(snap({
+                        phase: 'deserialize', code: [5, 6, 7], curId: node.id, visitId: node.id, tapePtr: tapeIdx,
+                        action: 'read null', panel:
+                            `Token <b>[${tapeIdx}]</b> = <code>null</code> &rarr; this child is empty, return <code>None</code>. ` +
+                            `Advance pointer to <b>${ptr}</b>.`,
+                        log: `  read[${tapeIdx}]=null -> None`
+                    }));
+                    stack.pop();
+                    return;
+                }
+                readMarks.add(tapeIdx);
+                ptr++;
+                built.add(node.id);
+                steps.push(snap({
+                    phase: 'deserialize', code: [5, 6, 8], curId: node.id, visitId: node.id, tapePtr: tapeIdx,
+                    action: 'new node ' + tok, panel:
+                        `Token <b>[${tapeIdx}]</b> = <code>${tok}</code> &rarr; create <b>node ${tok}</b>. ` +
+                        `Advance to <b>${ptr}</b>, then build its left then right child.`,
+                    log: `  read[${tapeIdx}]=${tok} -> new Node(${tok})`
+                }));
+                steps.push(snap({
+                    phase: 'deserialize', code: [9], curId: node.id, tapePtr: ptr,
+                    action: 'build left', panel:
+                        `Build the <b>left</b> child of node <code>${tok}</code> from the next token.`,
+                    log: `  ${tok}.left = deserialize()`
+                }));
+                deserialize();
+                steps.push(snap({
+                    phase: 'deserialize', code: [10], curId: node.id, tapePtr: ptr,
+                    action: 'build right', panel:
+                        `Left child of <code>${tok}</code> done. Build the <b>right</b> child from the next token.`,
+                    log: `  ${tok}.right = deserialize()`
+                }));
+                deserialize();
+                steps.push(snap({
+                    phase: 'deserialize', code: [11], curId: node.id,
+                    action: 'return ' + tok, panel:
+                        `Both children of node <code>${tok}</code> are attached &rarr; return it up the call chain.`,
+                    log: `  return Node(${tok})`
+                }));
+                stack.pop();
+            }
+            deserialize();
+
+            steps.push(snap({
+                phase: 'deserialize', complete: true, code: [11], action: 'DONE',
+                built: new Set(nodeList.map(n => n.id)),
+                panel:
+                    `<b>Round-trip complete.</b> Pointer consumed all <b>${tapeBuilt.length}</b> tokens and the ` +
+                    `rebuilt tree is identical to the original. Serialized form: <code>${serializedOut}</code>.`,
+                log: `done  tree == original  &middot;  "${serializedOut}"`
+            }));
+        }
+
+        // ───────── Render: persistent-DOM reconciliation keyed by node id ─────────
+        let curW = 320, curH = 120;
+        function rebuildStageSkeleton() {
+            // Wipe and rebuild the static tree skeleton ONCE per input-load.
+            const canvas = document.getElementById('tree-canvas');
+            const svg = document.getElementById('edges');
+            Object.keys(nodeEls).forEach(k => { nodeEls[k].remove(); delete nodeEls[k]; });
+            Object.keys(edgeEls).forEach(k => { edgeEls[k].remove(); delete edgeEls[k]; });
+
+            const { width, height } = layoutTree(tree);
+            curW = width; curH = Math.max(height, 120);
+            canvas.style.width = curW + 'px'; canvas.style.height = curH + 'px';
+            svg.setAttribute('width', curW); svg.setAttribute('height', curH);
+
+            // edges (parent -> each non-null child link). We draw a link for every child slot.
+            function addEdge(parent, child) {
+                if (!child) return;
+                const key = 'e:' + child.id;
+                const ln = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                ln.setAttribute('x1', parent.x); ln.setAttribute('y1', parent.y);
+                ln.setAttribute('x2', child.x); ln.setAttribute('y2', child.y);
+                ln.setAttribute('class', 'edge-ln'); ln.dataset.child = child.id; ln.dataset.parent = parent.id;
+                svg.appendChild(ln); edgeEls[key] = ln;
+            }
+            function walk(node) {
+                if (!node || node.isNull) return;
+                addEdge(node, node.left); addEdge(node, node.right);
+                walk(node.left); walk(node.right);
+            }
+            walk(tree);
+
+            // nodes (incl. null sentinels)
+            nodeList.forEach(n => {
+                const el = document.createElement('div');
+                el.className = 'tnode' + (n.isNull ? ' nullmark' : '');
+                el.textContent = n.isNull ? 'null' : n.val;
+                el._x = n.x; el._y = n.y;
+                el.style.transform = `translate(${n.x}px, ${n.y}px)`;
+                el.style.opacity = '1';
+                canvas.appendChild(el); nodeEls[n.id] = el;
+            });
+        }
+
+        function renderStep(idx) {
+            stepIdx = idx; const step = steps[idx]; if (!step) return;
+
+            // ── tree nodes: toggle classes per step, never rebuild ──
+            nodeList.forEach(n => {
+                const el = nodeEls[n.id]; if (!el) return;
+                let cls = 'tnode' + (n.isNull ? ' nullmark' : '');
+                const isBuilt = step.built.has(n.id);
+                if (n.id === step.visitId) cls += ' visit';
+                else if (n.id === step.curId) cls += ' cur';
+                else if (isBuilt) cls += (step.complete ? ' done' : ' built');
+                el.className = cls;
+                // Pop a node in the first frame it becomes part of the structure.
+                if (isBuilt && !el._wasBuilt) { el._wasBuilt = true; }
+            });
+            // reset _wasBuilt for nodes no longer built (so stepping back re-pops)
+            nodeList.forEach(n => { if (!step.built.has(n.id)) { const el = nodeEls[n.id]; if (el) el._wasBuilt = false; } });
+
+            // ── edges: built when both endpoints built; active when on the current focus ──
+            Object.values(edgeEls).forEach(ln => {
+                const c = ln.dataset.child, p = ln.dataset.parent;
+                const bothBuilt = step.built.has(c) && step.built.has(p);
+                const onFocus = (c === step.curId || c === step.visitId) && step.built.has(p);
+                ln.setAttribute('class', 'edge-ln' + (onFocus ? ' active' : (bothBuilt ? ' built' : '')));
+            });
+
+            // ── serialized tape ──
+            const rail = document.getElementById('tape-rail');
+            const used = new Set();
+            if (step.tape.length === 0) {
+                Object.keys(cellEls).forEach(k => { cellEls[k].remove(); delete cellEls[k]; });
+                if (!rail.querySelector('.tape-empty')) rail.innerHTML = '<span class="tape-empty">tape is empty &mdash; serialization not started</span>';
+            } else {
+                const note = rail.querySelector('.tape-empty'); if (note) note.remove();
+                step.tape.forEach((tok, i) => {
+                    used.add('c:' + i);
+                    let el = cellEls['c:' + i]; const fresh = !el;
+                    if (!el) { el = document.createElement('div'); el.className = 'tcell'; rail.appendChild(el); cellEls['c:' + i] = el; el.style.opacity = '0'; el._x = 0; el._y = 0; }
+                    el.textContent = tok;
+                    let cls = 'tcell' + (tok === 'null' ? ' nul' : '');
+                    if (i === step.tapePtr) cls += ' cur';
+                    else if (step.readMarks.has(i)) cls += ' read';
+                    el.className = cls;
+                    if (fresh) { el.style.transform = 'translate(0px,0px)'; Motion.pop(el); }
+                });
+                Object.keys(cellEls).forEach(k => { const i = +k.slice(2); if (!used.has(k) || i >= step.tape.length) { cellEls[k].remove(); delete cellEls[k]; } });
+            }
+
+            // ── narration / chrome ──
+            const mp = document.getElementById('main-panel');
+            mp.innerHTML = step.panel || '&mdash;';
+            mp.classList.toggle('done', !!step.complete);
+            highlightCode(step.code);
+
+            renderPhaseFeed(step);
+            renderPills(step);
+
+            const tapeLabel = document.getElementById('tape-label');
+            tapeLabel.innerHTML = step.phase === 'deserialize'
+                ? 'reading tape &middot; pointer consumes tokens left&rarr;right to rebuild the tree'
+                : 'serialized tape &middot; pre-order(root, left, right), <span style="color:var(--accent-red)">null</span> = empty subtree';
+
+            document.getElementById('step-badge').textContent = `Step ${idx + 1} / ${steps.length}`;
+            document.getElementById('progress-fill').style.width = `${(idx / Math.max(1, steps.length - 1)) * 100}%`;
+
+            const logEl = document.getElementById('log');
+            logEl.innerHTML = steps.slice(0, idx + 1).map(s => `<div style="margin:3px 0;white-space:pre-wrap;">${s.log}</div>`).join('');
+            logEl.scrollTop = logEl.scrollHeight;
+        }
+
+        function renderPhaseFeed(step) {
+            const feed = document.getElementById('phase-feed'); feed.innerHTML = '';
+            const phases = ['serialize', 'deserialize'];
+            const labels = { serialize: 'phase 1 &middot; serialize', deserialize: 'phase 2 &middot; deserialize' };
+            const order = phases.indexOf(step.phase);
+            phases.forEach((ph, i) => {
+                const chip = document.createElement('div');
+                chip.className = 'phase-chip' + (i === order ? ' current' : (i < order ? ' done' : ''));
+                chip.innerHTML = labels[ph]; feed.appendChild(chip);
+            });
+        }
+
+        function renderPills(step) {
+            const host = document.getElementById('state-pills'); host.innerHTML = '';
+            const tape = step.tape.join(',') || '—';
+            const pills = [
+                `phase: <b>${step.phase}</b>`,
+                `tape len: <b>${step.tape.length}</b>`,
+                `read ptr: <b>${step.tapePtr >= 0 ? step.tapePtr : (step.phase === 'deserialize' ? '·' : '—')}</b>`,
+                `stack depth: <b>${step.stackDepth}</b>`,
+                `tape: <b>${tape}</b>`
+            ];
+            pills.forEach(p => { const d = document.createElement('div'); d.className = 'pill'; d.innerHTML = p; host.appendChild(d); });
+        }
+
+        // ───────── controls ─────────
+        function nextStep() { if (stepIdx < steps.length - 1) renderStep(stepIdx + 1); else pause(); }
+        function prevStep() { if (stepIdx > 0) renderStep(stepIdx - 1); }
+        function resetSim() { pause(); renderStep(0); }
+        function togglePlay() {
+            const btn = document.getElementById('play-btn');
+            if (timer) { pause(); return; }
+            btn.textContent = 'Pause';
+            if (stepIdx >= steps.length - 1) renderStep(0);
+            timer = setInterval(() => { if (stepIdx < steps.length - 1) nextStep(); else pause(); }, delays[document.getElementById('speed').value]);
+        }
+        function pause() { clearInterval(timer); timer = null; document.getElementById('play-btn').textContent = 'Play'; }
+
+        function loadPreorder(str) {
+            pause();
+            preorderStr = str;
+            document.getElementById('tree-input').value = str;
+            Object.keys(cellEls).forEach(k => { cellEls[k].remove(); delete cellEls[k]; });
+            document.getElementById('tape-rail').innerHTML = '';
+            generateSteps();
+            rebuildStageSkeleton();
+            renderStep(0);
+        }
+        function loadCustom() {
+            const raw = document.getElementById('tree-input').value.trim();
+            if (!raw) { document.getElementById('tree-input').focus(); return; }
+            // basic validation: must form a complete preorder-with-nulls stream
+            const toks = raw.split(',').map(t => t.trim());
+            if (toks.some(t => t === '')) { document.getElementById('tree-input').focus(); return; }
+            loadPreorder(toks.join(','));
+        }
+        function loadExample(n) {
+            const exs = [
+                "1,2,4,null,null,5,null,null,3,null,null",
+                "null"
+            ];
+            loadPreorder(exs[n]);
+        }
+
+        document.addEventListener('keydown', (e) => {
+            const tag = (e.target.tagName || '').toLowerCase(); if (tag === 'input' || tag === 'textarea') return;
+            if (e.key === 'ArrowRight') { e.preventDefault(); pause(); nextStep(); }
+            else if (e.key === 'ArrowLeft') { e.preventDefault(); pause(); prevStep(); }
+            else if (e.key === ' ') { e.preventDefault(); togglePlay(); }
+        });
+        document.getElementById('tree-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') loadCustom(); });
+        window.addEventListener('resize', () => renderStep(stepIdx));
+
+        buildCodePanel();
+        window.onload = () => loadExample(0);
+    </script>
+</body>
+</html>

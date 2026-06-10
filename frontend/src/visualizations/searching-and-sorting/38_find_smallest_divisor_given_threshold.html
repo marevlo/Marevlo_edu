@@ -1,0 +1,552 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Find Smallest Divisor Given a Threshold</title>
+    <style>
+        :root {
+            --bg-page: #070b14;
+            --bg-surface: rgba(255, 255, 255, 0.045);
+            --bg-input: rgba(255, 255, 255, 0.04);
+            --border-main: rgba(255, 255, 255, 0.10);
+            --btn-bg: rgba(255, 255, 255, 0.05);
+            --btn-hover: rgba(255, 255, 255, 0.10);
+            --text-main: #e8eefb;
+            --text-dim: #8b98b3;
+            --accent-orange: #f5a524;   /* mid probe                    */
+            --accent-blue:   #06b6d4;    /* hi bound / chrome             */
+            --accent-green:  #22c55e;    /* feasible / found              */
+            --accent-red:    #f43f5e;    /* infeasible / eliminated       */
+            --accent-purple: #a855f7;    /* lo bound                      */
+            --mono: ui-monospace, 'SF Mono', 'Cascadia Code', 'Courier New', monospace;
+            --sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+            --shell: 900px;
+        }
+
+        * { box-sizing: border-box; }
+        html, body { overflow-x: hidden; }
+        body {
+            background:
+                radial-gradient(1100px 600px at 15% -10%, rgba(6, 182, 212, 0.10), transparent 60%),
+                radial-gradient(900px 600px at 100% 10%, rgba(168, 85, 247, 0.10), transparent 55%),
+                linear-gradient(160deg, #070b14 0%, #0b1120 55%, #0a0f1c 100%);
+            background-attachment: fixed;
+            color: var(--text-main); font-family: var(--sans); margin: 0;
+            display: flex; flex-direction: column; align-items: center; min-height: 100vh;
+            padding-bottom: 48px; -webkit-font-smoothing: antialiased;
+        }
+        body::before, body::after { content: ''; position: fixed; border-radius: 50%; filter: blur(70px); pointer-events: none; z-index: 0; opacity: 0.45; }
+        body::before { width: 380px; height: 380px; top: 8%; left: -120px; background: radial-gradient(circle, rgba(6,182,212,0.30), transparent 70%); }
+        body::after  { width: 420px; height: 420px; bottom: 4%; right: -140px; background: radial-gradient(circle, rgba(168,85,247,0.22), transparent 70%); }
+        body > * { position: relative; z-index: 1; }
+
+        .input-bar {
+            width: 100%; background: rgba(10, 15, 28, 0.55);
+            backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+            padding: 14px 16px; display: flex; justify-content: center; align-items: center; gap: 10px;
+            border-bottom: 1px solid var(--border-main); flex-wrap: wrap; position: sticky; top: 0; z-index: 50;
+        }
+        label.ui-label, .ui-label { font-family: var(--mono); font-size: 13px; color: var(--text-dim); letter-spacing: 0.2px; }
+        input[type="text"], input[type="number"] {
+            background: var(--bg-input); border: 1px solid var(--border-main); color: var(--text-main);
+            height: 34px; border-radius: 9px; padding: 0 12px; font-size: 13px; font-family: var(--mono);
+            transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+        }
+        .arr-input { width: 240px; } .val-input { width: 80px; }
+        input:focus { outline: none; border-color: var(--accent-blue); box-shadow: 0 0 0 3px rgba(6,182,212,0.18); background: rgba(6,182,212,0.06); }
+
+        button {
+            height: 34px; border-radius: 9px; padding: 0 14px; background: var(--btn-bg);
+            border: 1px solid var(--border-main); color: var(--text-main); font-size: 13px; font-weight: 600; cursor: pointer;
+            transition: transform 0.15s ease, background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+        }
+        button:hover { background: var(--btn-hover); border-color: rgba(6, 182, 212, 0.5); box-shadow: 0 0 18px rgba(6, 182, 212, 0.18); transform: translateY(-1px); }
+        button:active { transform: translateY(0); }
+        #play-btn { background: linear-gradient(135deg, rgba(6,182,212,0.22), rgba(6,182,212,0.10)); border-color: rgba(6, 182, 212, 0.45); color: #a5f3fc; min-width: 80px; }
+
+        .shell { width: var(--shell); max-width: 95%; margin: 24px auto 0; display: flex; flex-direction: column; gap: 16px; }
+
+        .title-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+        .title-row h1 { font-size: 18px; font-weight: 800; margin: 0; letter-spacing: 0.2px; }
+        .title-row .sub { color: var(--text-dim); font-weight: 500; font-size: 13px; }
+        .step-badge { font-family: var(--mono); font-size: 12px; font-weight: 700; color: #a5f3fc; background: rgba(6,182,212,0.12); border: 1px solid rgba(6,182,212,0.3); padding: 4px 10px; border-radius: 999px; white-space: nowrap; }
+        .progress-track { height: 4px; width: 100%; background: rgba(255,255,255,0.07); border-radius: 999px; overflow: hidden; margin-top: -6px; }
+        .progress-fill { height: 100%; width: 0%; border-radius: 999px; background: linear-gradient(90deg, var(--accent-blue), var(--accent-purple)); box-shadow: 0 0 12px rgba(6,182,212,0.5); transition: width 0.45s cubic-bezier(0.34,1.1,0.64,1); }
+
+        .narration { background: var(--bg-surface); border: 1px solid rgba(6,182,212,0.22); border-radius: 12px; padding: 12px 18px; font-family: var(--mono); font-size: 14px; line-height: 1.5; color: #cfe9f5; min-height: 48px; display: flex; align-items: center; gap: 10px; transition: border-color 0.3s, background 0.3s; }
+        .narration::before { content: '\25B8'; color: var(--accent-blue); font-size: 13px; }
+        .narration.done { border-color: rgba(34,197,94,0.4); background: rgba(34,197,94,0.06); }
+        .narration.done::before { content: '\2713'; color: var(--accent-green); }
+        .narration.miss { border-color: rgba(244,63,94,0.4); background: rgba(244,63,94,0.06); }
+        .narration.miss::before { content: '\2717'; color: var(--accent-red); }
+        .narration code { background: rgba(6,182,212,0.14); color: #7dd3fc; padding: 1px 6px; border-radius: 5px; font-size: 12.5px; }
+        .narration b { color: #fff; }
+
+        .stage-card { background: var(--bg-surface); border: 1px solid var(--border-main); border-radius: 18px; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); box-shadow: 0 12px 38px rgba(0,0,0,0.4); overflow: hidden; }
+        .stage-screen { position: relative; margin: 14px; border-radius: 14px; background: radial-gradient(700px 300px at 50% -10%, rgba(6,182,212,0.08), transparent 70%), #090d18; padding: 58px 24px 30px; border: 1px solid rgba(255,255,255,0.06); display: flex; flex-direction: column; align-items: center; gap: 30px; overflow-x: auto; min-height: 200px; }
+
+        /* ---- answer range: row of candidate divisors [lo..hi] ---- */
+        .range-block { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+        .range-caption { font-family: var(--mono); font-size: 11px; color: var(--text-dim); letter-spacing: 0.4px; }
+        .div-rail { position: relative; display: flex; gap: 7px; }
+        .cell { min-width: 42px; height: 46px; padding: 0 6px; border-radius: 11px; display: flex; align-items: center; justify-content: center; position: relative;
+            font-family: var(--mono); font-weight: 800; font-size: 16px; will-change: transform;
+            border: 2px solid var(--border-main); background: rgba(255,255,255,0.05); color: var(--text-main);
+            transition: background 0.35s, border-color 0.35s, color 0.35s, box-shadow 0.35s, transform 0.3s, opacity 0.35s; }
+        .cell.out { opacity: 0.28; }
+        .cell.range { border-color: rgba(6,182,212,0.4); background: rgba(6,182,212,0.06); }
+        .cell.mid { border-color: var(--accent-orange); background: rgba(245,165,36,0.16); color: #ffd591; box-shadow: 0 0 22px rgba(245,165,36,0.55); transform: translateY(-3px) scale(1.06); z-index: 3; }
+        .cell.found { border-color: var(--accent-green); background: linear-gradient(180deg, rgba(47,224,143,0.92), rgba(33,194,117,0.92)); color: #06251a; box-shadow: 0 0 20px rgba(34,197,94,0.5); }
+        .cell.eliminated { border-color: rgba(244,63,94,0.3); opacity: 0.22; }
+        .cell .ci { position: absolute; top: -22px; left: 0; right: 0; text-align: center; font-size: 10px; color: var(--text-dim); font-weight: 700; }
+
+        /* lo / hi (above) and mid (below) gliding pointer pills */
+        .bptr { position: absolute; left: 0; display: flex; flex-direction: column; align-items: center; opacity: 0; pointer-events: none; will-change: transform; z-index: 6; }
+        .bptr.lo, .bptr.hi { bottom: 100%; margin-bottom: 7px; flex-direction: column-reverse; }
+        .bptr.mid { top: 100%; margin-top: 7px; }
+        .bptr .tag { font-family: var(--mono); font-size: 11px; font-weight: 800; padding: 3px 9px; border-radius: 8px; white-space: nowrap; }
+        .bptr .stalk { width: 2px; height: 15px; }
+        .bptr.lo  .tag { background: var(--accent-purple); color: #1a0533; box-shadow: 0 0 14px rgba(168,85,247,0.6); } .bptr.lo .stalk { background: var(--accent-purple); }
+        .bptr.hi  .tag { background: var(--accent-blue);   color: #04222a; box-shadow: 0 0 14px rgba(6,182,212,0.6); }  .bptr.hi .stalk { background: var(--accent-blue); }
+        .bptr.mid .tag { background: var(--accent-orange); color: #3a2400; box-shadow: 0 0 14px rgba(245,165,36,0.6); } .bptr.mid .stalk { background: var(--accent-orange); }
+
+        /* ---- feasibility panel: ceil of each element at the mid divisor ---- */
+        .feas-block { display: flex; flex-direction: column; align-items: center; gap: 10px; width: 100%; min-height: 96px; }
+        .feas-title { font-family: var(--mono); font-size: 12px; color: var(--text-dim); letter-spacing: 0.3px; text-align: center; }
+        .feas-title b { color: var(--text-main); }
+        .feas-row { display: flex; gap: 9px; flex-wrap: wrap; justify-content: center; }
+        .feas-item { display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 56px; opacity: 0; transform: translateY(6px);
+            transition: opacity 0.3s, transform 0.3s, border-color 0.3s, background 0.3s; }
+        .feas-item.show { opacity: 1; transform: translateY(0); }
+        .feas-card { font-family: var(--mono); font-weight: 800; font-size: 15px; padding: 7px 0; width: 100%; text-align: center;
+            border-radius: 10px; border: 1px solid var(--border-main); background: rgba(255,255,255,0.04); color: var(--text-main); }
+        .feas-card.active { border-color: var(--accent-orange); background: rgba(245,165,36,0.12); color: #ffd591; box-shadow: 0 0 14px rgba(245,165,36,0.3); }
+        .feas-expr { font-family: var(--mono); font-size: 10px; color: var(--text-dim); }
+        .feas-total { font-family: var(--mono); font-size: 14px; padding: 7px 16px; border-radius: 10px; border: 1px solid var(--border-main); background: rgba(255,255,255,0.04); transition: border-color 0.35s, background 0.35s, color 0.35s; }
+        .feas-total b { font-weight: 800; }
+        .feas-total.ok { border-color: rgba(34,197,94,0.5); background: rgba(34,197,94,0.08); color: #b8f5d0; }
+        .feas-total.bad { border-color: rgba(244,63,94,0.5); background: rgba(244,63,94,0.08); color: #ffc4cd; }
+
+        .action-stage { position: relative; min-height: 84px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; }
+        .action-word { font-family: var(--mono); font-weight: 800; font-size: 18px; letter-spacing: 0.4px; min-height: 22px; text-align: center; transition: color 0.3s; }
+        #confetti { position: absolute; inset: 0; overflow: visible; pointer-events: none; }
+        .confetti-piece { position: absolute; top: 0; left: 50%; width: 8px; height: 13px; border-radius: 2px; opacity: 0; animation: confettiFall ease-out forwards; }
+
+        .controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: center; }
+        .controls .kbd-hint { font-size: 11px; color: var(--text-dim); font-family: var(--mono); margin-left: 4px; }
+        .kbd { background: rgba(255,255,255,0.07); border: 1px solid var(--border-main); border-radius: 5px; padding: 1px 6px; font-size: 10px; }
+        input[type="range"] { accent-color: var(--accent-blue); width: 110px; cursor: pointer; }
+
+        .details-toggle { align-self: center; height: 32px; padding: 0 16px; border-radius: 999px; cursor: pointer; background: rgba(255,255,255,0.04); border: 1px solid var(--border-main); color: var(--text-dim); font-family: var(--mono); font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; gap: 8px; transition: color 0.2s, border-color 0.2s, background 0.2s; }
+        .details-toggle:hover { color: var(--text-main); border-color: rgba(6,182,212,0.4); background: rgba(6,182,212,0.06); }
+        .details-toggle .chev { transition: transform 0.3s ease; }
+        .details-wrap.open .details-toggle .chev { transform: rotate(180deg); }
+        .details-body { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.4s ease; }
+        .details-wrap.open .details-body { grid-template-rows: 1fr; }
+        .details-inner { overflow: hidden; min-height: 0; }
+        .details-grid { display: flex; flex-direction: column; gap: 14px; padding-top: 14px; }
+
+        .panel-card { background: var(--bg-surface); border: 1px solid var(--border-main); border-radius: 16px; backdrop-filter: blur(10px); box-shadow: 0 8px 30px rgba(0,0,0,0.35); }
+        .panel-head { display: flex; align-items: center; gap: 8px; padding: 11px 16px; border-bottom: 1px solid var(--border-main); font-size: 11px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; color: var(--text-dim); }
+        .panel-head .pip { width: 7px; height: 7px; border-radius: 50%; background: var(--accent-blue); box-shadow: 0 0 8px var(--accent-blue); }
+        .code-body { padding: 12px 6px 14px; font-family: var(--mono); font-size: 12.5px; line-height: 1.7; }
+        .code-line { display: flex; gap: 12px; padding: 1px 16px; border-left: 2px solid transparent; transition: background 0.3s, border-color 0.3s; white-space: pre; }
+        .code-line .lno { color: #4b5772; width: 16px; text-align: right; user-select: none; }
+        .code-line .src { color: #c4cee0; }
+        .code-line .kw { color: #c792ea; }
+        .code-line .fn { color: #82aaff; }
+        .code-line.active { background: rgba(6,182,212,0.12); border-left-color: var(--accent-blue); }
+        .code-line.active .src, .code-line.active .lno { color: #e8eefb; }
+
+        .state-strip { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 0 2px; }
+        .pill { display: inline-flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 12px; color: var(--text-dim); background: rgba(255,255,255,0.04); border: 1px solid var(--border-main); border-radius: 999px; padding: 4px 11px; }
+        .pill b { color: var(--text-main); font-weight: 800; }
+        .pill.lo b { color: var(--accent-purple); } .pill.hi b { color: var(--accent-blue); } .pill.mid b { color: var(--accent-orange); } .pill.ans b { color: var(--accent-green); }
+
+        .log-panel { border-radius: 14px; padding: 12px 16px; height: 110px; overflow-y: auto; font-family: var(--mono); font-size: 12.5px; line-height: 1.5; background: var(--bg-surface); border: 1px solid var(--border-main); }
+        .log-panel::-webkit-scrollbar { width: 8px; }
+        .log-panel::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 8px; }
+
+        @keyframes confettiFall { 0%{ opacity:1; transform: translate(-50%, 0) rotate(0deg); } 100%{ opacity:0; transform: translate(calc(-50% + var(--x)), 220px) rotate(var(--rot)); } }
+        @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; } }
+    </style>
+</head>
+<body>
+
+    <div class="input-bar">
+        <label class="ui-label">nums =</label>
+        <input type="text" id="arr-input" class="arr-input" placeholder="1, 2, 5, 9">
+        <label class="ui-label">threshold =</label>
+        <input type="number" id="val-input" class="val-input" placeholder="6">
+        <button onclick="loadCustom()">Run</button>
+        <span class="ui-label" style="opacity:.5">|</span>
+        <button onclick="loadExample(0)">Ex 1</button>
+        <button onclick="loadExample(1)">Ex 2</button>
+    </div>
+
+    <div class="shell">
+        <div class="title-row">
+            <h1>Smallest Divisor &#8804; Threshold <span class="sub">&middot; binary-search the divisor &middot; feasible if &#931; ceil(a[i]/d) &#8804; threshold &middot; O(n log max)</span></h1>
+            <span class="step-badge" id="step-badge">Step 1 / 1</span>
+        </div>
+        <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+
+        <div class="narration" id="main-panel">&mdash;</div>
+
+        <div class="stage-card">
+            <div class="stage-screen">
+                <div class="range-block">
+                    <div class="range-caption">candidate divisors&#160;&#160;d &#8712; [lo&#160;..&#160;hi]</div>
+                    <div class="div-rail" id="div-rail"></div>
+                </div>
+                <div class="feas-block" id="feas-block">
+                    <div class="feas-title" id="feas-title"></div>
+                    <div class="feas-row" id="feas-row"></div>
+                    <div class="feas-total" id="feas-total" style="display:none"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="action-stage">
+            <div id="confetti"></div>
+            <div class="action-word" id="action-word"></div>
+        </div>
+
+        <div class="controls">
+            <button onclick="resetSim()">&#8634; Reset</button>
+            <button onclick="prevStep()">&#8592; Back</button>
+            <button onclick="togglePlay()" id="play-btn">Play</button>
+            <button onclick="nextStep()">Next &#8594;</button>
+            <span class="ui-label" style="margin-left:6px; font-size:11px">Speed</span>
+            <input type="range" id="speed" min="0" max="2" value="1">
+            <span class="kbd-hint"><span class="kbd">&#8592;</span> <span class="kbd">&#8594;</span> step &middot; <span class="kbd">space</span> play</span>
+        </div>
+
+        <div class="details-wrap" id="details-wrap">
+            <button class="details-toggle" onclick="toggleDetails()" aria-expanded="false">
+                <span id="details-label">Show code, state &amp; log</span> <span class="chev">&#9662;</span>
+            </button>
+            <div class="details-body">
+                <div class="details-inner">
+                    <div class="details-grid">
+                        <div class="state-strip">
+                            <span class="pill lo">lo <b id="st-lo">1</b></span>
+                            <span class="pill mid">mid <b id="st-mid">&mdash;</b></span>
+                            <span class="pill hi">hi <b id="st-hi">0</b></span>
+                            <span class="pill">threshold <b id="st-target">&mdash;</b></span>
+                            <span class="pill ans">answer <b id="st-ans">&mdash;</b></span>
+                        </div>
+                        <div class="panel-card">
+                            <div class="panel-head"><span class="pip"></span> Algorithm</div>
+                            <div class="code-body" id="code-panel"></div>
+                        </div>
+                        <div class="log-panel" id="log"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        'use strict';
+
+        // ───────── Motion engine ─────────
+        const REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        const FRAME = 1000 / 60;
+        function sampleSpring(stiffness, damping, mass) {
+            const dt = 1 / 60; let x = 1, v = 0; const out = [];
+            for (let i = 0; i < 240; i++) { const a = (-stiffness * x - damping * v) / mass; v += a * dt; x += v * dt; out.push(1 - x); if (Math.abs(x) < 0.0015 && Math.abs(v) < 0.0015) break; }
+            out.push(1); return out;
+        }
+        const SPRING_POS = sampleSpring(320, 30, 1);
+        const durOf = (a) => a.length * FRAME;
+        const Motion = {
+            glide(el, x) {
+                const prev = el._x; el.style.opacity = '1';
+                const commit = `translateX(${x.toFixed(2)}px) translateX(-50%)`;
+                if (REDUCED || prev == null || Math.abs(x - prev) < 0.5) { el._x = x; el.style.transform = commit; return; }
+                const dx = x - prev;
+                const kf = SPRING_POS.map(p => ({ transform: `translateX(${(prev + dx * p).toFixed(2)}px) translateX(-50%)` }));
+                el.animate(kf, { duration: durOf(SPRING_POS), easing: 'linear' });
+                el._x = x; el.style.transform = commit;
+            },
+        };
+
+        // ───────── State ─────────
+        let arr = [1, 2, 5, 9];
+        let threshold = 6;
+        let cand = [];           // candidate divisor values 1..max(arr)
+        let steps = [];
+        let stepIdx = 0;
+        let timer = null;
+        let confettiArmed = true;
+        const delays = [1500, 800, 380];
+        const cellEls = {};      // keyed by candidate value (the divisor)
+        const ptrEls = {};
+
+        const CODE = [
+            [['kw','def '],['fn','smallestDivisor'],['src','(a, T):']],
+            [['src','  lo, hi = 1, max(a)']],
+            [['kw','  while '],['src','lo <= hi:']],
+            [['src','    mid = (lo + hi) // 2']],
+            [['src','    s = sum(ceil(x / mid) for x in a)']],
+            [['kw','    if '],['src','s <= T:']],
+            [['src','      ans = mid; hi = mid - 1']],
+            [['kw','    else'],['src',': lo = mid + 1']],
+            [['kw','  return '],['src','ans']],
+        ];
+        function buildCodePanel() {
+            const panel = document.getElementById('code-panel'); panel.innerHTML = '';
+            CODE.forEach((tokens, i) => {
+                const line = document.createElement('div'); line.className = 'code-line'; line.dataset.line = i;
+                const lno = document.createElement('span'); lno.className = 'lno'; lno.textContent = i + 1; line.appendChild(lno);
+                const src = document.createElement('span');
+                tokens.forEach(([cls, txt]) => { const s = document.createElement('span'); s.className = cls; s.textContent = txt; src.appendChild(s); });
+                line.appendChild(src); panel.appendChild(line);
+            });
+        }
+        function highlightCode(a) { document.querySelectorAll('.code-line').forEach(el => el.classList.toggle('active', a && a.includes(+el.dataset.line))); }
+        function toggleDetails() {
+            const wrap = document.getElementById('details-wrap'); const open = wrap.classList.toggle('open');
+            wrap.querySelector('.details-toggle').setAttribute('aria-expanded', open ? 'true' : 'false');
+            document.getElementById('details-label').textContent = open ? 'Hide code, state & log' : 'Show code, state & log';
+        }
+
+        // ───────── step generation ─────────
+        function generateSteps() {
+            steps = [];
+            const a = arr;
+            const maxVal = Math.max(...a);
+            cand = []; for (let v = 1; v <= maxVal; v++) cand.push(v);
+
+            // snapshot factory. lo/hi/mid are divisor VALUES (1..max). feas is the per-element ceil panel.
+            const snap = (extra) => Object.assign({
+                lo: 1, hi: maxVal, mid: -1, ans: -1, found: false, foundDiv: -1, eliminated: [],
+                feas: null, code: [], action: '', actionColor: 'var(--text-dim)', panel: '', log: ''
+            }, extra);
+
+            let lo = 1, hi = maxVal, ans = -1;
+            const elim = [];
+
+            steps.push(snap({ lo, hi, code: [0, 1], action: 'START', actionColor: 'var(--accent-blue)',
+                panel: `Find the smallest divisor <b>d</b> with <code>&#931; ceil(a[i]/d) &#8804; ${threshold}</code>. Bigger <b>d</b> &#8594; smaller sum, so the answer is <b>monotonic</b>. Search <code>d &#8712; [1, max(a)=${maxVal}]</code>.`,
+                log: `init  lo=1 hi=${maxVal} threshold=${threshold}` }));
+
+            while (lo <= hi) {
+                const mid = (lo + hi) >> 1;
+
+                // build the feasibility panel for d = mid
+                let sum = 0; const items = [];
+                for (let i = 0; i < a.length; i++) { const c = Math.ceil(a[i] / mid); sum += c; items.push({ x: a[i], c }); }
+                const ok = sum <= threshold;
+                const feas = { div: mid, items, sum, ok };
+
+                steps.push(snap({ lo, hi, mid, ans, eliminated: [...elim], feas: { ...feas, reveal: false }, code: [2, 3, 4],
+                    action: `try divisor d = ${mid}`, actionColor: 'var(--accent-orange)',
+                    panel: `<code>mid = (lo+hi)/2 = ${mid}</code>. Test divisor <b>${mid}</b>: compute <code>ceil(a[i]/${mid})</code> for every element and sum them.`,
+                    log: `mid=${mid}  compute sum of ceils` }));
+
+                steps.push(snap({ lo, hi, mid, ans, eliminated: [...elim], feas: { ...feas, reveal: true }, code: [4, 5],
+                    action: `sum = ${sum}  ${ok ? '&#8804;' : '&gt;'}  ${threshold}`, actionColor: ok ? 'var(--accent-green)' : 'var(--accent-red)',
+                    panel: `&#931; ceil(a[i]/${mid}) = <b>${sum}</b> ${ok ? '<code>&#8804;</code>' : '<code>&gt;</code>'} threshold <code>${threshold}</code>.`,
+                    log: `sum=${sum} vs ${threshold}` }));
+
+                if (ok) {
+                    ans = mid;
+                    for (let v = mid; v <= hi; v++) elim.push(v); // divisors >= mid all feasible; we want smaller
+                    hi = mid - 1;
+                    steps.push(snap({ lo, hi, mid: -1, ans, eliminated: [...elim], feas: { ...feas, reveal: true }, code: [6],
+                        action: 'feasible &#8594; shrink hi', actionColor: 'var(--accent-green)',
+                        panel: `<span style="color:var(--accent-green)">Feasible.</span> Record <code>ans = ${mid}</code>, then try a <b>smaller</b> divisor: <code>hi = ${hi}</code>.`,
+                        log: `feasible -> ans=${mid}, hi=${hi}` }));
+                } else {
+                    for (let v = lo; v <= mid; v++) elim.push(v); // divisors <= mid all infeasible
+                    lo = mid + 1;
+                    steps.push(snap({ lo, hi, mid: -1, ans, eliminated: [...elim], feas: { ...feas, reveal: true }, code: [7],
+                        action: 'too big &#8594; raise lo', actionColor: 'var(--accent-red)',
+                        panel: `<span style="color:var(--accent-red)">Infeasible</span> — the sum exceeds the threshold. Need a <b>larger</b> divisor: <code>lo = ${lo}</code>.`,
+                        log: `infeasible -> lo=${lo}` }));
+                }
+            }
+
+            steps.push(snap({ lo, hi, mid: -1, ans, found: true, foundDiv: ans, eliminated: cand.map(v => v).filter(v => v !== ans),
+                code: [8], action: '&#10003; SMALLEST DIVISOR = ' + ans, actionColor: 'var(--accent-green)', confetti: true,
+                panel: `<code>lo &gt; hi</code> — search space exhausted. The smallest feasible divisor is <b>${ans}</b>.`,
+                log: `lo > hi  answer = ${ans}` }));
+        }
+
+        // ───────── render ─────────
+        function cellCenterX(v) { const el = cellEls[v]; return el ? el.offsetLeft + el.offsetWidth / 2 : 0; }
+
+        function renderStep(idx) {
+            stepIdx = idx; const step = steps[idx]; if (!step) return;
+            const rail = document.getElementById('div-rail');
+            const elimSet = new Set(step.eliminated || []);
+
+            // -------- candidate-divisor row (persistent DOM keyed by divisor value) --------
+            const used = new Set();
+            for (let k = 0; k < cand.length; k++) {
+                const v = cand[k];
+                used.add(String(v));
+                let el = cellEls[v];
+                if (!el) { el = document.createElement('div'); el.className = 'cell'; el.innerHTML = `<span class="ci"></span><span class="cv"></span>`; cellEls[v] = el; rail.appendChild(el); }
+                el.querySelector('.ci').textContent = v;
+                el.querySelector('.cv').textContent = v;
+                const inRange = v >= step.lo && v <= step.hi;
+                let cls = 'cell';
+                if (step.found && v === step.foundDiv) cls += ' found';
+                else if (v === step.mid) cls += ' mid';
+                else if (elimSet.has(v)) cls += ' eliminated';
+                else if (!inRange) cls += ' out';
+                else cls += ' range';
+                el.className = cls;
+            }
+            Object.keys(cellEls).forEach(k => { if (!used.has(k)) { cellEls[k].remove(); delete cellEls[k]; } });
+
+            // -------- lo / hi / mid pointer pills glide to divisor values --------
+            placePtr('lo', step.lo <= step.hi ? step.lo : (step.found ? step.foundDiv : null));
+            placePtr('hi', step.lo <= step.hi ? step.hi : null);
+            placePtr('mid', step.mid >= 1 ? step.mid : null);
+
+            // -------- feasibility panel --------
+            renderFeas(step);
+
+            // -------- narration / action / code --------
+            const mp = document.getElementById('main-panel');
+            mp.innerHTML = step.panel || '&mdash;';
+            mp.classList.toggle('done', !!step.found);
+            mp.classList.toggle('miss', !!step.miss);
+            const aw = document.getElementById('action-word'); aw.innerHTML = step.action || ''; aw.style.color = step.actionColor || 'var(--text-dim)';
+            highlightCode(step.code);
+
+            if (step.confetti) { if (confettiArmed) { fireConfetti(); confettiArmed = false; } } else confettiArmed = true;
+
+            // -------- state pills --------
+            document.getElementById('st-lo').textContent = step.lo;
+            document.getElementById('st-hi').textContent = step.hi;
+            document.getElementById('st-mid').textContent = step.mid >= 1 ? step.mid : '—';
+            document.getElementById('st-target').textContent = threshold;
+            document.getElementById('st-ans').textContent = step.ans >= 1 ? step.ans : '—';
+            document.getElementById('step-badge').textContent = `Step ${idx + 1} / ${steps.length}`;
+            document.getElementById('progress-fill').style.width = `${(idx / Math.max(1, steps.length - 1)) * 100}%`;
+
+            // -------- log --------
+            const logEl = document.getElementById('log');
+            logEl.innerHTML = steps.slice(0, idx + 1).map(s => `<div style="margin:3px 0;white-space:pre-wrap;">${s.log}</div>`).join('');
+            logEl.scrollTop = logEl.scrollHeight;
+        }
+
+        function renderFeas(step) {
+            const titleEl = document.getElementById('feas-title');
+            const rowEl = document.getElementById('feas-row');
+            const totalEl = document.getElementById('feas-total');
+            const f = step.feas;
+            if (!f) {
+                titleEl.innerHTML = 'Pick a divisor to test its feasibility.';
+                rowEl.innerHTML = ''; Object.keys(feasEls).forEach(k => delete feasEls[k]);
+                totalEl.style.display = 'none';
+                return;
+            }
+            titleEl.innerHTML = `feasibility of <b>d = ${f.div}</b>&#160;&#160;&#8226;&#160;&#160;ceil(a[i] / ${f.div})`;
+
+            // persistent DOM keyed by element index
+            const used = new Set();
+            f.items.forEach((it, i) => {
+                used.add(String(i));
+                let item = feasEls[i];
+                if (!item) {
+                    item = document.createElement('div'); item.className = 'feas-item';
+                    item.innerHTML = `<div class="feas-card"></div><div class="feas-expr"></div>`;
+                    rowEl.appendChild(item); feasEls[i] = item;
+                }
+                item.querySelector('.feas-card').textContent = it.c;
+                item.querySelector('.feas-expr').innerHTML = `&#8968;${it.x}/${f.div}&#8969;`;
+                item.querySelector('.feas-card').classList.add('active');
+                item.classList.toggle('show', !!f.reveal);
+            });
+            Object.keys(feasEls).forEach(k => { if (!used.has(k)) { feasEls[k].remove(); delete feasEls[k]; } });
+
+            if (f.reveal) {
+                totalEl.style.display = '';
+                totalEl.className = 'feas-total ' + (f.ok ? 'ok' : 'bad');
+                const rel = f.ok ? '&#8804;' : '&gt;';
+                totalEl.innerHTML = `&#931; = <b>${f.sum}</b> ${rel} threshold <b>${threshold}</b>`;
+            } else {
+                totalEl.style.display = 'none';
+            }
+        }
+        const feasEls = {};
+
+        function placePtr(name, v) {
+            let pill = ptrEls[name];
+            if (!pill) {
+                pill = document.createElement('div'); pill.className = 'bptr ' + name;
+                pill.innerHTML = (name === 'mid') ? `<div class="stalk"></div><div class="tag">mid</div>` : `<div class="tag">${name}</div><div class="stalk"></div>`;
+                document.getElementById('div-rail').appendChild(pill); ptrEls[name] = pill;
+            }
+            if (v == null || !cellEls[v]) { pill.style.opacity = '0'; pill._x = null; return; }
+            Motion.glide(pill, cellCenterX(v));
+        }
+
+        function fireConfetti() {
+            const host = document.getElementById('confetti'); if (!host || REDUCED) return;
+            const colors = ['#22c55e', '#06b6d4', '#a855f7', '#f5a524', '#f43f5e'];
+            for (let i = 0; i < 38; i++) {
+                const p = document.createElement('div'); p.className = 'confetti-piece';
+                p.style.setProperty('--x', ((Math.random() * 2 - 1) * 220) + 'px');
+                p.style.setProperty('--rot', ((Math.random() * 720 - 360)) + 'deg');
+                p.style.background = colors[i % colors.length];
+                p.style.animationDuration = (0.9 + Math.random() * 0.8) + 's';
+                p.style.animationDelay = (Math.random() * 0.15) + 's';
+                host.appendChild(p); setTimeout(() => p.remove(), 1900);
+            }
+        }
+
+        // ───────── controls ─────────
+        function nextStep() { if (stepIdx < steps.length - 1) renderStep(stepIdx + 1); else pause(); }
+        function prevStep() { if (stepIdx > 0) renderStep(stepIdx - 1); }
+        function resetSim() { pause(); renderStep(0); }
+        function togglePlay() {
+            const btn = document.getElementById('play-btn');
+            if (timer) { pause(); return; }
+            btn.textContent = 'Pause';
+            if (stepIdx >= steps.length - 1) renderStep(0);
+            timer = setInterval(() => { if (stepIdx < steps.length - 1) nextStep(); else pause(); }, delays[document.getElementById('speed').value]);
+        }
+        function pause() { clearInterval(timer); timer = null; document.getElementById('play-btn').textContent = 'Play'; }
+
+        function clearDom() {
+            Object.keys(cellEls).forEach(k => { cellEls[k].remove(); delete cellEls[k]; });
+            Object.keys(ptrEls).forEach(k => { ptrEls[k].remove(); delete ptrEls[k]; });
+            Object.keys(feasEls).forEach(k => { feasEls[k].remove(); delete feasEls[k]; });
+            confettiArmed = true;
+        }
+        function loadData(a, t) { pause(); arr = a; threshold = t; clearDom(); generateSteps(); renderStep(0); }
+        function loadCustom() {
+            const raw = (document.getElementById('arr-input').value || '').split(',').map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n) && n > 0);
+            const a = raw.slice(0, 14);
+            const t = parseInt(document.getElementById('val-input').value, 10);
+            if (a.length && !isNaN(t) && t >= a.length) loadData(a, t);
+        }
+        function loadExample(n) {
+            const ex = [{ a: [1, 2, 5, 9], t: 6 }, { a: [44, 22, 33, 11, 1], t: 5 }][n];
+            document.getElementById('arr-input').value = ex.a.join(', ');
+            document.getElementById('val-input').value = ex.t;
+            loadData(ex.a, ex.t);
+        }
+
+        document.addEventListener('keydown', (e) => {
+            const tag = (e.target.tagName || '').toLowerCase(); if (tag === 'input' || tag === 'textarea') return;
+            if (e.key === 'ArrowRight') { e.preventDefault(); pause(); nextStep(); }
+            else if (e.key === 'ArrowLeft') { e.preventDefault(); pause(); prevStep(); }
+            else if (e.key === ' ') { e.preventDefault(); togglePlay(); }
+        });
+        ['arr-input', 'val-input'].forEach(id => document.getElementById(id).addEventListener('keydown', (e) => { if (e.key === 'Enter') loadCustom(); }));
+        window.addEventListener('resize', () => renderStep(stepIdx));
+
+        buildCodePanel();
+        window.onload = () => loadExample(0);
+    </script>
+</body>
+</html>

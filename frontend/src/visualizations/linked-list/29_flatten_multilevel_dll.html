@@ -1,0 +1,971 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flatten Multilevel DLL - Visualization</title>
+    <style>
+        :root {
+            --bg-page: #070b14;
+            --bg-surface: rgba(255, 255, 255, 0.045);
+            --bg-input: rgba(255, 255, 255, 0.04);
+            --border-main: rgba(255, 255, 255, 0.10);
+            --btn-bg: rgba(255, 255, 255, 0.05);
+            --btn-hover: rgba(255, 255, 255, 0.10);
+            --text-main: #e8eefb;
+            --text-dim: #8b98b3;
+            --accent-orange: #f5a524;   /* current node           */
+            --accent-blue:   #06b6d4;   /* next links             */
+            --accent-green:  #22c55e;   /* settled / done         */
+            --accent-red:    #f43f5e;   /* splice point           */
+            --accent-purple: #a855f7;   /* prev links             */
+            --accent-teal:   #2dd4bf;   /* child pointer arcs     */
+            --mono: ui-monospace, 'SF Mono', 'Cascadia Code', 'Courier New', monospace;
+            --sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+            --shell: 880px;
+        }
+
+        * { box-sizing: border-box; }
+        html, body { overflow-x: hidden; }
+        body {
+            background:
+                radial-gradient(1100px 600px at 15% -10%, rgba(6, 182, 212, 0.10), transparent 60%),
+                radial-gradient(900px 600px at 100% 10%, rgba(45, 212, 191, 0.10), transparent 55%),
+                linear-gradient(160deg, #070b14 0%, #0b1120 55%, #0a0f1c 100%);
+            background-attachment: fixed;
+            color: var(--text-main); font-family: var(--sans); margin: 0;
+            display: flex; flex-direction: column; align-items: center; min-height: 100vh;
+            padding-bottom: 48px; -webkit-font-smoothing: antialiased;
+        }
+        body::before, body::after { content: ''; position: fixed; border-radius: 50%; filter: blur(70px); pointer-events: none; z-index: 0; opacity: 0.45; }
+        body::before { width: 380px; height: 380px; top: 8%; left: -120px; background: radial-gradient(circle, rgba(6,182,212,0.30), transparent 70%); }
+        body::after  { width: 420px; height: 420px; bottom: 4%; right: -140px; background: radial-gradient(circle, rgba(45,212,191,0.22), transparent 70%); }
+        body > * { position: relative; z-index: 1; }
+
+        .input-bar {
+            width: 100%; background: rgba(10, 15, 28, 0.55);
+            backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+            padding: 14px 16px; display: flex; justify-content: center; align-items: center; gap: 10px;
+            border-bottom: 1px solid var(--border-main); flex-wrap: wrap; position: sticky; top: 0; z-index: 50;
+        }
+        label.ui-label, .ui-label { font-family: var(--mono); font-size: 13px; color: var(--text-dim); letter-spacing: 0.2px; }
+        input[type="text"], input[type="number"] {
+            background: var(--bg-input); border: 1px solid var(--border-main); color: var(--text-main);
+            height: 34px; border-radius: 9px; padding: 0 12px; font-size: 13px; font-family: var(--mono);
+            transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+        }
+        input[type="text"]:focus { outline: none; border-color: var(--accent-teal); box-shadow: 0 0 0 3px rgba(45, 212, 191, 0.18); background: rgba(45, 212, 191, 0.06); }
+        .head-input { width: 360px; }
+
+        button {
+            height: 34px; border-radius: 9px; padding: 0 16px; background: var(--btn-bg);
+            border: 1px solid var(--border-main); color: var(--text-main); font-size: 13px; font-weight: 600; cursor: pointer;
+            transition: transform 0.15s ease, background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+        }
+        button:hover { background: var(--btn-hover); border-color: rgba(45, 212, 191, 0.5); box-shadow: 0 0 18px rgba(45, 212, 191, 0.18); transform: translateY(-1px); }
+        button:active { transform: translateY(0); }
+        #play-btn { background: linear-gradient(135deg, rgba(45,212,191,0.22), rgba(45,212,191,0.10)); border-color: rgba(45, 212, 191, 0.45); color: #99f6e4; min-width: 80px; }
+
+        .shell { width: var(--shell); max-width: 94%; margin: 28px auto 0; display: flex; flex-direction: column; gap: 16px; }
+
+        .title-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+        .title-row h1 { font-size: 18px; font-weight: 800; margin: 0; letter-spacing: 0.2px; }
+        .title-row .sub { color: var(--text-dim); font-weight: 500; font-size: 13px; }
+        .step-badge { font-family: var(--mono); font-size: 12px; font-weight: 700; color: #99f6e4; background: rgba(45,212,191,0.12); border: 1px solid rgba(45,212,191,0.3); padding: 4px 10px; border-radius: 999px; white-space: nowrap; }
+        .progress-track { height: 4px; width: 100%; background: rgba(255,255,255,0.07); border-radius: 999px; overflow: hidden; margin-top: -6px; }
+        .progress-fill { height: 100%; width: 0%; border-radius: 999px; background: linear-gradient(90deg, var(--accent-teal), var(--accent-purple)); box-shadow: 0 0 12px rgba(45,212,191,0.5); transition: width 0.45s cubic-bezier(0.34,1.1,0.64,1); }
+
+        .narration { background: var(--bg-surface); border: 1px solid rgba(45,212,191,0.22); border-radius: 12px; padding: 12px 18px; font-family: var(--mono); font-size: 14px; line-height: 1.5; color: #d6f5ee; min-height: 48px; display: flex; align-items: center; gap: 10px; transition: border-color 0.3s, background 0.3s; }
+        .narration::before { content: '\25B8'; color: var(--accent-teal); font-size: 13px; }
+        .narration.done { border-color: rgba(34,197,94,0.4); background: rgba(34,197,94,0.06); }
+        .narration.done::before { content: '\2713'; color: var(--accent-green); }
+        .narration code { background: rgba(45,212,191,0.14); color: #7dd3c8; padding: 1px 6px; border-radius: 5px; font-size: 12.5px; }
+        .narration b { color: #fff; }
+
+        .stage-card { background: var(--bg-surface); border: 1px solid var(--border-main); border-radius: 18px; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); box-shadow: 0 12px 38px rgba(0,0,0,0.4); overflow: hidden; }
+        .stage-screen { margin: 14px; border-radius: 14px; background: radial-gradient(700px 300px at 50% -10%, rgba(45,212,191,0.08), transparent 70%), #090d18; border: 1px solid rgba(255,255,255,0.06); }
+
+        /* the stage hosts the main rail plus stacked sub-rails; child arcs are drawn in one overlay svg above everything */
+        .stage-screen .list-wrapper { position: relative; overflow-x: auto; overflow-y: visible; scrollbar-width: thin; min-height: 280px; padding: 30px 22px 30px; }
+        .stage-screen .list-wrapper::-webkit-scrollbar { height: 7px; }
+        .stage-screen .list-wrapper::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 8px; }
+        .levels { display: flex; flex-direction: column; gap: 44px; position: relative; min-width: max-content; }
+        .rail-row { display: flex; align-items: center; }
+        .rail-spacer { flex: 0 0 auto; }
+        .list-rail { display: flex; align-items: center; gap: 8px; }
+
+        .node-unit { display: flex; flex-direction: column; align-items: center; gap: 6px; position: relative; flex: 0 0 auto; will-change: transform; }
+        .node {
+            min-width: 56px; height: 56px; display: flex; align-items: center; justify-content: center;
+            border-radius: 14px; font-size: 20px; font-weight: 800; font-family: var(--mono);
+            transition: background 0.4s ease, border-color 0.4s ease, color 0.4s ease, box-shadow 0.4s ease, outline-color 0.3s ease;
+            border: 2px solid var(--border-main); background: rgba(255, 255, 255, 0.05); color: var(--text-main);
+            position: relative; outline: 2px solid transparent; outline-offset: 3px;
+        }
+        .node.settled { background: rgba(255,255,255,0.06); border-color: rgba(255,255,255,0.18); }
+        .node.flat { background: linear-gradient(180deg, #2fe08f, #21c275); border-color: #34d399; color: #06251a; box-shadow: 0 0 16px rgba(34,197,94,0.35); }
+        /* node currently being visited by the DFS */
+        .node.current { outline-color: var(--accent-orange); box-shadow: 0 0 18px rgba(245,165,36,0.45); }
+        /* the parent node whose child is being spliced */
+        .node.splice { outline-color: var(--accent-red); box-shadow: 0 0 18px rgba(244,63,94,0.5); }
+        /* head of the child sublist being flattened in */
+        .node.child-head { outline-color: var(--accent-teal); box-shadow: 0 0 18px rgba(45,212,191,0.5); }
+        .node-index { font-size: 11px; color: var(--text-dim); font-family: var(--mono); height: 14px; font-weight: 600; }
+        /* small downward chevron under a node that still owns a child pointer */
+        .child-tag { position: absolute; bottom: -15px; left: 50%; transform: translateX(-50%); font-family: var(--mono); font-size: 11px; font-weight: 800; color: var(--accent-teal); white-space: nowrap; opacity: 0.9; }
+
+        /* bidirectional DLL connector: top = next (blue, rightward), bottom = prev (purple, leftward) */
+        .arrow { flex: 0 0 auto; display: flex; align-items: center; height: 56px; }
+        .arrow svg { display: block; overflow: visible; }
+        .arrow .ln-next { stroke: var(--accent-blue); stroke-width: 2.4; stroke-linecap: round; }
+        .arrow .hd-next { fill: var(--accent-blue); }
+        .arrow .ln-prev { stroke: var(--accent-purple); stroke-width: 2.4; stroke-linecap: round; opacity: 0.55; }
+        .arrow .hd-prev { fill: var(--accent-purple); opacity: 0.55; }
+        .arrow.to-null .ln-next { stroke: var(--text-dim); }
+        .arrow.to-null .hd-next { fill: var(--text-dim); }
+        .arrow.to-null .ln-prev { stroke: var(--text-dim); opacity: 0.4; }
+        .arrow.to-null .hd-prev { fill: var(--text-dim); opacity: 0.4; }
+        .arrow.fresh .ln-next { stroke-dasharray: 36; stroke-dashoffset: 36; animation: drawLine 0.6s ease forwards; }
+        .arrow.fresh .hd-next { opacity: 0; animation: fadeHead 0.3s ease 0.45s forwards; }
+
+        .nullterm { flex: 0 0 auto; min-width: 50px; height: 56px; display: flex; align-items: center; justify-content: center; border-radius: 14px; border: 2px dashed var(--border-main); color: var(--text-dim); font-family: var(--mono); font-size: 13px; font-weight: 700; background: rgba(255,255,255,0.02); }
+
+        /* CHILD-POINTER arc overlay (one svg over the whole stage; cleared & rebuilt each render) */
+        .childoverlay { position: absolute; left: 0; top: 0; pointer-events: none; z-index: 3; overflow: visible; }
+        .childoverlay .ch-ln { fill: none; stroke: var(--accent-teal); stroke-width: 2.4; opacity: 0.9; stroke-dasharray: 6 5; }
+        .childoverlay .ch-ln.fade { opacity: 0.18; transition: opacity 0.4s ease; }
+        .childoverlay .ch-hd { fill: var(--accent-teal); opacity: 0.95; }
+        .childoverlay .ch-tag { font-family: var(--mono); font-size: 9px; font-weight: 800; fill: var(--accent-teal); opacity: 0.9; }
+
+        .controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: center; }
+        .controls .kbd-hint { font-size: 11px; color: var(--text-dim); font-family: var(--mono); margin-left: 4px; }
+        .kbd { background: rgba(255,255,255,0.07); border: 1px solid var(--border-main); border-radius: 5px; padding: 1px 6px; font-size: 10px; }
+        input[type="range"] { accent-color: var(--accent-teal); width: 110px; cursor: pointer; }
+
+        #confetti-host { position: relative; height: 0; }
+        #confetti { position: absolute; left: 0; right: 0; top: -40px; height: 120px; overflow: visible; pointer-events: none; }
+        .confetti-piece { position: absolute; top: 0; left: 50%; width: 8px; height: 13px; border-radius: 2px; opacity: 0; animation: confettiFall ease-out forwards; }
+
+        .details-toggle { align-self: center; height: 32px; padding: 0 16px; border-radius: 999px; cursor: pointer; background: rgba(255,255,255,0.04); border: 1px solid var(--border-main); color: var(--text-dim); font-family: var(--mono); font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; gap: 8px; transition: color 0.2s, border-color 0.2s, background 0.2s; }
+        .details-toggle:hover { color: var(--text-main); border-color: rgba(45,212,191,0.4); background: rgba(45,212,191,0.06); }
+        .details-toggle .chev { transition: transform 0.3s ease; }
+        .details-wrap.open .details-toggle .chev { transform: rotate(180deg); }
+        .details-body { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.4s ease; }
+        .details-wrap.open .details-body { grid-template-rows: 1fr; }
+        .details-inner { overflow: hidden; min-height: 0; }
+        .details-grid { display: flex; flex-direction: column; gap: 14px; padding-top: 14px; }
+
+        .panel-card { background: var(--bg-surface); border: 1px solid var(--border-main); border-radius: 16px; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); box-shadow: 0 8px 30px rgba(0,0,0,0.35); }
+        .panel-head { display: flex; align-items: center; gap: 8px; padding: 11px 16px; border-bottom: 1px solid var(--border-main); font-size: 11px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; color: var(--text-dim); }
+        .panel-head .pip { width: 7px; height: 7px; border-radius: 50%; background: var(--accent-teal); box-shadow: 0 0 8px var(--accent-teal); }
+
+        .code-body { padding: 12px 6px 14px; font-family: var(--mono); font-size: 12.5px; line-height: 1.7; }
+        .code-line { display: flex; gap: 12px; padding: 1px 16px; border-left: 2px solid transparent; transition: background 0.3s, border-color 0.3s; white-space: pre; }
+        .code-line .lno { color: #4b5772; width: 16px; text-align: right; user-select: none; }
+        .code-line .src { color: #c4cee0; }
+        .code-line .kw { color: #c792ea; }
+        .code-line .fn { color: #82aaff; }
+        .code-line.active { background: rgba(45,212,191,0.12); border-left-color: var(--accent-teal); }
+        .code-line.active .src, .code-line.active .lno { color: #e8eefb; }
+
+        .state-strip { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 4px 2px; }
+        .pill { display: inline-flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 12px; color: var(--text-dim); background: rgba(255,255,255,0.04); border: 1px solid var(--border-main); border-radius: 999px; padding: 4px 11px; }
+        .pill b { color: var(--text-main); font-weight: 800; }
+        .pill.c b { color: var(--accent-orange); }
+        .pill.ch b { color: var(--accent-teal); }
+        .pill.t b { color: var(--accent-green); }
+        .legend-inline { margin-left: auto; display: flex; gap: 14px; flex-wrap: wrap; }
+        .legend-item { display: flex; align-items: center; font-size: 11px; color: var(--text-dim); }
+        .dot { width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; display: inline-block; }
+        .swatch-arc { width: 18px; height: 0; border-top: 2.5px dashed var(--accent-teal); margin-right: 6px; display: inline-block; }
+
+        .log-panel { border-radius: 14px; padding: 12px 16px; height: 110px; overflow-y: auto; font-family: var(--mono); font-size: 12.5px; line-height: 1.5; background: var(--bg-surface); border: 1px solid var(--border-main); }
+        .log-panel::-webkit-scrollbar { width: 8px; }
+        .log-panel::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 8px; }
+
+        @keyframes drawLine { to { stroke-dashoffset: 0; } }
+        @keyframes fadeHead { to { opacity: 1; } }
+        @keyframes confettiFall { 0%{ opacity:1; transform: translate(-50%, 0) rotate(0deg); } 100%{ opacity:0; transform: translate(calc(-50% + var(--x)), 190px) rotate(var(--rot)); } }
+
+        @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; } }
+    </style>
+</head>
+<body>
+
+    <div class="input-bar">
+        <label class="ui-label">multilevel list =</label>
+        <input type="text" id="head-input" class="head-input" placeholder="1-2-3(7-8-9)-4-5-6">
+        <button onclick="loadCustom()">Load</button>
+        <button onclick="loadExample([1,2,3,4,5,6], [7,8,9,10,11,12])">Ex 1</button>
+        <button onclick="loadExample([1,2], [3,4])">Ex 2</button>
+    </div>
+
+    <div class="shell">
+        <div class="title-row">
+            <h1>Flatten Multilevel DLL <span class="sub">&middot; Depth-First Splice &middot; O(n)</span></h1>
+            <span class="step-badge" id="step-badge">Step 1 / 1</span>
+        </div>
+        <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+
+        <div class="narration" id="main-panel">&mdash;</div>
+
+        <div class="stage-card">
+            <div class="stage-screen">
+                <div class="list-wrapper" id="list-wrapper">
+                    <svg class="childoverlay" id="child-overlay" aria-hidden="true"></svg>
+                    <div class="levels" id="levels"></div>
+                </div>
+            </div>
+        </div>
+
+        <div id="confetti-host"><div id="confetti"></div></div>
+
+        <div class="controls">
+            <button onclick="reset()">&#8634; Reset</button>
+            <button onclick="back()">&#8592; Back</button>
+            <button onclick="togglePlay()" id="play-btn">Play</button>
+            <button onclick="next()">Next &#8594;</button>
+            <span class="ui-label" style="margin-left:6px; font-size:11px">Speed</span>
+            <input type="range" id="speed-slider" min="0" max="2" value="1">
+            <span class="kbd-hint"><span class="kbd">&#8592;</span> <span class="kbd">&#8594;</span> step &middot; <span class="kbd">space</span> play</span>
+        </div>
+
+        <div class="details-wrap" id="details-wrap">
+            <button class="details-toggle" onclick="toggleDetails()" aria-expanded="false">
+                <span id="details-label">Show code, state &amp; log</span> <span class="chev">&#9662;</span>
+            </button>
+            <div class="details-body">
+                <div class="details-inner">
+                    <div class="details-grid">
+                        <div class="panel-card">
+                            <div class="panel-head"><span class="pip"></span> Algorithm</div>
+                            <div class="code-body" id="code-panel"></div>
+                        </div>
+
+                        <div class="state-strip">
+                            <span class="pill c">current <b id="val-current">&mdash;</b></span>
+                            <span class="pill ch">child head <b id="val-child">&mdash;</b></span>
+                            <span class="pill t">flattened len <b id="val-tail">&mdash;</b></span>
+                            <span class="legend-inline">
+                                <span class="legend-item"><span class="dot" style="background:rgba(245,165,36,0.15); border:2px solid var(--accent-orange)"></span>current</span>
+                                <span class="legend-item"><span class="dot" style="background:rgba(45,212,191,0.15); border:2px solid var(--accent-teal)"></span>child head</span>
+                                <span class="legend-item"><span class="dot" style="background:rgba(244,63,94,0.15); border:2px solid var(--accent-red)"></span>splice point</span>
+                                <span class="legend-item"><span class="swatch-arc"></span>child pointer</span>
+                                <span class="legend-item"><span class="dot" style="background:linear-gradient(180deg,#2fe08f,#21c275); border:2px solid #34d399"></span>flattened</span>
+                            </span>
+                        </div>
+
+                        <div class="log-panel" id="log"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        'use strict';
+
+        // --------- Motion engine (spring + FLIP, zero deps -- see VISUALIZATION_STYLE_GUIDE sec 4c) ---------
+        const REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        const FRAME = 1000 / 60;
+        function sampleSpring(stiffness, damping, mass) {
+            const dt = 1 / 60; let x = 1, v = 0; const out = [];
+            for (let i = 0; i < 240; i++) {
+                const a = (-stiffness * x - damping * v) / mass;
+                v += a * dt; x += v * dt; out.push(1 - x);
+                if (Math.abs(x) < 0.0015 && Math.abs(v) < 0.0015) break;
+            }
+            out.push(1); return out;
+        }
+        const SPRING_POS = sampleSpring(340, 30, 1);
+        const SPRING_POP = sampleSpring(540, 17, 1);
+        const durOf = (a) => a.length * FRAME;
+        const Motion = {
+            flip(el, dx, dy) {
+                if (REDUCED || (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5)) return;
+                const kf = SPRING_POS.map(p => ({ transform: `translate(${(dx*(1-p)).toFixed(2)}px, ${(dy*(1-p)).toFixed(2)}px)` }));
+                el.animate(kf, { duration: durOf(SPRING_POS), easing: 'linear' });
+            },
+            enter(el, delay = 0) {
+                if (REDUCED) return;
+                const kf = SPRING_POP.map(p => ({ opacity: Math.min(1, p*1.6).toFixed(3),
+                    transform: `translateY(${(-18*(1-p)).toFixed(2)}px) scale(${(0.45+0.55*p).toFixed(3)})` }));
+                el.animate(kf, { duration: durOf(SPRING_POP), easing: 'linear', delay, fill: 'backwards' });
+            },
+            pop(el) {
+                el.getAnimations().forEach(a => a.cancel());
+                if (REDUCED) { el.style.opacity = '1'; el.style.transform = 'scale(1)'; return; }
+                const kf = SPRING_POP.map(p => ({ opacity: Math.min(1, p*2).toFixed(3),
+                    transform: `scale(${(0.5+0.5*p).toFixed(3)}) translateY(${(10*(1-p)).toFixed(2)}px)` }));
+                el.animate(kf, { duration: durOf(SPRING_POP), easing: 'linear', fill: 'forwards' });
+            },
+            glide(el, x) {
+                const prev = el._x; el.style.opacity = '1';
+                const commit = `translateX(${x}px) translateX(-50%)`;
+                if (REDUCED || prev == null || Math.abs(x - prev) < 0.5) { el._x = x; el.style.transform = commit; return; }
+                const dx = x - prev;
+                const kf = SPRING_POS.map(p => ({ transform: `translateX(${(prev+dx*p).toFixed(2)}px) translateX(-50%)` }));
+                el.animate(kf, { duration: durOf(SPRING_POS), easing: 'linear' });
+                el._x = x; el.style.transform = commit;
+            },
+        };
+
+        // --------- State ---------
+        // multilevel model: nodeDefs is an array of node descriptors keyed by stable id.
+        //   { key, val, level, childKey | null }
+        // The main list order + child links are derived from the loaded example.
+        let nodeDefs = [];      // ordered list of node descriptors (initial multilevel layout)
+        let mainOrder = [];     // keys in main-level order
+        let childOf = {};       // parentKey -> childHeadKey
+        let levelOrder = {};    // levelIndex -> array of keys laid out left-to-right on that sub-rail
+        let levelIndent = {};   // levelIndex -> indent (in node-columns) for that sub-rail
+        let steps = [];
+        let stepIndex = 0;
+        let timer = null;
+        let confettiArmed = true;
+        const delays = [1800, 900, 450];
+        let els = {};           // key 'k:'+nodeKey -> node-unit; 'r:'+nodeKey -> arrow
+
+        const CODE = [
+            [['kw','def '],['fn','flatten'],['src','(head):']],
+            [['src','    cur = head']],
+            [['kw','    while '],['src','cur '],['kw','is not None'],['src',':']],
+            [['kw','        if '],['src','cur.child:']],
+            [['src','            nxt   = cur.next']],
+            [['src','            child = cur.child']],
+            [['src','            cur.next  = child']],
+            [['src','            child.prev = cur; cur.child = None']],
+            [['src','            tail = child; '],['kw','while '],['src','tail.next: tail = tail.next']],
+            [['src','            tail.next = nxt']],
+            [['kw','            if '],['src','nxt: nxt.prev = tail']],
+            [['src','        cur = cur.next']],
+            [['kw','    return '],['src','head']],
+        ];
+        const ARR = String.fromCharCode(8594);    // ->
+        const CHK = String.fromCharCode(10003);   // check mark
+        const DASH = String.fromCharCode(8212);   // em dash
+
+        function buildCodePanel() {
+            const panel = document.getElementById('code-panel');
+            panel.innerHTML = '';
+            CODE.forEach((tokens, i) => {
+                const line = document.createElement('div');
+                line.className = 'code-line'; line.dataset.line = i;
+                const lno = document.createElement('span'); lno.className = 'lno'; lno.textContent = i + 1; line.appendChild(lno);
+                const src = document.createElement('span');
+                tokens.forEach(([cls, txt]) => { const s = document.createElement('span'); s.className = cls; s.textContent = txt; src.appendChild(s); });
+                line.appendChild(src); panel.appendChild(line);
+            });
+        }
+        function highlightCode(lineArr) {
+            document.querySelectorAll('.code-line').forEach(el => el.classList.toggle('active', lineArr && lineArr.includes(+el.dataset.line)));
+        }
+        function toggleDetails() {
+            const wrap = document.getElementById('details-wrap');
+            const open = wrap.classList.toggle('open');
+            wrap.querySelector('.details-toggle').setAttribute('aria-expanded', open ? 'true' : 'false');
+            document.getElementById('details-label').textContent = open ? 'Hide code, state & log' : 'Show code, state & log';
+        }
+
+        function init() { buildCodePanel(); loadExample([1,2,3,4,5,6], [7,8,9,10,11,12]); }
+
+        // ----- build a multilevel structure -----
+        // For the two preset examples we build the classic LeetCode 430 nesting.
+        //   Ex 1: 1 2 3 4 5 6  with 3.child = [7 8 9 10 11 12] and 8.child = [a sub-sub-list]
+        //   Ex 2: 1 2          with 1.child = [3 4]
+        // valSeq descriptors let us attach grandchildren cleanly.
+        // Each descriptor: { val, level, childTo: indexIntoThisArray | null }
+        let _keyCounter = 0;
+        function freshKey() { return 'n' + (_keyCounter++); }
+
+        // Build internal model from an explicit descriptor spec.
+        // spec: array of { val, level, child:boolean }  -- "child:true" means THIS node owns the
+        // child pointer to the next node at level+1. Sublists are contiguous runs at a given level.
+        function buildModel(spec) {
+            _keyCounter = 0;
+            nodeDefs = spec.map(s => ({ key: freshKey(), val: s.val, level: s.level, childKey: null }));
+            childOf = {};
+            // a node with child:true points to the first following node whose level === this.level + 1
+            for (let i = 0; i < spec.length; i++) {
+                if (!spec[i].child) continue;
+                const wantLevel = nodeDefs[i].level + 1;
+                for (let j = i + 1; j < nodeDefs.length; j++) {
+                    if (nodeDefs[j].level === wantLevel) { nodeDefs[i].childKey = nodeDefs[j].key; childOf[nodeDefs[i].key] = nodeDefs[j].key; break; }
+                    if (nodeDefs[j].level <= nodeDefs[i].level) break;
+                }
+            }
+            computeLayout();
+        }
+
+        // Compute, per level, the left-to-right key order and the indent (in columns) so that a
+        // child sublist sits visually under its parent node.
+        function computeLayout() {
+            mainOrder = nodeDefs.filter(n => n.level === 0).map(n => n.key);
+            levelOrder = {}; levelIndent = {};
+            nodeDefs.forEach(n => { (levelOrder[n.level] = levelOrder[n.level] || []).push(n.key); });
+            // indent each non-zero level under the parent that owns its head
+            const colOf = {};
+            // level 0 columns are 0..k
+            levelOrder[0] && levelOrder[0].forEach((k, idx) => { colOf[k] = idx; });
+            const maxLevel = Math.max(0, ...nodeDefs.map(n => n.level));
+            for (let lv = 1; lv <= maxLevel; lv++) {
+                const keys = levelOrder[lv] || [];
+                if (!keys.length) continue;
+                // find the parent owning this sublist head
+                const headKey = keys[0];
+                let parentKey = null;
+                Object.keys(childOf).forEach(p => { if (childOf[p] === headKey) parentKey = p; });
+                const indent = (parentKey != null && colOf[parentKey] != null) ? colOf[parentKey] + 1 : 1;
+                levelIndent[lv] = indent;
+                keys.forEach((k, idx) => { colOf[k] = indent + idx; });
+            }
+        }
+
+        // ----- preset examples (preserve original loadExample signature) -----
+        function loadExample(mainArr, childArr) {
+            // Recreate the original presets' intent, enriched into a true multilevel DLL.
+            let spec;
+            if (mainArr.length === 6) {
+                // classic LeetCode 430:
+                //  1 - 2 - 3 - 4 - 5 - 6
+                //          |
+                //          7 - 8 - 9 - 10
+                //              |
+                //              11 - 12
+                // spec is written in DFS-contiguous order: each child run immediately follows its parent
+                spec = [
+                    { val: 1, level: 0, child: false },
+                    { val: 2, level: 0, child: false },
+                    { val: 3, level: 0, child: true  },
+                    { val: 7,  level: 1, child: false },
+                    { val: 8,  level: 1, child: true  },
+                    { val: 11, level: 2, child: false },
+                    { val: 12, level: 2, child: false },
+                    { val: 9,  level: 1, child: false },
+                    { val: 10, level: 1, child: false },
+                    { val: 4, level: 0, child: false },
+                    { val: 5, level: 0, child: false },
+                    { val: 6, level: 0, child: false },
+                ];
+            } else {
+                //  1 - 2
+                //  |
+                //  3 - 4
+                // DFS-contiguous order: 1's child run (3,4) immediately follows 1
+                spec = [
+                    { val: 1, level: 0, child: true  },
+                    { val: 3, level: 1, child: false },
+                    { val: 4, level: 1, child: false },
+                    { val: 2, level: 0, child: false },
+                ];
+            }
+            buildModel(spec);
+            document.getElementById('head-input').value = describeInput();
+            resetDom();
+            generateSteps();
+            reset();
+        }
+
+        // a compact human-readable description of the loaded multilevel list
+        function describeInput() {
+            const valOf = (k) => nodeDefs.find(n => n.key === k).val;
+            const parts = [];
+            mainOrder.forEach(k => {
+                let s = '' + valOf(k);
+                if (childOf[k]) s += '(child ' + valOf(childOf[k]) + '...)';
+                parts.push(s);
+            });
+            return parts.join('-');
+        }
+
+        // ----- custom parser: "1-2-3(7-8-9)-4-5-6" : parentheses attach a child sublist to the
+        // node immediately before them. Nesting is supported recursively. -----
+        function loadCustom() {
+            const str = document.getElementById('head-input').value.trim();
+            const spec = [];
+            try {
+                parseInto(str, 0, spec);
+            } catch (e) { spec.length = 0; }
+            if (!spec.length) {
+                // empty list
+                buildModel([]);
+            } else {
+                buildModel(spec);
+            }
+            document.getElementById('head-input').value = describeInput();
+            resetDom();
+            generateSteps();
+            reset();
+        }
+
+        // recursive-descent parse of "v-v-v(sub)-v" into a flat level-tagged spec.
+        // We push each node, and when we hit '(' we recurse at level+1, marking the previous node child:true.
+        function parseInto(str, level, spec) {
+            let i = 0; let num = '';
+            const flush = () => {
+                if (num.trim() !== '') {
+                    const v = parseInt(num.trim());
+                    if (!isNaN(v)) spec.push({ val: v, level, child: false });
+                }
+                num = '';
+            };
+            while (i < str.length) {
+                const c = str[i];
+                if (c === '(') {
+                    flush();
+                    // find matching ')'
+                    let depth = 1, j = i + 1;
+                    while (j < str.length && depth > 0) { if (str[j] === '(') depth++; else if (str[j] === ')') depth--; if (depth === 0) break; j++; }
+                    const inner = str.slice(i + 1, j);
+                    if (spec.length) spec[spec.length - 1].child = true;
+                    parseInto(inner, level + 1, spec);
+                    i = j + 1;
+                    // skip a trailing separator after ')'
+                    while (i < str.length && (str[i] === '-' || str[i] === ' ' || str[i] === '>')) i++;
+                    continue;
+                }
+                if (c === '-' || c === '>' || c === ' ' || c === ',') { flush(); i++; continue; }
+                num += c; i++;
+            }
+            flush();
+        }
+
+        // ===== STEP GENERATION =====
+        // We DFS-flatten the multilevel DLL. The visual "current order" is computed per step as the
+        // concatenation of the still-pending main rail plus already-flattened prefix. To keep it simple
+        // and faithful, we model the flatten as an evolving FLAT array of keys (the result so far + the
+        // remaining structure expressed as nested runs). The cleanest faithful model: maintain a single
+        // doubly linked structure as arrays nextK/prevK/childK keyed by node, splice in place, and snapshot
+        // the main-rail order (following next from head) at every step. Sub-rails are derived from any
+        // node still reachable only via a child pointer (not yet spliced).
+        function generateSteps() {
+            steps = [];
+
+            // working DLL maps
+            const nextK = {}, prevK = {}, childK = {};
+            nodeDefs.forEach(n => { nextK[n.key] = null; prevK[n.key] = null; childK[n.key] = n.childKey || null; });
+
+            // Reconstruct each sublist's next/prev from the DFS-contiguous nodeDefs order.
+            // A sublist lives at a fixed level; its members are the nodes at that level that are NOT
+            // separated by a shallower-level node. We track the last-seen open node per level; whenever
+            // we descend to a deeper level we keep the shallow node "open", and whenever we surface back
+            // to a shallower level we close (forget) all deeper open nodes so a new deeper sublist starts.
+            const lastAtLevel = {};   // level -> last node key still open at that level
+            nodeDefs.forEach(n => {
+                const lv = n.level;
+                if (lastAtLevel[lv] != null) {
+                    // continue the sublist at this level
+                    nextK[lastAtLevel[lv]] = n.key;
+                    prevK[n.key] = lastAtLevel[lv];
+                }
+                lastAtLevel[lv] = n.key;
+                // surfacing: any open node strictly deeper than lv belongs to a finished sublist
+                Object.keys(lastAtLevel).forEach(L => { if (+L > lv) delete lastAtLevel[L]; });
+            });
+
+            const headKey = mainOrder.length ? mainOrder[0] : null;
+            const valOf = (k) => k == null ? 'null' : nodeDefs.find(n => n.key === k).val;
+
+            // snapshot helper: walk next from head -> main rail order; collect remaining child sublists
+            // that are not yet spliced (still pointed to by a child link), recursively, onto sub-rails.
+            function snapshot() {
+                const mainKeys = [];
+                let c = headKey;
+                const guard = new Set();
+                while (c != null && !guard.has(c)) { guard.add(c); mainKeys.push(c); c = nextK[c]; }
+                // collect sub-rails: any node still referenced by a live child pointer heads a sub-rail
+                const subRails = []; // { level, indent, keys: [...] }
+                function collectChildren(keys, level, baseIndent) {
+                    keys.forEach((k, idx) => {
+                        if (childK[k]) {
+                            // gather the child run by following next from childK[k]
+                            const head = childK[k];
+                            const run = []; let cc = head; const g2 = new Set();
+                            while (cc != null && !g2.has(cc)) { g2.add(cc); run.push(cc); cc = nextK[cc]; }
+                            const indent = baseIndent + idx + 1;
+                            subRails.push({ level, indent, parentKey: k, keys: run.slice() });
+                            collectChildren(run, level + 1, indent);
+                        }
+                    });
+                }
+                collectChildren(mainKeys, 1, 0);
+                return { mainKeys, subRails };
+            }
+
+            function pack(extra) {
+                const snap = snapshot();
+                const childArcs = [];
+                Object.keys(childK).forEach(p => { if (childK[p]) childArcs.push({ from: p, to: childK[p] }); });
+                return Object.assign({
+                    mainKeys: snap.mainKeys, subRails: snap.subRails, childArcs,
+                    current: null, splice: null, childHead: null, fadeArcFrom: null,
+                    freshNextKey: null, flatDone: false,
+                }, extra);
+            }
+
+            const mainStr = mainOrder.map(valOf).join(' ' + ARR + ' ') || 'null';
+
+            // STEP 0 -- init
+            steps.push(pack({
+                type: 'init', codeLine: [0, 1],
+                panel: `Flatten the multilevel DLL <code>${mainStr}</code>. Walk with <code>cur</code>; whenever a node has a <b>child</b>, splice the whole child list between <code>cur</code> and <code>cur.next</code>, then null the child.`,
+                log: `head = ${mainOrder.map(valOf).join(' -> ') || 'null'}\nbegin depth-first flatten`, logColor: 'var(--text-dim)',
+            }));
+
+            if (headKey == null) {
+                steps.push(pack({
+                    type: 'final', complete: true, bold: true, confetti: false, flatDone: true, codeLine: [12],
+                    panel: `<code>head is null</code> ${ARR} the flattened list is also <b>null</b>.`,
+                    log: 'empty list -> return null', logColor: 'var(--text-dim)',
+                }));
+                steps._finalOrder = [];
+                steps._nextK = nextK; steps._prevK = prevK; steps._childK = childK; steps._headKey = headKey;
+                return;
+            }
+
+            // DFS flatten with explicit cursor; cur walks the (growing) main rail.
+            let cur = headKey;
+            const guardOuter = new Set();
+            while (cur != null && !guardOuter.has(cur)) {
+                guardOuter.add(cur);
+
+                // visit cur
+                steps.push(pack({
+                    type: 'visit', codeLine: [2, 3], current: cur,
+                    panel: `Visit <code>cur = ${valOf(cur)}</code>. ${childK[cur] ? `It has a <b>child</b> ${ARR} ${valOf(childK[cur])}.` : 'No child here.'}`,
+                    log: `cur = ${valOf(cur)}${childK[cur] ? '  (has child ' + valOf(childK[cur]) + ')' : ''}`,
+                    logColor: 'var(--accent-orange)',
+                }));
+
+                if (childK[cur]) {
+                    const child = childK[cur];
+                    const nxt = nextK[cur];
+
+                    // highlight the splice intent + child head, fade the child arc
+                    steps.push(pack({
+                        type: 'child-found', codeLine: [4, 5], current: cur, splice: cur, childHead: child, fadeArcFrom: cur,
+                        panel: `<span style="color:var(--accent-red)">${valOf(cur)} has a child.</span> Save <code>nxt = ${valOf(nxt)}</code>, take <code>child = ${valOf(child)}</code>, and splice the child list in.`,
+                        log: `splice at ${valOf(cur)}: nxt=${valOf(nxt)}, child=${valOf(child)}`, logColor: 'var(--accent-red)',
+                    }));
+
+                    // find the tail of the child run
+                    let tail = child; const gt = new Set();
+                    while (nextK[tail] != null && !gt.has(tail)) { gt.add(tail); tail = nextK[tail]; }
+
+                    // rewire: cur.next = child ; child.prev = cur ; cur.child = null
+                    nextK[cur] = child; prevK[child] = cur; childK[cur] = null;
+                    // tail.next = nxt ; nxt.prev = tail
+                    nextK[tail] = nxt; if (nxt != null) prevK[nxt] = tail;
+
+                    // splice animation step: child nodes GLIDE UP into the main rail; arc removed
+                    steps.push(pack({
+                        type: 'splice', codeLine: [6, 7, 8, 9, 10], current: cur, splice: cur, childHead: child, freshNextKey: cur,
+                        panel: `Rewire <code>${valOf(cur)}.next = ${valOf(child)}</code>, walk to the child tail <code>${valOf(tail)}</code>, then <code>${valOf(tail)}.next = ${valOf(nxt)}</code>. Fix <code>prev</code> pointers; set <code>${valOf(cur)}.child = null</code>.`,
+                        log: `${valOf(cur)}.next=${valOf(child)}; ${valOf(tail)}.next=${valOf(nxt)}; child=null`, logColor: 'var(--accent-teal)',
+                    }));
+                }
+
+                cur = nextK[cur];
+            }
+
+            // compute final order by walking next from head
+            const finalOrder = [];
+            let fc = headKey; const gf = new Set();
+            while (fc != null && !gf.has(fc)) { gf.add(fc); finalOrder.push(fc); fc = nextK[fc]; }
+            const finalStr = finalOrder.map(valOf).join(' ' + ARR + ' ');
+
+            // FINAL
+            steps.push(pack({
+                type: 'final', complete: true, bold: true, confetti: true, flatDone: true, codeLine: [12],
+                panel: `Flattened in <b>O(n)</b>. Single level, every <code>child = null</code>: <code>${finalStr}</code>`,
+                log: `flattened: ${finalOrder.map(valOf).join(' -> ')}\nall child pointers nulled`, logColor: 'var(--accent-green)',
+            }));
+
+            steps._finalOrder = finalOrder.map(valOf);
+            steps._nextK = nextK; steps._prevK = prevK; steps._childK = childK; steps._headKey = headKey;
+        }
+
+        function resetDom() {
+            document.getElementById('levels').innerHTML = '';
+            const ov = document.getElementById('child-overlay');
+            while (ov.firstChild) ov.removeChild(ov.firstChild);
+            els = {};
+            confettiArmed = true;
+        }
+
+        // bidirectional DLL connector: top = next (blue, rightward), bottom = prev (purple, leftward)
+        function arrowSVG() {
+            return `<svg viewBox="0 0 44 30" width="44" height="30">
+                <line class="ln-next" x1="4" y1="9" x2="34" y2="9"/><polygon class="hd-next" points="33,4 43,9 33,14"/>
+                <line class="ln-prev" x1="10" y1="21" x2="40" y2="21"/><polygon class="hd-prev" points="11,16 1,21 11,26"/></svg>`;
+        }
+
+        function fireConfetti() {
+            const host = document.getElementById('confetti');
+            if (!host || REDUCED) return;
+            const colors = ['#22c55e', '#06b6d4', '#a855f7', '#2dd4bf', '#f5a524'];
+            for (let i = 0; i < 42; i++) {
+                const p = document.createElement('div'); p.className = 'confetti-piece';
+                p.style.setProperty('--x', ((Math.random() * 2 - 1) * 230) + 'px');
+                p.style.setProperty('--rot', ((Math.random() * 720 - 360)) + 'deg');
+                p.style.background = colors[i % colors.length];
+                p.style.animationDuration = (0.9 + Math.random() * 0.8) + 's';
+                p.style.animationDelay = (Math.random() * 0.15) + 's';
+                host.appendChild(p);
+                setTimeout(() => p.remove(), 1900);
+            }
+        }
+
+        // column width (node min-width + gap) used to indent sub-rails
+        const COL_W = 56 + 8;
+
+        function valOfKey(k) { const n = nodeDefs.find(x => x.key === k); return n ? n.val : ''; }
+
+        // build a single rail row (a list of keys) into the levels container, with reconciler + FLIP.
+        // railId distinguishes rails; indent is in columns.
+        function renderRail(railRow, keys, indent, step, isMain) {
+            // spacer for indent
+            let spacer = railRow.querySelector('.rail-spacer');
+            if (!spacer) { spacer = document.createElement('div'); spacer.className = 'rail-spacer'; railRow.appendChild(spacer); }
+            spacer.style.width = (indent * COL_W) + 'px';
+            let rail = railRow.querySelector('.list-rail');
+            if (!rail) { rail = document.createElement('div'); rail.className = 'list-rail'; railRow.appendChild(rail); }
+
+            const ordered = [];
+            const fresh = [];
+
+            // left null terminator only for the MAIN rail (DLL head.prev = null)
+            if (isMain) {
+                let lnul = els['leftnull'];
+                if (!lnul) { lnul = document.createElement('div'); lnul.className = 'nullterm'; lnul.textContent = 'null'; els['leftnull'] = lnul; }
+                ordered.push(lnul);
+            }
+
+            for (let i = 0; i < keys.length; i++) {
+                const k = keys[i];
+                const nkey = 'k:' + k;
+                let unit = els[nkey], isFresh = false;
+                if (!unit) {
+                    isFresh = true;
+                    unit = document.createElement('div');
+                    unit.className = 'node-unit';
+                    unit.innerHTML = `<div class="node"></div><div class="node-index"></div>`;
+                    els[nkey] = unit;
+                }
+                const nodeEl = unit.firstChild;
+                nodeEl.textContent = valOfKey(k);
+                unit.lastChild.textContent = isMain ? (i === 0 ? 'head' : i) : '';
+
+                nodeEl.className = 'node settled';
+                if (step.flatDone) nodeEl.classList.add('flat');
+                if (step.current === k) nodeEl.classList.add('current');
+                if (step.splice === k) nodeEl.classList.add('splice');
+                if (step.childHead === k) nodeEl.classList.add('child-head');
+
+                // downward chevron tag if this node still owns a child pointer
+                let tag = unit.querySelector('.child-tag');
+                const hasChild = step.childArcs.some(a => a.from === k);
+                if (hasChild) {
+                    if (!tag) { tag = document.createElement('div'); tag.className = 'child-tag'; unit.appendChild(tag); }
+                    tag.textContent = 'child ' + String.fromCharCode(8595);
+                } else if (tag) { tag.remove(); }
+
+                if (isFresh) fresh.push({ nodeEl, idx: i });
+                ordered.push(unit);
+
+                if (i < keys.length - 1) {
+                    const akey = 'r:' + k;
+                    let arr = els[akey];
+                    if (!arr) { arr = document.createElement('div'); arr.className = 'arrow'; arr.innerHTML = arrowSVG(); els[akey] = arr; }
+                    arr.classList.remove('to-null');
+                    arr.classList.toggle('fresh', step.freshNextKey === k);
+                    ordered.push(arr);
+                }
+            }
+            // tail -> null (only main rail draws the explicit terminator)
+            if (isMain && keys.length > 0) {
+                const lastKey = keys[keys.length - 1];
+                const tkey = 'r:' + lastKey;
+                let tarr = els[tkey];
+                if (!tarr) { tarr = document.createElement('div'); tarr.className = 'arrow'; tarr.innerHTML = arrowSVG(); els[tkey] = tarr; }
+                tarr.classList.add('to-null');
+                tarr.classList.toggle('fresh', step.freshNextKey === lastKey);
+                ordered.push(tarr);
+                let nul = els['nullterm'];
+                if (!nul) { nul = document.createElement('div'); nul.className = 'nullterm'; nul.textContent = 'null'; els['nullterm'] = nul; }
+                ordered.push(nul);
+            }
+
+            // reconcile this rail
+            const present = new Set(ordered);
+            Array.from(rail.children).forEach(ch => { if (!present.has(ch)) rail.removeChild(ch); });
+            ordered.forEach(el => rail.appendChild(el));
+            return fresh;
+        }
+
+        function renderStep(idx) {
+            const step = steps[idx];
+            if (!step) return;
+            const levelsEl = document.getElementById('levels');
+
+            // FLIP -- record FIRST rects of all live node-units (before DOM mutation)
+            const firstRects = {};
+            Object.keys(els).forEach(k => { if (k.startsWith('k:') && els[k].isConnected) firstRects[k] = els[k].getBoundingClientRect(); });
+
+            // assemble the set of rails to draw: main rail first, then sub-rails (ordered by level then indent)
+            const rails = [{ keys: step.mainKeys, indent: 0, isMain: true }];
+            (step.subRails || []).slice()
+                .sort((a, b) => (a.level - b.level) || (a.indent - b.indent))
+                .forEach(r => rails.push({ keys: r.keys, indent: r.indent, isMain: false }));
+
+            // ensure exactly one rail-row per rail (reuse existing rows)
+            while (levelsEl.children.length < rails.length) {
+                const row = document.createElement('div'); row.className = 'rail-row'; levelsEl.appendChild(row);
+            }
+            while (levelsEl.children.length > rails.length) {
+                levelsEl.removeChild(levelsEl.lastChild);
+            }
+
+            const allFresh = [];
+            rails.forEach((r, ri) => {
+                const row = levelsEl.children[ri];
+                const fresh = renderRail(row, r.keys, r.indent, step, r.isMain);
+                allFresh.push(...fresh);
+            });
+
+            // forget any els no longer present anywhere
+            const liveKeys = new Set();
+            rails.forEach(r => r.keys.forEach(k => { liveKeys.add('k:' + k); liveKeys.add('r:' + k); }));
+            liveKeys.add('leftnull'); liveKeys.add('nullterm');
+            Object.keys(els).forEach(k => {
+                if (!liveKeys.has(k)) {
+                    if (els[k].parentNode) els[k].parentNode.removeChild(els[k]);
+                    delete els[k];
+                }
+            });
+
+            // FLIP play -- survivors spring to new positions (incl. child nodes rising into the main rail)
+            Object.keys(firstRects).forEach(k => {
+                const el = els[k]; if (!el || !el.isConnected) return;
+                const last = el.getBoundingClientRect();
+                Motion.flip(el, firstRects[k].left - last.left, firstRects[k].top - last.top);
+            });
+            const stagger = allFresh.length > 1;
+            allFresh.forEach(({ nodeEl, idx: i }) => Motion.enter(nodeEl, stagger ? i * 55 : 0));
+
+            // child-pointer arcs (drawn after layout settles)
+            drawChildArcs(step);
+
+            // narration
+            const mainPanel = document.getElementById('main-panel');
+            mainPanel.innerHTML = step.panel || '&mdash;';
+            mainPanel.classList.toggle('done', !!step.complete);
+
+            // confetti once at completion
+            if (step.complete && step.confetti) { if (confettiArmed) { fireConfetti(); confettiArmed = false; } }
+            else if (!step.complete) { confettiArmed = true; }
+
+            // state pills
+            document.getElementById('val-current').textContent = step.current != null ? valOfKey(step.current) : DASH;
+            document.getElementById('val-child').textContent = step.childHead != null ? valOfKey(step.childHead) : DASH;
+            document.getElementById('val-tail').textContent = step.mainKeys ? step.mainKeys.length : DASH;
+            highlightCode(step.codeLine);
+
+            document.getElementById('step-badge').textContent = `Step ${idx + 1} / ${steps.length}`;
+            document.getElementById('progress-fill').style.width = `${(idx / Math.max(1, steps.length - 1)) * 100}%`;
+
+            // cumulative log
+            const logPanel = document.getElementById('log');
+            logPanel.innerHTML = '';
+            for (let k = 0; k <= idx; k++) {
+                if (steps[k].log) {
+                    const line = document.createElement('div');
+                    line.style.marginBottom = '3px'; line.style.whiteSpace = 'pre-wrap';
+                    if (steps[k].logColor) line.style.color = steps[k].logColor;
+                    if (steps[k].bold) line.style.fontWeight = 'bold';
+                    line.textContent = steps[k].log;
+                    logPanel.appendChild(line);
+                }
+            }
+            logPanel.scrollTop = logPanel.scrollHeight;
+        }
+
+        // ----- CHILD-POINTER arc overlay -----
+        // adapts the curved-arc-over-rail primitive: an elbow/curved dashed teal arc from the parent
+        // node DOWN to its child sublist head (which sits on a lower sub-rail).
+        function drawChildArcs(step) {
+            const svg = document.getElementById('child-overlay');
+            const wrap = document.getElementById('list-wrapper');
+            while (svg.firstChild) svg.removeChild(svg.firstChild);
+            const arcs = step.childArcs || [];
+            if (!arcs.length) { svg.style.display = 'none'; return; }
+
+            const wr = wrap.getBoundingClientRect();
+            const SVGNS = 'http://www.w3.org/2000/svg';
+            let drew = false;
+
+            arcs.forEach(({ from, to }) => {
+                const src = els['k:' + from], dst = els['k:' + to];
+                if (!src || !dst || !src.isConnected || !dst.isConnected) return;
+                const sr = src.getBoundingClientRect(), dr = dst.getBoundingClientRect();
+                const sx = (sr.left + sr.right) / 2 - wr.left + wrap.scrollLeft;
+                const sy = sr.bottom - wr.top;                 // leave from the bottom of the parent
+                const ex = (dr.left + dr.right) / 2 - wr.left + wrap.scrollLeft;
+                const ey = dr.top - wr.top;                    // arrive at the top of the child head
+                drew = true;
+
+                // elbow-ish cubic: drop down, then curve across to the child head
+                const midY = sy + Math.max(18, (ey - sy) * 0.5);
+                const d = `M ${sx} ${sy} C ${sx} ${midY}, ${ex} ${midY}, ${ex} ${ey - 2}`;
+                const path = document.createElementNS(SVGNS, 'path');
+                path.setAttribute('class', 'ch-ln' + (step.fadeArcFrom === from ? ' fade' : ''));
+                path.setAttribute('d', d);
+                svg.appendChild(path);
+
+                // arrowhead pointing DOWN into the child head's top edge
+                const hw = 5;
+                const tipY = ey - 1, baseY = ey - 11;
+                const hd = document.createElementNS(SVGNS, 'polygon');
+                hd.setAttribute('class', 'ch-hd');
+                hd.setAttribute('points', `${ex - hw},${baseY} ${ex + hw},${baseY} ${ex},${tipY}`);
+                svg.appendChild(hd);
+
+                const t = document.createElementNS(SVGNS, 'text');
+                t.setAttribute('class', 'ch-tag'); t.setAttribute('x', (sx + ex) / 2); t.setAttribute('y', midY - 4);
+                t.setAttribute('text-anchor', 'middle'); t.textContent = 'child';
+                svg.appendChild(t);
+            });
+
+            svg.setAttribute('width', Math.max(wrap.clientWidth, wrap.scrollWidth));
+            svg.setAttribute('height', Math.max(wrap.clientHeight, wrap.scrollHeight));
+            svg.style.display = drew ? 'block' : 'none';
+        }
+
+        function next() { if (stepIndex < steps.length - 1) { stepIndex++; renderStep(stepIndex); } else pause(); }
+        function back() { if (stepIndex > 0) { stepIndex--; renderStep(stepIndex); } }
+        function reset() { pause(); stepIndex = 0; renderStep(0); }
+        function togglePlay() {
+            const btn = document.getElementById('play-btn');
+            if (timer) pause();
+            else {
+                btn.textContent = 'Pause';
+                if (stepIndex >= steps.length - 1) { stepIndex = 0; renderStep(0); }
+                timer = setInterval(next, delays[document.getElementById('speed-slider').value]);
+            }
+        }
+        function pause() { clearInterval(timer); timer = null; document.getElementById('play-btn').textContent = 'Play'; }
+
+        document.addEventListener('keydown', (e) => {
+            const tag = (e.target.tagName || '').toLowerCase();
+            if (tag === 'input' || tag === 'textarea') return;
+            if (e.key === 'ArrowRight') { e.preventDefault(); pause(); next(); }
+            else if (e.key === 'ArrowLeft') { e.preventDefault(); pause(); back(); }
+            else if (e.key === ' ') { e.preventDefault(); togglePlay(); }
+        });
+
+        let rT;
+        window.addEventListener('resize', () => { clearTimeout(rT); rT = setTimeout(() => { renderStep(stepIndex); }, 120); });
+        window.onload = init;
+    </script>
+</body>
+</html>

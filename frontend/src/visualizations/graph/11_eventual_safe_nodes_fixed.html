@@ -1,0 +1,665 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Eventual Safe Nodes (DFS) - Visualization</title>
+    <style>
+        :root {
+            --bg-page: #000000;
+            --bg-surface: #161b22;
+            --bg-input: #000000;
+            --border-main: #30363d;
+            --btn-bg: #21262d;
+            --btn-hover: #2d333b;
+            --text-main: #c9d1d9;
+            --text-dim: #8b949e;
+            --text-log: #58a6ff;
+            --accent-orange: #e3b341;
+            --accent-blue: #388bfd;
+            --accent-green: #3fb950;
+            --accent-red: #f85149;
+            --accent-purple: #a371f7;
+            
+            --state-0: #8b949e; /* Unvisited */
+            --state-1: #f85149; /* Visiting / Unsafe */
+            --state-2: #3fb950; /* Safe */
+        }
+
+        * { box-sizing: border-box; }
+        body {
+            background-color: var(--bg-page);
+            color: var(--text-main);
+            font-family: system-ui, -apple-system, sans-serif;
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            padding-bottom: 40px;
+        }
+
+        /* ROW 1: INPUT BAR */
+        .input-bar {
+            width: 100%;
+            background-color: var(--bg-surface);
+            padding: 12px 16px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 8px;
+            border-bottom: 1px solid var(--border-main);
+            flex-wrap: wrap;
+        }
+        label.ui-label { font-family: 'Courier New', monospace; font-size: 13px; color: var(--text-dim); }
+        input[type="text"] {
+            background: var(--bg-input);
+            border: 1px solid var(--border-main);
+            color: var(--text-main);
+            height: 32px;
+            border-radius: 6px;
+            padding: 0 10px;
+            font-size: 13px;
+        }
+        .large-input { width: 350px; }
+
+        button {
+            height: 32px; border-radius: 6px; padding: 0 14px; background: var(--btn-bg);
+            border: 1px solid var(--border-main); color: var(--text-main); font-size: 13px; cursor: pointer;
+            transition: background 0.2s ease;
+        }
+        button:hover { background: var(--btn-hover); }
+
+        /* ROW 2: GRAPH AREA & ARRAYS */
+        .visual-container { margin-top: 20px; display: flex; align-items: flex-start; gap: 30px; width: 100%; justify-content: center; flex-wrap: wrap; }
+        
+        .graph-area {
+            position: relative;
+            width: 450px;
+            height: 400px;
+            background: var(--bg-surface);
+            border: 1px solid var(--border-main);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        #edges-svg {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .nodes-container {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            z-index: 1;
+        }
+
+        .node {
+            position: absolute;
+            width: 40px; height: 40px; border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            background: #21262d; border: 2px solid var(--border-main);
+            color: var(--text-main); font-weight: bold; font-size: 15px;
+            font-family: 'Courier New', monospace;
+            transform: translate(-50%, -50%);
+            transition: all 0.3s ease;
+        }
+        
+        .node.active-u { transform: translate(-50%, -50%) scale(1.2); box-shadow: 0 0 12px var(--accent-orange); border-color: var(--accent-orange); z-index: 3; }
+        .node.active-v { transform: translate(-50%, -50%) scale(1.15); box-shadow: 0 0 10px var(--accent-purple); border-color: var(--accent-purple); z-index: 2; }
+        
+        .node.state-1 { background: #3a0d0d; border-color: var(--state-1); color: var(--state-1); }
+        .node.state-2 { background: #0f2a1a; border-color: var(--state-2); color: var(--state-2); }
+
+        .arrays-col { display: flex; flex-direction: column; gap: 20px; min-width: 250px; }
+        .array-section { display: flex; flex-direction: column; gap: 8px; background: var(--bg-surface); padding: 12px; border-radius: 8px; border: 1px solid var(--border-main); min-height: 110px;}
+        .tiles-wrapper { display: flex; gap: 8px; flex-wrap: wrap; align-content: flex-start; max-width: 300px;}
+        
+        .tile-container { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+        .tile-index { font-size: 11px; color: var(--text-dim); font-family: monospace; }
+        .tile {
+            min-width: 44px; height: 44px; display: flex; align-items: center; justify-content: center;
+            border-radius: 6px; font-size: 16px; font-weight: 600; font-family: 'Courier New', monospace;
+            transition: all 0.3s ease; background: #21262d; border: 1px solid var(--border-main);
+            color: var(--state-0);
+        }
+
+        .tile.state-1 { border-color: var(--state-1); color: var(--state-1); background: #3a0d0d; }
+        .tile.state-2 { border-color: var(--state-2); color: var(--state-2); background: #0f2a1a; }
+        
+        .tile.highlight { animation: highlightFlash 0.6s ease; }
+        @keyframes highlightFlash { 0% { transform: scale(1); filter: brightness(1); } 50% { transform: scale(1.2); filter: brightness(1.5); box-shadow: 0 0 10px currentColor; } 100% { transform: scale(1); filter: brightness(1); } }
+
+        /* ROW 3: PANEL */
+        .action-panel {
+            margin-top: 14px; background: var(--bg-surface); border: 1px solid var(--border-main);
+            border-radius: 6px; padding: 12px 20px; width: 730px; text-align: center; font-family: monospace; min-height: 80px;
+            display: flex; flex-direction: column; justify-content: center; font-size: 14px; line-height: 1.5;
+        }
+
+        /* ROW 4: INFO PANEL */
+        .info-panel { margin-top: 10px; display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; width: 730px;}
+        .info-cell {
+            background: var(--bg-surface); border: 1px solid var(--border-main); border-radius: 6px;
+            padding: 8px 14px; display: flex; flex-direction: column; align-items: center; min-width: 120px; gap: 4px; flex: 1;
+        }
+        .info-label { font-size: 11px; color: var(--text-dim); }
+        .info-value { font-family: monospace; font-size: 14px; font-weight: 700; text-align: center; word-break: break-all;}
+
+        /* ROW 5: RESULT DISPLAY */
+        .result-display { margin-top: 10px; display: flex; flex-direction: column; align-items: center; }
+        #res-val { font-size: 20px; color: var(--text-dim); font-family: monospace; transition: all 0.3s; font-weight: bold; margin-top: 4px; }
+        .pop { animation: popAnim 400ms ease; color: var(--accent-green) !important; text-shadow: 0 0 12px var(--accent-green); font-size: 24px !important;}
+
+        @keyframes popAnim { 0%{transform:scale(1)} 50%{transform:scale(1.15)} 100%{transform:scale(1)} }
+
+        /* ROW 6: STATUS BAR */
+        .status-bar { margin-top: 8px; font-size: 13px; color: var(--text-dim); height: 1.2em; text-align: center; width: 600px;}
+
+        /* ROW 7: CONTROLS */
+        .controls { margin-top: 24px; display: flex; align-items: center; gap: 8px; }
+        input[type="range"] { accent-color: var(--accent-blue); width: 100px; cursor: pointer; }
+
+        /* ROW 8: LEGEND */
+        .legend { margin-top: 12px; display: flex; gap: 16px; flex-wrap: wrap; justify-content: center; max-width: 800px; }
+        .legend-item { display: flex; align-items: center; font-size: 12px; color: var(--text-dim); }
+        .dot { width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; display: inline-block; }
+
+        /* ROW 9: LOG PANEL */
+        .log-panel {
+            margin-top: 12px; background: var(--bg-page); border: 1px solid var(--border-main);
+            border-radius: 6px; padding: 12px 16px; width: 730px; max-width: 90%; height: 130px;
+            overflow-y: auto; font-family: 'Courier New', monospace; font-size: 13px;
+        }
+
+        .line-anim {
+            stroke-dasharray: 6;
+            animation: dash 1s linear infinite;
+        }
+        @keyframes dash {
+            to { stroke-dashoffset: -12; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="input-bar">
+        <label class="ui-label">graph =</label>
+        <input type="text" id="g-input" class="large-input" placeholder="[[1,2],[2,3],[5],[0],[5],[],[]]">
+        <button onclick="loadCustom()">Load</button>
+        <button onclick="loadExample('[[1,2],[2,3],[5],[0],[5],[],[]]')">Ex 1</button>
+        <button onclick="loadExample('[[1,2,3,4],[1,2],[3,4],[0,4],[]]')">Ex 2</button>
+    </div>
+
+    <div class="visual-container">
+        <div class="graph-area" id="graph-area">
+            <svg id="edges-svg">
+                <defs>
+                    <marker id="arrow-normal" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                        <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--border-main)" />
+                    </marker>
+                    <marker id="arrow-active" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                        <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--accent-purple)" />
+                    </marker>
+                    <marker id="arrow-error" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                        <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--accent-red)" />
+                    </marker>
+                </defs>
+            </svg>
+            <div class="nodes-container" id="nodes-container"></div>
+        </div>
+        <div class="arrays-col">
+            <div class="array-section">
+                <div class="ui-label">State Array:</div>
+                <div class="tiles-wrapper" id="state-tiles"></div>
+                <div style="font-size:11px; color:var(--text-dim); margin-top:4px;">0: Unvisited, 1: Visiting/Unsafe, 2: Safe</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="action-panel" id="main-panel">—</div>
+
+    <div class="info-panel">
+        <div class="info-cell">
+            <span class="info-label">DFS Path Stack</span>
+            <span class="info-value" id="val-path" style="color: var(--accent-orange);">—</span>
+        </div>
+        <div class="info-cell">
+            <span class="info-label">Active Node (u)</span>
+            <span class="info-value" id="val-u" style="color: var(--text-main);">—</span>
+        </div>
+        <div class="info-cell">
+            <span class="info-label">Checking Neighbor (v)</span>
+            <span class="info-value" id="val-v" style="color: var(--accent-purple);">—</span>
+        </div>
+    </div>
+
+    <div class="result-display">
+        <span class="ui-label">eventual safe nodes =</span>
+        <span id="res-val">—</span>
+    </div>
+
+    <div class="status-bar" id="status-text"></div>
+
+    <div class="controls">
+        <button onclick="reset()">↺ Reset</button>
+        <button onclick="back()">← Back</button>
+        <button onclick="togglePlay()" id="play-btn">Play</button>
+        <button onclick="next()">Next →</button>
+        <div class="controls" style="margin-top:0">
+            <span class="ui-label" style="margin-right:4px; font-size:11px">Speed</span>
+            <input type="range" id="speed-slider" min="0" max="2" value="1">
+        </div>
+    </div>
+
+    <div class="legend">
+        <div class="legend-item"><span class="dot" style="background:var(--state-0)"></span> Unvisited (0)</div>
+        <div class="legend-item"><span class="dot" style="background:var(--state-1)"></span> Visiting / Unsafe (1)</div>
+        <div class="legend-item"><span class="dot" style="background:var(--state-2)"></span> Safe (2)</div>
+        <div class="legend-item"><span class="dot" style="background:transparent; border:2px solid var(--accent-orange)"></span> Current DFS Node</div>
+        <div class="legend-item"><span class="dot" style="background:var(--accent-purple)"></span> Traversing Edge</div>
+        <div class="legend-item"><span class="dot" style="background:var(--accent-red)"></span> Cycle Edge Detected</div>
+    </div>
+
+    <div class="log-panel" id="log"></div>
+
+    <script>
+        let graph = [[1,2],[2,3],[5],[0],[5],[],[]];
+        let N = 7;
+        let nodeCoords = {};
+        
+        let steps = [];
+        let stepIndex = 0;
+        let timer = null;
+        const delays = [2400, 1200, 600];
+
+        function init() { loadExample('[[1,2],[2,3],[5],[0],[5],[],[]]'); }
+
+        function loadExample(jsonStr) {
+            document.getElementById('g-input').value = jsonStr;
+            parseAndGenerate();
+        }
+
+        function loadCustom() {
+            parseAndGenerate();
+        }
+
+        function parseAndGenerate() {
+            try {
+                const valStr = document.getElementById('g-input').value;
+                graph = JSON.parse(valStr);
+                if (!Array.isArray(graph)) throw "Must be an array";
+                N = graph.length;
+                setupGraph();
+                generateSteps();
+                reset();
+            } catch(e) {
+                alert("Invalid format. Expected an adjacency list like [[1,2],[0],[]].");
+            }
+        }
+
+        function setupGraph() {
+            const container = document.getElementById('nodes-container');
+            container.innerHTML = '';
+            nodeCoords = {};
+
+            const cx = 225;
+            const cy = 200;
+            const radius = 150;
+
+            for (let i = 0; i < N; i++) {
+                const angle = (Math.PI * 2 * i) / N - Math.PI / 2;
+                const x = cx + radius * Math.cos(angle);
+                const y = cy + radius * Math.sin(angle);
+                nodeCoords[i] = {x, y};
+
+                const node = document.createElement('div');
+                node.className = 'node';
+                node.id = `node-${i}`;
+                node.style.left = `${x}px`;
+                node.style.top = `${y}px`;
+                node.innerText = i;
+                container.appendChild(node);
+            }
+        }
+
+        function generateSteps() {
+            steps = [];
+            let state = new Array(N).fill(0); // 0=unvisited, 1=visiting/unsafe, 2=safe
+            let path = [];
+
+            steps.push({
+                type: 'init', u: null, v: null,
+                state: [...state], path: [...path], activeEdge: null,
+                panel: `<b>Eventual Safe Nodes (DFS)</b><br>Initialize a state array for ${N} nodes with <code>0 (Unvisited)</code>.<br>We will use DFS to detect cycles.`,
+                statusText: `Ready to start DFS.`,
+                log: `Initialized 3-state array for ${N} nodes.`
+            });
+
+            function dfs(u, depth) {
+                let pad = "  ".repeat(depth);
+                state[u] = 1;
+                path.push(u);
+
+                steps.push({
+                    type: 'visit', u: u, v: null,
+                    state: [...state], path: [...path], activeEdge: null, updatedIdx: u,
+                    panel: `<code>dfs(${u})</code>: Mark Node <b>${u}</b> as <b style="color:var(--state-1)">1 (Visiting)</b> and add to current path stack.`,
+                    statusText: `Visiting Node ${u}...`,
+                    log: `${pad}dfs(${u}) started. state[${u}] = 1.`
+                });
+
+                if (graph[u].length === 0) {
+                    steps.push({
+                        type: 'no_neighbors', u: u, v: null,
+                        state: [...state], path: [...path], activeEdge: null,
+                        panel: `Node <b>${u}</b> is a terminal node (no outgoing edges).`,
+                        statusText: `Node ${u} is terminal.`,
+                        log: `${pad}  Node ${u} has no neighbors.`
+                    });
+                }
+
+                for (let v of graph[u]) {
+                    steps.push({
+                        type: 'check_neighbor', u: u, v: v,
+                        state: [...state], path: [...path], activeEdge: [u, v],
+                        panel: `Checking neighbor <b>${v}</b> of Node <b>${u}</b>.<br>Current state of <code>${v}</code> is <b>${state[v]}</b>.`,
+                        statusText: `Evaluating edge ${u} ➔ ${v}...`,
+                        log: `${pad}  Checking edge ${u}->${v}. state[${v}] = ${state[v]}`
+                    });
+
+                    if (state[v] === 0) {
+                        steps.push({
+                            type: 'recurse', u: u, v: v,
+                            state: [...state], path: [...path], activeEdge: [u, v],
+                            panel: `Neighbor <b>${v}</b> is <b style="color:var(--state-0)">0 (Unvisited)</b>. Recursively exploring <code>dfs(${v})</code>.`,
+                            statusText: `Recursing into Node ${v}...`,
+                            log: `${pad}  -> ${v} unvisited. Recursing.`
+                        });
+                        
+                        if (!dfs(v, depth + 1)) {
+                            // Cycle detected deeper, return false
+                            path.pop();
+                            steps.push({
+                                type: 'backtrack_unsafe', u: u, v: null,
+                                state: [...state], path: [...path], activeEdge: null,
+                                panel: `A descendant of Node <b>${u}</b> hit a cycle. Node <b>${u}</b> cannot be safe.<br>Backtracking, leaving <code>state[${u}]</code> as <b style="color:var(--state-1)">1 (Unsafe)</b>.`,
+                                statusText: `Path leads to cycle. Node ${u} unsafe.`,
+                                log: `${pad}  -> Sub-path from ${v} led to cycle. ${u} remains unsafe.`
+                            });
+                            return false;
+                        }
+                    } else if (state[v] === 1) {
+                        // Found a node currently visiting OR previously proven unsafe
+                        steps.push({
+                            type: 'cycle', u: u, v: v,
+                            state: [...state], path: [...path], activeEdge: [u, v],
+                            panel: `Neighbor <b>${v}</b> is already <b style="color:var(--state-1)">1 (Visiting/Unsafe)</b>!<br><b style="color:var(--accent-red)">Cycle or unsafe path detected.</b> Node <b>${u}</b> is unsafe.`,
+                            statusText: `Cycle detected! Node ${u} is unsafe.`,
+                            log: `${pad}  -> Cycle detected at ${v}! Node ${u} remains unsafe.`,
+                            logColor: 'var(--accent-red)'
+                        });
+                        path.pop();
+                        return false;
+                    } else {
+                        // state[v] === 2 (Safe)
+                        steps.push({
+                            type: 'safe_neighbor', u: u, v: v,
+                            state: [...state], path: [...path], activeEdge: [u, v],
+                            panel: `Neighbor <b>${v}</b> is <b style="color:var(--state-2)">2 (Safe)</b>. We can safely continue checking other neighbors.`,
+                            statusText: `Neighbor ${v} is safe.`,
+                            log: `${pad}  -> ${v} is safe. Proceeding.`
+                        });
+                    }
+                }
+
+                // All neighbors are safe!
+                state[u] = 2;
+                let popped = path.pop();
+                steps.push({
+                    type: 'mark_safe', u: u, v: null,
+                    state: [...state], path: [...path], activeEdge: null, updatedIdx: u,
+                    panel: `All outgoing paths from Node <b>${u}</b> eventually reach terminal nodes.<br>Marking Node <b>${u}</b> as <b style="color:var(--state-2)">2 (Safe)</b>!`,
+                    statusText: `Node ${u} is Safe!`,
+                    log: `${pad}dfs(${u}) finished successfully. state[${u}] = 2 (Safe).`,
+                    logColor: 'var(--accent-green)'
+                });
+                return true;
+            }
+
+            for (let i = 0; i < N; i++) {
+                steps.push({
+                    type: 'main_loop', u: i, v: null,
+                    state: [...state], path: [...path], activeEdge: null,
+                    panel: `<b>Main Loop:</b> Evaluate Node <b>${i}</b>.<br>Current state is <b>${state[i]}</b>.`,
+                    statusText: `Evaluating Node ${i}...`,
+                    log: `\nMain loop checking Node ${i}.`
+                });
+
+                if (state[i] === 0) {
+                    dfs(i, 0);
+                } else {
+                    steps.push({
+                        type: 'skip', u: i, v: null,
+                        state: [...state], path: [...path], activeEdge: null,
+                        panel: `Node <b>${i}</b> has already been processed (State ${state[i]}). Skipping.`,
+                        statusText: `Node ${i} already processed.`,
+                        log: `Node ${i} already processed. Skipping.`
+                    });
+                }
+            }
+
+            let resultArr = [];
+            for (let i=0; i<N; i++) {
+                if (state[i] === 2) resultArr.push(i);
+            }
+
+            steps.push({
+                type: 'final', u: null, v: null,
+                state: [...state], path: [...path], activeEdge: null,
+                panel: `DFS complete for all nodes.<br>The Eventual Safe Nodes are all nodes marked with state <b style="color:var(--state-2)">2</b>.`,
+                complete: true,
+                result: `[${resultArr.join(', ')}]`,
+                statusText: `Algorithm completed.`,
+                log: `\nFinished processing all nodes. Safe nodes: [${resultArr.join(', ')}]`,
+                logColor: 'var(--accent-green)'
+            });
+        }
+
+        function drawEdges(step) {
+            const svg = document.getElementById('edges-svg');
+            
+            const lines = svg.querySelectorAll('g');
+            lines.forEach(l => l.remove());
+
+            const nodeRadius = 20;
+
+            for (let u = 0; u < N; u++) {
+                for (let v of graph[u]) {
+                    const p1 = nodeCoords[u];
+                    const p2 = nodeCoords[v];
+                    if(!p1 || !p2) continue;
+
+                    let isActive = step.activeEdge && step.activeEdge[0] === u && step.activeEdge[1] === v;
+                    let isCycle = isActive && step.type === 'cycle';
+
+                    // Math for shrinking lines so arrows don't hide under circles
+                    const dx = p2.x - p1.x;
+                    const dy = p2.y - p1.y;
+                    const len = Math.hypot(dx, dy);
+                    
+                    // Add curve if there is a bidirectional edge to prevent total overlap
+                    let hasReverse = graph[v].includes(u);
+                    
+                    const shrinkTarget = nodeRadius + 4; 
+                    const shrinkSource = nodeRadius + 2;
+                    
+                    const x1 = p1.x + (dx/len) * shrinkSource;
+                    const y1 = p1.y + (dy/len) * shrinkSource;
+                    const x2 = p2.x - (dx/len) * shrinkTarget;
+                    const y2 = p2.y - (dy/len) * shrinkTarget;
+
+                    const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+                    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+
+                    if (hasReverse) {
+                        // Quadratic bezier curve
+                        const offset = 20;
+                        const mx = (x1 + x2)/2 - (dy/len)*offset;
+                        const my = (y1 + y2)/2 + (dx/len)*offset;
+                        path.setAttribute('d', `M ${x1} ${y1} Q ${mx} ${my} ${x2} ${y2}`);
+                        path.setAttribute('fill', 'transparent');
+                    } else {
+                        path.setAttribute('d', `M ${x1} ${y1} L ${x2} ${y2}`);
+                    }
+
+                    if (isCycle) {
+                        path.setAttribute('stroke', 'var(--accent-red)');
+                        path.setAttribute('stroke-width', '4');
+                        path.setAttribute('marker-end', 'url(#arrow-error)');
+                        path.classList.add('line-anim');
+                        path.setAttribute('stroke-dasharray', '8 4');
+                    } else if (isActive) {
+                        path.setAttribute('stroke', 'var(--accent-purple)');
+                        path.setAttribute('stroke-width', '3');
+                        path.setAttribute('marker-end', 'url(#arrow-active)');
+                        path.classList.add('line-anim');
+                        path.setAttribute('stroke-dasharray', '8 4');
+                    } else {
+                        path.setAttribute('stroke', 'var(--border-main)');
+                        path.setAttribute('stroke-width', '1.5');
+                        path.setAttribute('marker-end', 'url(#arrow-normal)');
+                    }
+
+                    g.appendChild(path);
+
+                    if (isActive) {
+                        setTimeout(() => svg.appendChild(g), 0);
+                    } else {
+                        svg.appendChild(g);
+                    }
+                }
+            }
+        }
+
+        function renderArray(step) {
+            const container = document.getElementById('state-tiles');
+            container.innerHTML = '';
+            
+            step.state.forEach((val, i) => {
+                const wrapper = document.createElement('div');
+                wrapper.className = 'tile-container';
+                
+                const tile = document.createElement('div');
+                tile.className = `tile state-${val}`;
+                tile.innerText = val;
+                
+                const idxLabel = document.createElement('div');
+                idxLabel.className = 'tile-index';
+                idxLabel.innerText = `[${i}]`;
+                
+                if (step.updatedIdx === i) {
+                    tile.classList.add('highlight');
+                }
+
+                wrapper.appendChild(tile);
+                wrapper.appendChild(idxLabel);
+                container.appendChild(wrapper);
+            });
+        }
+
+        function renderStep(idx) {
+            const step = steps[idx];
+            if (!step) return;
+
+            // Render Nodes
+            for(let i=0; i<N; i++) {
+                const node = document.getElementById(`node-${i}`);
+                if(!node) continue;
+                
+                node.className = `node state-${step.state[i]}`;
+                if (step.u === i && step.type !== 'main_loop' && step.type !== 'final') node.classList.add('active-u');
+                if (step.v === i) node.classList.add('active-v');
+            }
+
+            drawEdges(step);
+            renderArray(step);
+
+            // Update Info Panel
+            document.getElementById('main-panel').innerHTML = step.panel;
+            
+            document.getElementById('val-path').innerText = step.path.length > 0 ? `[${step.path.join(' ➔ ')}]` : '[ ]';
+            document.getElementById('val-u').innerText = step.u !== null ? step.u : '—';
+            document.getElementById('val-v').innerText = step.v !== null ? step.v : '—';
+            
+            const resVal = document.getElementById('res-val');
+            resVal.innerText = step.complete ? step.result : '—';
+            if (step.complete) {
+                resVal.classList.add('pop');
+            } else {
+                resVal.classList.remove('pop');
+            }
+
+            document.getElementById('status-text').innerText = step.statusText;
+
+            // Update Log
+            const logPanel = document.getElementById('log');
+            logPanel.innerHTML = '';
+            for (let k = 0; k <= idx; k++) {
+                if (steps[k].log) {
+                    const line = document.createElement('div');
+                    line.style.marginBottom = '2px';
+                    line.style.whiteSpace = 'pre-wrap';
+                    if (steps[k].logColor) line.style.color = steps[k].logColor;
+                    line.innerText = steps[k].log;
+                    logPanel.appendChild(line);
+                }
+            }
+            logPanel.scrollTop = logPanel.scrollHeight;
+        }
+
+        function next() {
+            if (stepIndex < steps.length - 1) {
+                stepIndex++;
+                renderStep(stepIndex);
+            } else pause();
+        }
+
+        function back() {
+            if (stepIndex > 0) {
+                stepIndex--;
+                renderStep(stepIndex);
+            }
+        }
+
+        function reset() {
+            pause();
+            stepIndex = 0;
+            renderStep(0);
+        }
+
+        function togglePlay() {
+            const btn = document.getElementById('play-btn');
+            if (timer) pause();
+            else {
+                btn.innerText = 'Pause';
+                if (stepIndex >= steps.length - 1) stepIndex = 0;
+                timer = setInterval(next, delays[document.getElementById('speed-slider').value]);
+            }
+        }
+
+        function pause() {
+            clearInterval(timer);
+            timer = null;
+            document.getElementById('play-btn').innerText = 'Play';
+        }
+
+        window.onload = () => { setTimeout(init, 100); };
+    </script>
+</body>
+</html>

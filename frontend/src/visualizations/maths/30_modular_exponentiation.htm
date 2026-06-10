@@ -1,0 +1,589 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Modular Exponentiation - Visualization</title>
+    <style>
+        :root {
+            --bg-page: #070b14;
+            --bg-surface: rgba(255, 255, 255, 0.045);
+            --bg-input: rgba(255, 255, 255, 0.04);
+            --border-main: rgba(255, 255, 255, 0.10);
+            --btn-bg: rgba(255, 255, 255, 0.05);
+            --btn-hover: rgba(255, 255, 255, 0.10);
+            --text-main: #e8eefb;
+            --text-dim: #8b98b3;
+            --accent-orange: #f5a524;   /* value in motion / square      */
+            --accent-blue:   #06b6d4;   /* base / chrome                 */
+            --accent-green:  #22c55e;   /* settled / done                */
+            --accent-red:    #f43f5e;   /* bit = 0 (skip multiply)       */
+            --accent-purple: #a855f7;   /* result / current bit          */
+            --mono: ui-monospace, 'SF Mono', 'Cascadia Code', 'Courier New', monospace;
+            --sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+            --shell: 880px;
+        }
+
+        * { box-sizing: border-box; }
+        html, body { overflow-x: hidden; }
+        body {
+            background:
+                radial-gradient(1100px 600px at 15% -10%, rgba(168, 85, 247, 0.10), transparent 60%),
+                radial-gradient(900px 600px at 100% 10%, rgba(6, 182, 212, 0.10), transparent 55%),
+                linear-gradient(160deg, #070b14 0%, #0b1120 55%, #0a0f1c 100%);
+            background-attachment: fixed;
+            color: var(--text-main); font-family: var(--sans); margin: 0;
+            display: flex; flex-direction: column; align-items: center; min-height: 100vh;
+            padding-bottom: 48px; -webkit-font-smoothing: antialiased;
+        }
+        body::before, body::after { content: ''; position: fixed; border-radius: 50%; filter: blur(70px); pointer-events: none; z-index: 0; opacity: 0.45; }
+        body::before { width: 380px; height: 380px; top: 8%; left: -120px; background: radial-gradient(circle, rgba(168,85,247,0.30), transparent 70%); }
+        body::after  { width: 420px; height: 420px; bottom: 4%; right: -140px; background: radial-gradient(circle, rgba(6,182,212,0.22), transparent 70%); }
+        body > * { position: relative; z-index: 1; }
+
+        .input-bar {
+            width: 100%; background: rgba(10, 15, 28, 0.55);
+            backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+            padding: 14px 16px; display: flex; justify-content: center; align-items: center; gap: 10px;
+            border-bottom: 1px solid var(--border-main); flex-wrap: wrap; position: sticky; top: 0; z-index: 50;
+        }
+        label.ui-label, .ui-label { font-family: var(--mono); font-size: 13px; color: var(--text-dim); letter-spacing: 0.2px; }
+        input[type="number"] {
+            background: var(--bg-input); border: 1px solid var(--border-main); color: var(--text-main);
+            height: 34px; border-radius: 9px; padding: 0 12px; font-size: 13px; font-family: var(--mono); width: 86px;
+            transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+        }
+        input[type="number"]:focus { outline: none; border-color: var(--accent-purple); box-shadow: 0 0 0 3px rgba(168, 85, 247, 0.18); background: rgba(168, 85, 247, 0.06); }
+
+        button {
+            height: 34px; border-radius: 9px; padding: 0 14px; background: var(--btn-bg);
+            border: 1px solid var(--border-main); color: var(--text-main); font-size: 13px; font-weight: 600; cursor: pointer;
+            transition: transform 0.15s ease, background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+        }
+        button:hover { background: var(--btn-hover); border-color: rgba(6, 182, 212, 0.5); box-shadow: 0 0 18px rgba(6, 182, 212, 0.18); transform: translateY(-1px); }
+        button:active { transform: translateY(0); }
+        #play-btn { background: linear-gradient(135deg, rgba(6,182,212,0.22), rgba(6,182,212,0.10)); border-color: rgba(6, 182, 212, 0.45); color: #a5f3fc; min-width: 80px; }
+
+        .shell { width: var(--shell); max-width: 95%; margin: 24px auto 0; display: flex; flex-direction: column; gap: 16px; }
+
+        .title-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+        .title-row h1 { font-size: 18px; font-weight: 800; margin: 0; letter-spacing: 0.2px; }
+        .title-row .sub { color: var(--text-dim); font-weight: 500; font-size: 13px; }
+        .step-badge { font-family: var(--mono); font-size: 12px; font-weight: 700; color: #a5f3fc; background: rgba(6,182,212,0.12); border: 1px solid rgba(6,182,212,0.3); padding: 4px 10px; border-radius: 999px; white-space: nowrap; }
+        .progress-track { height: 4px; width: 100%; background: rgba(255,255,255,0.07); border-radius: 999px; overflow: hidden; margin-top: -6px; }
+        .progress-fill { height: 100%; width: 0%; border-radius: 999px; background: linear-gradient(90deg, var(--accent-blue), var(--accent-purple)); box-shadow: 0 0 12px rgba(6,182,212,0.5); transition: width 0.45s cubic-bezier(0.34,1.1,0.64,1); }
+
+        .narration { background: var(--bg-surface); border: 1px solid rgba(6,182,212,0.22); border-radius: 12px; padding: 12px 18px; font-family: var(--mono); font-size: 14px; line-height: 1.5; color: #cfe9f5; min-height: 48px; display: flex; align-items: center; gap: 10px; transition: border-color 0.3s, background 0.3s; }
+        .narration::before { content: '\25B8'; color: var(--accent-blue); font-size: 13px; }
+        .narration.done { border-color: rgba(34,197,94,0.4); background: rgba(34,197,94,0.06); }
+        .narration.done::before { content: '\2713'; color: var(--accent-green); }
+        .narration.miss { border-color: rgba(244,63,94,0.4); background: rgba(244,63,94,0.06); }
+        .narration.miss::before { content: '\2717'; color: var(--accent-red); }
+        .narration code { background: rgba(6,182,212,0.14); color: #7dd3fc; padding: 1px 6px; border-radius: 5px; font-size: 12.5px; }
+        .narration b { color: #fff; }
+
+        .stage-card { background: var(--bg-surface); border: 1px solid var(--border-main); border-radius: 18px; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); box-shadow: 0 12px 38px rgba(0,0,0,0.4); overflow: hidden; }
+        .stage-screen { position: relative; margin: 14px; border-radius: 14px; background: radial-gradient(700px 300px at 50% -10%, rgba(6,182,212,0.08), transparent 70%), #090d18; border: 1px solid rgba(255,255,255,0.06); }
+        .mod-stage { position: relative; width: 100%; min-height: 300px; overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 26px; padding: 34px 18px 38px; }
+        .mod-stage::-webkit-scrollbar { height: 7px; }
+        .mod-stage::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 8px; }
+
+        /* bit row : the exponent in binary, processed LSB -> MSB (left to right here) */
+        .bit-block { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+        .bit-caption { font-family: var(--mono); font-size: 11px; color: var(--text-dim); letter-spacing: 0.4px; }
+        .bit-rail { position: relative; display: flex; gap: 9px; margin: 0 auto; }
+        .bit { position: relative; display: flex; flex-direction: column; align-items: center; gap: 5px; will-change: transform; }
+        .bit .box {
+            width: 42px; height: 46px; display: flex; align-items: center; justify-content: center;
+            border-radius: 11px; font-size: 20px; font-weight: 800; font-family: var(--mono);
+            border: 2px solid var(--border-main); background: rgba(255,255,255,0.05); color: var(--text-main);
+            transition: background 0.4s, border-color 0.4s, color 0.4s, box-shadow 0.4s, transform 0.4s cubic-bezier(.34,1.3,.64,1);
+        }
+        .bit .pwr { font-size: 10.5px; color: var(--text-dim); font-family: var(--mono); }
+        .bit.current .box { border-color: var(--accent-purple); background: rgba(168,85,247,0.16); color: #e9d5ff; box-shadow: 0 0 20px rgba(168,85,247,0.5), inset 0 0 12px rgba(168,85,247,0.12); transform: translateY(-2px); }
+        .bit.one .box     { border-color: var(--accent-green); color: #bbf7d0; }
+        .bit.zero .box    { border-color: rgba(244,63,94,0.45); color: #fecdd3; }
+        .bit.done .box    { opacity: 0.45; }
+
+        /* accumulator row : running base mod m and running result mod m */
+        .acc-row { display: flex; gap: 28px; align-items: stretch; justify-content: center; flex-wrap: wrap; }
+        .acc { position: relative; min-width: 168px; display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 14px 18px; border-radius: 14px; border: 1px solid var(--border-main); background: rgba(255,255,255,0.035); transition: border-color 0.4s, box-shadow 0.4s, background 0.4s; }
+        .acc .acc-label { font-family: var(--mono); font-size: 11px; letter-spacing: 0.5px; color: var(--text-dim); text-transform: uppercase; }
+        .acc .acc-val { font-family: var(--mono); font-size: 30px; font-weight: 800; line-height: 1; will-change: transform; }
+        .acc .acc-sub { font-family: var(--mono); font-size: 11.5px; color: var(--text-dim); min-height: 14px; text-align: center; }
+        .acc.base { } .acc.base .acc-val { color: #a5f3fc; }
+        .acc.result { } .acc.result .acc-val { color: #e9d5ff; }
+        .acc.base.active   { border-color: var(--accent-blue);   background: rgba(6,182,212,0.08);  box-shadow: 0 0 22px rgba(6,182,212,0.28); }
+        .acc.result.active { border-color: var(--accent-purple); background: rgba(168,85,247,0.08); box-shadow: 0 0 22px rgba(168,85,247,0.28); }
+        .acc.result.win    { border-color: var(--accent-green);  background: rgba(34,197,94,0.10);  box-shadow: 0 0 26px rgba(34,197,94,0.40); }
+        .acc.result.win .acc-val { color: #bbf7d0; }
+
+        .action-stage { position: relative; min-height: 96px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; }
+        .float-tile { padding: 0 14px; min-width: 64px; height: 56px; border-radius: 13px; display: flex; align-items: center; justify-content: center; font-family: var(--mono); font-size: 22px; font-weight: 800; border: 2px solid var(--accent-orange); background: rgba(245,165,36,0.16); color: #ffd591; box-shadow: 0 0 22px rgba(245,165,36,0.5); opacity: 0; transform: scale(.5); transition: opacity .25s, transform .4s cubic-bezier(.34,1.5,.64,1); }
+        .float-tile.show { opacity: 1; transform: scale(1); }
+        .action-word { font-family: var(--mono); font-weight: 800; font-size: 18px; letter-spacing: 0.4px; min-height: 22px; text-align: center; transition: color 0.3s; }
+        #confetti { position: absolute; inset: 0; overflow: visible; pointer-events: none; }
+        .confetti-piece { position: absolute; top: 0; left: 50%; width: 8px; height: 13px; border-radius: 2px; opacity: 0; animation: confettiFall ease-out forwards; }
+
+        .controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: center; }
+        .controls .kbd-hint { font-size: 11px; color: var(--text-dim); font-family: var(--mono); margin-left: 4px; }
+        .kbd { background: rgba(255,255,255,0.07); border: 1px solid var(--border-main); border-radius: 5px; padding: 1px 6px; font-size: 10px; }
+        input[type="range"] { accent-color: var(--accent-blue); width: 110px; cursor: pointer; }
+
+        .details-toggle { align-self: center; height: 32px; padding: 0 16px; border-radius: 999px; cursor: pointer; background: rgba(255,255,255,0.04); border: 1px solid var(--border-main); color: var(--text-dim); font-family: var(--mono); font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; gap: 8px; transition: color 0.2s, border-color 0.2s, background 0.2s; }
+        .details-toggle:hover { color: var(--text-main); border-color: rgba(6,182,212,0.4); background: rgba(6,182,212,0.06); }
+        .details-toggle .chev { transition: transform 0.3s ease; }
+        .details-wrap.open .details-toggle .chev { transform: rotate(180deg); }
+        .details-body { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.4s ease; }
+        .details-wrap.open .details-body { grid-template-rows: 1fr; }
+        .details-inner { overflow: hidden; min-height: 0; }
+        .details-grid { display: flex; flex-direction: column; gap: 14px; padding-top: 14px; }
+
+        .panel-card { background: var(--bg-surface); border: 1px solid var(--border-main); border-radius: 16px; backdrop-filter: blur(10px); box-shadow: 0 8px 30px rgba(0,0,0,0.35); }
+        .panel-head { display: flex; align-items: center; gap: 8px; padding: 11px 16px; border-bottom: 1px solid var(--border-main); font-size: 11px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; color: var(--text-dim); }
+        .panel-head .pip { width: 7px; height: 7px; border-radius: 50%; background: var(--accent-blue); box-shadow: 0 0 8px var(--accent-blue); }
+        .code-body { padding: 12px 6px 14px; font-family: var(--mono); font-size: 12.5px; line-height: 1.7; }
+        .code-line { display: flex; gap: 12px; padding: 1px 16px; border-left: 2px solid transparent; transition: background 0.3s, border-color 0.3s; white-space: pre; }
+        .code-line .lno { color: #4b5772; width: 16px; text-align: right; user-select: none; }
+        .code-line .src { color: #c4cee0; }
+        .code-line .kw { color: #c792ea; }
+        .code-line .fn { color: #82aaff; }
+        .code-line .cm { color: #5d6b86; font-style: italic; }
+        .code-line.active { background: rgba(6,182,212,0.12); border-left-color: var(--accent-blue); }
+        .code-line.active .src, .code-line.active .lno { color: #e8eefb; }
+
+        .state-strip { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 0 2px; }
+        .pill { display: inline-flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 12px; color: var(--text-dim); background: rgba(255,255,255,0.04); border: 1px solid var(--border-main); border-radius: 999px; padding: 4px 11px; }
+        .pill b { color: var(--text-main); font-weight: 800; }
+        .pill.l b { color: var(--accent-purple); } .pill.r b { color: var(--accent-blue); } .pill.s b { color: var(--accent-green); }
+
+        .log-panel { border-radius: 14px; padding: 12px 16px; height: 110px; overflow-y: auto; font-family: var(--mono); font-size: 12.5px; line-height: 1.5; background: var(--bg-surface); border: 1px solid var(--border-main); }
+        .log-panel::-webkit-scrollbar { width: 8px; }
+        .log-panel::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 8px; }
+
+        @keyframes confettiFall { 0%{ opacity:1; transform: translate(-50%, 0) rotate(0deg); } 100%{ opacity:0; transform: translate(calc(-50% + var(--x)), 220px) rotate(var(--rot)); } }
+        @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; } }
+    </style>
+</head>
+<body>
+
+    <div class="input-bar">
+        <label class="ui-label">a =</label>
+        <input type="number" id="a-input" value="3">
+        <label class="ui-label">b =</label>
+        <input type="number" id="b-input" value="4">
+        <label class="ui-label">m =</label>
+        <input type="number" id="m-input" value="5">
+        <button onclick="loadCustom()">Load</button>
+        <span class="ui-label" style="opacity:.5">|</span>
+        <button onclick="loadExample(0)">Ex 1 (3^4 % 5)</button>
+        <button onclick="loadExample(1)">Ex 2 (2^10 % 1000)</button>
+    </div>
+
+    <div class="shell">
+        <div class="title-row">
+            <h1>Modular Exponentiation <span class="sub">&middot; square &amp; multiply over exponent bits &middot; O(log&nbsp;b) time</span></h1>
+            <span class="step-badge" id="step-badge">Step 1 / 1</span>
+        </div>
+        <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+
+        <div class="narration" id="main-panel">&mdash;</div>
+
+        <div class="stage-card">
+            <div class="stage-screen">
+                <div class="mod-stage" id="mod-stage">
+                    <div class="bit-block">
+                        <div class="bit-caption" id="bit-caption">exponent bits (LSB &rarr; MSB)</div>
+                        <div class="bit-rail" id="bit-rail"></div>
+                    </div>
+                    <div class="acc-row">
+                        <div class="acc base" id="acc-base">
+                            <div class="acc-label">base &middot; mod m</div>
+                            <div class="acc-val" id="base-val">&mdash;</div>
+                            <div class="acc-sub" id="base-sub">&nbsp;</div>
+                        </div>
+                        <div class="acc result" id="acc-result">
+                            <div class="acc-label">result &middot; mod m</div>
+                            <div class="acc-val" id="result-val">&mdash;</div>
+                            <div class="acc-sub" id="result-sub">&nbsp;</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="action-stage">
+            <div id="confetti"></div>
+            <div class="float-tile" id="float-tile"></div>
+            <div class="action-word" id="action-word"></div>
+        </div>
+
+        <div class="controls">
+            <button onclick="resetSim()">&#8634; Reset</button>
+            <button onclick="prevStep()">&#8592; Back</button>
+            <button onclick="togglePlay()" id="play-btn">Play</button>
+            <button onclick="nextStep()">Next &#8594;</button>
+            <span class="ui-label" style="margin-left:6px; font-size:11px">Speed</span>
+            <input type="range" id="speed" min="0" max="2" value="1">
+            <span class="kbd-hint"><span class="kbd">&#8592;</span> <span class="kbd">&#8594;</span> step &middot; <span class="kbd">space</span> play</span>
+        </div>
+
+        <div class="details-wrap" id="details-wrap">
+            <button class="details-toggle" onclick="toggleDetails()" aria-expanded="false">
+                <span id="details-label">Show code, state &amp; log</span> <span class="chev">&#9662;</span>
+            </button>
+            <div class="details-body">
+                <div class="details-inner">
+                    <div class="details-grid">
+                        <div class="state-strip">
+                            <span class="pill r">base <b id="st-base">&mdash;</b></span>
+                            <span class="pill l">result <b id="st-result">&mdash;</b></span>
+                            <span class="pill">exp left <b id="st-exp">&mdash;</b></span>
+                            <span class="pill s">a^b % m <b id="st-target">&mdash;</b></span>
+                        </div>
+                        <div class="panel-card">
+                            <div class="panel-head"><span class="pip"></span> Algorithm</div>
+                            <div class="code-body" id="code-panel"></div>
+                        </div>
+                        <div class="log-panel" id="log"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        'use strict';
+
+        // ───────── Motion engine (spring + FLIP, zero deps) ─────────
+        const REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        const FRAME = 1000 / 60;
+        function sampleSpring(stiffness, damping, mass) {
+            const dt = 1 / 60; let x = 1, v = 0; const out = [];
+            for (let i = 0; i < 240; i++) { const a = (-stiffness * x - damping * v) / mass; v += a * dt; x += v * dt; out.push(1 - x); if (Math.abs(x) < 0.0015 && Math.abs(v) < 0.0015) break; }
+            out.push(1); return out;
+        }
+        const SPRING_POS = sampleSpring(320, 30, 1);
+        const SPRING_POP = sampleSpring(520, 17, 1);
+        const durOf = (a) => a.length * FRAME;
+        const Motion = {
+            // FLIP: el is already at its NEW spot; animate FROM (dx,dy) = old - new.
+            flip(el, dx, dy) {
+                if (REDUCED || (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5)) return;
+                const kf = SPRING_POS.map(p => ({ transform: `translate(${(dx * (1 - p)).toFixed(2)}px, ${(dy * (1 - p)).toFixed(2)}px)` }));
+                el.animate(kf, { duration: durOf(SPRING_POS), easing: 'linear' });
+            },
+            // spring-glide a pointer pill along X (keeps the -50% centre offset). Stores el._x.
+            glide(el, x) {
+                const prev = el._x; el.style.opacity = '1';
+                const commit = `translateX(${x.toFixed(2)}px) translateX(-50%)`;
+                if (REDUCED || prev == null || Math.abs(x - prev) < 0.5) { el._x = x; el.style.transform = commit; return; }
+                const dx = x - prev;
+                const kf = SPRING_POS.map(p => ({ transform: `translateX(${(prev + dx * p).toFixed(2)}px) translateX(-50%)` }));
+                el.animate(kf, { duration: durOf(SPRING_POS), easing: 'linear' });
+                el._x = x; el.style.transform = commit;
+            },
+            pop(el) {
+                if (REDUCED) { el.style.opacity = '1'; el.style.transform = 'scale(1)'; return; }
+                const kf = SPRING_POP.map(p => ({ opacity: Math.min(1, p * 2).toFixed(3), transform: `scale(${(0.5 + 0.5 * p).toFixed(3)})` }));
+                el.animate(kf, { duration: durOf(SPRING_POP), easing: 'linear', fill: 'forwards' });
+            },
+        };
+
+        // ───────── State ─────────
+        let A = 3, B = 4, M = 5;
+        let target = 0;            // true a^b % m for verification / display
+        let bitsLSB = [];          // exponent bits, index 0 = LSB
+        let steps = [];
+        let stepIdx = 0;
+        let timer = null;
+        let confettiArmed = true;
+        const delays = [1500, 760, 360];
+        const bitEls = {};         // bit index -> .bit element (keyed by LSB position)
+        let lastBaseVal = null, lastResultVal = null;
+
+        const EXAMPLES = [
+            { a: 3, b: 4, m: 5 },
+            { a: 2, b: 10, m: 1000 },
+        ];
+
+        // BigInt modular power — the ground truth we verify against.
+        function modPow(a, b, m) {
+            if (m === 1) return 0;
+            let base = ((a % m) + m) % m, exp = b, res = 1 % m;
+            base = BigInt(base); res = BigInt(res); const bm = BigInt(m); let e = BigInt(exp);
+            while (e > 0n) { if (e & 1n) res = (res * base) % bm; base = (base * base) % bm; e >>= 1n; }
+            return Number(res);
+        }
+
+        const CODE = [
+            [['kw','def '],['fn','mod_pow'],['src','(a, b, m):']],
+            [['src','    result = 1 % m']],
+            [['src','    base = a % m']],
+            [['kw','    while '],['src','b > 0:']],
+            [['kw','        if '],['src','b & 1:           '],['cm','# low bit set']],
+            [['src','            result = (result * base) % m']],
+            [['src','        base = (base * base) % m   '],['cm','# square']],
+            [['src','        b >>= 1                    '],['cm','# next bit']],
+            [['kw','    return '],['src','result']],
+        ];
+        function buildCodePanel() {
+            const panel = document.getElementById('code-panel'); panel.innerHTML = '';
+            CODE.forEach((tokens, i) => {
+                const line = document.createElement('div'); line.className = 'code-line'; line.dataset.line = i;
+                const lno = document.createElement('span'); lno.className = 'lno'; lno.textContent = i + 1; line.appendChild(lno);
+                const src = document.createElement('span');
+                tokens.forEach(([cls, txt]) => { const s = document.createElement('span'); s.className = cls; s.textContent = txt; src.appendChild(s); });
+                line.appendChild(src); panel.appendChild(line);
+            });
+        }
+        function highlightCode(arr) { document.querySelectorAll('.code-line').forEach(el => el.classList.toggle('active', arr && arr.includes(+el.dataset.line))); }
+        function toggleDetails() {
+            const wrap = document.getElementById('details-wrap'); const open = wrap.classList.toggle('open');
+            wrap.querySelector('.details-toggle').setAttribute('aria-expanded', open ? 'true' : 'false');
+            document.getElementById('details-label').textContent = open ? 'Hide code, state & log' : 'Show code, state & log';
+        }
+
+        // ───────── step generation (LSB-first square & multiply) ─────────
+        // Each step is an immutable snapshot. bitStates[k] in {idle, current, one, zero, done}.
+        function generateSteps() {
+            steps = [];
+            const m = M;
+            target = modPow(A, B, M);
+            bitsLSB = (B === 0 ? [0] : B.toString(2).split('').reverse().map(Number)); // index 0 = LSB
+            const nbits = bitsLSB.length;
+
+            let base = ((A % m) + m) % m;
+            let result = 1 % m;
+            let expLeft = B;
+
+            const baseState = (states) => states.slice();
+            const allIdle = () => bitsLSB.map(() => 'idle');
+
+            const snap = (extra) => Object.assign({
+                base, result, expLeft,
+                bitStates: allIdle(),
+                baseActive: false, resultActive: false, win: false,
+            }, extra);
+
+            // STEP 0 — init
+            steps.push(snap({
+                code: [0, 1, 2],
+                action: 'INIT', actionColor: 'var(--accent-blue)',
+                panel: `Compute <code>${A}<sup>${B}</sup> &middot; mod ${M}</code> by <b>square &amp; multiply</b>. Exponent ${B} = <code>${B.toString(2)}<sub>2</sub></code>. Start with <b>result = ${result}</b>, <b>base = ${base}</b> (= ${A} mod ${M}).`,
+                log: `init  a=${A} b=${B} m=${M}\n  base = ${A} % ${M} = ${base}\n  result = 1 % ${M} = ${result}`
+            }));
+
+            for (let k = 0; k < nbits; k++) {
+                const bit = bitsLSB[k];
+                const prevResult = result;
+                const prevBase = base;
+                const pwr = Math.pow(2, k);
+
+                // (1) read this bit
+                steps.push(snap({
+                    code: [3, 4],
+                    bitStates: bitsLSB.map((_, j) => j < k ? 'done' : (j === k ? 'current' : 'idle')),
+                    action: `BIT ${k} = ${bit}`, actionColor: 'var(--accent-purple)',
+                    panel: `Look at bit ${k} (value <code>2<sup>${k}</sup> = ${pwr}</code>) of the exponent: it is <b>${bit}</b>. ` +
+                           (bit ? `Bit is <b>1</b> &rarr; fold the current <b>base = ${prevBase}</b> into the result.` : `Bit is <b>0</b> &rarr; skip the multiply; only square the base.`),
+                    log: `bit ${k} = ${bit}` + (bit ? `  -> multiply result by base` : `  -> skip multiply`)
+                }));
+
+                // (2) if bit set, multiply result *= base (mod m)
+                if (bit) {
+                    const product = prevResult * prevBase;
+                    result = ((prevResult * prevBase) % m + m) % m;
+                    steps.push(snap({
+                        result, // already updated
+                        code: [5],
+                        bitStates: bitsLSB.map((_, j) => j < k ? 'done' : (j === k ? 'one' : 'idle')),
+                        resultActive: true,
+                        action: `result = (${prevResult} × ${prevBase}) % ${M}`, actionColor: 'var(--accent-purple)',
+                        tile: `${prevResult} × ${prevBase} = ${product}`,
+                        baseShow: prevBase, resultShow: result, resultSub: `(${prevResult} × ${prevBase}) % ${M} = ${result}`,
+                        panel: `Multiply: <code>result = (${prevResult} &times; ${prevBase}) % ${M} = ${result}</code>.`,
+                        log: `  result = (${prevResult} * ${prevBase}) % ${M} = ${result}`
+                    }));
+                }
+
+                // (3) square the base (mod m)  — always
+                const squared = prevBase * prevBase;
+                base = ((prevBase * prevBase) % m + m) % m;
+                const isLast = (k === nbits - 1);
+                expLeft = expLeft >> 1;
+                steps.push(snap({
+                    base, // updated
+                    result,
+                    expLeft,
+                    code: [6, 7],
+                    bitStates: bitsLSB.map((_, j) => j <= k ? 'done' : 'idle'),
+                    baseActive: true,
+                    action: `base = (${prevBase})² % ${M}`, actionColor: 'var(--accent-blue)',
+                    tile: `${prevBase}² = ${squared}`,
+                    baseShow: base, resultShow: result, baseSub: `(${prevBase} × ${prevBase}) % ${M} = ${base}`,
+                    panel: `Square the base for the next bit: <code>base = (${prevBase}&middot;${prevBase}) % ${M} = ${base}</code>.` +
+                           (isLast ? ` All bits consumed.` : ''),
+                    log: `  base = (${prevBase} * ${prevBase}) % ${M} = ${base}`
+                }));
+            }
+
+            // FINAL
+            const correct = (result === target);
+            steps.push(snap({
+                code: [8],
+                bitStates: bitsLSB.map(() => 'done'),
+                resultActive: true, win: true, complete: true, confetti: correct,
+                miss: !correct,
+                action: '✓ DONE', actionColor: 'var(--accent-green)',
+                result, resultShow: result,
+                resultSub: `${A}^${B} % ${M} = ${result}`,
+                panel: correct
+                    ? `Exponent exhausted. <b>${A}<sup>${B}</sup> &middot; mod ${M} = ${result}</b> &mdash; computed in just ${nbits} squarings.`
+                    : `Result <b>${result}</b> &ne; expected <b>${target}</b>.`,
+                log: `done  ${A}^${B} % ${M} = ${result}`
+            }));
+        }
+
+        // ───────── render (persistent DOM + spring pop) ─────────
+        function renderStep(idx) {
+            stepIdx = idx; const step = steps[idx]; if (!step) return;
+            const rail = document.getElementById('bit-rail');
+            const n = bitsLSB.length;
+
+            // reconcile bit tiles (keyed by LSB index)
+            const used = new Set();
+            for (let i = 0; i < n; i++) {
+                used.add(String(i));
+                let el = bitEls[i];
+                if (!el) {
+                    el = document.createElement('div'); el.className = 'bit';
+                    el.innerHTML = `<div class="box"></div><div class="pwr"></div>`;
+                    bitEls[i] = el;
+                }
+                el.querySelector('.box').textContent = bitsLSB[i];
+                el.querySelector('.pwr').textContent = '2^' + i;
+                const st = (step.bitStates && step.bitStates[i]) || 'idle';
+                el.className = 'bit ' + st;
+                rail.appendChild(el); // re-append in order
+            }
+            Object.keys(bitEls).forEach(k => { if (!used.has(k)) { bitEls[k].remove(); delete bitEls[k]; } });
+
+            // accumulators: base & result (pop on value change)
+            const baseVal = document.getElementById('base-val');
+            const resultVal = document.getElementById('result-val');
+            const baseShow = (step.baseShow != null) ? step.baseShow : step.base;
+            const resultShow = (step.resultShow != null) ? step.resultShow : step.result;
+            baseVal.textContent = baseShow;
+            resultVal.textContent = resultShow;
+            if (lastBaseVal !== String(baseShow)) { Motion.pop(baseVal); lastBaseVal = String(baseShow); }
+            if (lastResultVal !== String(resultShow)) { Motion.pop(resultVal); lastResultVal = String(resultShow); }
+            document.getElementById('base-sub').innerHTML = step.baseSub || '&nbsp;';
+            document.getElementById('result-sub').innerHTML = step.resultSub || '&nbsp;';
+
+            const accBase = document.getElementById('acc-base');
+            const accResult = document.getElementById('acc-result');
+            accBase.className = 'acc base' + (step.baseActive ? ' active' : '');
+            accResult.className = 'acc result' + (step.resultActive ? ' active' : '') + (step.win ? ' win' : '');
+
+            // floating tile (value in motion)
+            const ft = document.getElementById('float-tile');
+            if (step.tile != null) { ft.textContent = step.tile; ft.classList.add('show'); Motion.pop(ft); }
+            else ft.classList.remove('show');
+
+            // narration / action / chrome
+            const mp = document.getElementById('main-panel');
+            mp.innerHTML = step.panel || '&mdash;';
+            mp.classList.toggle('done', !!step.complete && !step.miss);
+            mp.classList.toggle('miss', !!step.miss);
+            const aw = document.getElementById('action-word'); aw.textContent = step.action || ''; aw.style.color = step.actionColor || 'var(--text-dim)';
+            highlightCode(step.code);
+
+            if (step.confetti) { if (confettiArmed) { fireConfetti(); confettiArmed = false; } } else confettiArmed = true;
+
+            document.getElementById('st-base').textContent = step.base != null ? step.base : '—';
+            document.getElementById('st-result').textContent = step.result != null ? step.result : '—';
+            document.getElementById('st-exp').textContent = step.expLeft != null ? step.expLeft : '—';
+            document.getElementById('st-target').textContent = target;
+
+            document.getElementById('step-badge').textContent = `Step ${idx + 1} / ${steps.length}`;
+            document.getElementById('progress-fill').style.width = `${(idx / Math.max(1, steps.length - 1)) * 100}%`;
+
+            const logEl = document.getElementById('log');
+            logEl.innerHTML = steps.slice(0, idx + 1).map(s => `<div style="margin:3px 0;white-space:pre-wrap;">${s.log}</div>`).join('');
+            logEl.scrollTop = logEl.scrollHeight;
+        }
+
+        function fireConfetti() {
+            const host = document.getElementById('confetti'); if (!host || REDUCED) return;
+            const colors = ['#22c55e', '#06b6d4', '#a855f7', '#f5a524', '#f43f5e'];
+            for (let i = 0; i < 38; i++) {
+                const p = document.createElement('div'); p.className = 'confetti-piece';
+                p.style.setProperty('--x', ((Math.random() * 2 - 1) * 220) + 'px');
+                p.style.setProperty('--rot', ((Math.random() * 720 - 360)) + 'deg');
+                p.style.background = colors[i % colors.length];
+                p.style.animationDuration = (0.9 + Math.random() * 0.8) + 's';
+                p.style.animationDelay = (Math.random() * 0.15) + 's';
+                host.appendChild(p); setTimeout(() => p.remove(), 1900);
+            }
+        }
+
+        // ───────── controls ─────────
+        function nextStep() { if (stepIdx < steps.length - 1) renderStep(stepIdx + 1); else pause(); }
+        function prevStep() { if (stepIdx > 0) renderStep(stepIdx - 1); }
+        function resetSim() { pause(); renderStep(0); }
+        function togglePlay() {
+            const btn = document.getElementById('play-btn');
+            if (timer) { pause(); return; }
+            btn.textContent = 'Pause';
+            if (stepIdx >= steps.length - 1) renderStep(0);
+            timer = setInterval(() => { if (stepIdx < steps.length - 1) nextStep(); else pause(); }, delays[document.getElementById('speed').value]);
+        }
+        function pause() { clearInterval(timer); timer = null; document.getElementById('play-btn').textContent = 'Play'; }
+
+        function clearDom() {
+            Object.keys(bitEls).forEach(k => { bitEls[k].remove(); delete bitEls[k]; });
+            lastBaseVal = null; lastResultVal = null; confettiArmed = true;
+        }
+        function loadValues(a, b, m) {
+            pause();
+            A = a; B = b; M = m; clearDom(); generateSteps(); renderStep(0);
+        }
+        function loadCustom() {
+            const va = parseInt(document.getElementById('a-input').value, 10);
+            const vb = parseInt(document.getElementById('b-input').value, 10);
+            const vm = parseInt(document.getElementById('m-input').value, 10);
+            if (Number.isNaN(va) || Number.isNaN(vb) || Number.isNaN(vm)) { return; }
+            if (vb < 0 || vm < 1) { return; }
+            const a = Math.max(0, Math.min(va, 999));
+            const b = Math.max(0, Math.min(vb, 30));   // cap bits for the visual
+            const m = Math.max(1, Math.min(vm, 100000));
+            document.getElementById('a-input').value = a;
+            document.getElementById('b-input').value = b;
+            document.getElementById('m-input').value = m;
+            loadValues(a, b, m);
+        }
+        function loadExample(n) {
+            const ex = EXAMPLES[n];
+            document.getElementById('a-input').value = ex.a;
+            document.getElementById('b-input').value = ex.b;
+            document.getElementById('m-input').value = ex.m;
+            loadValues(ex.a, ex.b, ex.m);
+        }
+
+        document.addEventListener('keydown', (e) => {
+            const tag = (e.target.tagName || '').toLowerCase(); if (tag === 'input' || tag === 'textarea') return;
+            if (e.key === 'ArrowRight') { e.preventDefault(); pause(); nextStep(); }
+            else if (e.key === 'ArrowLeft') { e.preventDefault(); pause(); prevStep(); }
+            else if (e.key === ' ') { e.preventDefault(); togglePlay(); }
+        });
+        ['a-input', 'b-input', 'm-input'].forEach(id => {
+            document.getElementById(id).addEventListener('keydown', (e) => { if (e.key === 'Enter') loadCustom(); });
+        });
+        window.addEventListener('resize', () => renderStep(stepIdx));
+
+        buildCodePanel();
+        window.onload = () => loadExample(0);
+    </script>
+</body>
+</html>

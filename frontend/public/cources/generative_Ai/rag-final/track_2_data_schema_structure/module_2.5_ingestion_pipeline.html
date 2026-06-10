@@ -1,0 +1,2110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>RAG Academy • Module 2.4 — Ingestion Pipeline</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  if (typeof console !== 'undefined') {
+    const origWarn = console.warn;
+    console.warn = function(...args) {
+      if (args[0] && typeof args[0] === 'string' && args[0].includes('cdn.tailwindcss.com')) return;
+      origWarn.apply(console, args);
+    };
+  }
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700;800;900&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+<style>
+  :root {
+    --bg-deep: #02030a;
+    --bg-mid: #060818;
+    --bg-card: rgba(12, 16, 38, 0.6);
+    --neon-cyan: #00f0ff;
+    --neon-blue: #4d8eff;
+    --neon-purple: #b86bff;
+    --neon-pink: #ff4dcf;
+    --neon-amber: #ffb84d;
+    --neon-green: #4dffb8;
+    --text-primary: #e8efff;
+    --text-secondary: #8a96b8;
+    --border-glow: rgba(0, 240, 255, 0.25);
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    font-family: 'Inter', sans-serif;
+    background: var(--bg-deep);
+    color: var(--text-primary);
+    overflow-x: hidden;
+    min-height: 100vh;
+  }
+
+  .font-display { font-family: 'Orbitron', sans-serif; letter-spacing: 0.02em; }
+  .font-mono { font-family: 'JetBrains Mono', monospace; }
+
+  /* ===== STARFIELD ===== */
+  #starfield { position: fixed; inset: 0; z-index: 0; pointer-events: none; }
+  .nebula {
+    position: fixed; border-radius: 50%; filter: blur(120px);
+    opacity: 0.35; pointer-events: none; z-index: 0;
+  }
+  .nebula-1 { top: -10%; left: -5%; width: 50vw; height: 50vw; background: radial-gradient(circle, #4d8eff, transparent 70%); animation: drift1 22s ease-in-out infinite; }
+  .nebula-2 { top: 30%; right: -10%; width: 45vw; height: 45vw; background: radial-gradient(circle, #b86bff, transparent 70%); animation: drift2 28s ease-in-out infinite; }
+  .nebula-3 { bottom: -10%; left: 20%; width: 40vw; height: 40vw; background: radial-gradient(circle, #00f0ff, transparent 70%); animation: drift3 25s ease-in-out infinite; opacity: 0.22; }
+  @keyframes drift1 { 0%,100% { transform: translate(0,0); } 50% { transform: translate(40px, 60px); } }
+  @keyframes drift2 { 0%,100% { transform: translate(0,0); } 50% { transform: translate(-50px, 40px); } }
+  @keyframes drift3 { 0%,100% { transform: translate(0,0); } 50% { transform: translate(30px, -50px); } }
+
+  /* ===== NAV ===== */
+  .top-nav {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 50;
+    backdrop-filter: blur(20px); background: rgba(2, 3, 10, 0.7);
+    border-bottom: 1px solid rgba(0, 240, 255, 0.15);
+  }
+  .nav-logo {
+    background: linear-gradient(135deg, var(--neon-cyan), var(--neon-purple));
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+
+  /* ===== HOLO CARDS ===== */
+  .holo-card {
+    background: linear-gradient(135deg, rgba(12, 16, 38, 0.7), rgba(20, 12, 50, 0.5));
+    border: 1px solid rgba(0, 240, 255, 0.18);
+    border-radius: 18px;
+    backdrop-filter: blur(14px);
+    position: relative; overflow: hidden;
+    transition: all 0.4s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  .holo-card::before {
+    content: ''; position: absolute; inset: 0;
+    background: linear-gradient(135deg, transparent 40%, rgba(0, 240, 255, 0.08) 50%, transparent 60%);
+    transform: translateX(-100%); transition: transform 0.8s ease;
+    pointer-events: none;
+  }
+  .holo-card:hover::before { transform: translateX(100%); }
+  .holo-card:hover {
+    border-color: rgba(0, 240, 255, 0.5);
+    box-shadow: 0 0 40px rgba(0, 240, 255, 0.15), inset 0 0 30px rgba(77, 142, 255, 0.05);
+    transform: translateY(-4px);
+  }
+
+  /* ===== GRADIENTS ===== */
+  .gradient-cyan { background: linear-gradient(135deg, #00f0ff, #4d8eff); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .gradient-purple { background: linear-gradient(135deg, #b86bff, #ff4dcf); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .gradient-amber { background: linear-gradient(135deg, #ffb84d, #ff4dcf); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .gradient-green { background: linear-gradient(135deg, #4dffb8, #00f0ff); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .gradient-multi { background: linear-gradient(135deg, #00f0ff 0%, #4d8eff 35%, #b86bff 70%, #ff4dcf 100%); -webkit-background-clip: text; background-clip: text; color: transparent; }
+
+  /* ===== BUTTONS ===== */
+  .btn-primary {
+    background: linear-gradient(135deg, #00f0ff, #4d8eff);
+    color: #02030a; font-weight: 700;
+    padding: 14px 28px; border-radius: 12px; border: none;
+    position: relative; overflow: hidden;
+    transition: all 0.3s ease; cursor: pointer;
+    box-shadow: 0 0 30px rgba(0, 240, 255, 0.35);
+  }
+  .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 0 50px rgba(0, 240, 255, 0.6); }
+  .btn-ghost {
+    background: rgba(12, 16, 38, 0.5);
+    border: 1px solid rgba(0, 240, 255, 0.3);
+    color: var(--text-primary); font-weight: 600;
+    padding: 14px 28px; border-radius: 12px;
+    transition: all 0.3s ease; cursor: pointer;
+  }
+  .btn-ghost:hover { border-color: var(--neon-cyan); background: rgba(0, 240, 255, 0.08); }
+
+  /* ===== HERO ===== */
+  .hero-title { font-size: clamp(2.5rem, 7vw, 6rem); line-height: 0.95; font-weight: 900; }
+  .scan-line {
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--neon-cyan), transparent);
+    animation: scan 4s linear infinite;
+  }
+  @keyframes scan { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }
+
+  /* ===== PILL ===== */
+  .pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 6px 14px; border-radius: 999px;
+    font-size: 0.75rem; font-weight: 600;
+    letter-spacing: 0.08em; text-transform: uppercase;
+    border: 1px solid rgba(0, 240, 255, 0.3);
+    background: rgba(0, 240, 255, 0.06);
+    color: var(--neon-cyan);
+  }
+  .pill-green { border-color: rgba(77, 255, 184, 0.3); background: rgba(77, 255, 184, 0.06); color: var(--neon-green); }
+  .pill-pink { border-color: rgba(255, 77, 207, 0.3); background: rgba(255, 77, 207, 0.06); color: var(--neon-pink); }
+  .pill-amber { border-color: rgba(255, 184, 77, 0.3); background: rgba(255, 184, 77, 0.06); color: var(--neon-amber); }
+  .pill-purple { border-color: rgba(184, 107, 255, 0.3); background: rgba(184, 107, 255, 0.06); color: var(--neon-purple); }
+
+  /* ===== CODE ===== */
+  .code-block {
+    background: rgba(2, 3, 10, 0.8);
+    border: 1px solid rgba(0, 240, 255, 0.2);
+    border-radius: 14px;
+    padding: 24px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.82rem; line-height: 1.7;
+    overflow-x: auto; position: relative;
+  }
+  .code-block::before {
+    content: ''; position: absolute;
+    top: 0; left: 0; right: 0; height: 1px;
+    background: linear-gradient(90deg, transparent, var(--neon-cyan), transparent);
+  }
+  .code-block pre { margin: 0; }
+  .tok-keyword { color: #ff4dcf; }
+  .tok-string { color: #4dffb8; }
+  .tok-fn { color: #00f0ff; }
+  .tok-comment { color: #5a6788; font-style: italic; }
+  .tok-num { color: #ffb84d; }
+  .tok-var { color: #e8efff; }
+  .tok-key { color: #b86bff; }
+  .tok-bool { color: #ff4dcf; font-weight: 600; }
+  .tok-type { color: #4d8eff; font-style: italic; }
+  .tok-deco { color: #ffb84d; font-weight: 600; }
+  .tok-class { color: #4dffb8; font-weight: 600; }
+
+  .float-y { animation: floaty 6s ease-in-out infinite; }
+  @keyframes floaty { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-12px); } }
+
+  /* ===== REVEAL ===== */
+  .reveal { transition: opacity 1s cubic-bezier(0.2, 0.8, 0.2, 1), transform 1s cubic-bezier(0.2, 0.8, 0.2, 1); }
+  .js-reveal .reveal { opacity: 0; transform: translateY(40px); }
+  .js-reveal .reveal.in { opacity: 1; transform: translateY(0); }
+
+  /* ===== PROGRESS ===== */
+  .progress-bar { height: 6px; background: rgba(0, 240, 255, 0.1); border-radius: 999px; overflow: hidden; position: relative; }
+  .progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--neon-cyan), var(--neon-purple), var(--neon-pink));
+    border-radius: 999px;
+    transition: width 1.5s cubic-bezier(0.2, 0.8, 0.2, 1);
+    position: relative;
+  }
+  .progress-fill::after {
+    content: ''; position: absolute; inset: 0;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
+    animation: shimmer 2s linear infinite;
+  }
+  @keyframes shimmer { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }
+
+  /* ===== CHECKPOINT ===== */
+  .checkpoint-glow {
+    background: radial-gradient(circle at center, rgba(0, 240, 255, 0.12), transparent 70%);
+    border: 1px solid rgba(0, 240, 255, 0.3);
+  }
+
+  /* ===== SIDE NAV ===== */
+  .side-dots {
+    position: fixed; right: 24px; top: 50%;
+    transform: translateY(-50%); z-index: 40;
+    display: flex; flex-direction: column; gap: 14px;
+  }
+  @media (max-width: 768px) { .side-dots { display: none; } }
+  .dot {
+    width: 10px; height: 10px; border-radius: 50%;
+    background: rgba(0, 240, 255, 0.2);
+    border: 1px solid rgba(0, 240, 255, 0.4);
+    transition: all 0.3s ease; cursor: pointer;
+  }
+  .dot.active { background: var(--neon-cyan); box-shadow: 0 0 15px var(--neon-cyan); transform: scale(1.3); }
+
+  /* ===== SCROLLBAR ===== */
+  ::-webkit-scrollbar { width: 10px; }
+  ::-webkit-scrollbar-track { background: var(--bg-deep); }
+  ::-webkit-scrollbar-thumb { background: linear-gradient(180deg, var(--neon-cyan), var(--neon-purple)); border-radius: 10px; }
+
+  /* ===== HOLO BORDER ===== */
+  .holo-border { position: relative; }
+  .holo-border::after {
+    content: ''; position: absolute; inset: -1px; border-radius: inherit;
+    padding: 1px;
+    background: linear-gradient(135deg, var(--neon-cyan), transparent 40%, transparent 60%, var(--neon-purple));
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor; mask-composite: exclude;
+    pointer-events: none; opacity: 0.6;
+  }
+
+  /* ===== GRID FLOOR ===== */
+  .grid-floor {
+    position: absolute; bottom: 0; left: 0; right: 0; height: 30vh;
+    background-image:
+      linear-gradient(rgba(0, 240, 255, 0.15) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0, 240, 255, 0.15) 1px, transparent 1px);
+    background-size: 50px 50px;
+    transform: perspective(500px) rotateX(60deg);
+    transform-origin: bottom;
+    opacity: 0.4;
+    mask-image: linear-gradient(180deg, transparent, black 50%);
+    -webkit-mask-image: linear-gradient(180deg, transparent, black 50%);
+  }
+
+  /* ===== CALLOUT ===== */
+  .callout {
+    background: linear-gradient(135deg, rgba(255, 184, 77, 0.08), rgba(255, 77, 207, 0.04));
+    border-left: 3px solid var(--neon-amber);
+    border-radius: 8px;
+    padding: 16px 20px;
+  }
+  .callout-cyan {
+    background: linear-gradient(135deg, rgba(0, 240, 255, 0.08), rgba(77, 142, 255, 0.04));
+    border-left: 3px solid var(--neon-cyan);
+    border-radius: 8px; padding: 16px 20px;
+  }
+  .callout-green {
+    background: linear-gradient(135deg, rgba(77, 255, 184, 0.08), rgba(0, 240, 255, 0.04));
+    border-left: 3px solid var(--neon-green);
+    border-radius: 8px; padding: 16px 20px;
+  }
+  .callout-pink {
+    background: linear-gradient(135deg, rgba(255, 77, 207, 0.08), rgba(184, 107, 255, 0.04));
+    border-left: 3px solid var(--neon-pink);
+    border-radius: 8px; padding: 16px 20px;
+  }
+
+  /* ===== STAT NUM ===== */
+  .stat-num {
+    font-family: 'Orbitron', sans-serif;
+    font-weight: 800; font-size: 2.4rem;
+    background: linear-gradient(135deg, #00f0ff, #b86bff);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+
+  /* ===== TAB ===== */
+  .tab-btn {
+    padding: 10px 20px;
+    border-radius: 10px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.82rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    border: 1px solid rgba(0, 240, 255, 0.2);
+    background: rgba(12, 16, 38, 0.5);
+    color: var(--text-secondary);
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .tab-btn:hover { border-color: var(--neon-cyan); color: var(--text-primary); }
+  .tab-btn.active {
+    background: linear-gradient(135deg, var(--neon-cyan), var(--neon-purple));
+    color: #02030a;
+    border-color: transparent;
+    box-shadow: 0 0 25px rgba(0, 240, 255, 0.4);
+  }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; animation: fadeUp 0.5s ease; }
+  @keyframes fadeUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+  /* ===== COPY ===== */
+  .copy-btn {
+    position: absolute;
+    top: 12px; right: 12px;
+    background: rgba(0, 240, 255, 0.1);
+    border: 1px solid rgba(0, 240, 255, 0.3);
+    color: var(--neon-cyan);
+    padding: 4px 10px;
+    border-radius: 6px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.7rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    z-index: 2;
+  }
+  .copy-btn:hover { background: rgba(0, 240, 255, 0.2); }
+  .copy-btn.copied { background: var(--neon-green); color: #02030a; border-color: var(--neon-green); }
+
+  /* ===== INGESTION PIPELINE STAGE ===== */
+  .stage-node {
+    transition: all 0.3s ease;
+    cursor: pointer;
+    text-align: center;
+  }
+  .stage-node:hover { transform: scale(1.04); }
+  .stage-node.active .stage-circle {
+    background: linear-gradient(135deg, var(--neon-cyan), var(--neon-purple));
+    box-shadow: 0 0 30px rgba(0, 240, 255, 0.6);
+  }
+  .stage-circle {
+    width: 60px; height: 60px;
+    border-radius: 50%;
+    background: rgba(12, 16, 38, 0.8);
+    border: 2px solid rgba(0, 240, 255, 0.3);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto;
+    transition: all 0.3s ease;
+  }
+
+  /* ===== STREAM PIPELINE ANIMATION ===== */
+  .pipeline-track {
+    background: rgba(2, 3, 10, 0.7);
+    border: 1px solid rgba(0, 240, 255, 0.15);
+    border-radius: 12px;
+    overflow: hidden;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.78rem;
+  }
+  .pipeline-track-header {
+    padding: 8px 14px;
+    background: rgba(0, 240, 255, 0.04);
+    border-bottom: 1px solid rgba(0, 240, 255, 0.1);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    color: var(--neon-cyan);
+    font-size: 0.7rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+  .pipeline-track-body {
+    padding: 12px 14px;
+    min-height: 100px;
+    max-height: 180px;
+    overflow-y: auto;
+  }
+  .pipeline-row {
+    padding: 6px 0;
+    border-bottom: 1px dashed rgba(0, 240, 255, 0.06);
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    opacity: 0;
+    transform: translateY(-8px);
+    transition: all 0.4s ease;
+  }
+  .pipeline-row.shown { opacity: 1; transform: translateY(0); }
+  .pipeline-row:last-child { border-bottom: none; }
+  .row-id { color: var(--neon-cyan); font-weight: 600; flex-shrink: 0; }
+  .row-status { font-size: 0.7rem; padding: 1px 6px; border-radius: 4px; font-weight: 600; }
+  .status-loaded { background: rgba(0, 240, 255, 0.12); color: var(--neon-cyan); }
+  .status-cleaned { background: rgba(184, 107, 255, 0.12); color: var(--neon-purple); }
+  .status-deduped { background: rgba(255, 184, 77, 0.12); color: var(--neon-amber); }
+  .status-chunked { background: rgba(255, 77, 207, 0.12); color: var(--neon-pink); }
+  .status-embedded { background: rgba(77, 255, 184, 0.12); color: var(--neon-green); }
+  .status-indexed { background: rgba(77, 142, 255, 0.12); color: var(--neon-blue); }
+  .status-skipped { background: rgba(138, 150, 184, 0.12); color: var(--text-secondary); text-decoration: line-through; }
+
+  /* ===== METADATA TABLE ===== */
+  .meta-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.82rem;
+  }
+  .meta-table th {
+    text-align: left;
+    padding: 12px 14px;
+    background: rgba(0, 240, 255, 0.06);
+    border-bottom: 1px solid rgba(0, 240, 255, 0.2);
+    color: var(--neon-cyan);
+    font-family: 'Orbitron', sans-serif;
+    font-size: 0.7rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+  .meta-table th:first-child { border-top-left-radius: 10px; }
+  .meta-table th:last-child { border-top-right-radius: 10px; }
+  .meta-table td {
+    padding: 12px 14px;
+    border-bottom: 1px solid rgba(0, 240, 255, 0.08);
+    color: var(--text-primary);
+    vertical-align: top;
+  }
+  .meta-table tr:last-child td { border-bottom: none; }
+  .meta-table tr:hover td { background: rgba(0, 240, 255, 0.03); }
+
+  /* ===== LOADER CARD ===== */
+  .loader-card {
+    background: rgba(12, 16, 38, 0.7);
+    border: 1px solid rgba(0, 240, 255, 0.2);
+    border-radius: 14px;
+    padding: 18px;
+    transition: all 0.3s ease;
+  }
+  .loader-card:hover {
+    border-color: var(--neon-cyan);
+    transform: translateY(-3px);
+    box-shadow: 0 0 20px rgba(0, 240, 255, 0.15);
+  }
+  .loader-icon {
+    width: 44px; height: 44px;
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    margin-bottom: 12px;
+  }
+
+  /* ===== STEP CARD ===== */
+  .step-card {
+    position: relative;
+    background: rgba(12, 16, 38, 0.7);
+    border: 1px solid rgba(184, 107, 255, 0.25);
+    border-radius: 14px;
+    padding: 18px 22px 18px 64px;
+    transition: all 0.3s ease;
+  }
+  .step-card:hover {
+    border-color: var(--neon-purple);
+    transform: translateX(4px);
+    box-shadow: 0 0 25px rgba(184, 107, 255, 0.15);
+  }
+  .step-num {
+    position: absolute;
+    top: 16px;
+    left: 16px;
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    background: linear-gradient(135deg, var(--neon-purple), var(--neon-pink));
+    color: #02030a;
+    font-family: 'Orbitron', sans-serif;
+    font-weight: 800;
+    font-size: 0.85rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 0 15px rgba(184, 107, 255, 0.5);
+  }
+
+  /* ===== METRIC CARD ===== */
+  .metric-card {
+    background: rgba(12, 16, 38, 0.6);
+    border: 1px solid rgba(0, 240, 255, 0.2);
+    border-radius: 12px;
+    padding: 16px;
+    text-align: center;
+    transition: all 0.3s ease;
+  }
+  .metric-card:hover { border-color: var(--neon-cyan); transform: translateY(-2px); }
+  .metric-val {
+    font-family: 'Orbitron', sans-serif;
+    font-weight: 800;
+    font-size: 1.6rem;
+    line-height: 1;
+  }
+
+  /* ===== QUIZ ===== */
+  .quiz-option {
+    background: rgba(12, 16, 38, 0.6);
+    border: 1px solid rgba(0, 240, 255, 0.2);
+    border-radius: 12px;
+    padding: 14px 18px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    display: flex; align-items: center; gap: 12px;
+    text-align: left;
+    width: 100%;
+    font-family: inherit;
+    color: var(--text-primary);
+  }
+  .quiz-option:hover:not(.locked) {
+    border-color: var(--neon-cyan);
+    background: rgba(0, 240, 255, 0.06);
+    transform: translateX(4px);
+  }
+  .quiz-option.correct {
+    border-color: var(--neon-green);
+    background: rgba(77, 255, 184, 0.1);
+    box-shadow: 0 0 20px rgba(77, 255, 184, 0.3);
+  }
+  .quiz-option.wrong {
+    border-color: var(--neon-pink);
+    background: rgba(255, 77, 207, 0.1);
+  }
+  .quiz-marker {
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    border: 1px solid rgba(0, 240, 255, 0.3);
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Orbitron', sans-serif;
+    font-size: 0.8rem;
+    color: var(--neon-cyan);
+    flex-shrink: 0;
+  }
+  .quiz-option.correct .quiz-marker { background: var(--neon-green); border-color: var(--neon-green); color: #02030a; }
+  .quiz-option.wrong .quiz-marker { background: var(--neon-pink); border-color: var(--neon-pink); color: #02030a; }
+
+  /* ===== FAILURE MODE CARD ===== */
+  .failure-card {
+    background: rgba(2, 3, 10, 0.6);
+    border: 1px solid rgba(255, 77, 207, 0.2);
+    border-radius: 12px;
+    padding: 18px;
+    transition: all 0.3s ease;
+  }
+  .failure-card:hover {
+    border-color: var(--neon-pink);
+    background: rgba(255, 77, 207, 0.04);
+  }
+
+
+
+  /* ===== LEARN & PRACTICE CARDS ===== */
+  .resource-stack {
+    max-width: 860px;
+    margin: 0 auto;
+    display: grid;
+    gap: 14px;
+  }
+  .resource-card {
+    background: linear-gradient(135deg, rgba(6, 8, 24, 0.92), rgba(10, 12, 34, 0.86));
+    border: 1px solid rgba(0, 240, 255, 0.32);
+    border-radius: 16px;
+    padding: 20px;
+    box-shadow: 0 0 28px rgba(0, 240, 255, 0.08);
+  }
+  .resource-card.repo {
+    border-color: rgba(255, 77, 207, 0.35);
+    box-shadow: 0 0 28px rgba(255, 77, 207, 0.08);
+  }
+  .resource-icon {
+    width: 34px;
+    height: 34px;
+    border-radius: 10px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid rgba(0, 240, 255, 0.4);
+    background: rgba(0, 240, 255, 0.08);
+    color: var(--neon-cyan);
+    flex-shrink: 0;
+  }
+  .resource-card.repo .resource-icon {
+    border-color: rgba(255, 77, 207, 0.45);
+    background: rgba(255, 77, 207, 0.1);
+    color: var(--neon-pink);
+  }
+  .resource-cta {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 12px;
+    padding: 10px 18px;
+    border-radius: 10px;
+    border: 1px solid rgba(0, 240, 255, 0.55);
+    color: var(--neon-cyan);
+    font-family: 'Orbitron', sans-serif;
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    background: rgba(0, 240, 255, 0.06);
+    transition: all 0.25s ease;
+  }
+  .resource-cta:hover {
+    background: rgba(0, 240, 255, 0.12);
+    box-shadow: 0 0 20px rgba(0, 240, 255, 0.22);
+  }
+  .resource-card.repo .resource-cta {
+    border-color: rgba(255, 77, 207, 0.55);
+    color: var(--neon-pink);
+    background: rgba(255, 77, 207, 0.08);
+  }
+  .resource-card.repo .resource-cta:hover {
+    background: rgba(255, 77, 207, 0.15);
+    box-shadow: 0 0 20px rgba(255, 77, 207, 0.24);
+  }
+
+</style>
+</head>
+
+<body>
+
+<!-- Nebula backgrounds -->
+<div class="nebula nebula-1"></div>
+<div class="nebula nebula-2"></div>
+<div class="nebula nebula-3"></div>
+
+<!-- Starfield Canvas -->
+<canvas id="starfield"></canvas>
+
+<!-- TOP NAV -->
+<nav class="top-nav">
+  <div class="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
+    <div class="flex items-center gap-3">
+      <div class="w-10 h-10 rounded-xl flex items-center justify-center" style="background: linear-gradient(135deg, #00f0ff, #b86bff); box-shadow: 0 0 20px rgba(0,240,255,0.5);">
+        <i data-lucide="inbox" class="w-5 h-5 text-black"></i>
+      </div>
+      <div>
+        <div class="font-display font-bold text-lg nav-logo">RAG ACADEMY</div>
+        <div class="text-[10px] text-gray-400 tracking-widest -mt-1">TRACK 02 • MODULE 2.4</div>
+      </div>
+    </div>
+
+    <div class="hidden md:flex items-center gap-8 text-sm">
+      <a href="#hero" class="text-cyan-300 font-medium">Overview</a>
+      <a href="#pipeline" class="text-gray-300 hover:text-cyan-300 transition">Pipeline</a>
+      <a href="#loaders" class="text-gray-300 hover:text-cyan-300 transition">Loaders</a>
+      <a href="#clean" class="text-gray-300 hover:text-cyan-300 transition">Clean</a>
+      <a href="#meta" class="text-gray-300 hover:text-cyan-300 transition">Metadata</a>
+      <a href="#orchestration" class="text-gray-300 hover:text-cyan-300 transition">Orchestration</a>
+      <a href="#checkpoint" class="text-gray-300 hover:text-cyan-300 transition">Checkpoint</a>
+    </div>
+
+    <div class="flex items-center gap-3">
+      <div class="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full" style="background: rgba(0,240,255,0.08); border: 1px solid rgba(0,240,255,0.25);">
+        <div class="w-2 h-2 rounded-full" style="background: #4dffb8; box-shadow: 0 0 8px #4dffb8;"></div>
+        <span class="text-xs font-mono text-cyan-200">CADET ONLINE</span>
+      </div>
+      <button class="btn-ghost text-sm py-2 px-4">Save Progress</button>
+    </div>
+  </div>
+  <div class="scan-line"></div>
+</nav>
+
+<!-- SIDE NAV DOTS -->
+<div class="side-dots" id="sideDots">
+  <div class="dot active" data-target="hero" title="Hero"></div>
+  <div class="dot" data-target="objectives" title="Objectives"></div>
+  <div class="dot" data-target="pipeline" title="Pipeline"></div>
+  <div class="dot" data-target="loaders" title="Loaders"></div>
+  <div class="dot" data-target="clean" title="Clean & Dedup"></div>
+  <div class="dot" data-target="meta" title="Metadata"></div>
+  <div class="dot" data-target="stream" title="Live Stream"></div>
+  <div class="dot" data-target="orchestration" title="Orchestration"></div>
+  <div class="dot" data-target="failures" title="Failures"></div>
+  <div class="dot" data-target="checkpoint" title="Checkpoint"></div>
+</div>
+
+<!-- ========== HERO ========== -->
+<section id="hero" class="relative min-h-screen flex items-center pt-32 pb-24 px-6">
+  <div class="grid-floor"></div>
+
+  <div class="max-w-7xl mx-auto w-full grid lg:grid-cols-2 gap-16 items-center relative z-10">
+    <div class="reveal">
+      <div class="flex items-center gap-3 mb-6">
+        <span class="pill"><i data-lucide="inbox" class="w-3 h-3"></i> Track 2 · Module 2.4</span>
+        <span class="text-xs text-gray-400 font-mono">EST. 50 MIN</span>
+      </div>
+
+      <h1 class="hero-title font-display mb-6">
+        <span class="block text-white">The Ingestion</span>
+        <span class="block gradient-multi">Pipeline</span>
+      </h1>
+
+      <p class="text-lg md:text-xl text-gray-300 leading-relaxed mb-8 max-w-xl">
+        Before retrieval can be smart, ingestion must be <span class="text-cyan-300 font-semibold">clean</span>.
+        This is where 60% of production-RAG bugs live —
+        <span class="text-purple-300 font-semibold">silent encoding errors</span>,
+        <span class="text-pink-300 font-semibold">duplicate documents</span>,
+        and <span class="text-amber-300 font-semibold">missing metadata</span>.
+        Master the pipeline that feeds everything downstream.
+      </p>
+
+      <div class="flex flex-wrap gap-4 mb-12">
+        <button class="btn-primary flex items-center gap-2" onclick="document.getElementById('objectives').scrollIntoView({behavior:'smooth'})">
+          <i data-lucide="play" class="w-4 h-4"></i> Begin Mission
+        </button>
+        <button class="btn-ghost flex items-center gap-2" onclick="document.getElementById('stream').scrollIntoView({behavior:'smooth'})">
+          <i data-lucide="activity" class="w-4 h-4"></i> Watch the Stream
+        </button>
+      </div>
+
+      <div class="grid grid-cols-4 gap-3">
+        <div class="holo-card p-4 text-center">
+          <div class="stat-num text-2xl">6</div>
+          <div class="text-[10px] text-gray-400 uppercase tracking-wider mt-1">Stages</div>
+        </div>
+        <div class="holo-card p-4 text-center">
+          <div class="stat-num text-2xl">10+</div>
+          <div class="text-[10px] text-gray-400 uppercase tracking-wider mt-1">Loaders</div>
+        </div>
+        <div class="holo-card p-4 text-center">
+          <div class="stat-num text-2xl">60%</div>
+          <div class="text-[10px] text-gray-400 uppercase tracking-wider mt-1">Bugs Prevented</div>
+        </div>
+        <div class="holo-card p-4 text-center">
+          <div class="stat-num text-2xl">1</div>
+          <div class="text-[10px] text-gray-400 uppercase tracking-wider mt-1">JSONL Output</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT — DATA FUNNEL VISUAL -->
+    <div class="reveal">
+      <div class="holo-card p-6 holo-border float-y">
+        <div class="flex items-center justify-between mb-4">
+          <div class="font-mono text-xs text-cyan-300 tracking-widest">PIPELINE THROUGHPUT</div>
+          <span class="pill pill-green text-[10px]"><i data-lucide="activity" class="w-3 h-3"></i> LIVE</span>
+        </div>
+
+        <div class="space-y-3">
+          <div class="flex items-center gap-3">
+            <i data-lucide="files" class="w-5 h-5 text-cyan-400 flex-shrink-0"></i>
+            <div class="flex-1">
+              <div class="flex justify-between text-xs mb-1 font-mono">
+                <span class="text-gray-400">SOURCE FILES</span>
+                <span class="text-cyan-300">12,847</span>
+              </div>
+              <div style="height:6px; background: rgba(0,240,255,0.1); border-radius:999px;"><div style="height:100%; width:100%; background: linear-gradient(90deg, #00f0ff, #4d8eff); border-radius: 999px;"></div></div>
+            </div>
+          </div>
+
+          <div class="flex items-center gap-3">
+            <i data-lucide="filter" class="w-5 h-5 text-purple-400 flex-shrink-0"></i>
+            <div class="flex-1">
+              <div class="flex justify-between text-xs mb-1 font-mono">
+                <span class="text-gray-400">AFTER CLEAN/DEDUPE</span>
+                <span class="text-purple-300">11,203</span>
+              </div>
+              <div style="height:6px; background: rgba(0,240,255,0.1); border-radius:999px;"><div style="height:100%; width:87%; background: linear-gradient(90deg, #b86bff, #ff4dcf); border-radius: 999px;"></div></div>
+            </div>
+          </div>
+
+          <div class="flex items-center gap-3">
+            <i data-lucide="scissors" class="w-5 h-5 text-pink-400 flex-shrink-0"></i>
+            <div class="flex-1">
+              <div class="flex justify-between text-xs mb-1 font-mono">
+                <span class="text-gray-400">CHUNKS PRODUCED</span>
+                <span class="text-pink-300">218,492</span>
+              </div>
+              <div style="height:6px; background: rgba(0,240,255,0.1); border-radius:999px;"><div style="height:100%; width:100%; background: linear-gradient(90deg, #ff4dcf, #b86bff); border-radius: 999px;"></div></div>
+            </div>
+          </div>
+
+          <div class="flex items-center gap-3">
+            <i data-lucide="binary" class="w-5 h-5 text-amber-400 flex-shrink-0"></i>
+            <div class="flex-1">
+              <div class="flex justify-between text-xs mb-1 font-mono">
+                <span class="text-gray-400">EMBEDDED</span>
+                <span class="text-amber-300">218,492</span>
+              </div>
+              <div style="height:6px; background: rgba(0,240,255,0.1); border-radius:999px;"><div style="height:100%; width:100%; background: linear-gradient(90deg, #ffb84d, #ff4dcf); border-radius: 999px;"></div></div>
+            </div>
+          </div>
+
+          <div class="flex items-center gap-3">
+            <i data-lucide="database" class="w-5 h-5 text-green-400 flex-shrink-0"></i>
+            <div class="flex-1">
+              <div class="flex justify-between text-xs mb-1 font-mono">
+                <span class="text-gray-400">INDEXED IN VECTOR DB</span>
+                <span class="text-green-300">218,492 ✓</span>
+              </div>
+              <div style="height:6px; background: rgba(0,240,255,0.1); border-radius:999px;"><div style="height:100%; width:100%; background: linear-gradient(90deg, #4dffb8, #00f0ff); border-radius: 999px;"></div></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="mt-4 pt-4 border-t border-cyan-500/10 grid grid-cols-2 gap-3 text-xs font-mono">
+          <div class="text-center">
+            <div class="text-gray-500">DUPLICATE RATE</div>
+            <div class="text-purple-300 font-bold text-sm">12.8%</div>
+          </div>
+          <div class="text-center">
+            <div class="text-gray-500">CHUNKS / DOC</div>
+            <div class="text-cyan-300 font-bold text-sm">19.5</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========== OBJECTIVES ========== -->
+<section id="objectives" class="relative py-24 px-6 z-10">
+  <div class="max-w-7xl mx-auto">
+    <div class="text-center mb-16 reveal">
+      <span class="pill mb-4"><i data-lucide="target" class="w-3 h-3"></i> Mission Objectives</span>
+      <h2 class="font-display text-4xl md:text-5xl font-bold mt-4">
+        What You'll <span class="gradient-cyan">Build</span>
+      </h2>
+      <p class="text-gray-400 mt-4 max-w-3xl mx-auto">A production-grade ingestion pipeline — idempotent, resumable, observable, and fast enough for millions of documents.</p>
+    </div>
+
+    <div class="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div class="holo-card p-6 reveal">
+        <div class="w-12 h-12 rounded-xl flex items-center justify-center mb-4" style="background: rgba(0, 240, 255, 0.15);">
+          <i data-lucide="git-branch" class="w-6 h-6" style="color: #00f0ff;"></i>
+        </div>
+        <h3 class="font-display font-bold text-lg mb-2">The 6 Stages</h3>
+        <p class="text-sm text-gray-400 leading-relaxed">Discover → Load → Clean → Dedupe → Enrich → Persist. Each stage is its own concern.</p>
+      </div>
+
+      <div class="holo-card p-6 reveal">
+        <div class="w-12 h-12 rounded-xl flex items-center justify-center mb-4" style="background: rgba(184, 107, 255, 0.15);">
+          <i data-lucide="files" class="w-6 h-6" style="color: #b86bff;"></i>
+        </div>
+        <h3 class="font-display font-bold text-lg mb-2">Source Loaders</h3>
+        <p class="text-sm text-gray-400 leading-relaxed">PDF, HTML, Markdown, Notion, S3, Confluence, GitHub — one loader per source type.</p>
+      </div>
+
+      <div class="holo-card p-6 reveal">
+        <div class="w-12 h-12 rounded-xl flex items-center justify-center mb-4" style="background: rgba(255, 77, 207, 0.15);">
+          <i data-lucide="tags" class="w-6 h-6" style="color: #ff4dcf;"></i>
+        </div>
+        <h3 class="font-display font-bold text-lg mb-2">Metadata Discipline</h3>
+        <p class="text-sm text-gray-400 leading-relaxed">Capture <code class="font-mono text-pink-300 text-xs">source</code>, <code class="font-mono text-pink-300 text-xs">url</code>, <code class="font-mono text-pink-300 text-xs">timestamp</code>, <code class="font-mono text-pink-300 text-xs">author</code> — citations depend on it.</p>
+      </div>
+
+      <div class="holo-card p-6 reveal">
+        <div class="w-12 h-12 rounded-xl flex items-center justify-center mb-4" style="background: rgba(77, 255, 184, 0.15);">
+          <i data-lucide="repeat-2" class="w-6 h-6" style="color: #4dffb8;"></i>
+        </div>
+        <h3 class="font-display font-bold text-lg mb-2">Idempotent & Resumable</h3>
+        <p class="text-sm text-gray-400 leading-relaxed">Re-runs don't duplicate. Failures don't restart from zero. Content hashing is your friend.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========== INTERACTIVE 6-STAGE PIPELINE ========== -->
+<section id="pipeline" class="relative py-24 px-6 z-10">
+  <div class="max-w-7xl mx-auto">
+    <div class="text-center mb-16 reveal">
+      <span class="pill mb-4"><i data-lucide="git-branch" class="w-3 h-3"></i> The Architecture</span>
+      <h2 class="font-display text-4xl md:text-5xl font-bold mt-4">
+        The <span class="gradient-purple">6-Stage</span> Ingestion Pipeline
+      </h2>
+      <p class="text-gray-400 mt-4 max-w-3xl mx-auto">Every production system flows through these six stages. Click each to explore what happens there.</p>
+    </div>
+
+    <div class="reveal">
+      <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-8" id="stageGrid"></div>
+
+      <div class="holo-card p-8" id="stageDetail"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ========== LOADERS ========== -->
+<section id="loaders" class="relative py-24 px-6 z-10">
+  <div class="max-w-7xl mx-auto">
+    <div class="text-center mb-16 reveal">
+      <span class="pill mb-4"><i data-lucide="files" class="w-3 h-3"></i> Stage 2 · Load</span>
+      <h2 class="font-display text-4xl md:text-5xl font-bold mt-4">
+        Source <span class="gradient-cyan">Loaders</span>
+      </h2>
+      <p class="text-gray-400 mt-4 max-w-3xl mx-auto">Each source format needs a loader that knows its quirks. Pick the right one — or pay in bad chunks downstream.</p>
+    </div>
+
+    <div class="grid md:grid-cols-2 lg:grid-cols-4 gap-4 reveal">
+      <div class="loader-card">
+        <div class="loader-icon" style="background: rgba(255, 77, 207, 0.15); color: #ff4dcf;">
+          <i data-lucide="file-text" class="w-5 h-5"></i>
+        </div>
+        <h4 class="font-display font-bold text-sm text-white mb-1">PDF</h4>
+        <p class="text-xs text-gray-400 leading-relaxed mb-2">Use <code class="font-mono text-pink-300">pypdf</code>, <code class="font-mono text-pink-300">pdfplumber</code>, or <code class="font-mono text-pink-300">unstructured</code>.</p>
+        <p class="text-[10px] text-gray-500"><strong class="text-pink-300">⚠</strong> OCR for scanned PDFs.</p>
+      </div>
+
+      <div class="loader-card">
+        <div class="loader-icon" style="background: rgba(0, 240, 255, 0.15); color: #00f0ff;">
+          <i data-lucide="code-2" class="w-5 h-5"></i>
+        </div>
+        <h4 class="font-display font-bold text-sm text-white mb-1">HTML</h4>
+        <p class="text-xs text-gray-400 leading-relaxed mb-2"><code class="font-mono text-cyan-300">trafilatura</code> for content extraction, <code class="font-mono text-cyan-300">BeautifulSoup</code> for surgical parsing.</p>
+        <p class="text-[10px] text-gray-500"><strong class="text-cyan-300">⚠</strong> Strip nav, ads, footers.</p>
+      </div>
+
+      <div class="loader-card">
+        <div class="loader-icon" style="background: rgba(184, 107, 255, 0.15); color: #b86bff;">
+          <i data-lucide="file-down" class="w-5 h-5"></i>
+        </div>
+        <h4 class="font-display font-bold text-sm text-white mb-1">Markdown</h4>
+        <p class="text-xs text-gray-400 leading-relaxed mb-2"><code class="font-mono text-purple-300">markdown-it-py</code> or <code class="font-mono text-purple-300">mistune</code>. Headers carry structure.</p>
+        <p class="text-[10px] text-gray-500"><strong class="text-purple-300">✓</strong> Best for chunking by header.</p>
+      </div>
+
+      <div class="loader-card">
+        <div class="loader-icon" style="background: rgba(255, 184, 77, 0.15); color: #ffb84d;">
+          <i data-lucide="file-spreadsheet" class="w-5 h-5"></i>
+        </div>
+        <h4 class="font-display font-bold text-sm text-white mb-1">DOCX / PPTX</h4>
+        <p class="text-xs text-gray-400 leading-relaxed mb-2"><code class="font-mono text-amber-300">python-docx</code>, <code class="font-mono text-amber-300">python-pptx</code>. Preserve heading hierarchy.</p>
+        <p class="text-[10px] text-gray-500"><strong class="text-amber-300">⚠</strong> Tables need special handling.</p>
+      </div>
+
+      <div class="loader-card">
+        <div class="loader-icon" style="background: rgba(77, 255, 184, 0.15); color: #4dffb8;">
+          <i data-lucide="cloud" class="w-5 h-5"></i>
+        </div>
+        <h4 class="font-display font-bold text-sm text-white mb-1">S3 / GCS / Azure</h4>
+        <p class="text-xs text-gray-400 leading-relaxed mb-2"><code class="font-mono text-green-300">boto3</code>, <code class="font-mono text-green-300">google-cloud-storage</code>. Stream in, don't download first.</p>
+        <p class="text-[10px] text-gray-500"><strong class="text-green-300">✓</strong> Use <code class="font-mono">fsspec</code> for uniformity.</p>
+      </div>
+
+      <div class="loader-card">
+        <div class="loader-icon" style="background: rgba(77, 142, 255, 0.15); color: #4d8eff;">
+          <i data-lucide="book-open" class="w-5 h-5"></i>
+        </div>
+        <h4 class="font-display font-bold text-sm text-white mb-1">Notion</h4>
+        <p class="text-xs text-gray-400 leading-relaxed mb-2">Official API + <code class="font-mono text-blue-300">notion-client</code>. Recurse into child pages.</p>
+        <p class="text-[10px] text-gray-500"><strong class="text-blue-300">⚠</strong> Rate limits — backoff.</p>
+      </div>
+
+      <div class="loader-card">
+        <div class="loader-icon" style="background: rgba(0, 240, 255, 0.15); color: #00f0ff;">
+          <i data-lucide="github" class="w-5 h-5"></i>
+        </div>
+        <h4 class="font-display font-bold text-sm text-white mb-1">GitHub</h4>
+        <p class="text-xs text-gray-400 leading-relaxed mb-2">Clone or use the API. Filter by <code class="font-mono text-cyan-300">.md</code>, <code class="font-mono text-cyan-300">.rst</code>, code files.</p>
+        <p class="text-[10px] text-gray-500"><strong class="text-cyan-300">✓</strong> Use <code class="font-mono">.gitignore</code> patterns.</p>
+      </div>
+
+      <div class="loader-card">
+        <div class="loader-icon" style="background: rgba(255, 77, 207, 0.15); color: #ff4dcf;">
+          <i data-lucide="layout-dashboard" class="w-5 h-5"></i>
+        </div>
+        <h4 class="font-display font-bold text-sm text-white mb-1">Confluence / Jira</h4>
+        <p class="text-xs text-gray-400 leading-relaxed mb-2">Atlassian REST APIs. Map projects/spaces to namespaces.</p>
+        <p class="text-[10px] text-gray-500"><strong class="text-pink-300">⚠</strong> Permission propagation matters.</p>
+      </div>
+    </div>
+
+    <!-- Unified Document model -->
+    <div class="mt-12 reveal">
+      <h3 class="font-display font-bold text-xl mb-4 text-white flex items-center gap-2">
+        <i data-lucide="box" class="w-5 h-5 text-cyan-400"></i>
+        Whatever the source: produce ONE shape
+      </h3>
+      <p class="text-sm text-gray-400 mb-4">Every loader normalizes its output into a single <code class="font-mono text-cyan-300">Document</code> Pydantic model. From this point on, the pipeline doesn't care where the data came from.</p>
+
+      <div class="holo-card p-6 relative">
+        <button class="copy-btn" data-target="doc-model">COPY</button>
+        <div class="code-block text-xs">
+<pre id="doc-model"><span class="tok-keyword">from</span> <span class="tok-var">pydantic</span> <span class="tok-keyword">import</span> <span class="tok-class">BaseModel</span>, <span class="tok-fn">Field</span>
+<span class="tok-keyword">from</span> <span class="tok-var">datetime</span> <span class="tok-keyword">import</span> <span class="tok-class">datetime</span>
+
+<span class="tok-keyword">class</span> <span class="tok-class">Document</span>(<span class="tok-class">BaseModel</span>):
+    <span class="tok-comment">"""Canonical post-load shape — same for every source."""</span>
+    <span class="tok-var">doc_id</span>:      <span class="tok-type">str</span>                           <span class="tok-comment"># stable id (content hash)</span>
+    <span class="tok-var">source</span>:      <span class="tok-type">str</span>                           <span class="tok-comment"># "notion", "s3", "github"</span>
+    <span class="tok-var">uri</span>:         <span class="tok-type">str</span>                           <span class="tok-comment"># original location</span>
+    <span class="tok-var">text</span>:        <span class="tok-type">str</span>                           <span class="tok-comment"># cleaned plain text</span>
+    <span class="tok-var">title</span>:       <span class="tok-type">str</span> | <span class="tok-type">None</span> = <span class="tok-type">None</span>
+    <span class="tok-var">author</span>:      <span class="tok-type">str</span> | <span class="tok-type">None</span> = <span class="tok-type">None</span>
+    <span class="tok-var">created_at</span>:  <span class="tok-class">datetime</span> | <span class="tok-type">None</span> = <span class="tok-type">None</span>
+    <span class="tok-var">updated_at</span>:  <span class="tok-class">datetime</span> | <span class="tok-type">None</span> = <span class="tok-type">None</span>
+    <span class="tok-var">tags</span>:        <span class="tok-type">list</span>[<span class="tok-type">str</span>] = <span class="tok-fn">Field</span>(default_factory=<span class="tok-type">list</span>)
+    <span class="tok-var">extra</span>:       <span class="tok-type">dict</span> = <span class="tok-fn">Field</span>(default_factory=<span class="tok-type">dict</span>)  <span class="tok-comment"># source-specific blob</span></pre>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========== CLEAN & DEDUPE ========== -->
+<section id="clean" class="relative py-24 px-6 z-10">
+  <div class="max-w-7xl mx-auto">
+    <div class="text-center mb-16 reveal">
+      <span class="pill mb-4"><i data-lucide="filter" class="w-3 h-3"></i> Stages 3-4 · Clean & Dedupe</span>
+      <h2 class="font-display text-4xl md:text-5xl font-bold mt-4">
+        <span class="gradient-amber">Cleaning</span> &amp; <span class="gradient-purple">Deduplication</span>
+      </h2>
+      <p class="text-gray-400 mt-4 max-w-3xl mx-auto">Bad data in, bad answers out. Cleaning is unglamorous, but it's where you save the most production pain.</p>
+    </div>
+
+    <div class="space-y-6 reveal max-w-4xl mx-auto">
+      <div class="step-card">
+        <div class="step-num">1</div>
+        <div class="flex items-center gap-2 mb-1">
+          <h3 class="font-display font-bold text-base text-white">Normalize encoding</h3>
+          <span class="pill text-[10px]"><i data-lucide="type" class="w-3 h-3"></i> UTF-8</span>
+        </div>
+        <p class="text-sm text-gray-400">Force everything to UTF-8. Decode latin-1 fallbacks. Replace smart quotes, em-dashes, NBSPs with their ASCII equivalents — embedding models are funky about Unicode noise.</p>
+      </div>
+
+      <div class="step-card">
+        <div class="step-num">2</div>
+        <div class="flex items-center gap-2 mb-1">
+          <h3 class="font-display font-bold text-base text-white">Strip boilerplate</h3>
+          <span class="pill text-[10px]"><i data-lucide="scissors" class="w-3 h-3"></i> BOILERPLATE</span>
+        </div>
+        <p class="text-sm text-gray-400">Headers, footers, navigation, "click here to subscribe" — content the user didn't ask about. <code class="font-mono text-pink-300">trafilatura</code> for HTML; regex / custom rules for PDFs.</p>
+      </div>
+
+      <div class="step-card">
+        <div class="step-num">3</div>
+        <div class="flex items-center gap-2 mb-1">
+          <h3 class="font-display font-bold text-base text-white">Collapse whitespace</h3>
+          <span class="pill text-[10px]"><i data-lucide="text-cursor" class="w-3 h-3"></i> WHITESPACE</span>
+        </div>
+        <p class="text-sm text-gray-400">Runs of 5+ blank lines → one. Tabs → spaces. Lines that are just punctuation → drop. Each kept character should earn its embedding cost.</p>
+      </div>
+
+      <div class="step-card">
+        <div class="step-num">4</div>
+        <div class="flex items-center gap-2 mb-1">
+          <h3 class="font-display font-bold text-base text-white">Hash for identity</h3>
+          <span class="pill text-[10px]"><i data-lucide="hash" class="w-3 h-3"></i> SHA-256</span>
+        </div>
+        <p class="text-sm text-gray-400">Compute a content hash <em>after</em> cleaning. This is the <code class="font-mono text-pink-300">doc_id</code> — stable across re-runs. If the hash is unchanged, the document doesn't need to be re-embedded.</p>
+      </div>
+
+      <div class="step-card">
+        <div class="step-num">5</div>
+        <div class="flex items-center gap-2 mb-1">
+          <h3 class="font-display font-bold text-base text-white">Exact-dedupe</h3>
+          <span class="pill text-[10px]"><i data-lucide="copy" class="w-3 h-3"></i> EXACT</span>
+        </div>
+        <p class="text-sm text-gray-400">Drop documents with duplicate content hashes. Two PDFs of the same memo? One copy in the index. Cuts embedding cost &amp; retrieval noise.</p>
+      </div>
+
+      <div class="step-card">
+        <div class="step-num">6</div>
+        <div class="flex items-center gap-2 mb-1">
+          <h3 class="font-display font-bold text-base text-white">Near-dedupe (optional)</h3>
+          <span class="pill text-[10px]"><i data-lucide="copy-plus" class="w-3 h-3"></i> MINHASH</span>
+        </div>
+        <p class="text-sm text-gray-400"><code class="font-mono text-pink-300">datasketch</code> MinHash + LSH catches "<em>same doc with different timestamp/footer</em>" cases. Threshold ≈ 0.85 Jaccard. Optional, but powerful at scale.</p>
+      </div>
+    </div>
+
+    <!-- Code -->
+    <div class="mt-12 reveal">
+      <h3 class="font-display font-bold text-xl mb-4 text-white flex items-center gap-2">
+        <i data-lucide="code-2" class="w-5 h-5 text-cyan-400"></i>
+        Clean &amp; Hash — All In One
+      </h3>
+      <div class="holo-card p-6 relative">
+        <button class="copy-btn" data-target="clean-code">COPY</button>
+        <div class="code-block text-xs">
+<pre id="clean-code"><span class="tok-keyword">import</span> <span class="tok-var">re</span>, <span class="tok-var">hashlib</span>, <span class="tok-var">unicodedata</span>
+
+<span class="tok-keyword">def</span> <span class="tok-fn">normalize</span>(<span class="tok-var">text</span>: <span class="tok-type">str</span>) -> <span class="tok-type">str</span>:
+    <span class="tok-comment"># 1. unicode normalize</span>
+    <span class="tok-var">text</span> = <span class="tok-var">unicodedata</span>.<span class="tok-fn">normalize</span>(<span class="tok-string">"NFKC"</span>, <span class="tok-var">text</span>)
+    <span class="tok-comment"># 2. smart quotes → ascii</span>
+    <span class="tok-var">text</span> = <span class="tok-var">text</span>.<span class="tok-fn">translate</span>(<span class="tok-fn">str</span>.<span class="tok-fn">maketrans</span>(<span class="tok-string">"\u201c\u201d\u2018\u2019\u2014"</span>, <span class="tok-string">'""\'\'-'</span>))
+    <span class="tok-comment"># 3. collapse runs of whitespace, strip lines</span>
+    <span class="tok-var">text</span> = <span class="tok-var">re</span>.<span class="tok-fn">sub</span>(<span class="tok-string">r"[ \t]+"</span>, <span class="tok-string">" "</span>, <span class="tok-var">text</span>)
+    <span class="tok-var">text</span> = <span class="tok-var">re</span>.<span class="tok-fn">sub</span>(<span class="tok-string">r"\n{3,}"</span>, <span class="tok-string">"\n\n"</span>, <span class="tok-var">text</span>)
+    <span class="tok-keyword">return</span> <span class="tok-var">text</span>.<span class="tok-fn">strip</span>()
+
+<span class="tok-keyword">def</span> <span class="tok-fn">content_hash</span>(<span class="tok-var">text</span>: <span class="tok-type">str</span>) -> <span class="tok-type">str</span>:
+    <span class="tok-keyword">return</span> <span class="tok-var">hashlib</span>.<span class="tok-fn">sha256</span>(<span class="tok-var">text</span>.<span class="tok-fn">encode</span>(<span class="tok-string">"utf-8"</span>)).<span class="tok-fn">hexdigest</span>()[:<span class="tok-num">16</span>]
+
+<span class="tok-keyword">def</span> <span class="tok-fn">prepare</span>(<span class="tok-var">raw</span>: <span class="tok-type">str</span>, <span class="tok-var">source</span>: <span class="tok-type">str</span>, <span class="tok-var">uri</span>: <span class="tok-type">str</span>) -> <span class="tok-class">Document</span>:
+    <span class="tok-var">text</span>   = <span class="tok-fn">normalize</span>(<span class="tok-var">raw</span>)
+    <span class="tok-var">doc_id</span> = <span class="tok-fn">content_hash</span>(<span class="tok-var">text</span>)
+    <span class="tok-keyword">return</span> <span class="tok-class">Document</span>(<span class="tok-var">doc_id</span>=<span class="tok-var">doc_id</span>, <span class="tok-var">source</span>=<span class="tok-var">source</span>, <span class="tok-var">uri</span>=<span class="tok-var">uri</span>, <span class="tok-var">text</span>=<span class="tok-var">text</span>)</pre>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========== METADATA ========== -->
+<section id="meta" class="relative py-24 px-6 z-10">
+  <div class="max-w-7xl mx-auto">
+    <div class="text-center mb-16 reveal">
+      <span class="pill mb-4"><i data-lucide="tags" class="w-3 h-3"></i> Stage 5 · Enrich</span>
+      <h2 class="font-display text-4xl md:text-5xl font-bold mt-4">
+        <span class="gradient-pink">Metadata</span> is Half the System
+      </h2>
+      <p class="text-gray-400 mt-4 max-w-3xl mx-auto">Every chunk that lands in your vector DB needs companion metadata. Citations, filters, freshness checks, access control — they all live here.</p>
+    </div>
+
+    <div class="grid lg:grid-cols-5 gap-6 items-stretch reveal">
+      <div class="lg:col-span-3">
+        <div class="holo-card p-2 md:p-4 overflow-x-auto">
+          <table class="meta-table">
+            <thead>
+              <tr>
+                <th>Field</th>
+                <th>Type</th>
+                <th>Why it matters</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="text-cyan-300">source</td>
+                <td><code class="font-mono text-purple-300">str</code></td>
+                <td>"notion", "s3", "github". Lets you filter by origin.</td>
+              </tr>
+              <tr>
+                <td class="text-cyan-300">uri</td>
+                <td><code class="font-mono text-purple-300">str</code></td>
+                <td>The URL or path. Required for clickable citations.</td>
+              </tr>
+              <tr>
+                <td class="text-cyan-300">doc_id</td>
+                <td><code class="font-mono text-purple-300">str</code></td>
+                <td>Content hash. Stable across re-runs → idempotency.</td>
+              </tr>
+              <tr>
+                <td class="text-cyan-300">chunk_id</td>
+                <td><code class="font-mono text-purple-300">str</code></td>
+                <td><code class="font-mono">{doc_id}:{seq}</code>. Powers chunk-level citations.</td>
+              </tr>
+              <tr>
+                <td class="text-cyan-300">title</td>
+                <td><code class="font-mono text-purple-300">str | None</code></td>
+                <td>For human-readable citation labels.</td>
+              </tr>
+              <tr>
+                <td class="text-cyan-300">created_at / updated_at</td>
+                <td><code class="font-mono text-purple-300">datetime</code></td>
+                <td>Freshness filters. "Last 30 days only" needs this.</td>
+              </tr>
+              <tr>
+                <td class="text-cyan-300">author</td>
+                <td><code class="font-mono text-purple-300">str | None</code></td>
+                <td>Attribution; sometimes access control.</td>
+              </tr>
+              <tr>
+                <td class="text-cyan-300">tags / namespace</td>
+                <td><code class="font-mono text-purple-300">list[str]</code></td>
+                <td>Hard filters at query time — public vs internal, team scoping.</td>
+              </tr>
+              <tr>
+                <td class="text-cyan-300">acl</td>
+                <td><code class="font-mono text-purple-300">list[str]</code></td>
+                <td>Who can see this. Filter at retrieval, not generation.</td>
+              </tr>
+              <tr>
+                <td class="text-cyan-300">page / section</td>
+                <td><code class="font-mono text-purple-300">str | None</code></td>
+                <td>Deep-link citations: "answer cites page 14".</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="lg:col-span-2 space-y-4">
+        <div class="callout-pink text-sm text-gray-300">
+          <strong class="text-pink-300">⚡ Filter at retrieval, not generation.</strong> Drop chunks the user shouldn't see <em>before</em> they reach the LLM context window. Filtering after generation is a leak.
+        </div>
+        <div class="callout-cyan text-sm text-gray-300">
+          <strong class="text-cyan-300">⚡ Cheap to capture, expensive to add later.</strong> Add every metadata field during ingestion — even ones you don't currently use. Backfilling means re-indexing.
+        </div>
+        <div class="callout text-sm text-gray-300">
+          <strong class="text-amber-300">⚡ Time-travel queries:</strong> Vector DBs let you filter by metadata. With <code class="font-mono">updated_at</code> indexed, "what changed last week" becomes a 5ms query.
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========== STREAM PIPELINE LIVE DEMO ========== -->
+<section id="stream" class="relative py-24 px-6 z-10">
+  <div class="max-w-7xl mx-auto">
+    <div class="text-center mb-12 reveal">
+      <span class="pill mb-4"><i data-lucide="activity" class="w-3 h-3"></i> Hands-On Demo</span>
+      <h2 class="font-display text-4xl md:text-5xl font-bold mt-4">
+        Watch the <span class="gradient-cyan">Pipeline Run</span>
+      </h2>
+      <p class="text-gray-400 mt-4 max-w-3xl mx-auto">A simulated stream of 12 documents flowing through every stage. Watch how dedup catches duplicates, encoding errors get repaired, and chunks pile up.</p>
+    </div>
+
+    <div class="reveal">
+      <div class="grid lg:grid-cols-2 gap-6 mb-6">
+        <div class="pipeline-track">
+          <div class="pipeline-track-header">
+            <span><i data-lucide="inbox" class="inline w-3 h-3 mr-1"></i> Raw Source Files</span>
+            <span class="text-gray-500" id="counterRaw">0</span>
+          </div>
+          <div class="pipeline-track-body" id="trackRaw"></div>
+        </div>
+
+        <div class="pipeline-track">
+          <div class="pipeline-track-header" style="color: var(--neon-pink); background: rgba(255, 77, 207, 0.04);">
+            <span><i data-lucide="database" class="inline w-3 h-3 mr-1"></i> Indexed Chunks</span>
+            <span class="text-gray-500" id="counterIndexed">0</span>
+          </div>
+          <div class="pipeline-track-body" id="trackIndexed"></div>
+        </div>
+      </div>
+
+      <div class="flex items-center justify-between gap-3 mb-6 flex-wrap">
+        <div class="flex gap-3 flex-wrap">
+          <button class="btn-primary text-sm py-3 px-5 flex items-center gap-2" id="streamStart">
+            <i data-lucide="play" class="w-4 h-4"></i> Start Pipeline
+          </button>
+          <button class="btn-ghost text-sm py-3 px-5 flex items-center gap-2" id="streamReset">
+            <i data-lucide="rotate-cw" class="w-4 h-4"></i> Reset
+          </button>
+        </div>
+        <div class="text-xs text-gray-500 font-mono" id="streamStatus">Idle — press Start.</div>
+      </div>
+
+      <!-- Metrics -->
+      <div class="grid grid-cols-2 md:grid-cols-5 gap-3">
+        <div class="metric-card">
+          <div class="metric-val text-cyan-300" id="metricLoaded">0</div>
+          <div class="text-[10px] text-gray-400 uppercase tracking-wider mt-1">Loaded</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-val text-purple-300" id="metricCleaned">0</div>
+          <div class="text-[10px] text-gray-400 uppercase tracking-wider mt-1">Cleaned</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-val text-amber-300" id="metricDeduped">0</div>
+          <div class="text-[10px] text-gray-400 uppercase tracking-wider mt-1">Deduped</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-val text-pink-300" id="metricChunked">0</div>
+          <div class="text-[10px] text-gray-400 uppercase tracking-wider mt-1">Chunks</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-val text-green-300" id="metricIndexed">0</div>
+          <div class="text-[10px] text-gray-400 uppercase tracking-wider mt-1">Indexed ✓</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========== ORCHESTRATION ========== -->
+<section id="orchestration" class="relative py-24 px-6 z-10">
+  <div class="max-w-7xl mx-auto">
+    <div class="text-center mb-16 reveal">
+      <span class="pill mb-4"><i data-lucide="git-merge" class="w-3 h-3"></i> Glue & Plumbing</span>
+      <h2 class="font-display text-4xl md:text-5xl font-bold mt-4">
+        <span class="gradient-purple">Orchestration</span> — How It All Runs
+      </h2>
+      <p class="text-gray-400 mt-4 max-w-3xl mx-auto">Three strategies, three sizes. Pick the smallest one that meets your reliability bar.</p>
+    </div>
+
+    <!-- Tabs -->
+    <div class="flex flex-wrap justify-center gap-3 mb-8 reveal">
+      <button class="tab-btn active" data-orch="script"><i data-lucide="terminal" class="w-4 h-4"></i> Tier 1: Script</button>
+      <button class="tab-btn" data-orch="queue"><i data-lucide="layers-3" class="w-4 h-4"></i> Tier 2: Queue</button>
+      <button class="tab-btn" data-orch="dag"><i data-lucide="git-merge" class="w-4 h-4"></i> Tier 3: DAG</button>
+    </div>
+
+    <div class="reveal">
+
+      <!-- SCRIPT -->
+      <div class="tab-panel active" id="orch-script">
+        <div class="grid lg:grid-cols-3 gap-6">
+          <div class="lg:col-span-2">
+            <div class="code-block relative">
+              <button class="copy-btn" data-target="orch-script-code">COPY</button>
+<pre id="orch-script-code"><span class="tok-comment"># ingest.py — simplest possible pipeline</span>
+<span class="tok-keyword">from</span> <span class="tok-var">pathlib</span> <span class="tok-keyword">import</span> <span class="tok-class">Path</span>
+<span class="tok-keyword">import</span> <span class="tok-var">json</span>
+
+<span class="tok-keyword">def</span> <span class="tok-fn">run</span>(<span class="tok-var">input_dir</span>: <span class="tok-class">Path</span>, <span class="tok-var">output</span>: <span class="tok-class">Path</span>):
+    <span class="tok-var">seen</span> = <span class="tok-fn">set</span>()
+    <span class="tok-keyword">with</span> <span class="tok-fn">open</span>(<span class="tok-var">output</span>, <span class="tok-string">"w"</span>, encoding=<span class="tok-string">"utf-8"</span>) <span class="tok-keyword">as</span> <span class="tok-var">out</span>:
+        <span class="tok-keyword">for</span> <span class="tok-var">path</span> <span class="tok-keyword">in</span> <span class="tok-var">input_dir</span>.<span class="tok-fn">rglob</span>(<span class="tok-string">"*"</span>):
+            <span class="tok-keyword">if</span> <span class="tok-keyword">not</span> <span class="tok-var">path</span>.<span class="tok-fn">is_file</span>():
+                <span class="tok-keyword">continue</span>
+            <span class="tok-var">raw</span> = <span class="tok-fn">load</span>(<span class="tok-var">path</span>)                  <span class="tok-comment"># dispatch by extension</span>
+            <span class="tok-var">doc</span> = <span class="tok-fn">prepare</span>(<span class="tok-var">raw</span>, <span class="tok-string">"local"</span>, <span class="tok-fn">str</span>(<span class="tok-var">path</span>))
+            <span class="tok-keyword">if</span> <span class="tok-var">doc</span>.<span class="tok-var">doc_id</span> <span class="tok-keyword">in</span> <span class="tok-var">seen</span>:        <span class="tok-comment"># exact dedupe</span>
+                <span class="tok-keyword">continue</span>
+            <span class="tok-var">seen</span>.<span class="tok-fn">add</span>(<span class="tok-var">doc</span>.<span class="tok-var">doc_id</span>)
+            <span class="tok-keyword">for</span> <span class="tok-var">chunk</span> <span class="tok-keyword">in</span> <span class="tok-fn">chunk_doc</span>(<span class="tok-var">doc</span>):
+                <span class="tok-var">out</span>.<span class="tok-fn">write</span>(<span class="tok-var">chunk</span>.<span class="tok-fn">model_dump_json</span>() + <span class="tok-string">"\n"</span>)
+
+<span class="tok-keyword">if</span> <span class="tok-var">__name__</span> == <span class="tok-string">"__main__"</span>:
+    <span class="tok-fn">run</span>(<span class="tok-class">Path</span>(<span class="tok-string">"./corpus"</span>), <span class="tok-class">Path</span>(<span class="tok-string">"./out/chunks.jsonl"</span>))</pre>
+            </div>
+          </div>
+          <div class="space-y-3">
+            <div class="holo-card p-5">
+              <h4 class="font-display font-bold text-base text-white mb-2">When to use</h4>
+              <ul class="space-y-2 text-sm text-gray-300">
+                <li class="flex gap-2"><i data-lucide="check" class="w-4 h-4 text-green-400 mt-0.5 flex-shrink-0"></i> &lt; 100k documents</li>
+                <li class="flex gap-2"><i data-lucide="check" class="w-4 h-4 text-green-400 mt-0.5 flex-shrink-0"></i> One source, one machine</li>
+                <li class="flex gap-2"><i data-lucide="check" class="w-4 h-4 text-green-400 mt-0.5 flex-shrink-0"></i> Re-run is acceptable on failure</li>
+              </ul>
+            </div>
+            <div class="callout text-xs text-gray-300">
+              <strong class="text-amber-300">⚡ Don't underestimate this tier.</strong> A well-written script + JSONL output is usable in production for a long, long time.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- QUEUE -->
+      <div class="tab-panel" id="orch-queue">
+        <div class="grid lg:grid-cols-3 gap-6">
+          <div class="lg:col-span-2">
+            <div class="code-block relative">
+              <button class="copy-btn" data-target="orch-queue-code">COPY</button>
+<pre id="orch-queue-code"><span class="tok-comment"># Tier 2 — work queue, parallel workers, resumable</span>
+<span class="tok-keyword">from</span> <span class="tok-var">concurrent.futures</span> <span class="tok-keyword">import</span> <span class="tok-class">ProcessPoolExecutor</span>
+<span class="tok-keyword">import</span> <span class="tok-var">redis</span>, <span class="tok-var">json</span>
+
+<span class="tok-var">r</span> = <span class="tok-var">redis</span>.<span class="tok-class">Redis</span>()
+
+<span class="tok-keyword">def</span> <span class="tok-fn">enqueue_all</span>(<span class="tok-var">paths</span>):
+    <span class="tok-keyword">for</span> <span class="tok-var">p</span> <span class="tok-keyword">in</span> <span class="tok-var">paths</span>:
+        <span class="tok-var">r</span>.<span class="tok-fn">sadd</span>(<span class="tok-string">"ingest:pending"</span>, <span class="tok-fn">str</span>(<span class="tok-var">p</span>))
+
+<span class="tok-keyword">def</span> <span class="tok-fn">worker</span>():
+    <span class="tok-keyword">while</span> <span class="tok-var">path</span> := <span class="tok-var">r</span>.<span class="tok-fn">spop</span>(<span class="tok-string">"ingest:pending"</span>):
+        <span class="tok-keyword">try</span>:
+            <span class="tok-var">doc</span> = <span class="tok-fn">prepare</span>(<span class="tok-fn">load</span>(<span class="tok-var">path</span>), <span class="tok-string">"local"</span>, <span class="tok-var">path</span>)
+            <span class="tok-keyword">if</span> <span class="tok-var">r</span>.<span class="tok-fn">sismember</span>(<span class="tok-string">"ingest:done"</span>, <span class="tok-var">doc</span>.<span class="tok-var">doc_id</span>):
+                <span class="tok-keyword">continue</span>
+            <span class="tok-keyword">for</span> <span class="tok-var">chunk</span> <span class="tok-keyword">in</span> <span class="tok-fn">chunk_doc</span>(<span class="tok-var">doc</span>):
+                <span class="tok-fn">index</span>(<span class="tok-var">chunk</span>)
+            <span class="tok-var">r</span>.<span class="tok-fn">sadd</span>(<span class="tok-string">"ingest:done"</span>, <span class="tok-var">doc</span>.<span class="tok-var">doc_id</span>)
+        <span class="tok-keyword">except</span> <span class="tok-class">Exception</span> <span class="tok-keyword">as</span> <span class="tok-var">e</span>:
+            <span class="tok-var">r</span>.<span class="tok-fn">sadd</span>(<span class="tok-string">"ingest:failed"</span>, <span class="tok-fn">json</span>.<span class="tok-fn">dumps</span>({<span class="tok-string">"path"</span>: <span class="tok-var">path</span>, <span class="tok-string">"err"</span>: <span class="tok-fn">str</span>(<span class="tok-var">e</span>)}))
+
+<span class="tok-comment"># Resumable: re-run just retries pending + failed</span></pre>
+            </div>
+          </div>
+          <div class="space-y-3">
+            <div class="holo-card p-5">
+              <h4 class="font-display font-bold text-base text-white mb-2">When to use</h4>
+              <ul class="space-y-2 text-sm text-gray-300">
+                <li class="flex gap-2"><i data-lucide="check" class="w-4 h-4 text-green-400 mt-0.5 flex-shrink-0"></i> Millions of documents</li>
+                <li class="flex gap-2"><i data-lucide="check" class="w-4 h-4 text-green-400 mt-0.5 flex-shrink-0"></i> Need parallelism &amp; resumability</li>
+                <li class="flex gap-2"><i data-lucide="check" class="w-4 h-4 text-green-400 mt-0.5 flex-shrink-0"></i> Want per-doc retry logic</li>
+              </ul>
+            </div>
+            <div class="callout-cyan text-xs text-gray-300">
+              <strong class="text-cyan-300">⚡ Pro tip:</strong> Redis sets are great for the pending/done/failed pattern. Celery, RQ, and SQS all support it too.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- DAG -->
+      <div class="tab-panel" id="orch-dag">
+        <div class="grid lg:grid-cols-3 gap-6">
+          <div class="lg:col-span-2">
+            <div class="code-block relative">
+              <button class="copy-btn" data-target="orch-dag-code">COPY</button>
+<pre id="orch-dag-code"><span class="tok-comment"># Tier 3 — Prefect DAG (Dagster / Airflow work the same way)</span>
+<span class="tok-keyword">from</span> <span class="tok-var">prefect</span> <span class="tok-keyword">import</span> <span class="tok-fn">flow</span>, <span class="tok-fn">task</span>
+
+<span class="tok-deco">@task</span>(retries=<span class="tok-num">3</span>, retry_delay_seconds=<span class="tok-num">10</span>)
+<span class="tok-keyword">def</span> <span class="tok-fn">discover</span>(<span class="tok-var">source</span>) -> <span class="tok-type">list</span>[<span class="tok-type">str</span>]:
+    <span class="tok-keyword">return</span> <span class="tok-fn">list_uris</span>(<span class="tok-var">source</span>)
+
+<span class="tok-deco">@task</span>(retries=<span class="tok-num">3</span>)
+<span class="tok-keyword">def</span> <span class="tok-fn">load_and_clean</span>(<span class="tok-var">uri</span>) -> <span class="tok-class">Document</span>:
+    <span class="tok-keyword">return</span> <span class="tok-fn">prepare</span>(<span class="tok-fn">load</span>(<span class="tok-var">uri</span>), <span class="tok-string">"s3"</span>, <span class="tok-var">uri</span>)
+
+<span class="tok-deco">@task</span>
+<span class="tok-keyword">def</span> <span class="tok-fn">chunk_and_index</span>(<span class="tok-var">doc</span>: <span class="tok-class">Document</span>) -> <span class="tok-type">int</span>:
+    <span class="tok-keyword">for</span> <span class="tok-var">chunk</span> <span class="tok-keyword">in</span> <span class="tok-fn">chunk_doc</span>(<span class="tok-var">doc</span>):
+        <span class="tok-fn">index</span>(<span class="tok-var">chunk</span>)
+    <span class="tok-keyword">return</span> <span class="tok-num">1</span>
+
+<span class="tok-deco">@flow</span>(name=<span class="tok-string">"rag-ingestion"</span>)
+<span class="tok-keyword">def</span> <span class="tok-fn">ingest_flow</span>(<span class="tok-var">source</span>):
+    <span class="tok-var">uris</span>     = <span class="tok-fn">discover</span>(<span class="tok-var">source</span>)
+    <span class="tok-var">docs</span>     = <span class="tok-fn">load_and_clean</span>.<span class="tok-fn">map</span>(<span class="tok-var">uris</span>)
+    <span class="tok-var">counts</span>   = <span class="tok-fn">chunk_and_index</span>.<span class="tok-fn">map</span>(<span class="tok-var">docs</span>)
+    <span class="tok-keyword">return</span> <span class="tok-fn">sum</span>(<span class="tok-var">counts</span>)</pre>
+            </div>
+          </div>
+          <div class="space-y-3">
+            <div class="holo-card p-5">
+              <h4 class="font-display font-bold text-base text-white mb-2">When to use</h4>
+              <ul class="space-y-2 text-sm text-gray-300">
+                <li class="flex gap-2"><i data-lucide="check" class="w-4 h-4 text-green-400 mt-0.5 flex-shrink-0"></i> Scheduled / recurring runs</li>
+                <li class="flex gap-2"><i data-lucide="check" class="w-4 h-4 text-green-400 mt-0.5 flex-shrink-0"></i> Multiple sources, multiple stages</li>
+                <li class="flex gap-2"><i data-lucide="check" class="w-4 h-4 text-green-400 mt-0.5 flex-shrink-0"></i> Need observability dashboards</li>
+              </ul>
+            </div>
+            <div class="callout-pink text-xs text-gray-300">
+              <strong class="text-pink-300">⚡ Don't start here.</strong> Most teams that pick a DAG framework on day one regret it. Start with Tier 1 → graduate when you actually feel the pain.
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ========== FAILURE MODES ========== -->
+<section id="failures" class="relative py-24 px-6 z-10">
+  <div class="max-w-7xl mx-auto">
+    <div class="text-center mb-16 reveal">
+      <span class="pill mb-4"><i data-lucide="shield-alert" class="w-3 h-3"></i> What Will Go Wrong</span>
+      <h2 class="font-display text-4xl md:text-5xl font-bold mt-4">
+        Common <span class="gradient-pink">Failure Modes</span>
+      </h2>
+      <p class="text-gray-400 mt-4 max-w-3xl mx-auto">Every one of these has shipped to production for someone. Build for them before they bite.</p>
+    </div>
+
+    <div class="grid md:grid-cols-2 gap-5">
+      <div class="failure-card reveal">
+        <div class="flex items-center gap-2 mb-2">
+          <i data-lucide="alert-octagon" class="w-4 h-4 text-pink-400"></i>
+          <h4 class="font-display font-bold text-base text-white">Silent encoding corruption</h4>
+        </div>
+        <p class="text-sm text-gray-400">A latin-1 file opened as UTF-8 produces "<code class="font-mono text-pink-300">Iâ€™m fine</code>" everywhere. The pipeline succeeds, retrieval returns garbage. <strong class="text-white">Fix:</strong> always specify <code class="font-mono text-pink-300">encoding="utf-8"</code> + log byte counts as a sanity check.</p>
+      </div>
+
+      <div class="failure-card reveal">
+        <div class="flex items-center gap-2 mb-2">
+          <i data-lucide="copy" class="w-4 h-4 text-pink-400"></i>
+          <h4 class="font-display font-bold text-base text-white">Near-duplicate explosion</h4>
+        </div>
+        <p class="text-sm text-gray-400">"v1", "v2", "v3" of the same PDF all get indexed → retrieval returns three nearly-identical chunks for every query, crowding out diverse context. <strong class="text-white">Fix:</strong> MinHash + LSH near-dedupe with a sensible threshold.</p>
+      </div>
+
+      <div class="failure-card reveal">
+        <div class="flex items-center gap-2 mb-2">
+          <i data-lucide="clock" class="w-4 h-4 text-pink-400"></i>
+          <h4 class="font-display font-bold text-base text-white">Stale data, no <code class="font-mono">updated_at</code></h4>
+        </div>
+        <p class="text-sm text-gray-400">A policy from 2019 is the top hit because nobody filters by freshness. <strong class="text-white">Fix:</strong> capture <code class="font-mono">created_at</code> &amp; <code class="font-mono">updated_at</code> at load time and filter at retrieval.</p>
+      </div>
+
+      <div class="failure-card reveal">
+        <div class="flex items-center gap-2 mb-2">
+          <i data-lucide="git-pull-request-closed" class="w-4 h-4 text-pink-400"></i>
+          <h4 class="font-display font-bold text-base text-white">Non-idempotent ingestion</h4>
+        </div>
+        <p class="text-sm text-gray-400">Re-running the script doubles every document in the vector DB. <strong class="text-white">Fix:</strong> upsert by stable <code class="font-mono">chunk_id = doc_id:seq</code>; never blind-insert.</p>
+      </div>
+
+      <div class="failure-card reveal">
+        <div class="flex items-center gap-2 mb-2">
+          <i data-lucide="lock" class="w-4 h-4 text-pink-400"></i>
+          <h4 class="font-display font-bold text-base text-white">Privilege leak via retrieval</h4>
+        </div>
+        <p class="text-sm text-gray-400">Internal HR doc retrieved for an external customer's question. <strong class="text-white">Fix:</strong> index ACL metadata and filter at retrieval time. <em>Never</em> rely on the LLM to "decide" what's safe to mention.</p>
+      </div>
+
+      <div class="failure-card reveal">
+        <div class="flex items-center gap-2 mb-2">
+          <i data-lucide="layout-grid" class="w-4 h-4 text-pink-400"></i>
+          <h4 class="font-display font-bold text-base text-white">Loader-specific text loss</h4>
+        </div>
+        <p class="text-sm text-gray-400">PDF tables become unreadable strings. Slide titles vanish. Code blocks lose indentation. <strong class="text-white">Fix:</strong> use format-aware loaders (<code class="font-mono">unstructured</code>, <code class="font-mono">pdfplumber</code>) and audit a sample of outputs.</p>
+      </div>
+
+      <div class="failure-card reveal">
+        <div class="flex items-center gap-2 mb-2">
+          <i data-lucide="hash" class="w-4 h-4 text-pink-400"></i>
+          <h4 class="font-display font-bold text-base text-white">Hash-before-clean mistake</h4>
+        </div>
+        <p class="text-sm text-gray-400">Hashing the raw bytes makes "<em>same content with extra whitespace</em>" look different. <strong class="text-white">Fix:</strong> always hash the <em>cleaned</em> text — that's your stable identity.</p>
+      </div>
+
+      <div class="failure-card reveal">
+        <div class="flex items-center gap-2 mb-2">
+          <i data-lucide="zap-off" class="w-4 h-4 text-pink-400"></i>
+          <h4 class="font-display font-bold text-base text-white">No observability</h4>
+        </div>
+        <p class="text-sm text-gray-400">A loader silently drops 30% of inputs and no one notices for weeks. <strong class="text-white">Fix:</strong> log per-stage counts. If <code class="font-mono">loaded ≠ cleaned + dropped</code>, alert.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========== QUIZ ========== -->
+<section id="quiz" class="relative py-24 px-6 z-10">
+  <div class="max-w-5xl mx-auto">
+    <div class="text-center mb-12 reveal">
+      <span class="pill mb-4"><i data-lucide="brain" class="w-3 h-3"></i> Self-Check</span>
+      <h2 class="font-display text-4xl md:text-5xl font-bold mt-4">
+        Three Quick <span class="gradient-purple">Questions</span>
+      </h2>
+      <p class="text-gray-400 mt-4">Lock in the pipeline before moving to chunking.</p>
+    </div>
+
+    <div class="space-y-8">
+      <!-- Q1 -->
+      <div class="holo-card p-6 reveal" data-quiz="0">
+        <div class="font-mono text-xs text-cyan-300 mb-2">QUESTION 01</div>
+        <h3 class="font-display font-bold text-lg mb-4 text-white">When should you compute the content hash that serves as your stable <code class="font-mono">doc_id</code>?</h3>
+        <div class="space-y-2">
+          <button class="quiz-option" data-correct="false">
+            <div class="quiz-marker">A</div>
+            <span>On the raw bytes — before any cleaning</span>
+          </button>
+          <button class="quiz-option" data-correct="true">
+            <div class="quiz-marker">B</div>
+            <span>On the cleaned text — after normalization</span>
+          </button>
+          <button class="quiz-option" data-correct="false">
+            <div class="quiz-marker">C</div>
+            <span>On the final chunks, joined together</span>
+          </button>
+          <button class="quiz-option" data-correct="false">
+            <div class="quiz-marker">D</div>
+            <span>It doesn't matter — use any uuid</span>
+          </button>
+        </div>
+        <div class="hidden mt-4 callout-cyan text-sm text-gray-300" data-explain>
+          <strong class="text-cyan-300">Correct.</strong> Hashing after cleaning gives you stable identity across whitespace, encoding, and boilerplate noise. Two PDFs of the same memo end up with the same hash and dedupe correctly.
+        </div>
+      </div>
+
+      <!-- Q2 -->
+      <div class="holo-card p-6 reveal" data-quiz="1">
+        <div class="font-mono text-xs text-cyan-300 mb-2">QUESTION 02</div>
+        <h3 class="font-display font-bold text-lg mb-4 text-white">An internal HR document accidentally got retrieved for an external user. Where do you fix this?</h3>
+        <div class="space-y-2">
+          <button class="quiz-option" data-correct="false">
+            <div class="quiz-marker">A</div>
+            <span>Tell the LLM in the prompt to filter sensitive content</span>
+          </button>
+          <button class="quiz-option" data-correct="true">
+            <div class="quiz-marker">B</div>
+            <span>Filter by ACL metadata at retrieval time, before context goes to the LLM</span>
+          </button>
+          <button class="quiz-option" data-correct="false">
+            <div class="quiz-marker">C</div>
+            <span>Delete the chunk from the vector DB after the incident</span>
+          </button>
+          <button class="quiz-option" data-correct="false">
+            <div class="quiz-marker">D</div>
+            <span>Add a regex filter on the generated answer</span>
+          </button>
+        </div>
+        <div class="hidden mt-4 callout-cyan text-sm text-gray-300" data-explain>
+          <strong class="text-cyan-300">Correct.</strong> Filter at retrieval, not generation. Capture ACL metadata during ingestion, index it, and use the vector DB's filter to drop forbidden chunks <em>before</em> they reach the LLM.
+        </div>
+      </div>
+
+      <!-- Q3 -->
+      <div class="holo-card p-6 reveal" data-quiz="2">
+        <div class="font-mono text-xs text-cyan-300 mb-2">QUESTION 03</div>
+        <h3 class="font-display font-bold text-lg mb-4 text-white">You're standing up RAG for a 30,000-document internal knowledge base. Best initial orchestration tier?</h3>
+        <div class="space-y-2">
+          <button class="quiz-option" data-correct="true">
+            <div class="quiz-marker">A</div>
+            <span>Tier 1 — a single Python script writing JSONL</span>
+          </button>
+          <button class="quiz-option" data-correct="false">
+            <div class="quiz-marker">B</div>
+            <span>Tier 2 — Redis work queue with parallel workers</span>
+          </button>
+          <button class="quiz-option" data-correct="false">
+            <div class="quiz-marker">C</div>
+            <span>Tier 3 — Prefect / Dagster / Airflow from day one</span>
+          </button>
+          <button class="quiz-option" data-correct="false">
+            <div class="quiz-marker">D</div>
+            <span>Spark, because "it's big data"</span>
+          </button>
+        </div>
+        <div class="hidden mt-4 callout-cyan text-sm text-gray-300" data-explain>
+          <strong class="text-cyan-300">Correct.</strong> 30k documents fits comfortably in Tier 1. A clean script writing JSONL handles it in minutes. Upgrade to Tier 2 when you feel real pain — usually around millions of docs, multiple sources, or scheduled re-runs.
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========== CHECKPOINT ========== -->
+
+<!-- RESOURCE SECTION -->
+<section class="relative py-16 px-6 z-10">
+  <div class="max-w-7xl mx-auto">
+    <div class="text-center mb-12 reveal">
+      <span class="pill mb-4"><i data-lucide="book" class="w-3 h-3"></i> Continue Learning</span>
+      <h3 class="font-display text-4xl md:text-5xl font-bold mt-4">Learn &amp; <span class="gradient-purple">Practice</span></h3>
+      <p class="text-gray-400 mt-2">Explore curated resources and practice with real code</p>
+    </div>
+
+    <div class="resource-stack mb-12">
+      <article class="resource-card">
+        <div class="flex items-start gap-3">
+          <div class="resource-icon">
+            <i data-lucide="lightbulb" class="w-4 h-4"></i>
+          </div>
+          <div class="min-w-0 flex-1">
+            <h4 class="font-display text-2xl font-bold leading-none">Progressive Article</h4>
+            <p class="text-xs text-gray-400 mt-1">Stuck? Start here - beginner-friendly explanation</p>
+            <p class="text-lg font-semibold mt-4 text-cyan-300">Get Reliable JSON from LLMs: Structured Output Prompting Guide</p>
+            <a href="https://genaiunplugged.substack.com/p/structured-outputs-json-prompts-guide" target="_blank" rel="noopener noreferrer" class="resource-cta" title="Get Reliable JSON from LLMs: Structured Output Prompting Guide">
+              <i data-lucide="external-link" class="w-4 h-4"></i> Read Article
+            </a>
+          </div>
+        </div>
+      </article>
+      <article class="resource-card">
+        <div class="flex items-start gap-3">
+          <div class="resource-icon">
+            <i data-lucide="file-text" class="w-4 h-4"></i>
+          </div>
+          <div class="min-w-0 flex-1">
+            <h4 class="font-display text-2xl font-bold leading-none">Canonical Article</h4>
+            <p class="text-xs text-gray-400 mt-1">Authoritative source - official docs or research</p>
+            <p class="text-lg font-semibold mt-4 text-cyan-300">OpenAI - Structured Outputs</p>
+            <a href="https://platform.openai.com/docs/guides/structured-outputs" target="_blank" rel="noopener noreferrer" class="resource-cta" title="OpenAI - Structured Outputs">
+              <i data-lucide="external-link" class="w-4 h-4"></i> Read Canonical
+            </a>
+          </div>
+        </div>
+      </article>
+      <article class="resource-card repo">
+        <div class="flex items-start gap-3">
+          <div class="resource-icon">
+            <i data-lucide="github" class="w-4 h-4"></i>
+          </div>
+          <div class="min-w-0 flex-1">
+            <h4 class="font-display text-2xl font-bold leading-none">GitHub Repository</h4>
+            <p class="text-xs text-gray-400 mt-1">Hands-on - reference implementation & examples</p>
+            <p class="text-lg font-semibold mt-4 text-pink-400">Instructor</p>
+            <a href="https://github.com/567-labs/instructor" target="_blank" rel="noopener noreferrer" class="resource-cta" title="Instructor">
+              <i data-lucide="external-link" class="w-4 h-4"></i> Explore Repo
+            </a>
+          </div>
+        </div>
+      </article>
+      <article class="resource-card repo">
+        <div class="flex items-start gap-3">
+          <div class="resource-icon">
+            <i data-lucide="github" class="w-4 h-4"></i>
+          </div>
+          <div class="min-w-0 flex-1">
+            <h4 class="font-display text-2xl font-bold leading-none">GitHub Repository</h4>
+            <p class="text-xs text-gray-400 mt-1">Hands-on - reference implementation & examples</p>
+            <p class="text-lg font-semibold mt-4 text-pink-400">Outlines</p>
+            <a href="https://github.com/dottxt-ai/outlines" target="_blank" rel="noopener noreferrer" class="resource-cta" title="Outlines">
+              <i data-lucide="external-link" class="w-4 h-4"></i> Explore Repo
+            </a>
+          </div>
+        </div>
+      </article>
+    </div>
+  </div>
+</section>
+
+<section id="checkpoint" class="relative py-24 px-6 z-10">
+  <div class="max-w-5xl mx-auto">
+    <div class="checkpoint-glow holo-card p-10 md:p-16 reveal text-center">
+      <div class="inline-flex items-center justify-center w-20 h-20 rounded-full mb-6" style="background: linear-gradient(135deg, #00f0ff, #b86bff); box-shadow: 0 0 60px rgba(0,240,255,0.5);">
+        <i data-lucide="flag" class="w-9 h-9 text-black"></i>
+      </div>
+
+      <span class="pill mb-4"><i data-lucide="check-circle" class="w-3 h-3"></i> Module 2.4 · Checkpoint</span>
+      <h2 class="font-display text-3xl md:text-5xl font-bold mt-4 mb-4">
+        <span class="gradient-multi">Mission 2.4 Complete</span>
+      </h2>
+      <p class="text-gray-300 max-w-2xl mx-auto mb-8">You can now design an ingestion pipeline that's idempotent, observable, and resumable — the foundation every downstream stage depends on.</p>
+
+      <div class="grid md:grid-cols-3 gap-4 text-left mb-10">
+        <div class="holo-card p-5">
+          <div class="font-mono text-xs text-cyan-300 mb-2">CHECK 01</div>
+          <p class="text-sm text-gray-300">Can you name the <span class="text-cyan-300 font-semibold">six stages</span> of an ingestion pipeline in order?</p>
+        </div>
+        <div class="holo-card p-5">
+          <div class="font-mono text-xs text-purple-300 mb-2">CHECK 02</div>
+          <p class="text-sm text-gray-300">Can you explain why <span class="text-purple-300 font-semibold">hashing happens after cleaning</span>, not before?</p>
+        </div>
+        <div class="holo-card p-5">
+          <div class="font-mono text-xs text-pink-300 mb-2">CHECK 03</div>
+          <p class="text-sm text-gray-300">Can you list <span class="text-pink-300 font-semibold">three metadata fields</span> every chunk needs, and why?</p>
+        </div>
+      </div>
+
+      <div class="flex flex-wrap gap-4 justify-center mb-8">
+        <button class="btn-primary flex items-center gap-2" onclick="completeModule()">
+          <i data-lucide="check" class="w-4 h-4"></i> Mark Module Complete
+        </button>
+        <button class="btn-ghost flex items-center gap-2">
+          <i data-lucide="arrow-right" class="w-4 h-4"></i> Module 2.5 · Chunking Strategies
+        </button>
+      </div>
+
+      <div class="max-w-md mx-auto">
+        <div class="flex justify-between text-xs text-gray-400 mb-2 font-mono">
+          <span>COURSE PROGRESS</span>
+          <span id="progressText">— / 38 modules</span>
+        </div>
+        <div class="progress-bar"><div class="progress-fill" id="courseProgress" style="width: 0%;"></div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer class="relative py-12 px-6 z-10 border-t border-cyan-500/10">
+  <div class="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4 text-sm text-gray-500">
+    <div class="flex items-center gap-3">
+      <i data-lucide="orbit" class="w-4 h-4 text-cyan-400"></i>
+      <span class="font-display tracking-wider">RAG ACADEMY · GENAI GALAXY</span>
+    </div>
+    <div class="font-mono text-xs">v1.0.0 · Module 2.4 · Stardate 2026.05</div>
+  </div>
+</footer>
+
+<!-- ============== SCRIPTS ============== -->
+<script>
+  function safeCreateIcons() {
+    try {
+      if (typeof lucide !== 'undefined' && lucide.createIcons) lucide.createIcons();
+    } catch (e) { console.warn('Lucide init skipped:', e); }
+  }
+  safeCreateIcons();
+
+  // ===== STARFIELD =====
+  const canvas = document.getElementById('starfield');
+  const ctx = canvas.getContext('2d');
+  let stars = [];
+  function resizeCanvas() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; initStars(); }
+  function initStars() {
+    stars = [];
+    const count = Math.floor((canvas.width * canvas.height) / 8000);
+    for (let i = 0; i < count; i++) {
+      stars.push({ x: Math.random() * canvas.width, y: Math.random() * canvas.height, z: Math.random() * 1.5 + 0.3, size: Math.random() * 1.5, twinkle: Math.random() * Math.PI * 2 });
+    }
+  }
+  function drawStars() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const now = Date.now() * 0.001;
+    stars.forEach(s => {
+      const alpha = 0.4 + 0.6 * Math.abs(Math.sin(s.twinkle + now * s.z));
+      ctx.beginPath();
+      ctx.fillStyle = `rgba(${180 + s.z*30}, ${220 + s.z*20}, 255, ${alpha})`;
+      ctx.arc(s.x, s.y, s.size * s.z, 0, Math.PI * 2);
+      ctx.fill();
+      s.y += s.z * 0.08;
+      if (s.y > canvas.height) { s.y = 0; s.x = Math.random() * canvas.width; }
+    });
+    requestAnimationFrame(drawStars);
+  }
+  window.addEventListener('resize', resizeCanvas);
+  resizeCanvas();
+  drawStars();
+
+  // ===== REVEAL =====
+  document.documentElement.classList.add('js-reveal');
+  const revealEls = document.querySelectorAll('.reveal');
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) { entry.target.classList.add('in'); observer.unobserve(entry.target); }
+    });
+  }, { threshold: 0.05, rootMargin: '0px 0px -50px 0px' });
+  revealEls.forEach(el => observer.observe(el));
+  function revealVisibleNow() {
+    revealEls.forEach(el => {
+      const rect = el.getBoundingClientRect();
+      if (rect.top < window.innerHeight && rect.bottom > 0) el.classList.add('in');
+    });
+  }
+  revealVisibleNow();
+  setTimeout(revealVisibleNow, 100);
+  setTimeout(revealVisibleNow, 500);
+  setTimeout(() => { revealEls.forEach(el => el.classList.add('in')); }, 2000);
+
+  // ===== COPY =====
+  document.querySelectorAll('.copy-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const targetId = btn.dataset.target;
+      const target = document.getElementById(targetId);
+      if (!target) return;
+      const text = target.innerText;
+      const fallbackCopy = () => {
+        const ta = document.createElement('textarea');
+        ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+        document.body.appendChild(ta); ta.select();
+        try { document.execCommand('copy'); } catch(e) {}
+        document.body.removeChild(ta);
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).catch(fallbackCopy);
+      } else { fallbackCopy(); }
+      const original = btn.textContent;
+      btn.textContent = 'COPIED!';
+      btn.classList.add('copied');
+      setTimeout(() => { btn.textContent = original; btn.classList.remove('copied'); }, 1500);
+    });
+  });
+
+  // ===== ORCH TABS =====
+  const orchTabs = document.querySelectorAll('[data-orch]');
+  orchTabs.forEach(btn => {
+    btn.addEventListener('click', () => {
+      orchTabs.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      document.querySelectorAll('[id^="orch-"]').forEach(p => {
+        if (p.classList.contains('tab-panel')) p.classList.remove('active');
+      });
+      document.getElementById('orch-' + btn.dataset.orch).classList.add('active');
+      setTimeout(safeCreateIcons, 50);
+    });
+  });
+
+  // ===== QUIZ =====
+  document.querySelectorAll('[data-quiz]').forEach(card => {
+    const options = card.querySelectorAll('.quiz-option');
+    options.forEach(opt => {
+      opt.addEventListener('click', () => {
+        if (card.dataset.answered === 'true') return;
+        const correct = opt.dataset.correct === 'true';
+        if (correct) {
+          opt.classList.add('correct');
+        } else {
+          opt.classList.add('wrong');
+          card.querySelectorAll('.quiz-option').forEach(o => {
+            if (o.dataset.correct === 'true') o.classList.add('correct');
+          });
+        }
+        card.querySelectorAll('.quiz-option').forEach(o => o.classList.add('locked'));
+        card.dataset.answered = 'true';
+        const explain = card.querySelector('[data-explain]');
+        if (explain) explain.classList.remove('hidden');
+      });
+    });
+  });
+
+  // ===== SIDE NAV =====
+  const sections = ['hero','objectives','pipeline','loaders','clean','meta','stream','orchestration','failures','checkpoint'];
+  const dots = document.querySelectorAll('.dot');
+  dots.forEach(dot => {
+    dot.addEventListener('click', () => {
+      document.getElementById(dot.dataset.target).scrollIntoView({ behavior: 'smooth' });
+    });
+  });
+  window.addEventListener('scroll', () => {
+    const scrollPos = window.scrollY + window.innerHeight / 2;
+    sections.forEach((id, i) => {
+      const el = document.getElementById(id);
+      if (el && el.offsetTop <= scrollPos && el.offsetTop + el.offsetHeight > scrollPos) {
+        dots.forEach(d => d.classList.remove('active'));
+        dots[i]?.classList.add('active');
+      }
+    });
+  });
+
+  // ===========================================================
+  // ===== INTERACTIVE 6-STAGE PIPELINE =====
+  // ===========================================================
+  const STAGES = [
+    { num: '01', name: 'Discover', icon: 'search', color: '#00f0ff',
+      desc: 'Scan source systems (filesystem, S3, Notion API, etc.) and list every URI that should be considered. The output is just a list of references — no content yet. Stage-level idempotency: re-running discovery should produce the same list.' },
+    { num: '02', name: 'Load', icon: 'download', color: '#4d8eff',
+      desc: 'Pull bytes from each URI and convert to text using a format-aware loader (pypdf, trafilatura, python-docx, etc.). This is where format-specific quirks get isolated — by the end of Load, everything is plain UTF-8 text.' },
+    { num: '03', name: 'Clean', icon: 'wand-sparkles', color: '#b86bff',
+      desc: 'Normalize encoding, strip boilerplate, collapse whitespace, fix smart quotes. The goal is canonical content — two near-identical inputs should produce identical cleaned text. Cleaning runs before hashing.' },
+    { num: '04', name: 'Dedupe', icon: 'filter', color: '#ff4dcf',
+      desc: 'Compute a stable content hash (SHA-256 of cleaned text) and drop documents we\'ve seen before. For more aggressive dedup, layer MinHash + LSH on top to catch near-duplicates with minor differences.' },
+    { num: '05', name: 'Enrich', icon: 'tags', color: '#ffb84d',
+      desc: 'Attach metadata: source, uri, title, author, timestamps, tags, ACLs, page numbers. This is the cheapest stage to add fields and the most expensive to add later — capture everything you might ever filter on.' },
+    { num: '06', name: 'Persist', icon: 'database', color: '#4dffb8',
+      desc: 'Write canonical Document or Chunk records out as JSONL (or directly into your vector DB). One line per record. Append-only, streamable, resumable. This file is the handoff to chunking + embedding downstream.' }
+  ];
+
+  const stageGrid = document.getElementById('stageGrid');
+  const stageDetail = document.getElementById('stageDetail');
+
+  STAGES.forEach((s, i) => {
+    const node = document.createElement('div');
+    node.className = 'stage-node';
+    node.dataset.idx = i;
+    node.innerHTML = `
+      <div class="stage-circle mx-auto mb-2" style="border-color: ${s.color}33;">
+        <i data-lucide="${s.icon}" style="color: ${s.color}; width: 22px; height: 22px;"></i>
+      </div>
+      <div class="font-mono text-[10px] text-gray-500 tracking-widest">${s.num}</div>
+      <div class="font-display text-xs font-bold mt-1" style="color: ${s.color};">${s.name}</div>
+    `;
+    node.addEventListener('click', () => setStage(i));
+    stageGrid.appendChild(node);
+  });
+
+  function setStage(i) {
+    const s = STAGES[i];
+    document.querySelectorAll('.stage-node').forEach(n => n.classList.remove('active'));
+    document.querySelector(`.stage-node[data-idx="${i}"]`).classList.add('active');
+    stageDetail.innerHTML = `
+      <div class="grid md:grid-cols-3 gap-8 items-center">
+        <div class="md:col-span-1 text-center">
+          <div class="inline-flex items-center justify-center w-24 h-24 rounded-2xl mb-4" style="background: ${s.color}15; border: 1px solid ${s.color}40;">
+            <i data-lucide="${s.icon}" style="color: ${s.color}; width: 44px; height: 44px;"></i>
+          </div>
+          <div class="font-mono text-xs text-gray-500 tracking-widest">STAGE ${s.num}</div>
+          <h3 class="font-display font-bold text-2xl mt-1" style="color: ${s.color};">${s.name}</h3>
+        </div>
+        <div class="md:col-span-2">
+          <p class="text-gray-300 leading-relaxed text-base">${s.desc}</p>
+        </div>
+      </div>
+    `;
+    safeCreateIcons();
+  }
+  setStage(0);
+
+  // ===========================================================
+  // ===== LIVE PIPELINE STREAM DEMO =====
+  // ===========================================================
+  const DOCS = [
+    { id: 'src_001', source: 'notion',     path: 'handbook/refunds.md',        dup: false },
+    { id: 'src_002', source: 's3',         path: 'policies/shipping.pdf',      dup: false },
+    { id: 'src_003', source: 'github',     path: 'README.md',                  dup: false },
+    { id: 'src_004', source: 's3',         path: 'policies/shipping_v2.pdf',   dup: true  },
+    { id: 'src_005', source: 'confluence', path: 'eng/onboarding.html',        dup: false },
+    { id: 'src_006', source: 'notion',     path: 'tickets/T-2841.md',          dup: false },
+    { id: 'src_007', source: 'notion',     path: 'handbook/refunds.md',        dup: true  },
+    { id: 'src_008', source: 'github',     path: 'docs/api/auth.md',           dup: false },
+    { id: 'src_009', source: 's3',         path: 'reports/Q4-2025.docx',       dup: false },
+    { id: 'src_010', source: 'confluence', path: 'security/policies.html',     dup: false },
+    { id: 'src_011', source: 'notion',     path: 'team/standup.md',            dup: false },
+    { id: 'src_012', source: 'github',     path: 'CONTRIBUTING.md',            dup: false }
+  ];
+
+  const trackRaw = document.getElementById('trackRaw');
+  const trackIndexed = document.getElementById('trackIndexed');
+  const counters = {
+    raw: document.getElementById('counterRaw'),
+    indexed: document.getElementById('counterIndexed'),
+    loaded: document.getElementById('metricLoaded'),
+    cleaned: document.getElementById('metricCleaned'),
+    deduped: document.getElementById('metricDeduped'),
+    chunked: document.getElementById('metricChunked'),
+    final: document.getElementById('metricIndexed')
+  };
+  const status = document.getElementById('streamStatus');
+
+  function rowHtml(id, statusText, statusCls, extra='') {
+    return `
+      <div class="pipeline-row">
+        <span class="row-id">${id}</span>
+        <span class="text-gray-400 truncate" style="flex:1; min-width:0;">${extra}</span>
+        <span class="row-status ${statusCls}">${statusText}</span>
+      </div>
+    `;
+  }
+
+  function resetStream() {
+    trackRaw.innerHTML = '';
+    trackIndexed.innerHTML = '';
+    Object.values(counters).forEach(c => c.textContent = '0');
+    status.textContent = 'Idle — press Start.';
+  }
+  resetStream();
+
+  let running = false;
+
+  async function runStream() {
+    if (running) return;
+    running = true;
+    resetStream();
+    let loaded = 0, cleaned = 0, deduped = 0, chunked = 0, indexed = 0;
+    const seenHashes = new Set();
+
+    status.textContent = 'Running pipeline...';
+
+    for (let i = 0; i < DOCS.length; i++) {
+      const d = DOCS[i];
+
+      // RAW
+      const rawEl = document.createElement('div');
+      rawEl.innerHTML = rowHtml(d.id, d.source.toUpperCase(), 'status-loaded', d.path);
+      trackRaw.appendChild(rawEl.firstElementChild);
+      counters.raw.textContent = i + 1;
+      requestAnimationFrame(() => {
+        trackRaw.lastElementChild.classList.add('shown');
+        trackRaw.scrollTop = trackRaw.scrollHeight;
+      });
+      await sleep(160);
+
+      // LOAD
+      loaded++;
+      counters.loaded.textContent = loaded;
+      await sleep(80);
+
+      // CLEAN
+      cleaned++;
+      counters.cleaned.textContent = cleaned;
+      await sleep(80);
+
+      // DEDUPE
+      const hash = d.dup ? d.path : d.id + '-' + d.path; // dup ones collide
+      if (seenHashes.has(hash)) {
+        deduped++;
+        counters.deduped.textContent = deduped;
+        const skipEl = document.createElement('div');
+        skipEl.innerHTML = rowHtml(d.id, 'SKIPPED (dup)', 'status-skipped', d.path);
+        trackIndexed.appendChild(skipEl.firstElementChild);
+        requestAnimationFrame(() => {
+          trackIndexed.lastElementChild.classList.add('shown');
+          trackIndexed.scrollTop = trackIndexed.scrollHeight;
+        });
+        await sleep(200);
+        continue;
+      }
+      seenHashes.add(hash);
+
+      // CHUNK
+      const numChunks = 2 + Math.floor(Math.random() * 4);
+      chunked += numChunks;
+      counters.chunked.textContent = chunked;
+      await sleep(80);
+
+      // INDEX
+      indexed += numChunks;
+      counters.indexed.textContent = indexed;
+      counters.final.textContent = indexed;
+
+      const indexedEl = document.createElement('div');
+      indexedEl.innerHTML = rowHtml(d.id, `INDEXED ×${numChunks}`, 'status-indexed', d.path);
+      trackIndexed.appendChild(indexedEl.firstElementChild);
+      requestAnimationFrame(() => {
+        trackIndexed.lastElementChild.classList.add('shown');
+        trackIndexed.scrollTop = trackIndexed.scrollHeight;
+      });
+
+      await sleep(280);
+    }
+
+    status.innerHTML = `<span class="text-green-300">✓ Done.</span> ${DOCS.length} sources → ${indexed} chunks · ${deduped} duplicates filtered.`;
+    running = false;
+  }
+
+  function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+  document.getElementById('streamStart').addEventListener('click', runStream);
+  document.getElementById('streamReset').addEventListener('click', () => {
+    if (running) return;
+    resetStream();
+  });
+
+  // ===== COMPLETION =====
+  function completeModule() {
+    try {
+      const saved = JSON.parse(localStorage.getItem('rag_academy_progress') || '{}');
+      const completed = new Set(saved.completed || []);
+      completed.add('2.4');
+      localStorage.setItem('rag_academy_progress', JSON.stringify({
+        completed: Array.from(completed),
+        lastModule: '2.4'
+      }));
+      updateProgress();
+    } catch(e) {}
+
+    const burst = document.createElement('div');
+    burst.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);font-family:Orbitron,sans-serif;font-size:2rem;font-weight:900;color:#00f0ff;text-shadow:0 0 30px #00f0ff;z-index:9999;pointer-events:none;opacity:0;transition:all 0.8s ease;';
+    burst.textContent = '✦ MISSION COMPLETE ✦';
+    document.body.appendChild(burst);
+    requestAnimationFrame(() => {
+      burst.style.opacity = '1';
+      burst.style.transform = 'translate(-50%, -50%) scale(1.2)';
+    });
+    setTimeout(() => { burst.style.opacity = '0'; setTimeout(() => burst.remove(), 800); }, 1800);
+  }
+  window.completeModule = completeModule;
+
+  function updateProgress() {
+    try {
+      const saved = JSON.parse(localStorage.getItem('rag_academy_progress') || '{}');
+      if (saved.completed && Array.isArray(saved.completed)) {
+        const count = saved.completed.length;
+        const pct = Math.round((count / 38) * 100);
+        const fill = document.getElementById('courseProgress');
+        const txt = document.getElementById('progressText');
+        if (fill && txt) {
+          fill.style.width = pct + '%';
+          txt.textContent = `${count} / 38 modules ${saved.completed.includes('2.4') ? '✓' : ''}`;
+        }
+      }
+    } catch(e) {}
+  }
+  updateProgress();
+</script>
+
+</body>
+</html>

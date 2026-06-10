@@ -1,0 +1,2054 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Module 3.2 — MCP Inside the Agent Loop</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Source+Serif+4:ital,opsz,wght@0,8..60,300;0,8..60,400;0,8..60,500;0,8..60,600;1,8..60,400&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #08090b; --bg-2: #0b0f1a;
+    --panel: #0d1117; --panel-2: #111827; --panel-3: #111827;
+    --line: #1e2330; --line-strong: #2a3142;
+    --text: #e8eaed; --text-dim: #a8aeb8; --text-mute: #6b7280;
+    --teal: #6366f1; --purple: #8b5cf6; --pink: #f7768e;
+    --amber: #f59e0b; --red: #f7768e; --blue: #818cf8;
+    --green: #10b981; --orange: #f59e0b;
+    --mono: 'JetBrains Mono', ui-monospace, monospace;
+    --sans: 'Outfit', system-ui, -apple-system, sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; scroll-padding-top: 80px; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans);
+    font-size: 16px; line-height: 1.65; -webkit-font-smoothing: antialiased; overflow-x: hidden; }
+  body::before {
+    content: ""; position: fixed; inset: 0;
+    background-image:
+      linear-gradient(rgba(99, 102, 241, 0.035) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(99, 102, 241, 0.035) 1px, transparent 1px);
+    background-size: 48px 48px; pointer-events: none; z-index: 0;
+    mask-image: radial-gradient(ellipse 80% 60% at 50% 30%, black 40%, transparent 100%);
+  }
+  body::after {
+    content: ""; position: fixed; inset: 0;
+    background:
+      radial-gradient(ellipse 50% 30% at 20% 10%, rgba(99, 102, 241,0.06), transparent 60%),
+      radial-gradient(ellipse 40% 25% at 90% 80%, rgba(139, 92, 246,0.05), transparent 60%);
+    pointer-events: none; z-index: 0;
+  }
+
+  /* topbar */
+  .topbar { position: sticky; top: 0; z-index: 50;
+    backdrop-filter: blur(14px); background: rgba(10,14,26,0.85);
+    border-bottom: 1px solid var(--line); }
+  .topbar-inner { max-width: 1200px; margin: 0 auto;
+    padding: 14px 32px; display: flex; align-items: center; gap: 24px; }
+  .brand { font-family: var(--mono); font-size: 12px;
+    letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--teal); font-weight: 600;
+    display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+  .brand .dot { width: 8px; height: 8px; background: var(--teal);
+    border-radius: 50%; box-shadow: 0 0 12px rgba(99, 102, 241,0.6); }
+  .track-progress { flex: 1; display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; }
+  .track-progress::-webkit-scrollbar { display: none; }
+  .tp-item { font-family: var(--mono); font-size: 10.5px;
+    letter-spacing: 0.1em; text-transform: uppercase;
+    color: var(--text-mute); padding: 4px 10px;
+    border-radius: 4px; border: 1px solid var(--line);
+    white-space: nowrap; }
+  .tp-item.done { color: var(--text-dim); }
+  .tp-item.done::before { content: "✓ "; color: var(--teal); }
+  .tp-item.current { color: var(--teal); border-color: var(--teal); background: rgba(99, 102, 241,0.06); }
+  .progress-bar { flex-shrink: 0; font-family: var(--mono); font-size: 11px;
+    color: var(--text-dim); display: flex; align-items: center; gap: 10px; }
+  .progress-track { width: 80px; height: 4px; background: var(--line);
+    border-radius: 2px; overflow: hidden; }
+  .progress-fill { height: 100%; background: linear-gradient(90deg, var(--teal), var(--purple));
+    width: 0%; transition: width 0.3s ease; }
+
+  /* layout */
+  .layout { max-width: 1200px; margin: 0 auto;
+    padding: 56px 32px 120px; display: grid;
+    grid-template-columns: 220px 1fr; gap: 56px;
+    position: relative; z-index: 1; }
+  .sidebar { position: sticky; top: 80px; align-self: start;
+    max-height: calc(100vh - 96px); overflow-y: auto; }
+  .sb-label { font-family: var(--mono); font-size: 10.5px;
+    letter-spacing: 0.16em; text-transform: uppercase;
+    color: var(--text-mute); margin-bottom: 18px;
+    padding-bottom: 12px; border-bottom: 1px solid var(--line); }
+  .sb-list { list-style: none; }
+  .sb-list li a { display: flex; align-items: center; gap: 12px;
+    padding: 9px 0; font-size: 13.5px;
+    color: var(--text-dim); text-decoration: none;
+    border-left: 2px solid transparent; padding-left: 12px;
+    transition: all 0.2s; line-height: 1.4; }
+  .sb-list li a:hover { color: var(--text); }
+  .sb-list li a.active { color: var(--teal); border-left-color: var(--teal);
+    background: linear-gradient(90deg, rgba(99, 102, 241,0.05), transparent); }
+  .sb-list li a .num { font-family: var(--mono); font-size: 10.5px;
+    color: var(--text-mute); min-width: 22px; }
+  .sb-list li a.active .num { color: var(--teal); }
+
+  .content { min-width: 0; }
+  .crumb { display: flex; align-items: center; gap: 10px;
+    font-family: var(--mono); font-size: 11px;
+    letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--teal); margin-bottom: 22px; }
+  .crumb .bar { width: 24px; height: 1px; background: var(--teal); }
+  .crumb .sep { color: var(--text-mute); }
+  .crumb .dim { color: var(--text-dim); }
+  .crumb .bridge {
+    font-family: var(--mono); font-size: 10px;
+    padding: 3px 9px; border-radius: 4px;
+    background: rgba(139, 92, 246,0.1);
+    color: var(--purple);
+    border: 1px solid rgba(139, 92, 246,0.3);
+    letter-spacing: 0.16em;
+  }
+
+  h1.module-title { font-size: clamp(34px, 5vw, 54px); font-weight: 800;
+    letter-spacing: -0.025em; line-height: 1.05;
+    margin-bottom: 18px; }
+  h1.module-title .accent { color: var(--teal); }
+  h1.module-title .accent2 { color: var(--purple); }
+  .lede { font-size: 18px; color: var(--text-dim); max-width: 700px; }
+
+  .hero-meta { display: flex; flex-wrap: wrap; gap: 20px;
+    margin-top: 26px; padding-top: 22px;
+    border-top: 1px solid var(--line); }
+  .hero-meta .m { display: flex; align-items: center; gap: 10px; }
+  .hero-meta .m-label { font-family: var(--mono); font-size: 10px;
+    letter-spacing: 0.14em; text-transform: uppercase; color: var(--text-mute); }
+  .hero-meta .m-val { font-family: var(--mono); font-size: 13px;
+    color: var(--text); font-weight: 500; }
+
+  .objectives { margin: 40px 0 64px;
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 14px; padding: 26px 28px;
+    position: relative; overflow: hidden; }
+  .objectives::before { content: ""; position: absolute; top: 0; left: 0; right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--teal) 30%, var(--purple) 70%, transparent); }
+  .obj-header { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+  .obj-icon { width: 32px; height: 32px;
+    background: rgba(99, 102, 241,0.12);
+    border: 1px solid rgba(99, 102, 241,0.3);
+    border-radius: 8px; display: grid; place-items: center; }
+  .obj-icon svg { width: 16px; height: 16px; }
+  .obj-title { font-family: var(--mono); font-size: 11px;
+    letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--teal); font-weight: 600; }
+  .obj-list { list-style: none; display: grid; gap: 10px; }
+  .obj-list li { display: grid; grid-template-columns: 22px 1fr;
+    gap: 12px; align-items: start;
+    color: #c2cad9; font-size: 14.5px; line-height: 1.55; }
+  .obj-list .check { width: 18px; height: 18px; border-radius: 4px;
+    border: 1.5px solid var(--line-strong); margin-top: 2px;
+    display: grid; place-items: center; color: var(--text-mute);
+    font-family: var(--mono); font-size: 11px;
+    cursor: pointer; transition: all 0.2s; }
+  .obj-list .check.done { background: rgba(99, 102, 241,0.15);
+    border-color: var(--teal); color: var(--teal); }
+
+  .section-label { font-family: var(--mono); font-size: 11px;
+    letter-spacing: 0.18em; text-transform: uppercase;
+    color: var(--text-mute); margin-bottom: 14px;
+    display: flex; align-items: center; gap: 12px; }
+  .section-label .sn { color: var(--teal); font-weight: 600; }
+  .section-label::before { content: ""; width: 6px; height: 6px;
+    background: var(--teal); border-radius: 1px; transform: rotate(45deg); }
+
+  h2 { font-size: 28px; font-weight: 700; letter-spacing: -0.015em;
+    margin-bottom: 18px; line-height: 1.2; }
+  h3.sub { font-size: 17px; font-weight: 700; margin: 30px 0 12px; color: var(--text); }
+  h3.sub .num { font-family: var(--mono); color: var(--teal); font-size: 12px; margin-right: 10px; }
+  section.block { margin-bottom: 72px; scroll-margin-top: 80px; }
+
+  p { color: #c2cad9; margin-bottom: 16px; }
+  p strong { color: var(--text); font-weight: 600; }
+  p code, li code, td code { font-family: var(--mono); font-size: 0.88em;
+    background: rgba(99, 102, 241, 0.08);
+    color: var(--teal); padding: 1px 6px; border-radius: 4px;
+    border: 1px solid rgba(99, 102, 241,0.15); }
+  ul.tight { list-style: none; padding: 0; margin: 14px 0 18px; }
+  ul.tight li { color: #c2cad9; padding: 6px 0 6px 22px; position: relative; }
+  ul.tight li::before { content: "›"; position: absolute; left: 4px; top: 6px;
+    color: var(--teal); font-family: var(--mono); font-weight: 600; }
+
+  .exercise-tag { display: inline-flex; align-items: center; gap: 8px;
+    font-family: var(--mono); font-size: 10.5px;
+    letter-spacing: 0.14em; text-transform: uppercase;
+    padding: 5px 12px; border-radius: 999px;
+    background: rgba(139, 92, 246,0.1);
+    border: 1px solid rgba(139, 92, 246,0.35);
+    color: var(--purple); margin-bottom: 12px; }
+  .exercise-tag .pulse { width: 6px; height: 6px;
+    background: var(--purple); border-radius: 50%;
+    animation: pulse 2s ease-in-out infinite; }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.4; transform: scale(1.3); }
+  }
+
+  .callout { border-left: 2px solid var(--teal);
+    background: linear-gradient(90deg, rgba(99, 102, 241,0.06), rgba(99, 102, 241,0));
+    padding: 18px 22px; margin: 22px 0;
+    border-radius: 0 6px 6px 0; }
+  .callout.purple { border-left-color: var(--purple);
+    background: linear-gradient(90deg, rgba(139, 92, 246,0.06), rgba(139, 92, 246,0)); }
+  .callout.amber { border-left-color: var(--amber);
+    background: linear-gradient(90deg, rgba(245, 158, 11,0.06), rgba(245, 158, 11,0)); }
+  .callout .tag { font-family: var(--mono); font-size: 10.5px;
+    letter-spacing: 0.16em; text-transform: uppercase;
+    color: var(--teal); margin-bottom: 6px; }
+  .callout.purple .tag { color: var(--purple); }
+  .callout.amber .tag { color: var(--amber); }
+  .callout p { margin-bottom: 0; }
+
+  pre.code-block {
+    font-family: var(--mono); font-size: 13px;
+    background: #06080f; border: 1px solid var(--line);
+    border-radius: 10px; padding: 18px 20px;
+    line-height: 1.7; color: #c2cad9;
+    overflow-x: auto; white-space: pre;
+    border-left: 3px solid var(--teal);
+    margin: 20px 0;
+  }
+  pre.code-block.purple { border-left-color: var(--purple); }
+  pre.code-block .k { color: var(--purple); }
+  pre.code-block .d { color: var(--pink); }
+  pre.code-block .s { color: var(--teal); }
+  pre.code-block .f { color: var(--blue); }
+  pre.code-block .c { color: var(--text-mute); font-style: italic; }
+  pre.code-block .n { color: var(--amber); }
+
+  /* bridge banner */
+  .bridge-banner {
+    margin: -16px 0 32px;
+    padding: 22px 26px;
+    background: linear-gradient(120deg, rgba(99, 102, 241,0.06), rgba(139, 92, 246,0.06));
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    position: relative;
+    overflow: hidden;
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    gap: 24px;
+    align-items: center;
+  }
+  .bridge-banner::before {
+    content: ""; position: absolute; left: 0; right: 0; top: 0; height: 1px;
+    background: linear-gradient(90deg, transparent, var(--teal) 20%, var(--purple) 80%, transparent);
+  }
+  .bridge-side {
+    font-family: var(--mono); font-size: 11px;
+    letter-spacing: 0.12em; text-transform: uppercase;
+  }
+  .bridge-side .lbl { color: var(--text-mute); margin-bottom: 4px; }
+  .bridge-side .nm { font-size: 14px; font-weight: 600;
+    letter-spacing: 0.05em; text-transform: none;
+    font-family: var(--sans); }
+  .bridge-side.left { text-align: left; }
+  .bridge-side.left .nm { color: var(--teal); }
+  .bridge-side.right { text-align: right; }
+  .bridge-side.right .nm { color: var(--purple); }
+  .bridge-icon {
+    font-family: var(--mono); font-size: 22px;
+    color: var(--text-dim);
+    display: flex; align-items: center; gap: 4px;
+  }
+  .bridge-icon .arc {
+    color: var(--teal);
+    animation: arcpulse 2.4s ease-in-out infinite;
+  }
+  @keyframes arcpulse {
+    0%, 100% { color: var(--teal); }
+    50% { color: var(--purple); }
+  }
+
+  /* ========= REACT LOOP (animated triangle) ========= */
+  .rl-w { background: var(--panel); border: 1px solid var(--line);
+    border-radius: 14px; overflow: hidden; margin: 20px 0; }
+  .rl-head { padding: 14px 22px; background: var(--panel-2);
+    border-bottom: 1px solid var(--line);
+    display: flex; justify-content: space-between; align-items: center;
+    flex-wrap: wrap; gap: 10px; }
+  .rl-head .title { font-family: var(--mono); font-size: 11.5px;
+    letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-dim); }
+  .rl-controls { display: flex; gap: 8px; }
+  .rl-btn { font-family: var(--mono); font-size: 11px;
+    letter-spacing: 0.1em; text-transform: uppercase;
+    padding: 6px 14px; border-radius: 6px;
+    background: transparent; border: 1px solid var(--line-strong);
+    color: var(--text-dim); cursor: pointer; transition: all 0.15s; }
+  .rl-btn:hover { border-color: var(--teal); color: var(--teal); }
+  .rl-btn.primary { color: var(--teal); border-color: var(--teal); }
+
+  .rl-body { display: grid; grid-template-columns: 1fr 1fr; min-height: 380px; }
+  .rl-canvas {
+    background: var(--bg-2);
+    border-right: 1px solid var(--line);
+    padding: 28px 24px;
+    position: relative;
+  }
+  .rl-canvas svg { width: 100%; height: 280px; }
+  .rl-node {
+    fill: var(--panel);
+    stroke: var(--line-strong);
+    stroke-width: 1.5;
+    transition: all 0.35s;
+    cursor: pointer;
+  }
+  .rl-node.active.thought { fill: rgba(139, 92, 246,0.12); stroke: var(--purple); }
+  .rl-node.active.action  { fill: rgba(129, 140, 248,0.12);   stroke: var(--blue); }
+  .rl-node.active.obs     { fill: rgba(99, 102, 241,0.12);   stroke: var(--teal); }
+  .rl-node-label {
+    font-family: var(--mono); font-size: 13px;
+    fill: var(--text-mute); text-anchor: middle; pointer-events: none;
+    font-weight: 600; letter-spacing: 0.06em;
+    transition: fill 0.3s;
+  }
+  .rl-node.active.thought + .rl-node-label { fill: var(--purple); }
+  .rl-node.active.action  + .rl-node-label { fill: var(--blue); }
+  .rl-node.active.obs     + .rl-node-label { fill: var(--teal); }
+  .rl-arrow {
+    fill: none; stroke: var(--line-strong);
+    stroke-width: 1.5; marker-end: url(#rlArrow);
+    transition: stroke 0.35s, stroke-width 0.35s;
+  }
+  .rl-arrow.active { stroke: var(--teal); stroke-width: 2.5; }
+  .rl-loopback {
+    font-family: var(--mono); font-size: 9.5px;
+    fill: var(--text-mute); text-anchor: middle;
+    letter-spacing: 0.12em; text-transform: uppercase;
+  }
+
+  .rl-detail {
+    padding: 24px 26px;
+    background: var(--panel);
+  }
+  .rl-detail .pk {
+    font-family: var(--mono); font-size: 10.5px;
+    letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--teal); margin-bottom: 6px;
+  }
+  .rl-detail.thought-mode .pk { color: var(--purple); }
+  .rl-detail.action-mode .pk { color: var(--blue); }
+  .rl-detail.obs-mode .pk { color: var(--teal); }
+  .rl-detail h4 { font-size: 18px; color: var(--text);
+    margin-bottom: 10px; font-weight: 700; }
+  .rl-detail p { color: #c2cad9; font-size: 13.5px;
+    line-height: 1.6; margin-bottom: 12px; }
+  .rl-detail p code { font-family: var(--mono); font-size: 0.88em;
+    background: rgba(255,255,255,0.04); color: var(--text);
+    padding: 1px 5px; border-radius: 3px; border: none; }
+  .rl-detail .wlbl { font-family: var(--mono); font-size: 10px;
+    letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--text-mute); margin: 14px 0 6px; }
+  .rl-detail .wire {
+    font-family: var(--mono); font-size: 11.5px;
+    background: #06080f; border: 1px solid var(--line);
+    border-radius: 8px; padding: 12px 14px;
+    color: #c2cad9; line-height: 1.6;
+    overflow-x: auto; white-space: pre;
+  }
+  .rl-detail .wire .k { color: var(--purple); }
+  .rl-detail .wire .s { color: var(--teal); }
+  .rl-detail .wire .n { color: var(--amber); }
+  .rl-detail .wire .c { color: var(--text-mute); font-style: italic; }
+  .rl-detail .wire .v { color: var(--blue); }
+
+  /* ========= GRAPH BUILDER ========= */
+  .gb-w { background: var(--panel); border: 1px solid var(--line);
+    border-radius: 14px; overflow: hidden; margin: 20px 0; }
+  .gb-head { padding: 14px 22px; background: var(--panel-2);
+    border-bottom: 1px solid var(--line);
+    display: flex; justify-content: space-between; align-items: center;
+    flex-wrap: wrap; gap: 10px; }
+  .gb-head .title { font-family: var(--mono); font-size: 11.5px;
+    letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-dim); }
+  .gb-head .hint { font-family: var(--mono); font-size: 10.5px; color: var(--text-mute); }
+
+  .gb-canvas {
+    padding: 32px 24px;
+    background: var(--bg-2);
+    border-bottom: 1px solid var(--line);
+  }
+  .gb-canvas svg { width: 100%; height: 240px; display: block; }
+  .gb-gnode rect {
+    transition: all 0.2s;
+    cursor: pointer;
+  }
+  .gb-gnode:hover rect, .gb-gnode.active rect {
+    stroke-width: 2;
+  }
+  .gb-gnode.start rect { fill: rgba(16, 185, 129,0.08); stroke: rgba(16, 185, 129,0.4); }
+  .gb-gnode.start.active rect { stroke: var(--green); fill: rgba(16, 185, 129,0.16); }
+  .gb-gnode.agent rect { fill: rgba(99, 102, 241,0.08); stroke: rgba(99, 102, 241,0.4); }
+  .gb-gnode.agent.active rect { stroke: var(--teal); fill: rgba(99, 102, 241,0.16); }
+  .gb-gnode.tools rect { fill: rgba(139, 92, 246,0.08); stroke: rgba(139, 92, 246,0.4); }
+  .gb-gnode.tools.active rect { stroke: var(--purple); fill: rgba(139, 92, 246,0.16); }
+  .gb-gnode.end rect { fill: rgba(247, 118, 142,0.08); stroke: rgba(247, 118, 142,0.4); }
+  .gb-gnode.end.active rect { stroke: var(--red); fill: rgba(247, 118, 142,0.16); }
+  .gb-gnode-title {
+    font-family: var(--mono); font-size: 12.5px;
+    font-weight: 600; fill: var(--text);
+    text-anchor: middle; pointer-events: none;
+  }
+  .gb-gnode-sub {
+    font-family: var(--mono); font-size: 10px;
+    fill: var(--text-mute);
+    text-anchor: middle; pointer-events: none;
+    letter-spacing: 0.1em; text-transform: uppercase;
+  }
+  .gb-edge {
+    fill: none; stroke: var(--line-strong);
+    stroke-width: 1.5;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .gb-edge:hover, .gb-edge.active { stroke: var(--teal); stroke-width: 2.5; }
+  .gb-edge.cond { stroke-dasharray: 4 4; }
+  .gb-edge-label {
+    font-family: var(--mono); font-size: 10px;
+    fill: var(--text-mute);
+    letter-spacing: 0.1em; text-transform: uppercase;
+    text-anchor: middle;
+    pointer-events: none;
+  }
+
+  .gb-detail {
+    padding: 22px 26px;
+    background: var(--panel);
+  }
+  .gb-detail .pk {
+    font-family: var(--mono); font-size: 10.5px;
+    letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--teal); margin-bottom: 6px;
+  }
+  .gb-detail h4 { font-size: 18px; color: var(--text);
+    margin-bottom: 10px; font-weight: 700; }
+  .gb-detail p { color: #c2cad9; font-size: 13.5px;
+    line-height: 1.6; margin-bottom: 12px; }
+  .gb-detail p code { font-family: var(--mono); font-size: 0.88em;
+    background: rgba(255,255,255,0.04); color: var(--text);
+    padding: 1px 5px; border-radius: 3px; border: none; }
+  .gb-detail .clbl { font-family: var(--mono); font-size: 10px;
+    letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--text-mute); margin: 14px 0 6px; }
+  .gb-detail .code {
+    font-family: var(--mono); font-size: 12px;
+    background: #06080f; border: 1px solid var(--line);
+    border-radius: 8px; padding: 12px 14px;
+    color: #c2cad9; line-height: 1.65;
+    overflow-x: auto; white-space: pre;
+  }
+  .gb-detail .code .k { color: var(--purple); }
+  .gb-detail .code .s { color: var(--teal); }
+  .gb-detail .code .f { color: var(--blue); }
+  .gb-detail .code .n { color: var(--amber); }
+  .gb-detail .code .c { color: var(--text-mute); font-style: italic; }
+  .gb-detail .code .d { color: var(--pink); }
+
+  /* ========= BINDING PIPELINE ========= */
+  .bp-w { background: var(--panel); border: 1px solid var(--line);
+    border-radius: 14px; overflow: hidden; margin: 20px 0; }
+  .bp-head { padding: 14px 22px; background: var(--panel-2);
+    border-bottom: 1px solid var(--line);
+    display: flex; justify-content: space-between; align-items: center;
+    flex-wrap: wrap; gap: 10px; }
+  .bp-head .title { font-family: var(--mono); font-size: 11.5px;
+    letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-dim); }
+  .bp-head .hint { font-family: var(--mono); font-size: 10.5px; color: var(--text-mute); }
+  .bp-body {
+    padding: 24px;
+    display: grid;
+    grid-template-columns: 230px 1fr;
+    gap: 18px;
+  }
+  .bp-steps { display: flex; flex-direction: column; gap: 10px; }
+  .bp-step {
+    padding: 14px 16px;
+    background: var(--bg-2);
+    border: 1.5px solid var(--line-strong);
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.2s;
+    position: relative;
+  }
+  .bp-step:hover { transform: translateX(2px); }
+  .bp-step.active { border-color: var(--teal); background: rgba(99, 102, 241,0.04); transform: translateX(2px); }
+  .bp-step .ix { font-family: var(--mono); font-size: 10px;
+    color: var(--text-mute);
+    letter-spacing: 0.16em; text-transform: uppercase;
+    margin-bottom: 4px; }
+  .bp-step.active .ix { color: var(--teal); }
+  .bp-step .nm { font-weight: 700; font-size: 13.5px; color: var(--text); margin-bottom: 2px; }
+  .bp-step .sub { font-family: var(--mono); font-size: 10.5px;
+    color: var(--text-mute); line-height: 1.4; }
+  .bp-step .conn {
+    position: absolute;
+    left: 50%; bottom: -10px;
+    transform: translateX(-50%);
+    color: var(--line-strong);
+    font-family: var(--mono); font-size: 13px;
+    line-height: 0.4;
+  }
+  .bp-step.active .conn { color: var(--teal); }
+  .bp-step:last-child .conn { display: none; }
+
+  .bp-detail {
+    padding: 18px 22px;
+    background: var(--bg-2);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+  }
+  .bp-detail .pk { font-family: var(--mono); font-size: 10.5px;
+    letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--teal); margin-bottom: 6px; }
+  .bp-detail h4 { font-size: 17px; color: var(--text);
+    margin-bottom: 8px; font-weight: 700; }
+  .bp-detail p { color: #c2cad9; font-size: 13.5px;
+    line-height: 1.6; margin-bottom: 12px; }
+  .bp-detail p code { font-family: var(--mono); font-size: 0.88em;
+    background: rgba(255,255,255,0.04); color: var(--text);
+    padding: 1px 5px; border-radius: 3px; border: none; }
+  .bp-detail .code {
+    font-family: var(--mono); font-size: 12.5px;
+    background: #06080f; border: 1px solid var(--line);
+    border-radius: 8px; padding: 14px 16px;
+    color: #c2cad9; line-height: 1.7;
+    overflow-x: auto; white-space: pre;
+  }
+  .bp-detail .code .k { color: var(--purple); }
+  .bp-detail .code .s { color: var(--teal); }
+  .bp-detail .code .f { color: var(--blue); }
+  .bp-detail .code .n { color: var(--amber); }
+  .bp-detail .code .c { color: var(--text-mute); font-style: italic; }
+  .bp-detail .code .d { color: var(--pink); }
+  .bp-detail .out {
+    margin-top: 10px;
+    font-family: var(--mono); font-size: 11.5px;
+    color: var(--text-mute);
+    padding-left: 14px; border-left: 2px solid var(--line);
+    line-height: 1.6;
+  }
+  .bp-detail .out strong { color: var(--text-dim); font-weight: 500; }
+
+  /* ========= MESSAGE EVOLUTION ========= */
+  .me-w { background: var(--panel); border: 1px solid var(--line);
+    border-radius: 14px; overflow: hidden; margin: 20px 0; }
+  .me-head { padding: 14px 22px; background: var(--panel-2);
+    border-bottom: 1px solid var(--line);
+    display: flex; justify-content: space-between; align-items: center;
+    flex-wrap: wrap; gap: 10px; }
+  .me-head .title { font-family: var(--mono); font-size: 11.5px;
+    letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-dim); }
+  .me-controls { display: flex; gap: 6px; }
+  .me-btn { font-family: var(--mono); font-size: 11px;
+    letter-spacing: 0.1em; text-transform: uppercase;
+    padding: 5px 12px; border-radius: 6px;
+    background: transparent; border: 1px solid var(--line-strong);
+    color: var(--text-dim); cursor: pointer; transition: all 0.15s; }
+  .me-btn:hover { border-color: var(--teal); color: var(--teal); }
+  .me-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .me-btn.primary { color: var(--teal); border-color: var(--teal); }
+
+  .me-step-bar { padding: 14px 22px;
+    background: var(--panel-2);
+    border-bottom: 1px solid var(--line);
+    font-family: var(--mono); font-size: 11px;
+    color: var(--text-dim);
+    display: flex; justify-content: space-between; }
+  .me-step-bar .label { letter-spacing: 0.14em; text-transform: uppercase; color: var(--text-mute); }
+  .me-step-bar .annotation { color: var(--teal); }
+
+  .me-list { padding: 18px; min-height: 380px;
+    display: flex; flex-direction: column; gap: 8px; }
+  .me-msg {
+    border-radius: 10px;
+    padding: 12px 14px;
+    border: 1px solid var(--line);
+    background: var(--bg-2);
+    transition: all 0.3s;
+    animation: meslide 0.35s ease;
+  }
+  @keyframes meslide {
+    from { opacity: 0; transform: translateY(-4px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .me-msg.user   { border-left: 3px solid var(--blue);   background: rgba(129, 140, 248,0.04); }
+  .me-msg.ai     { border-left: 3px solid var(--teal);   background: rgba(99, 102, 241,0.04); }
+  .me-msg.tool   { border-left: 3px solid var(--purple); background: rgba(139, 92, 246,0.04); }
+  .me-msg.fresh  { box-shadow: 0 0 0 2px rgba(99, 102, 241,0.18); }
+  .me-msg .role {
+    font-family: var(--mono); font-size: 10px;
+    letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--text-mute); margin-bottom: 4px;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .me-msg.user .role .r-tag { color: var(--blue); }
+  .me-msg.ai .role .r-tag   { color: var(--teal); }
+  .me-msg.tool .role .r-tag { color: var(--purple); }
+  .me-msg .role .meta { color: var(--text-mute); font-weight: 500; }
+  .me-msg .body { font-size: 13.5px; color: #c2cad9; line-height: 1.55; }
+  .me-msg .body code { font-family: var(--mono); font-size: 0.88em;
+    background: rgba(255,255,255,0.04); color: var(--text);
+    padding: 1px 5px; border-radius: 3px; }
+  .me-msg .tool-call {
+    font-family: var(--mono); font-size: 11.5px;
+    background: #06080f; border: 1px solid var(--line);
+    border-radius: 6px; padding: 8px 10px;
+    color: #c2cad9; margin-top: 6px;
+    overflow-x: auto;
+  }
+  .me-msg .tool-call .k { color: var(--purple); }
+  .me-msg .tool-call .s { color: var(--teal); }
+  .me-msg .tool-call .n { color: var(--amber); }
+
+  /* ========= REPLAY (full run) ========= */
+  .rp-w { background: var(--panel); border: 1px solid var(--line);
+    border-radius: 14px; overflow: hidden; margin: 20px 0; }
+  .rp-head { padding: 14px 22px; background: var(--panel-2);
+    border-bottom: 1px solid var(--line);
+    display: flex; justify-content: space-between; align-items: center;
+    flex-wrap: wrap; gap: 10px; }
+  .rp-head .title { font-family: var(--mono); font-size: 11.5px;
+    letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-dim); }
+  .rp-controls { display: flex; gap: 8px; }
+  .rp-btn { font-family: var(--mono); font-size: 11px;
+    letter-spacing: 0.1em; text-transform: uppercase;
+    padding: 6px 14px; border-radius: 6px;
+    background: transparent; border: 1px solid var(--line-strong);
+    color: var(--text-dim); cursor: pointer; transition: all 0.15s; }
+  .rp-btn:hover { border-color: var(--teal); color: var(--teal); }
+  .rp-btn.primary { color: var(--teal); border-color: var(--teal); }
+
+  .rp-body { display: grid; grid-template-columns: 380px 1fr;
+    min-height: 460px; }
+  .rp-graph {
+    padding: 22px;
+    background: var(--bg-2);
+    border-right: 1px solid var(--line);
+    display: flex; flex-direction: column;
+    gap: 12px;
+  }
+  .rp-mini-svg { width: 100%; height: 220px; }
+  .rp-lbl {
+    font-family: var(--mono); font-size: 10.5px;
+    letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--text-mute); margin-bottom: 4px;
+  }
+  .rp-narration {
+    padding: 14px 16px;
+    background: var(--panel);
+    border-radius: 10px;
+    border-left: 3px solid var(--teal);
+    transition: border-color 0.3s;
+  }
+  .rp-narration.agent { border-left-color: var(--teal); }
+  .rp-narration.tools { border-left-color: var(--purple); }
+  .rp-narration.end { border-left-color: var(--red); }
+  .rp-narration .step {
+    font-family: var(--mono); font-size: 10px;
+    letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--text-mute); margin-bottom: 4px;
+  }
+  .rp-narration .actor {
+    font-family: var(--mono); font-size: 10.5px;
+    letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--teal); margin-bottom: 8px;
+  }
+  .rp-narration.tools .actor { color: var(--purple); }
+  .rp-narration.end .actor { color: var(--red); }
+  .rp-narration p { color: #c2cad9; font-size: 13px;
+    line-height: 1.55; margin: 0; }
+  .rp-narration p code { font-family: var(--mono); font-size: 0.88em;
+    background: rgba(255,255,255,0.04); color: var(--text);
+    padding: 1px 5px; border-radius: 3px; }
+
+  .rp-msgs {
+    padding: 18px;
+    overflow-y: auto;
+    max-height: 460px;
+    display: flex; flex-direction: column;
+    gap: 8px;
+  }
+
+  /* knowledge check */
+  .kc { margin: 56px 0 24px;
+    background: linear-gradient(180deg, rgba(139, 92, 246,0.04), rgba(139, 92, 246,0) 50%), var(--panel);
+    border: 1px solid var(--line); border-radius: 14px;
+    padding: 28px; position: relative; overflow: hidden; }
+  .kc::before { content: ""; position: absolute; top: 0; left: 0; right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--purple), transparent); }
+  .kc-head { display: flex; align-items: center; gap: 14px; margin-bottom: 18px; }
+  .kc-icon { width: 36px; height: 36px;
+    background: rgba(139, 92, 246,0.12);
+    border: 1px solid rgba(139, 92, 246,0.3);
+    border-radius: 8px;
+    display: grid; place-items: center; }
+  .kc-icon svg { width: 17px; height: 17px; }
+  .kc-label { font-family: var(--mono); font-size: 11px;
+    letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--purple); font-weight: 600; }
+  .kc-title { font-size: 22px; font-weight: 700; letter-spacing: -0.01em; margin: 4px 0 0; }
+  .kc-q { margin-top: 22px; padding-top: 22px; border-top: 1px solid var(--line); }
+  .kc-q:first-of-type { border-top: none; padding-top: 0; margin-top: 0; }
+  .kc-prompt { font-size: 15px; color: var(--text); font-weight: 600;
+    margin-bottom: 14px; line-height: 1.45; }
+  .kc-prompt .qn { display: inline-block; font-family: var(--mono);
+    font-size: 11px; color: var(--purple); margin-right: 8px; letter-spacing: 0.1em; }
+  .kc-prompt code { font-family: var(--mono); font-size: 0.88em;
+    background: rgba(255,255,255,0.04);
+    color: var(--text); padding: 1px 5px;
+    border-radius: 3px; }
+  .kc-opts { display: grid; gap: 8px; }
+  .kc-opt { padding: 12px 16px; background: var(--panel-2);
+    border: 1px solid var(--line); border-radius: 8px;
+    color: #c2cad9; font-size: 14px;
+    cursor: pointer; transition: all 0.18s;
+    text-align: left;
+    display: grid; grid-template-columns: 20px 1fr;
+    gap: 12px; align-items: start;
+    font-family: inherit; line-height: 1.5; }
+  .kc-opt .marker { font-family: var(--mono); font-size: 11px;
+    color: var(--text-mute); margin-top: 2px; }
+  .kc-opt:hover { border-color: var(--purple); color: var(--text); }
+  .kc-opt.correct { border-color: var(--teal);
+    background: rgba(99, 102, 241,0.08); color: var(--teal); }
+  .kc-opt.correct .marker { color: var(--teal); }
+  .kc-opt.wrong { border-color: var(--red);
+    background: rgba(247, 118, 142,0.08); color: var(--red); }
+  .kc-opt.wrong .marker { color: var(--red); }
+  .kc-opt code { font-family: var(--mono); font-size: 0.88em;
+    background: rgba(255,255,255,0.04);
+    color: var(--text); padding: 1px 5px;
+    border-radius: 3px; }
+  .kc-opt.correct code, .kc-opt.wrong code { background: transparent; color: inherit; }
+  .kc-feedback { margin-top: 12px; padding: 10px 14px; border-radius: 6px;
+    font-size: 13px;
+    background: rgba(99, 102, 241,0.06);
+    border-left: 2px solid var(--teal);
+    color: #c2cad9; display: none; line-height: 1.55; }
+  .kc-feedback.show { display: block; }
+  .kc-feedback strong { color: var(--teal); }
+  .kc-feedback code { font-family: var(--mono); font-size: 0.88em;
+    background: rgba(255,255,255,0.04);
+    color: var(--text); padding: 1px 5px;
+    border-radius: 3px; }
+
+  /* resources */
+  .resources { margin-top: 96px; padding-top: 56px; border-top: 1px solid var(--line); }
+  .resources-header { margin-bottom: 36px; }
+  .resources-header .label { font-family: var(--mono); font-size: 11px;
+    letter-spacing: 0.18em; text-transform: uppercase;
+    color: var(--text-mute);
+    display: flex; align-items: center; gap: 12px;
+    margin-bottom: 18px; }
+  .resources-header .label::before { content: ""; width: 28px; height: 1px; background: var(--text-mute); }
+  .resources-header h2.r-h { font-size: clamp(28px, 4vw, 40px);
+    font-weight: 800; letter-spacing: -0.02em;
+    margin-bottom: 14px; line-height: 1.1; }
+  .resources-header h2.r-h .accent { color: var(--teal); }
+  .resources-header .r-sub { color: var(--text-dim); font-size: 15px; max-width: 620px; }
+  .r-card { background: var(--panel); border: 1px solid var(--line);
+    border-radius: 14px; padding: 26px 28px;
+    margin-bottom: 16px; position: relative;
+    transition: border-color 0.2s, transform 0.2s; }
+  .r-card:hover { border-color: var(--line-strong); transform: translateY(-1px); }
+  .r-card::before { content: ""; position: absolute;
+    left: -1px; top: 18px; bottom: 18px;
+    width: 3px; border-radius: 3px;
+    background: var(--accent, var(--teal)); }
+  .r-card.teal { --accent: var(--teal); }
+  .r-card.purple { --accent: var(--purple); }
+  .r-card.pink { --accent: var(--pink); }
+  .r-top { display: flex; align-items: flex-start; gap: 14px; margin-bottom: 16px; }
+  .r-icon { width: 38px; height: 38px; border-radius: 8px;
+    display: grid; place-items: center; flex-shrink: 0;
+    background: rgba(99, 102, 241,0.12);
+    border: 1px solid rgba(99, 102, 241,0.3); }
+  .r-card.purple .r-icon { background: rgba(139, 92, 246,0.12); border-color: rgba(139, 92, 246,0.3); }
+  .r-card.pink .r-icon { background: rgba(247, 118, 142,0.12); border-color: rgba(247, 118, 142,0.3); }
+  .r-icon svg { width: 18px; height: 18px; }
+  .r-titles .kind { font-size: 14px; font-weight: 700; color: var(--text); margin-bottom: 2px; }
+  .r-titles .tagline { font-family: var(--mono); font-size: 11.5px; color: var(--text-mute); }
+  .r-card h3.r-title { font-size: 18px; font-weight: 700;
+    margin-bottom: 10px; letter-spacing: -0.005em; }
+  .r-card.teal h3.r-title { color: var(--teal); }
+  .r-card.purple h3.r-title { color: var(--purple); }
+  .r-card.pink h3.r-title { color: var(--pink); }
+  .r-card p.r-desc { color: #b9c1d2; font-size: 14.5px;
+    line-height: 1.6; margin-bottom: 18px; }
+  .r-card p.r-desc code { font-family: var(--mono); font-size: 0.9em;
+    background: rgba(255,255,255,0.04); color: var(--text);
+    padding: 1px 5px; border-radius: 3px; border: none; }
+  .r-btn { display: inline-flex; align-items: center; gap: 10px;
+    font-family: var(--mono); font-size: 11.5px;
+    letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--text); text-decoration: none;
+    padding: 9px 18px;
+    border: 1px solid var(--line-strong); border-radius: 999px;
+    background: transparent; transition: all 0.18s; }
+  .r-card.teal .r-btn:hover { border-color: var(--teal); color: var(--teal); box-shadow: 0 0 0 4px rgba(99, 102, 241,0.08); }
+  .r-card.purple .r-btn:hover { border-color: var(--purple); color: var(--purple); box-shadow: 0 0 0 4px rgba(139, 92, 246,0.08); }
+  .r-card.pink .r-btn:hover { border-color: var(--pink); color: var(--pink); box-shadow: 0 0 0 4px rgba(247, 118, 142,0.08); }
+
+  .nav-foot { margin-top: 80px; padding-top: 32px;
+    border-top: 1px solid var(--line);
+    display: flex; justify-content: space-between; align-items: center;
+    font-family: var(--mono); font-size: 11.5px;
+    letter-spacing: 0.1em; text-transform: uppercase;
+    color: var(--text-mute); }
+  .nav-foot a { color: var(--teal); text-decoration: none; }
+
+  @media (max-width: 980px) {
+    .layout { grid-template-columns: 1fr; gap: 0; padding: 40px 24px 80px; }
+    .sidebar { display: none; }
+    .rl-body { grid-template-columns: 1fr; }
+    .rl-canvas { border-right: none; border-bottom: 1px solid var(--line); }
+    .bp-body { grid-template-columns: 1fr; }
+    .rp-body { grid-template-columns: 1fr; }
+    .rp-graph { border-right: none; border-bottom: 1px solid var(--line); }
+    .bridge-banner { grid-template-columns: 1fr; text-align: center; }
+    .bridge-side.left, .bridge-side.right { text-align: center; }
+    .topbar-inner { padding: 12px 20px; }
+    .track-progress { display: none; }
+  }
+  /* ===== M0 indigo / serif theme overlay ===== */
+  :root { --serif: 'Source Serif 4', Georgia, serif; }
+  h1.module-title { font-family: var(--serif); font-weight: 400; letter-spacing: -0.022em; }
+  h1.module-title .accent { font-style: italic; font-weight: 300; }
+  .lede { font-family: var(--serif); font-weight: 300; }
+  h2 { font-family: var(--serif); font-weight: 400; letter-spacing: -0.01em; }
+  p { font-family: var(--serif); font-weight: 300; }
+  ul.tight li { font-family: var(--serif); font-weight: 300; }
+  p em { font-style: italic; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-inner">
+    <div class="brand"><span class="dot"></span><span>MCP / Masterclass</span></div>
+    <div class="track-progress">
+      <div class="tp-item done">Track 0 · Foundations</div>
+      <div class="tp-item done">Track 1 · Protocol</div>
+      <div class="tp-item done">Track 2 · Servers</div>
+      <div class="tp-item current">Track 3 · Clients</div>
+      <div class="tp-item">Track 4 · Security</div>
+      <div class="tp-item">Track 5 · Production</div>
+      <div class="tp-item">Track 6 · Capstone</div>
+    </div>
+    <div class="progress-bar">
+      <span id="progressLabel">0%</span>
+      <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+    </div>
+  </div>
+</div>
+
+<div class="layout">
+
+  <aside class="sidebar">
+    <div class="sb-label">Module 3.2 · Contents</div>
+    <ul class="sb-list" id="sbList">
+      <li><a href="#s1" data-target="s1"><span class="num">01</span><span>ReAct in 60 seconds</span></a></li>
+      <li><a href="#s2" data-target="s2"><span class="num">02</span><span>LangGraph state machine</span></a></li>
+      <li><a href="#s3" data-target="s3"><span class="num">03</span><span>Binding MCP tools</span></a></li>
+      <li><a href="#s4" data-target="s4"><span class="num">04</span><span>Message state walk</span></a></li>
+      <li><a href="#s5" data-target="s5"><span class="num">05</span><span>One full run</span></a></li>
+      <li><a href="#kc" data-target="kc"><span class="num">✓</span><span>Knowledge check</span></a></li>
+      <li><a href="#res" data-target="res"><span class="num">⌘</span><span>Resources</span></a></li>
+    </ul>
+  </aside>
+
+  <div class="content">
+
+    <div class="crumb">
+      <span class="bar"></span>
+      <span class="bridge">🌉 Bridge</span>
+      <span>Track 03 — Clients &amp; Hosts</span>
+      <span class="sep">/</span>
+      <span class="dim">Module 3.2</span>
+    </div>
+
+    <h1 class="module-title">MCP inside the <span class="accent">agent</span> <span class="accent2">loop</span>.</h1>
+    <p class="lede">
+      Module 3.1 gave you a multi-server client. This module wires that client into a real
+      agent — the kind that decides what to do next, calls tools, observes results, and
+      keeps going until the answer is good enough. We use <strong>ReAct</strong> as the
+      pattern and <strong>LangGraph</strong> as the runtime. By the end, MCP tools flow
+      seamlessly into an agent that can solve multi-step tasks.
+    </p>
+
+    <div class="bridge-banner">
+      <div class="bridge-side left">
+        <div class="lbl">From</div>
+        <div class="nm">A multi-server MCP client</div>
+      </div>
+      <div class="bridge-icon">━<span class="arc">⌒</span>━▶</div>
+      <div class="bridge-side right">
+        <div class="lbl">To</div>
+        <div class="nm">A real agent that uses it</div>
+      </div>
+    </div>
+
+    <div class="hero-meta">
+      <div class="m"><span class="m-label">Time</span><span class="m-val">52 min</span></div>
+      <div class="m"><span class="m-label">Format</span><span class="m-val">5 interactive widgets</span></div>
+      <div class="m"><span class="m-label">Stack</span><span class="m-val">LangGraph · langchain-mcp-adapters</span></div>
+      <div class="m"><span class="m-label">Sets up</span><span class="m-val">Module 3.3 · resilience</span></div>
+    </div>
+
+    <div class="objectives">
+      <div class="obj-header">
+        <div class="obj-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>
+          </svg>
+        </div>
+        <div class="obj-title">What you'll master</div>
+      </div>
+      <ul class="obj-list" id="objList">
+        <li><div class="check" data-i="0">01</div><span>Explain the <strong>ReAct</strong> pattern — Thought → Action → Observation — and identify each phase in a running trace.</span></li>
+        <li><div class="check" data-i="1">02</div><span>Read a <strong>LangGraph</strong> agent as a state machine: nodes (agent, tools), edges (conditional, normal), and the message state that flows between them.</span></li>
+        <li><div class="check" data-i="2">03</div><span>Wire MCP tools into a LangGraph agent in three lines using <code>MultiServerMCPClient</code> + <code>create_react_agent</code>.</span></li>
+        <li><div class="check" data-i="3">04</div><span>Walk through the <code>messages</code> list as it grows across iterations: HumanMessage, AIMessage with tool_calls, ToolMessage, repeat — and explain what shapes the next decision.</span></li>
+        <li><div class="check" data-i="4">05</div><span>Run a complete multi-step query end-to-end and identify every transition in the graph: where the LLM was called, where the MCP servers were hit, where the loop ended.</span></li>
+      </ul>
+    </div>
+
+    <!-- ============ SECTION 1 ============ -->
+    <section class="block" id="s1">
+      <div class="section-label"><span class="sn">01</span> &nbsp;ReAct in 60 seconds</div>
+      <h2>Three nodes, one loop, that's the whole pattern.</h2>
+
+      <p>
+        ReAct — short for "Reason + Act" — is the agent pattern that won. Before ReAct,
+        chain-of-thought was monolithic: the model thought, then maybe acted, then was
+        done. ReAct interleaves: <em>think a little, do a little, observe, think again</em>,
+        repeating until the task is solved or the model declares it's done. It's the
+        skeleton inside Claude Code, Cursor's agent mode, Cline, and the LangGraph
+        <code>create_react_agent</code> primitive. Click each phase:
+      </p>
+
+      <span class="exercise-tag"><span class="pulse"></span>Explore · tap a phase</span>
+
+      <div class="rl-w">
+        <div class="rl-head">
+          <span class="title">The ReAct Loop · Thought → Action → Observation</span>
+          <div class="rl-controls">
+            <button class="rl-btn" id="rlReset">↺ Reset</button>
+            <button class="rl-btn primary" id="rlPlay">▶ Play</button>
+          </div>
+        </div>
+        <div class="rl-body">
+          <div class="rl-canvas">
+            <svg viewBox="0 0 400 280" xmlns="http://www.w3.org/2000/svg">
+              <defs>
+                <marker id="rlArrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+                  <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--line-strong)"/>
+                </marker>
+              </defs>
+              <!-- thought node (top) -->
+              <rect class="rl-node thought active" data-phase="thought" x="140" y="20" width="120" height="56" rx="10"/>
+              <text class="rl-node-label" x="200" y="44">THOUGHT</text>
+              <text class="rl-node-label" x="200" y="62" style="font-size:10px;font-weight:400;letter-spacing:0.04em;">LLM reasons</text>
+              <!-- action node (bottom-right) -->
+              <rect class="rl-node action" data-phase="action" x="250" y="180" width="120" height="56" rx="10"/>
+              <text class="rl-node-label" x="310" y="204">ACTION</text>
+              <text class="rl-node-label" x="310" y="222" style="font-size:10px;font-weight:400;letter-spacing:0.04em;">tool call</text>
+              <!-- obs node (bottom-left) -->
+              <rect class="rl-node obs" data-phase="obs" x="30" y="180" width="120" height="56" rx="10"/>
+              <text class="rl-node-label" x="90" y="204">OBSERVATION</text>
+              <text class="rl-node-label" x="90" y="222" style="font-size:10px;font-weight:400;letter-spacing:0.04em;">tool result</text>
+              <!-- arrows -->
+              <path class="rl-arrow" data-from="thought" data-to="action" d="M 240 76 Q 320 110 310 178"/>
+              <path class="rl-arrow" data-from="action" data-to="obs" d="M 250 208 L 152 208"/>
+              <path class="rl-arrow" data-from="obs" data-to="thought" d="M 90 178 Q 80 110 160 76"/>
+              <!-- loopback label -->
+              <text class="rl-loopback" x="200" y="138">loop until done</text>
+            </svg>
+          </div>
+          <div class="rl-detail" id="rlDetail"></div>
+        </div>
+      </div>
+
+      <div class="callout">
+        <div class="tag">The terminating condition</div>
+        <p>
+          ReAct doesn't loop forever — the LLM decides when to exit. After observing
+          the tool result, it can either propose another action (the <code>thought →
+          action</code> arc fires again) or simply respond with a normal text completion
+          that has no tool_calls. The host treats the absence of tool_calls as the signal
+          to stop and return that text to the user. Module 3.3 will add a hard step
+          limit on top of this as a safety net.
+        </p>
+      </div>
+
+      <h3 class="sub"><span class="num">›</span> Mapping ReAct onto OpenAI/Anthropic tool-calling</h3>
+      <p>
+        Modern provider APIs do most of ReAct for you. The model emits a structured
+        <code>tool_use</code> (Anthropic) or <code>tool_calls</code> (OpenAI) block when
+        it wants to act; the host runs the tool; the result goes back as a
+        <code>tool_result</code> / <code>tool</code> message. The provider handles
+        formatting the "Thought" implicitly — you don't see "Thought:" prefixes
+        anymore. The pattern is the same; the surface is cleaner.
+      </p>
+    </section>
+
+    <!-- ============ SECTION 2 ============ -->
+    <section class="block" id="s2">
+      <div class="section-label"><span class="sn">02</span> &nbsp;LangGraph state machine</div>
+      <h2>A graph with two real nodes and one decision.</h2>
+
+      <p>
+        LangGraph models an agent as a directed graph over a shared state. For a basic
+        ReAct agent there are just two real nodes — <code>agent</code> (calls the LLM)
+        and <code>tools</code> (runs whatever the LLM asked for) — plus the synthetic
+        START and END. The interesting edge is the <em>conditional</em> one out of
+        <code>agent</code>: if the LLM produced tool_calls, route to <code>tools</code>;
+        otherwise, route to END. Click any node or edge:
+      </p>
+
+      <span class="exercise-tag"><span class="pulse"></span>Explore · tap nodes &amp; edges</span>
+
+      <div class="gb-w">
+        <div class="gb-head">
+          <span class="title">LangGraph · ReAct Agent · 2 Nodes · 4 Edges</span>
+          <span class="hint">dashed = conditional</span>
+        </div>
+        <div class="gb-canvas">
+          <svg viewBox="0 0 700 240" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <marker id="gbArrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+                <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--line-strong)"/>
+              </marker>
+              <marker id="gbArrowActive" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+                <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--teal)"/>
+              </marker>
+            </defs>
+            <!-- START -->
+            <g class="gb-gnode start" data-id="start">
+              <rect x="20" y="90" width="100" height="56" rx="28"/>
+              <text class="gb-gnode-title" x="70" y="118">START</text>
+              <text class="gb-gnode-sub" x="70" y="134">entry</text>
+            </g>
+            <!-- AGENT -->
+            <g class="gb-gnode agent active" data-id="agent">
+              <rect x="240" y="80" width="160" height="76" rx="12"/>
+              <text class="gb-gnode-title" x="320" y="112">agent</text>
+              <text class="gb-gnode-sub" x="320" y="132">call_model(state)</text>
+              <text class="gb-gnode-sub" x="320" y="146" style="font-size:9px;letter-spacing:0.08em;">→ AIMessage</text>
+            </g>
+            <!-- TOOLS -->
+            <g class="gb-gnode tools" data-id="tools">
+              <rect x="520" y="20" width="160" height="76" rx="12"/>
+              <text class="gb-gnode-title" x="600" y="52">tools</text>
+              <text class="gb-gnode-sub" x="600" y="72">ToolNode(mcp_tools)</text>
+              <text class="gb-gnode-sub" x="600" y="86" style="font-size:9px;letter-spacing:0.08em;">→ ToolMessage[]</text>
+            </g>
+            <!-- END -->
+            <g class="gb-gnode end" data-id="end">
+              <rect x="540" y="160" width="120" height="56" rx="28"/>
+              <text class="gb-gnode-title" x="600" y="188">END</text>
+              <text class="gb-gnode-sub" x="600" y="204">return state</text>
+            </g>
+            <!-- edges -->
+            <path class="gb-edge" data-id="e1" d="M 120 118 L 240 118" marker-end="url(#gbArrow)"/>
+            <text class="gb-edge-label" x="180" y="108">enter</text>
+
+            <path class="gb-edge cond" data-id="e2" d="M 400 100 Q 460 60 520 58" marker-end="url(#gbArrow)"/>
+            <text class="gb-edge-label" x="460" y="58">has tool_calls</text>
+
+            <path class="gb-edge cond" data-id="e3" d="M 400 140 Q 470 170 540 184" marker-end="url(#gbArrow)"/>
+            <text class="gb-edge-label" x="460" y="192">no tool_calls</text>
+
+            <path class="gb-edge" data-id="e4" d="M 540 86 Q 460 100 400 118" marker-end="url(#gbArrow)"/>
+            <text class="gb-edge-label" x="470" y="124">back to agent</text>
+          </svg>
+        </div>
+        <div class="gb-detail" id="gbDetail"></div>
+      </div>
+
+      <h3 class="sub"><span class="num">›</span> The state object that flows through</h3>
+      <p>
+        Every node receives the current state, returns a partial update, and LangGraph
+        merges it. For a chat agent the state is essentially the message list (plus
+        whatever you want to track). The default <code>MessagesState</code> uses an
+        additive reducer — new messages are <em>appended</em>, not replaced — which is
+        what lets the loop accumulate context across iterations:
+      </p>
+
+      <pre class="code-block purple"><span class="k">from</span> langgraph.graph <span class="k">import</span> MessagesState
+<span class="k">from</span> langchain_core.messages <span class="k">import</span> AnyMessage
+
+<span class="c"># MessagesState is just this, pre-defined</span>
+<span class="k">class</span> <span class="f">MessagesState</span>(<span class="f">TypedDict</span>):
+    messages: <span class="f">Annotated</span>[<span class="k">list</span>[AnyMessage], add_messages]
+    <span class="c">#                                         ↑ the additive reducer</span>
+
+<span class="c"># nodes return partial updates that are MERGED into state</span>
+<span class="k">def</span> <span class="f">agent_node</span>(state: MessagesState):
+    response = llm_with_tools.<span class="f">invoke</span>(state[<span class="s">"messages"</span>])
+    <span class="k">return</span> {<span class="s">"messages"</span>: [response]}   <span class="c"># appended, not replaced</span></pre>
+    </section>
+
+    <!-- ============ SECTION 3 ============ -->
+    <section class="block" id="s3">
+      <div class="section-label"><span class="sn">03</span> &nbsp;Binding MCP tools</div>
+      <h2>From MCP servers to LangGraph in five steps.</h2>
+
+      <p>
+        The bridge happens here. <code>langchain-mcp-adapters</code> exposes a
+        <code>MultiServerMCPClient</code> whose <code>get_tools()</code> returns native
+        LangChain <code>BaseTool</code> objects — the same shape LangGraph expects. Once
+        you have those, the rest of the pipeline is standard LangGraph plumbing. Click
+        each step to see the code:
+      </p>
+
+      <span class="exercise-tag"><span class="pulse"></span>Explore · step through the pipeline</span>
+
+      <div class="bp-w">
+        <div class="bp-head">
+          <span class="title">MCP → LangGraph · 5-Step Binding Pipeline</span>
+          <span class="hint">each step's output feeds the next</span>
+        </div>
+        <div class="bp-body">
+          <div class="bp-steps" id="bpSteps">
+            <div class="bp-step active" data-id="s1">
+              <div class="ix">Step · 01</div>
+              <div class="nm">Configure servers</div>
+              <div class="sub">declare 1+ MCP servers</div>
+              <span class="conn">▼</span>
+            </div>
+            <div class="bp-step" data-id="s2">
+              <div class="ix">Step · 02</div>
+              <div class="nm">Connect &amp; aggregate</div>
+              <div class="sub">get_tools() across all</div>
+              <span class="conn">▼</span>
+            </div>
+            <div class="bp-step" data-id="s3">
+              <div class="ix">Step · 03</div>
+              <div class="nm">Bind to LLM</div>
+              <div class="sub">llm.bind_tools(tools)</div>
+              <span class="conn">▼</span>
+            </div>
+            <div class="bp-step" data-id="s4">
+              <div class="ix">Step · 04</div>
+              <div class="nm">Build the graph</div>
+              <div class="sub">agent + tool nodes + edges</div>
+              <span class="conn">▼</span>
+            </div>
+            <div class="bp-step" data-id="s5">
+              <div class="ix">Step · 05</div>
+              <div class="nm">Invoke / stream</div>
+              <div class="sub">agent.ainvoke(...)</div>
+            </div>
+          </div>
+          <div class="bp-detail" id="bpDetail"></div>
+        </div>
+      </div>
+
+      <div class="callout">
+        <div class="tag">Steps 4–5 collapse into <code>create_react_agent</code></div>
+        <p>
+          LangGraph ships a prebuilt <code>create_react_agent(model, tools)</code> that
+          builds the exact graph in Section 2 — agent node, ToolNode, conditional edge —
+          in one call. For 95% of agents that's all you need. Roll your own graph only
+          when you want a non-standard topology (a planner node, parallel branches,
+          guardrails, a critic loop, etc.).
+        </p>
+      </div>
+
+      <h3 class="sub"><span class="num">›</span> The whole bridge, twelve lines</h3>
+      <pre class="code-block"><span class="k">from</span> langchain_mcp_adapters.client <span class="k">import</span> MultiServerMCPClient
+<span class="k">from</span> langgraph.prebuilt <span class="k">import</span> create_react_agent
+
+client = <span class="f">MultiServerMCPClient</span>({
+    <span class="s">"filesystem"</span>: {<span class="s">"command"</span>: <span class="s">"npx"</span>, <span class="s">"args"</span>: [...], <span class="s">"transport"</span>: <span class="s">"stdio"</span>},
+    <span class="s">"github"</span>:     {<span class="s">"url"</span>: <span class="s">"https://..."</span>,      <span class="s">"transport"</span>: <span class="s">"streamable_http"</span>},
+})
+
+tools = <span class="k">await</span> client.<span class="f">get_tools</span>()                       <span class="c"># aggregated, namespaced</span>
+
+agent = <span class="f">create_react_agent</span>(                                <span class="c"># the whole graph</span>
+    model=<span class="s">"anthropic:claude-sonnet-4-5"</span>,
+    tools=tools,
+)
+
+result = <span class="k">await</span> agent.<span class="f">ainvoke</span>({<span class="s">"messages"</span>: [(<span class="s">"user"</span>, <span class="s">"summarise /tmp/notes.md"</span>)]})
+<span class="f">print</span>(result[<span class="s">"messages"</span>][-<span class="n">1</span>].content)</pre>
+    </section>
+
+    <!-- ============ SECTION 4 ============ -->
+    <section class="block" id="s4">
+      <div class="section-label"><span class="sn">04</span> &nbsp;Message state walk</div>
+      <h2>Watch the list grow, one step at a time.</h2>
+
+      <p>
+        The clearest way to understand a LangGraph agent is to step through its message
+        state. Each iteration appends one or more messages: a <code>HumanMessage</code>
+        from the user, an <code>AIMessage</code> from the LLM (possibly carrying
+        <code>tool_calls</code>), then one <code>ToolMessage</code> per tool call. The
+        loop continues until an <code>AIMessage</code> arrives with no tool_calls — that's
+        the terminal response. Step forward to watch:
+      </p>
+
+      <span class="exercise-tag"><span class="pulse"></span>Step · advance through the run</span>
+
+      <div class="me-w">
+        <div class="me-head">
+          <span class="title">Message State · Step Through</span>
+          <div class="me-controls">
+            <button class="me-btn" id="meBack">← Back</button>
+            <button class="me-btn primary" id="meFwd">Next →</button>
+            <button class="me-btn" id="meReset">↺ Reset</button>
+          </div>
+        </div>
+        <div class="me-step-bar">
+          <span class="label">Step <span id="meStep">0</span> of 7</span>
+          <span class="annotation" id="meAnnot">— begin</span>
+        </div>
+        <div class="me-list" id="meList"></div>
+      </div>
+
+      <div class="callout purple">
+        <div class="tag">Why messages are appended, not replaced</div>
+        <p>
+          The LLM has no memory between calls. Each <code>llm.invoke()</code> sees only
+          what's in the messages list, so the list <em>is</em> the agent's working memory.
+          That's why <code>MessagesState</code> uses an additive reducer — replacing
+          messages would amnesia the agent. It's also why long agent runs eventually hit
+          context-window limits and need summarisation or truncation (Module 3.3 covers
+          that).
+        </p>
+      </div>
+
+      <h3 class="sub"><span class="num">›</span> The shape of each message type</h3>
+      <p>
+        LangChain unifies provider message shapes into <code>AnyMessage</code> subclasses.
+        The four you'll meet 99% of the time:
+      </p>
+      <ul class="tight">
+        <li><strong>HumanMessage</strong> — input from the user. <code>content: str</code>.</li>
+        <li><strong>AIMessage</strong> — output from the LLM. <code>content: str</code> + optional <code>tool_calls: list[ToolCall]</code>. If tool_calls is empty, this is the terminal answer.</li>
+        <li><strong>ToolMessage</strong> — result of one tool execution. <code>content: str | list[ContentBlock]</code>, <code>tool_call_id: str</code> (matches the AIMessage's tool_call). One per call; if the AI requested 3 tool calls, you get 3 ToolMessages.</li>
+        <li><strong>SystemMessage</strong> — agent persona / instructions. Usually first in the list, never appended again.</li>
+      </ul>
+    </section>
+
+    <!-- ============ SECTION 5 ============ -->
+    <section class="block" id="s5">
+      <div class="section-label"><span class="sn">05</span> &nbsp;One full run</div>
+      <h2>End-to-end, graph + messages, in real time.</h2>
+
+      <p>
+        The final widget pulls everything together. The user asks a multi-step question.
+        Press play to watch the LangGraph traverse — agent → tools → agent → tools →
+        agent → END — with the message list growing on the right and a narration of which
+        node is active at each beat. This is the runtime you'll harden in Module 3.3 and
+        instrument in Module 3.4:
+      </p>
+
+      <span class="exercise-tag"><span class="pulse"></span>Watch · play the full run</span>
+
+      <div class="rp-w">
+        <div class="rp-head">
+          <span class="title">Full Agent Run · 5 Beats · Mixed FS + GitHub Tools</span>
+          <div class="rp-controls">
+            <button class="rp-btn" id="rpReset">↺ Reset</button>
+            <button class="rp-btn primary" id="rpPlay">▶ Play</button>
+          </div>
+        </div>
+        <div class="rp-body">
+          <div class="rp-graph">
+            <div class="rp-lbl">Graph traversal</div>
+            <svg class="rp-mini-svg" id="rpSvg" viewBox="0 0 360 220" xmlns="http://www.w3.org/2000/svg">
+              <defs>
+                <marker id="rpArrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+                  <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--line-strong)"/>
+                </marker>
+              </defs>
+              <g class="gb-gnode start" data-id="start">
+                <rect x="10" y="84" width="70" height="44" rx="22"/>
+                <text class="gb-gnode-title" x="45" y="110" style="font-size:10.5px;">START</text>
+              </g>
+              <g class="gb-gnode agent" data-id="agent">
+                <rect x="130" y="76" width="100" height="60" rx="10"/>
+                <text class="gb-gnode-title" x="180" y="102" style="font-size:11.5px;">agent</text>
+                <text class="gb-gnode-sub" x="180" y="118">call_model</text>
+              </g>
+              <g class="gb-gnode tools" data-id="tools">
+                <rect x="270" y="20" width="80" height="60" rx="10"/>
+                <text class="gb-gnode-title" x="310" y="46" style="font-size:11.5px;">tools</text>
+                <text class="gb-gnode-sub" x="310" y="62">MCP exec</text>
+              </g>
+              <g class="gb-gnode end" data-id="end">
+                <rect x="280" y="140" width="70" height="44" rx="22"/>
+                <text class="gb-gnode-title" x="315" y="166" style="font-size:10.5px;">END</text>
+              </g>
+              <path class="gb-edge" data-id="e1" d="M 80 106 L 130 106" marker-end="url(#rpArrow)"/>
+              <path class="gb-edge cond" data-id="e2" d="M 230 92 Q 250 60 270 56" marker-end="url(#rpArrow)"/>
+              <path class="gb-edge cond" data-id="e3" d="M 230 124 Q 250 150 280 158" marker-end="url(#rpArrow)"/>
+              <path class="gb-edge" data-id="e4" d="M 270 72 Q 250 90 230 100" marker-end="url(#rpArrow)"/>
+            </svg>
+            <div class="rp-lbl">Now executing</div>
+            <div class="rp-narration" id="rpNarr">
+              <div class="step">Step 0</div>
+              <div class="actor">Idle</div>
+              <p>Press play to start. The agent will read a file via the filesystem server, then look up an issue via github, then summarise. Watch the graph nodes light up and the messages accumulate.</p>
+            </div>
+          </div>
+          <div class="rp-msgs" id="rpMsgs">
+            <div class="me-msg user" style="opacity:0.6;">
+              <div class="role"><span class="r-tag">SystemMessage</span><span class="meta">persona</span></div>
+              <div class="body">You are a helpful coding assistant. Use the available tools to answer the user.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="callout amber">
+        <div class="tag">Streaming, not blocking, in production</div>
+        <p>
+          Real agents stream rather than block on <code>ainvoke</code>. LangGraph's
+          <code>astream_events()</code> emits an event per node entry/exit and per token
+          inside an LLM call — exactly what you wire into a UI to show the agent
+          "thinking", "calling read_file", "summarising". The graph and message
+          progression above is identical; you're just observing each step as it happens
+          instead of waiting for the final state.
+        </p>
+      </div>
+
+      <h3 class="sub"><span class="num">›</span> Streaming, in production</h3>
+      <pre class="code-block"><span class="k">async for</span> event <span class="k">in</span> agent.<span class="f">astream_events</span>(
+    {<span class="s">"messages"</span>: [(<span class="s">"user"</span>, query)]},
+    version=<span class="s">"v2"</span>,
+):
+    kind = event[<span class="s">"event"</span>]
+    <span class="k">if</span> kind == <span class="s">"on_chat_model_stream"</span>:
+        <span class="c"># token-by-token streaming from the LLM</span>
+        <span class="f">print</span>(event[<span class="s">"data"</span>][<span class="s">"chunk"</span>].content, end=<span class="s">""</span>)
+    <span class="k">elif</span> kind == <span class="s">"on_tool_start"</span>:
+        <span class="f">render_tool_call</span>(event[<span class="s">"name"</span>], event[<span class="s">"data"</span>][<span class="s">"input"</span>])
+    <span class="k">elif</span> kind == <span class="s">"on_tool_end"</span>:
+        <span class="f">render_tool_result</span>(event[<span class="s">"name"</span>], event[<span class="s">"data"</span>][<span class="s">"output"</span>])</pre>
+    </section>
+
+    <!-- ============ KNOWLEDGE CHECK ============ -->
+    <section class="kc" id="kc">
+      <div class="kc-head">
+        <div class="kc-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
+          </svg>
+        </div>
+        <div>
+          <div class="kc-label">Knowledge Check · End of Module 3.2</div>
+          <div class="kc-title">Five quick checks before Module 3.3.</div>
+        </div>
+      </div>
+
+      <div class="kc-q">
+        <div class="kc-prompt"><span class="qn">Q1.</span>A LangGraph ReAct agent loops until what condition?</div>
+        <div class="kc-opts" data-q="0" data-correct="1">
+          <button class="kc-opt"><span class="marker">A</span><span>The tool list is empty</span></button>
+          <button class="kc-opt"><span class="marker">B</span><span>The LLM returns an AIMessage with no tool_calls — the conditional edge then routes to END instead of back to the tools node</span></button>
+          <button class="kc-opt"><span class="marker">C</span><span>A maximum of 10 iterations is reached</span></button>
+          <button class="kc-opt"><span class="marker">D</span><span>The user manually presses stop</span></button>
+        </div>
+        <div class="kc-feedback"><strong>Correct.</strong> The agent's own AIMessage decides the loop's fate. If it has tool_calls, the conditional edge routes to the tools node; if not, to END. Step-limit safeguards (covered in Module 3.3) are layered on top as a safety net, but the natural terminator is the LLM choosing not to call more tools.</div>
+      </div>
+
+      <div class="kc-q">
+        <div class="kc-prompt"><span class="qn">Q2.</span>Why does <code>MessagesState</code> use an additive reducer (<code>add_messages</code>) rather than letting each node overwrite the list?</div>
+        <div class="kc-opts" data-q="1" data-correct="2">
+          <button class="kc-opt"><span class="marker">A</span><span>Performance — appending is faster than replacing</span></button>
+          <button class="kc-opt"><span class="marker">B</span><span>LangGraph requires it for all state types</span></button>
+          <button class="kc-opt"><span class="marker">C</span><span>The LLM is stateless — each call sees only what's in the messages list, so the list IS the agent's working memory. Replacing would erase context from previous iterations.</span></button>
+          <button class="kc-opt"><span class="marker">D</span><span>To support concurrent writes from parallel nodes</span></button>
+        </div>
+        <div class="kc-feedback"><strong>Right.</strong> Every iteration of the loop, the agent node calls the LLM with the full messages list. If a node replaced the list instead of appending, the agent would lose all context from prior iterations. Additive reducers are what make multi-step reasoning possible across stateless LLM calls.</div>
+      </div>
+
+      <div class="kc-q">
+        <div class="kc-prompt"><span class="qn">Q3.</span>You called <code>client.get_tools()</code> on a <code>MultiServerMCPClient</code> wired to filesystem + github servers. What do you get back?</div>
+        <div class="kc-opts" data-q="2" data-correct="3">
+          <button class="kc-opt"><span class="marker">A</span><span>Raw MCP Tool objects from the mcp SDK</span></button>
+          <button class="kc-opt"><span class="marker">B</span><span>JSON Schema dicts</span></button>
+          <button class="kc-opt"><span class="marker">C</span><span>OpenAI function definitions</span></button>
+          <button class="kc-opt"><span class="marker">D</span><span>LangChain <code>BaseTool</code> objects (already namespaced by server), ready to pass to <code>llm.bind_tools()</code> or <code>create_react_agent(tools=...)</code></span></button>
+        </div>
+        <div class="kc-feedback"><strong>Exactly.</strong> That's the whole point of the adapter: it bridges MCP's tool representation into LangChain's native one. The returned objects subclass <code>BaseTool</code> and integrate transparently with any LangChain/LangGraph primitive that expects tools.</div>
+      </div>
+
+      <div class="kc-q">
+        <div class="kc-prompt"><span class="qn">Q4.</span>An AIMessage in the state has <code>tool_calls = [{id: "call_42", name: "read_file", args: {...}}]</code>. After the tools node runs, what gets appended to the messages list?</div>
+        <div class="kc-opts" data-q="3" data-correct="1">
+          <button class="kc-opt"><span class="marker">A</span><span>A new AIMessage containing the tool result inline</span></button>
+          <button class="kc-opt"><span class="marker">B</span><span>A <code>ToolMessage</code> with <code>tool_call_id="call_42"</code> and <code>content</code> set to the tool's output — exactly one ToolMessage per tool_call in the prior AIMessage</span></button>
+          <button class="kc-opt"><span class="marker">C</span><span>A HumanMessage simulating the tool's response</span></button>
+          <button class="kc-opt"><span class="marker">D</span><span>Nothing — the result is stored in a separate state key</span></button>
+        </div>
+        <div class="kc-feedback"><strong>Yes.</strong> The pairing of <code>AIMessage.tool_calls[i]</code> ↔ <code>ToolMessage.tool_call_id</code> is how the LLM correlates which result belongs to which call. When the agent node runs again, it sees this pairing in the messages and incorporates the result into its next decision.</div>
+      </div>
+
+      <div class="kc-q">
+        <div class="kc-prompt"><span class="qn">Q5.</span>You want to render the agent's progress in a UI — token-by-token streaming for the LLM, and live updates as each tool fires. Which LangGraph method?</div>
+        <div class="kc-opts" data-q="4" data-correct="2">
+          <button class="kc-opt"><span class="marker">A</span><span><code>agent.invoke(...)</code> — fastest, returns the final state</span></button>
+          <button class="kc-opt"><span class="marker">B</span><span><code>agent.ainvoke(...)</code> — async version of invoke</span></button>
+          <button class="kc-opt"><span class="marker">C</span><span><code>agent.astream_events(..., version="v2")</code> — emits per-node and per-token events you can route to the UI as they happen</span></button>
+          <button class="kc-opt"><span class="marker">D</span><span>You can't — LangGraph only returns final state</span></button>
+        </div>
+        <div class="kc-feedback"><strong>Correct.</strong> <code>astream_events</code> is the streaming surface — <code>on_chat_model_stream</code> for tokens, <code>on_tool_start</code>/<code>on_tool_end</code> for tool execution, <code>on_chain_start</code>/<code>on_chain_end</code> for node boundaries. The graph and message progression are identical to <code>ainvoke</code>; you just observe instead of waiting.</div>
+      </div>
+    </section>
+
+    <!-- ============ RESOURCES ============ -->
+    <section class="resources" id="res">
+      <div class="resources-header">
+        <div class="label">Learn &amp; Practice</div>
+        <h2 class="r-h">Resources for going <span class="accent">deeper</span></h2>
+        <p class="r-sub">
+          The LangGraph docs, the original ReAct paper, and the adapter package — three
+          doors into the agent-side of MCP integration.
+        </p>
+      </div>
+
+      <div class="r-card teal">
+        <div class="r-top">
+          <div class="r-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+            </svg>
+          </div>
+          <div class="r-titles">
+            <div class="kind">LangGraph documentation</div>
+            <div class="tagline">The runtime this module uses</div>
+          </div>
+        </div>
+        <h3 class="r-title">langchain-ai.github.io/langgraph</h3>
+        <p class="r-desc">
+          Start with the <em>Concepts</em> page (state, nodes, edges, persistence), then
+          read <em>How-to: ReAct agent</em> for the prebuilt primitive we used. The
+          <em>Streaming</em> and <em>Persistence</em> sections matter most for Module 3.3.
+          Pair this with the API reference for <code>create_react_agent</code>.
+        </p>
+        <a class="r-btn" href="https://langchain-ai.github.io/langgraph/" target="_blank" rel="noopener">
+          <span class="arr">↗</span> Open docs
+        </a>
+      </div>
+
+      <div class="r-card purple">
+        <div class="r-top">
+          <div class="r-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+            </svg>
+          </div>
+          <div class="r-titles">
+            <div class="kind">The original ReAct paper</div>
+            <div class="tagline">Yao et al., 2022 — the source</div>
+          </div>
+        </div>
+        <h3 class="r-title">ReAct: Synergizing Reasoning and Acting in Language Models</h3>
+        <p class="r-desc">
+          The paper that introduced the Thought–Action–Observation loop. Reading the
+          original (~12 pages) cements why interleaving reasoning and tool use beats
+          monolithic chain-of-thought. The empirical results section is worth skimming
+          even if you skip the methodology.
+        </p>
+        <a class="r-btn" href="https://arxiv.org/abs/2210.03629" target="_blank" rel="noopener">
+          <span class="arr">↗</span> Open paper
+        </a>
+      </div>
+
+      <div class="r-card pink">
+        <div class="r-top">
+          <div class="r-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#f7768e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M16 18l6-6-6-6"/><path d="M8 6l-6 6 6 6"/>
+            </svg>
+          </div>
+          <div class="r-titles">
+            <div class="kind">langchain-mcp-adapters</div>
+            <div class="tagline">The package this module is built on</div>
+          </div>
+        </div>
+        <h3 class="r-title">langchain-ai/langchain-mcp-adapters</h3>
+        <p class="r-desc">
+          Source code and README for <code>MultiServerMCPClient</code> and
+          <code>load_mcp_tools</code>. The repo's <code>examples/</code> folder has
+          end-to-end runnable scripts you can model your own integrations on. Worth
+          reading the implementation of the <code>StructuredTool</code> wrapper to see how
+          MCP <code>tools/call</code> maps onto LangChain tool invocation.
+        </p>
+        <a class="r-btn" href="https://github.com/langchain-ai/langchain-mcp-adapters" target="_blank" rel="noopener">
+          <span class="arr">↗</span> Open repo
+        </a>
+      </div>
+    </section>
+
+    <div class="nav-foot">
+      <div>← Module 3.1 · Building your own client</div>
+      <a href="#">Module 3.3 · Resilience &amp; observability →</a>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// ============ REACT LOOP ============
+const rlData = {
+  thought: {
+    mode: 'thought-mode',
+    pk: 'Phase 01 · Thought',
+    h: 'The LLM reasons about the next step',
+    p: 'Given the current messages — user query plus any prior observations — the model decides what to do. With modern tool-calling APIs you don\'t see "Thought:" prefixes; reasoning happens inside the model and surfaces as either a text answer or a structured tool_use block. The decision rule: <em>is there enough information to answer? If yes, respond. If no, pick a tool.</em>',
+    wire: `<span class="c"># LLM call (provider-side)</span>
+messages = [
+  HumanMessage(<span class="s">"summarise /tmp/notes.md"</span>),
+]
+response = llm.<span class="f">invoke</span>(messages)
+
+<span class="c"># response.tool_calls is non-empty → next phase: Action</span>
+response.tool_calls = [{
+  <span class="k">"id"</span>: <span class="s">"call_42"</span>,
+  <span class="k">"name"</span>: <span class="s">"filesystem__read_file"</span>,
+  <span class="k">"args"</span>: { <span class="k">"path"</span>: <span class="s">"/tmp/notes.md"</span> }
+}]`
+  },
+  action: {
+    mode: 'action-mode',
+    pk: 'Phase 02 · Action',
+    h: 'The host executes the requested tool',
+    p: 'The graph routes from the agent node to the tools node. The tools node looks up the tool by name (already namespaced — <code>filesystem__read_file</code>), routes through the MCP client to the correct server, sends <code>tools/call</code>, awaits the response. The LLM is paused during this beat; control belongs entirely to the host.',
+    wire: `<span class="c"># MCP wire (host → server)</span>
+{
+  <span class="k">"jsonrpc"</span>: <span class="s">"2.0"</span>, <span class="k">"id"</span>: <span class="n">7</span>,
+  <span class="k">"method"</span>: <span class="s">"tools/call"</span>,
+  <span class="k">"params"</span>: {
+    <span class="k">"name"</span>: <span class="s">"read_file"</span>,
+    <span class="k">"arguments"</span>: { <span class="k">"path"</span>: <span class="s">"/tmp/notes.md"</span> }
+  }
+}`
+  },
+  obs: {
+    mode: 'obs-mode',
+    pk: 'Phase 03 · Observation',
+    h: 'The result feeds back into the messages',
+    p: 'The MCP server returns content. The tools node wraps it in a <code>ToolMessage</code> with the matching <code>tool_call_id</code> and appends to state. Now the conditional edge fires: route back to the agent node, which sees the new ToolMessage and decides what to do next — another action, or a final answer.',
+    wire: `<span class="c"># appended to messages</span>
+ToolMessage(
+    tool_call_id=<span class="s">"call_42"</span>,
+    content=<span class="s">"# Meeting Notes\\n\\nQ4 launch on track..."</span>,
+)
+
+<span class="c"># next iteration: LLM sees the file content,</span>
+<span class="c"># may return final answer or call another tool</span>`
+  }
+};
+
+const rlDetail = document.getElementById('rlDetail');
+function renderRl(phase) {
+  document.querySelectorAll('.rl-node').forEach(n => n.classList.toggle('active', n.dataset.phase === phase));
+  document.querySelectorAll('.rl-arrow').forEach(a => a.classList.remove('active'));
+  // light the arrow leaving this phase
+  const nextFrom = { thought: 'thought', action: 'action', obs: 'obs' };
+  const arrow = document.querySelector(`.rl-arrow[data-from="${nextFrom[phase]}"]`);
+  if (arrow) arrow.classList.add('active');
+  const d = rlData[phase];
+  rlDetail.className = 'rl-detail ' + d.mode;
+  rlDetail.innerHTML = `
+    <div class="pk">${d.pk}</div>
+    <h4>${d.h}</h4>
+    <p>${d.p}</p>
+    <div class="wlbl">On the wire / in code</div>
+    <pre class="wire">${d.wire}</pre>
+  `;
+}
+document.querySelectorAll('.rl-node').forEach(n => {
+  n.addEventListener('click', () => renderRl(n.dataset.phase));
+});
+renderRl('thought');
+
+let rlIdx = -1, rlTimer = null;
+const rlSeq = ['thought', 'action', 'obs'];
+const rlPlay = document.getElementById('rlPlay');
+const rlReset = document.getElementById('rlReset');
+function rlAdvance() {
+  rlIdx = (rlIdx + 1) % rlSeq.length;
+  renderRl(rlSeq[rlIdx]);
+}
+rlPlay.onclick = () => {
+  if (rlTimer) { clearInterval(rlTimer); rlTimer = null; rlPlay.textContent = '▶ Play'; return; }
+  rlPlay.textContent = '⏸ Pause';
+  rlTimer = setInterval(rlAdvance, 1900);
+  rlAdvance();
+};
+rlReset.onclick = () => {
+  if (rlTimer) { clearInterval(rlTimer); rlTimer = null; rlPlay.textContent = '▶ Play'; }
+  rlIdx = -1; renderRl('thought');
+};
+
+// ============ GRAPH BUILDER ============
+const gbData = {
+  start: {
+    pk: 'Node · START',
+    h: 'Graph entry point',
+    p: 'LangGraph\'s implicit start. When you call <code>agent.ainvoke(initial_state)</code>, execution enters here and immediately transitions along the only outgoing edge — to <code>agent</code>. No code runs at START itself.',
+    code: `<span class="c"># implicit — added by StateGraph</span>
+graph.<span class="f">add_edge</span>(START, <span class="s">"agent"</span>)`
+  },
+  agent: {
+    pk: 'Node · agent',
+    h: 'The LLM-calling node',
+    p: 'This is where the model runs. The node receives the current state (the messages list plus anything else you track), invokes the LLM with the bound tools, returns a partial state update appending one new AIMessage. That AIMessage may carry <code>tool_calls</code> — which the next conditional edge will check.',
+    code: `<span class="k">def</span> <span class="f">agent_node</span>(state: MessagesState):
+    msgs = state[<span class="s">"messages"</span>]
+    response = llm_with_tools.<span class="f">invoke</span>(msgs)
+    <span class="k">return</span> {<span class="s">"messages"</span>: [response]}
+
+graph.<span class="f">add_node</span>(<span class="s">"agent"</span>, agent_node)`
+  },
+  tools: {
+    pk: 'Node · tools',
+    h: 'The tool-execution node',
+    p: 'LangGraph ships a built-in <code>ToolNode</code> that handles the boring work: pull the last AIMessage, iterate its tool_calls, route each to the matching tool (your MCP-derived BaseTools), gather results into ToolMessages, append to state. For most agents you never customise this node — you just hand it your tool list.',
+    code: `<span class="k">from</span> langgraph.prebuilt <span class="k">import</span> ToolNode
+
+tool_node = <span class="f">ToolNode</span>(tools=mcp_tools)
+graph.<span class="f">add_node</span>(<span class="s">"tools"</span>, tool_node)`
+  },
+  end: {
+    pk: 'Node · END',
+    h: 'Graph exit point',
+    p: 'The terminal sink. When the conditional edge routes here (because the agent\'s AIMessage had no tool_calls), the graph halts and returns the final state to the caller. The last AIMessage in that state is your answer.',
+    code: `<span class="c"># implicit — END is a constant</span>
+graph.<span class="f">add_conditional_edges</span>(<span class="s">"agent"</span>, router,
+    {<span class="s">"tools"</span>: <span class="s">"tools"</span>, <span class="s">"end"</span>: END})
+
+<span class="c"># caller pulls the answer from final state</span>
+final = <span class="k">await</span> agent.<span class="f">ainvoke</span>(initial)
+answer = final[<span class="s">"messages"</span>][-<span class="n">1</span>].content</pre>`
+  },
+  e1: {
+    pk: 'Edge · normal',
+    h: 'START → agent',
+    p: 'A regular unconditional edge. Once entered, always routes to <code>agent</code>. No predicate — there\'s nothing to decide yet.',
+    code: `graph.<span class="f">add_edge</span>(START, <span class="s">"agent"</span>)`
+  },
+  e2: {
+    pk: 'Edge · conditional',
+    h: 'agent → tools  (when has tool_calls)',
+    p: 'A conditional edge. After <code>agent</code> runs, a router function reads the new AIMessage. If <code>message.tool_calls</code> is non-empty, the router returns <code>"tools"</code> and execution moves to the tools node. This is the loop edge.',
+    code: `<span class="k">def</span> <span class="f">should_continue</span>(state):
+    last = state[<span class="s">"messages"</span>][-<span class="n">1</span>]
+    <span class="k">return</span> <span class="s">"tools"</span> <span class="k">if</span> last.tool_calls <span class="k">else</span> <span class="s">"end"</span>
+
+graph.<span class="f">add_conditional_edges</span>(
+    <span class="s">"agent"</span>,
+    should_continue,
+    {<span class="s">"tools"</span>: <span class="s">"tools"</span>, <span class="s">"end"</span>: END},
+)`
+  },
+  e3: {
+    pk: 'Edge · conditional',
+    h: 'agent → END  (no tool_calls)',
+    p: 'The terminating branch. Same router function as the other conditional edge — when the AIMessage has no tool_calls, the router returns <code>"end"</code>, the graph routes to END, and execution halts. This is what makes the loop converge.',
+    code: `<span class="c"># the no-tool branch of the same router</span>
+<span class="k">return</span> <span class="s">"tools"</span> <span class="k">if</span> last.tool_calls <span class="k">else</span> <span class="s">"end"</span>`
+  },
+  e4: {
+    pk: 'Edge · normal',
+    h: 'tools → agent  (loop back)',
+    p: 'The plain edge that closes the loop. After <code>tools</code> appends ToolMessages, execution unconditionally returns to <code>agent</code> to let the LLM see the results and decide what to do next.',
+    code: `graph.<span class="f">add_edge</span>(<span class="s">"tools"</span>, <span class="s">"agent"</span>)`
+  }
+};
+
+const gbDetail = document.getElementById('gbDetail');
+function renderGb(id) {
+  document.querySelectorAll('.gb-gnode').forEach(n => n.classList.toggle('active', n.dataset.id === id));
+  document.querySelectorAll('.gb-edge').forEach(e => e.classList.toggle('active', e.dataset.id === id));
+  const d = gbData[id];
+  gbDetail.innerHTML = `
+    <div class="pk">${d.pk}</div>
+    <h4>${d.h}</h4>
+    <p>${d.p}</p>
+    <div class="clbl">In code</div>
+    <pre class="code">${d.code}</pre>
+  `;
+}
+document.querySelectorAll('.gb-gnode').forEach(n => n.addEventListener('click', () => renderGb(n.dataset.id)));
+document.querySelectorAll('.gb-edge').forEach(e => e.addEventListener('click', () => renderGb(e.dataset.id)));
+renderGb('agent');
+
+// ============ BINDING PIPELINE ============
+const bpData = {
+  s1: {
+    pk: 'Step 01 · Configure',
+    h: 'Declare your MCP servers',
+    p: 'Hand the adapter a dict mapping a server name to its connection spec — stdio command + args, or HTTP url, plus the transport flag. You can mix transports freely; the adapter spawns the right client for each.',
+    code: `<span class="k">from</span> langchain_mcp_adapters.client <span class="k">import</span> MultiServerMCPClient
+
+client = <span class="f">MultiServerMCPClient</span>({
+    <span class="s">"filesystem"</span>: {
+        <span class="s">"transport"</span>: <span class="s">"stdio"</span>,
+        <span class="s">"command"</span>: <span class="s">"npx"</span>,
+        <span class="s">"args"</span>: [<span class="s">"-y"</span>, <span class="s">"@modelcontextprotocol/server-filesystem"</span>, <span class="s">"/tmp"</span>],
+    },
+    <span class="s">"github"</span>: {
+        <span class="s">"transport"</span>: <span class="s">"streamable_http"</span>,
+        <span class="s">"url"</span>: <span class="s">"https://api.githubcopilot.com/mcp/"</span>,
+    },
+})`,
+    out: '<strong>Produces:</strong> a configured <code>MultiServerMCPClient</code> (no connections opened yet — that happens lazily on first <code>get_tools()</code>).'
+  },
+  s2: {
+    pk: 'Step 02 · Connect',
+    h: 'Aggregate tools across all servers',
+    p: 'One call. Under the hood the adapter opens both transports in parallel, completes the initialize handshakes, lists tools on each server, namespaces the results (server name becomes the prefix), and wraps each as a LangChain <code>StructuredTool</code>.',
+    code: `tools = <span class="k">await</span> client.<span class="f">get_tools</span>()
+
+<span class="c"># tools is now a flat list of LangChain BaseTool objects</span>
+<span class="f">print</span>([t.name <span class="k">for</span> t <span class="k">in</span> tools])
+<span class="c"># [&apos;filesystem__read_file&apos;, &apos;filesystem__list_dir&apos;,</span>
+<span class="c">#  &apos;github__list_issues&apos;, &apos;github__create_pr&apos;, ...]</span>`,
+    out: '<strong>Produces:</strong> <code>list[BaseTool]</code> — namespaced, schema-typed, ready for any LangChain primitive.'
+  },
+  s3: {
+    pk: 'Step 03 · Bind',
+    h: 'Attach tools to the LLM',
+    p: 'For raw LangChain usage, <code>llm.bind_tools(tools)</code> returns a copy of the LLM that knows about the tools and will emit structured tool_calls when relevant. For LangGraph\'s prebuilt agent you can skip this — <code>create_react_agent</code> does it internally.',
+    code: `<span class="k">from</span> langchain_anthropic <span class="k">import</span> ChatAnthropic
+
+llm = <span class="f">ChatAnthropic</span>(model=<span class="s">"claude-sonnet-4-5"</span>)
+llm_with_tools = llm.<span class="f">bind_tools</span>(tools)
+
+<span class="c"># every llm_with_tools.invoke(...) will be allowed</span>
+<span class="c"># to emit tool_calls referencing any of those tools</span>`,
+    out: '<strong>Produces:</strong> an LLM client that exposes tools to the model and parses tool_calls back from the response.'
+  },
+  s4: {
+    pk: 'Step 04 · Build graph',
+    h: 'Wire the ReAct topology',
+    p: 'You can build the agent/tools graph yourself — useful when you want extra nodes (a planner, a critic, guardrails). For the standard topology, <code>create_react_agent</code> builds it for you.',
+    code: `<span class="k">from</span> langgraph.prebuilt <span class="k">import</span> create_react_agent
+
+agent = <span class="f">create_react_agent</span>(
+    model=<span class="s">"anthropic:claude-sonnet-4-5"</span>,
+    tools=tools,
+)
+
+<span class="c"># equivalent hand-built graph available as a fallback —</span>
+<span class="c"># see LangGraph docs &quot;build a basic ReAct agent&quot;</span>`,
+    out: '<strong>Produces:</strong> a compiled <code>CompiledGraph</code> with <code>ainvoke</code>, <code>astream</code>, and <code>astream_events</code>.'
+  },
+  s5: {
+    pk: 'Step 05 · Invoke',
+    h: 'Run the agent on a query',
+    p: 'Pass an initial state — at minimum a messages list with one HumanMessage. Use <code>ainvoke</code> to block until the loop terminates and return the final state, or <code>astream_events</code> to receive per-node and per-token events for live UIs.',
+    code: `result = <span class="k">await</span> agent.<span class="f">ainvoke</span>({
+    <span class="s">"messages"</span>: [(<span class="s">"user"</span>, <span class="s">"summarise /tmp/notes.md"</span>)]
+})
+
+<span class="f">print</span>(result[<span class="s">"messages"</span>][-<span class="n">1</span>].content)
+<span class="c"># &quot;The notes describe the Q4 launch plan...&quot;</span>`,
+    out: '<strong>Produces:</strong> the final state dict — the last AIMessage is your answer; the full <code>messages</code> list is the trace.'
+  }
+};
+
+const bpDetail = document.getElementById('bpDetail');
+function renderBp(id) {
+  document.querySelectorAll('.bp-step').forEach(s => s.classList.toggle('active', s.dataset.id === id));
+  const d = bpData[id];
+  bpDetail.innerHTML = `
+    <div class="pk">${d.pk}</div>
+    <h4>${d.h}</h4>
+    <p>${d.p}</p>
+    <pre class="code">${d.code}</pre>
+    <div class="out">${d.out}</div>
+  `;
+}
+document.querySelectorAll('.bp-step').forEach(s => s.addEventListener('click', () => renderBp(s.dataset.id)));
+renderBp('s1');
+
+// ============ MESSAGE EVOLUTION ============
+const meSteps = [
+  {
+    annot: '— initial state',
+    msgs: [
+      { kind: 'sys', role: 'SystemMessage', meta: 'persona', body: 'You are a helpful coding assistant. Use the tools available to answer the user.' }
+    ]
+  },
+  {
+    annot: '— user query received',
+    msgs: [
+      { kind: 'sys', role: 'SystemMessage', meta: 'persona', body: 'You are a helpful coding assistant. Use the tools available to answer the user.' },
+      { kind: 'user', role: 'HumanMessage', meta: 'input', body: 'Read /tmp/notes.md and check if it mentions the open auth bug in repo "app".', fresh: true }
+    ]
+  },
+  {
+    annot: '— agent node fires · LLM picks read_file',
+    msgs: [
+      { kind: 'sys', role: 'SystemMessage', meta: 'persona', body: 'You are a helpful coding assistant. Use the tools available to answer the user.' },
+      { kind: 'user', role: 'HumanMessage', meta: 'input', body: 'Read /tmp/notes.md and check if it mentions the open auth bug in repo "app".' },
+      { kind: 'ai', role: 'AIMessage', meta: 'tool_calls × 1', body: 'I\'ll start by reading the notes file.', tool: 'filesystem__read_file', args: '{"path": "/tmp/notes.md"}', tcid: 'call_a1', fresh: true }
+    ]
+  },
+  {
+    annot: '— tools node runs · MCP filesystem server hit',
+    msgs: [
+      { kind: 'sys', role: 'SystemMessage', meta: 'persona', body: 'You are a helpful coding assistant. Use the tools available to answer the user.' },
+      { kind: 'user', role: 'HumanMessage', meta: 'input', body: 'Read /tmp/notes.md and check if it mentions the open auth bug in repo "app".' },
+      { kind: 'ai', role: 'AIMessage', meta: 'tool_calls × 1', body: 'I\'ll start by reading the notes file.', tool: 'filesystem__read_file', args: '{"path": "/tmp/notes.md"}', tcid: 'call_a1' },
+      { kind: 'tool', role: 'ToolMessage', meta: 'id=call_a1', body: '# Q4 Notes\n\nWaiting on the auth fix in "app" — see issue tracker.\n\nLaunch date 2026-01-15.', fresh: true }
+    ]
+  },
+  {
+    annot: '— agent fires again · LLM now picks list_issues',
+    msgs: [
+      { kind: 'sys', role: 'SystemMessage', meta: 'persona', body: 'You are a helpful coding assistant. Use the tools available to answer the user.' },
+      { kind: 'user', role: 'HumanMessage', meta: 'input', body: 'Read /tmp/notes.md and check if it mentions the open auth bug in repo "app".' },
+      { kind: 'ai', role: 'AIMessage', meta: 'tool_calls × 1', body: 'I\'ll start by reading the notes file.', tool: 'filesystem__read_file', args: '{"path": "/tmp/notes.md"}', tcid: 'call_a1' },
+      { kind: 'tool', role: 'ToolMessage', meta: 'id=call_a1', body: '# Q4 Notes\n\nWaiting on the auth fix in "app" — see issue tracker.\n\nLaunch date 2026-01-15.' },
+      { kind: 'ai', role: 'AIMessage', meta: 'tool_calls × 1', body: 'The notes mention an auth fix. Let me check the open issues in "app".', tool: 'github__list_issues', args: '{"repo": "app", "labels": ["auth"], "state": "open"}', tcid: 'call_b2', fresh: true }
+    ]
+  },
+  {
+    annot: '— tools node runs · MCP github server hit',
+    msgs: [
+      { kind: 'sys', role: 'SystemMessage', meta: 'persona', body: 'You are a helpful coding assistant. Use the tools available to answer the user.' },
+      { kind: 'user', role: 'HumanMessage', meta: 'input', body: 'Read /tmp/notes.md and check if it mentions the open auth bug in repo "app".' },
+      { kind: 'ai', role: 'AIMessage', meta: 'tool_calls × 1', body: 'I\'ll start by reading the notes file.', tool: 'filesystem__read_file', args: '{"path": "/tmp/notes.md"}', tcid: 'call_a1' },
+      { kind: 'tool', role: 'ToolMessage', meta: 'id=call_a1', body: '# Q4 Notes\n\nWaiting on the auth fix in "app" — see issue tracker.\n\nLaunch date 2026-01-15.' },
+      { kind: 'ai', role: 'AIMessage', meta: 'tool_calls × 1', body: 'The notes mention an auth fix. Let me check the open issues in "app".', tool: 'github__list_issues', args: '{"repo": "app", "labels": ["auth"], "state": "open"}', tcid: 'call_b2' },
+      { kind: 'tool', role: 'ToolMessage', meta: 'id=call_b2', body: '[ { "number": 1247, "title": "OAuth callback fails on Safari", "state": "open", "assignee": "alex" } ]', fresh: true }
+    ]
+  },
+  {
+    annot: '— agent fires · no tool_calls → final answer',
+    msgs: [
+      { kind: 'sys', role: 'SystemMessage', meta: 'persona', body: 'You are a helpful coding assistant. Use the tools available to answer the user.' },
+      { kind: 'user', role: 'HumanMessage', meta: 'input', body: 'Read /tmp/notes.md and check if it mentions the open auth bug in repo "app".' },
+      { kind: 'ai', role: 'AIMessage', meta: 'tool_calls × 1', body: 'I\'ll start by reading the notes file.', tool: 'filesystem__read_file', args: '{"path": "/tmp/notes.md"}', tcid: 'call_a1' },
+      { kind: 'tool', role: 'ToolMessage', meta: 'id=call_a1', body: '# Q4 Notes\n\nWaiting on the auth fix in "app" — see issue tracker.\n\nLaunch date 2026-01-15.' },
+      { kind: 'ai', role: 'AIMessage', meta: 'tool_calls × 1', body: 'The notes mention an auth fix. Let me check the open issues in "app".', tool: 'github__list_issues', args: '{"repo": "app", "labels": ["auth"], "state": "open"}', tcid: 'call_b2' },
+      { kind: 'tool', role: 'ToolMessage', meta: 'id=call_b2', body: '[ { "number": 1247, "title": "OAuth callback fails on Safari", "state": "open", "assignee": "alex" } ]' },
+      { kind: 'ai', role: 'AIMessage', meta: 'final · no tool_calls', body: 'Yes — the notes reference the auth fix, which corresponds to open issue #1247 ("OAuth callback fails on Safari"), currently assigned to alex.', fresh: true }
+    ]
+  }
+];
+
+const meList = document.getElementById('meList');
+const meStepLabel = document.getElementById('meStep');
+const meAnnot = document.getElementById('meAnnot');
+const meBack = document.getElementById('meBack');
+const meFwd = document.getElementById('meFwd');
+const meReset = document.getElementById('meReset');
+let meIdx = 0;
+
+function meKindClass(k) { return k === 'sys' ? 'user' : k; }
+function meEscape(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+function renderMe() {
+  meStepLabel.textContent = meIdx;
+  meAnnot.textContent = meSteps[meIdx].annot;
+  meList.innerHTML = meSteps[meIdx].msgs.map(m => {
+    const cls = m.kind === 'sys' ? 'user' : m.kind;
+    const styleSys = m.kind === 'sys' ? ' style="opacity:0.55;"' : '';
+    let body = `<div class="body">${meEscape(m.body).replace(/\n/g, '<br>')}</div>`;
+    if (m.tool) {
+      body += `<pre class="tool-call"><span class="k">tool_call</span>: { <span class="k">name</span>: <span class="s">"${m.tool}"</span>, <span class="k">args</span>: <span class="s">${m.args}</span>, <span class="k">id</span>: <span class="s">"${m.tcid}"</span> }</pre>`;
+    }
+    return `<div class="me-msg ${cls}${m.fresh ? ' fresh' : ''}"${styleSys}>
+      <div class="role"><span class="r-tag">${m.role}</span><span class="meta">${m.meta}</span></div>
+      ${body}
+    </div>`;
+  }).join('');
+  meBack.disabled = meIdx === 0;
+  meFwd.disabled = meIdx === meSteps.length - 1;
+}
+meBack.onclick = () => { if (meIdx > 0) { meIdx--; renderMe(); } };
+meFwd.onclick  = () => { if (meIdx < meSteps.length - 1) { meIdx++; renderMe(); } };
+meReset.onclick = () => { meIdx = 0; renderMe(); };
+renderMe();
+
+// ============ REPLAY ============
+const rpStages = [
+  {
+    active: 'agent', cls: 'agent', edge: 'e1',
+    step: 'Beat 1 of 5',
+    actor: 'agent · call_model',
+    text: 'User query lands. LLM is invoked with [SystemMessage, HumanMessage]. It decides to read the file first and emits an AIMessage with one tool_call for <code>filesystem__read_file</code>.',
+    msgs: [
+      { kind: 'sys', role: 'SystemMessage', meta: 'persona', body: 'You are a helpful coding assistant.' },
+      { kind: 'user', role: 'HumanMessage', meta: 'input', body: 'Read /tmp/notes.md and check the auth bug status in repo "app".' },
+      { kind: 'ai', role: 'AIMessage', meta: 'tool_calls × 1', body: 'Reading the notes first.', tool: 'filesystem__read_file', args: '{"path":"/tmp/notes.md"}', tcid: 'a1', fresh: true }
+    ]
+  },
+  {
+    active: 'tools', cls: 'tools', edge: 'e2',
+    step: 'Beat 2 of 5',
+    actor: 'tools · MCP exec',
+    text: 'Conditional edge sees <code>tool_calls != []</code> → routes to tools node. ToolNode hands the call to the filesystem MCP client, which sends <code>tools/call</code> over stdio. Server returns the file content; ToolNode wraps it as a ToolMessage.',
+    msgs: [
+      { kind: 'sys', role: 'SystemMessage', meta: 'persona', body: 'You are a helpful coding assistant.' },
+      { kind: 'user', role: 'HumanMessage', meta: 'input', body: 'Read /tmp/notes.md and check the auth bug status in repo "app".' },
+      { kind: 'ai', role: 'AIMessage', meta: 'tool_calls × 1', body: 'Reading the notes first.', tool: 'filesystem__read_file', args: '{"path":"/tmp/notes.md"}', tcid: 'a1' },
+      { kind: 'tool', role: 'ToolMessage', meta: 'id=a1', body: '# Q4 Notes\nWaiting on the auth fix in "app".', fresh: true }
+    ]
+  },
+  {
+    active: 'agent', cls: 'agent', edge: 'e4',
+    step: 'Beat 3 of 5',
+    actor: 'agent · call_model',
+    text: 'Loop back to agent. LLM now sees the file content. Decides it needs to check GitHub issues — emits another AIMessage with a tool_call for <code>github__list_issues</code>.',
+    msgs: [
+      { kind: 'sys', role: 'SystemMessage', meta: 'persona', body: 'You are a helpful coding assistant.' },
+      { kind: 'user', role: 'HumanMessage', meta: 'input', body: 'Read /tmp/notes.md and check the auth bug status in repo "app".' },
+      { kind: 'ai', role: 'AIMessage', meta: 'tool_calls × 1', body: 'Reading the notes first.', tool: 'filesystem__read_file', args: '{"path":"/tmp/notes.md"}', tcid: 'a1' },
+      { kind: 'tool', role: 'ToolMessage', meta: 'id=a1', body: '# Q4 Notes\nWaiting on the auth fix in "app".' },
+      { kind: 'ai', role: 'AIMessage', meta: 'tool_calls × 1', body: 'Now checking open auth issues.', tool: 'github__list_issues', args: '{"repo":"app","labels":["auth"]}', tcid: 'b2', fresh: true }
+    ]
+  },
+  {
+    active: 'tools', cls: 'tools', edge: 'e2',
+    step: 'Beat 4 of 5',
+    actor: 'tools · MCP exec',
+    text: 'Second tool call. github MCP server hit via Streamable HTTP. Returns one open issue. ToolNode appends another ToolMessage.',
+    msgs: [
+      { kind: 'sys', role: 'SystemMessage', meta: 'persona', body: 'You are a helpful coding assistant.' },
+      { kind: 'user', role: 'HumanMessage', meta: 'input', body: 'Read /tmp/notes.md and check the auth bug status in repo "app".' },
+      { kind: 'ai', role: 'AIMessage', meta: 'tool_calls × 1', body: 'Reading the notes first.', tool: 'filesystem__read_file', args: '{"path":"/tmp/notes.md"}', tcid: 'a1' },
+      { kind: 'tool', role: 'ToolMessage', meta: 'id=a1', body: '# Q4 Notes\nWaiting on the auth fix in "app".' },
+      { kind: 'ai', role: 'AIMessage', meta: 'tool_calls × 1', body: 'Now checking open auth issues.', tool: 'github__list_issues', args: '{"repo":"app","labels":["auth"]}', tcid: 'b2' },
+      { kind: 'tool', role: 'ToolMessage', meta: 'id=b2', body: '[{"number":1247,"title":"OAuth callback fails on Safari","state":"open"}]', fresh: true }
+    ]
+  },
+  {
+    active: 'end', cls: 'end', edge: 'e3',
+    step: 'Beat 5 of 5',
+    actor: 'agent → END',
+    text: 'Loop back to agent. LLM has enough information now — emits an AIMessage with no tool_calls. The router returns "end" and the graph terminates. The final AIMessage is the answer.',
+    msgs: [
+      { kind: 'sys', role: 'SystemMessage', meta: 'persona', body: 'You are a helpful coding assistant.' },
+      { kind: 'user', role: 'HumanMessage', meta: 'input', body: 'Read /tmp/notes.md and check the auth bug status in repo "app".' },
+      { kind: 'ai', role: 'AIMessage', meta: 'tool_calls × 1', body: 'Reading the notes first.', tool: 'filesystem__read_file', args: '{"path":"/tmp/notes.md"}', tcid: 'a1' },
+      { kind: 'tool', role: 'ToolMessage', meta: 'id=a1', body: '# Q4 Notes\nWaiting on the auth fix in "app".' },
+      { kind: 'ai', role: 'AIMessage', meta: 'tool_calls × 1', body: 'Now checking open auth issues.', tool: 'github__list_issues', args: '{"repo":"app","labels":["auth"]}', tcid: 'b2' },
+      { kind: 'tool', role: 'ToolMessage', meta: 'id=b2', body: '[{"number":1247,"title":"OAuth callback fails on Safari","state":"open"}]' },
+      { kind: 'ai', role: 'AIMessage', meta: 'final · no tool_calls', body: 'The notes reference the auth fix, which is open issue #1247 ("OAuth callback fails on Safari").', fresh: true }
+    ]
+  }
+];
+
+const rpSvg = document.getElementById('rpSvg');
+const rpNarr = document.getElementById('rpNarr');
+const rpMsgs = document.getElementById('rpMsgs');
+let rpIdx = -1, rpTimer = null;
+
+function renderRp() {
+  if (rpIdx < 0) {
+    rpSvg.querySelectorAll('.gb-gnode').forEach(n => n.classList.remove('active'));
+    rpSvg.querySelectorAll('.gb-edge').forEach(e => e.classList.remove('active'));
+    rpNarr.className = 'rp-narration';
+    rpNarr.innerHTML = `
+      <div class="step">Step 0</div>
+      <div class="actor">Idle</div>
+      <p>Press play to start. The agent will read a file via the filesystem server, then look up an issue via github, then summarise. Watch the graph nodes light up and the messages accumulate.</p>
+    `;
+    rpMsgs.innerHTML = `
+      <div class="me-msg user" style="opacity:0.55;">
+        <div class="role"><span class="r-tag">SystemMessage</span><span class="meta">persona</span></div>
+        <div class="body">You are a helpful coding assistant. Use the available tools to answer the user.</div>
+      </div>
+    `;
+    return;
+  }
+  const s = rpStages[rpIdx];
+  rpSvg.querySelectorAll('.gb-gnode').forEach(n => n.classList.toggle('active', n.dataset.id === s.active));
+  rpSvg.querySelectorAll('.gb-edge').forEach(e => e.classList.toggle('active', e.dataset.id === s.edge));
+  rpNarr.className = 'rp-narration ' + s.cls;
+  rpNarr.innerHTML = `
+    <div class="step">${s.step}</div>
+    <div class="actor">${s.actor}</div>
+    <p>${s.text}</p>
+  `;
+  rpMsgs.innerHTML = s.msgs.map(m => {
+    const cls = m.kind === 'sys' ? 'user' : m.kind;
+    const styleSys = m.kind === 'sys' ? ' style="opacity:0.55;"' : '';
+    let body = `<div class="body">${meEscape(m.body).replace(/\n/g, '<br>')}</div>`;
+    if (m.tool) {
+      body += `<pre class="tool-call"><span class="k">name</span>: <span class="s">"${m.tool}"</span>, <span class="k">args</span>: <span class="s">${m.args}</span></pre>`;
+    }
+    return `<div class="me-msg ${cls}${m.fresh ? ' fresh' : ''}"${styleSys}>
+      <div class="role"><span class="r-tag">${m.role}</span><span class="meta">${m.meta}</span></div>
+      ${body}
+    </div>`;
+  }).join('');
+  // scroll to bottom
+  rpMsgs.scrollTop = rpMsgs.scrollHeight;
+}
+function rpAdvance() {
+  if (rpIdx < rpStages.length - 1) { rpIdx++; renderRp(); }
+  else { clearInterval(rpTimer); rpTimer = null; rpPlay.textContent = '▶ Play'; }
+}
+const rpPlay = document.getElementById('rpPlay');
+const rpReset = document.getElementById('rpReset');
+rpPlay.onclick = () => {
+  if (rpTimer) { clearInterval(rpTimer); rpTimer = null; rpPlay.textContent = '▶ Play'; return; }
+  if (rpIdx >= rpStages.length - 1) { rpIdx = -1; renderRp(); }
+  rpPlay.textContent = '⏸ Pause';
+  rpTimer = setInterval(rpAdvance, 2400);
+  rpAdvance();
+};
+rpReset.onclick = () => {
+  if (rpTimer) { clearInterval(rpTimer); rpTimer = null; rpPlay.textContent = '▶ Play'; }
+  rpIdx = -1; renderRp();
+};
+renderRp();
+
+// ============ KC + OBJECTIVES + SCROLL SPY ============
+document.querySelectorAll('.kc-opts').forEach(group => {
+  const correct = parseInt(group.dataset.correct);
+  const feedback = group.parentElement.querySelector('.kc-feedback');
+  Array.from(group.children).forEach((opt, i) => {
+    opt.onclick = () => {
+      Array.from(group.children).forEach(o => o.classList.remove('correct', 'wrong'));
+      if (i === correct) opt.classList.add('correct');
+      else { opt.classList.add('wrong'); group.children[correct].classList.add('correct'); }
+      feedback.classList.add('show');
+    };
+  });
+});
+document.querySelectorAll('#objList .check').forEach(c => {
+  c.onclick = () => c.classList.toggle('done');
+});
+const sections = ['s1','s2','s3','s4','s5','kc','res'].map(id => document.getElementById(id));
+const sbLinks = document.querySelectorAll('#sbList a');
+const progFill = document.getElementById('progressFill');
+const progLbl = document.getElementById('progressLabel');
+function onScroll() {
+  const docH = document.body.scrollHeight - window.innerHeight;
+  const pct = Math.min(100, Math.max(0, (window.scrollY / docH) * 100));
+  progFill.style.width = pct + '%';
+  progLbl.textContent = Math.round(pct) + '%';
+  const triggerY = window.scrollY + 140;
+  let activeId = null;
+  for (const s of sections) { if (s && s.offsetTop <= triggerY) activeId = s.id; }
+  sbLinks.forEach(a => a.classList.toggle('active', a.dataset.target === activeId));
+}
+window.addEventListener('scroll', onScroll, { passive: true });
+onScroll();
+</script>
+</body>
+</html>

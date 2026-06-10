@@ -1,0 +1,1874 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Module 5.4 — Advanced Transports (gRPC &amp; Extensions)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Source+Serif+4:ital,opsz,wght@0,8..60,300;0,8..60,400;0,8..60,500;0,8..60,600;1,8..60,400&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #08090b; --bg-2: #0b0f1a;
+    --panel: #0d1117; --panel-2: #111827; --panel-3: #111827;
+    --line: #1e2330; --line-strong: #2a3142;
+    --text: #e8eaed; --text-dim: #a8aeb8; --text-mute: #6b7280;
+    --teal: #6366f1; --purple: #8b5cf6; --pink: #f7768e;
+    --amber: #f59e0b; --red: #f7768e; --blue: #818cf8;
+    --green: #10b981; --orange: #f59e0b;
+    --mono: 'JetBrains Mono', ui-monospace, monospace;
+    --sans: 'Outfit', system-ui, -apple-system, sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; scroll-padding-top: 80px; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans);
+    font-size: 16px; line-height: 1.65; -webkit-font-smoothing: antialiased; overflow-x: hidden; }
+  body::before {
+    content: ""; position: fixed; inset: 0;
+    background-image:
+      linear-gradient(rgba(99, 102, 241, 0.035) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(99, 102, 241, 0.035) 1px, transparent 1px);
+    background-size: 48px 48px; pointer-events: none; z-index: 0;
+    mask-image: radial-gradient(ellipse 80% 60% at 50% 30%, black 40%, transparent 100%);
+  }
+  body::after {
+    content: ""; position: fixed; inset: 0;
+    background:
+      radial-gradient(ellipse 50% 30% at 20% 10%, rgba(99, 102, 241,0.06), transparent 60%),
+      radial-gradient(ellipse 40% 25% at 90% 80%, rgba(139, 92, 246,0.05), transparent 60%);
+    pointer-events: none; z-index: 0;
+  }
+
+  /* topbar */
+  .topbar { position: sticky; top: 0; z-index: 50;
+    backdrop-filter: blur(14px); background: rgba(10,14,26,0.85);
+    border-bottom: 1px solid var(--line); }
+  .topbar-inner { max-width: 1200px; margin: 0 auto;
+    padding: 14px 32px; display: flex; align-items: center; gap: 24px; }
+  .brand { font-family: var(--mono); font-size: 12px;
+    letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--teal); font-weight: 600;
+    display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+  .brand .dot { width: 8px; height: 8px; background: var(--teal);
+    border-radius: 50%; box-shadow: 0 0 12px rgba(99, 102, 241,0.6); }
+  .track-progress { flex: 1; display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; }
+  .track-progress::-webkit-scrollbar { display: none; }
+  .tp-item { font-family: var(--mono); font-size: 10.5px;
+    letter-spacing: 0.1em; text-transform: uppercase;
+    color: var(--text-mute); padding: 4px 10px;
+    border-radius: 4px; border: 1px solid var(--line);
+    white-space: nowrap; }
+  .tp-item.done { color: var(--text-dim); }
+  .tp-item.done::before { content: "✓ "; color: var(--teal); }
+  .tp-item.current { color: var(--teal); border-color: var(--teal); background: rgba(99, 102, 241,0.06); }
+  .progress-bar { flex-shrink: 0; font-family: var(--mono); font-size: 11px;
+    color: var(--text-dim); display: flex; align-items: center; gap: 10px; }
+  .progress-track { width: 80px; height: 4px; background: var(--line);
+    border-radius: 2px; overflow: hidden; }
+  .progress-fill { height: 100%; background: linear-gradient(90deg, var(--teal), var(--purple));
+    width: 0%; transition: width 0.3s ease; }
+
+  /* layout */
+  .layout { max-width: 1200px; margin: 0 auto;
+    padding: 56px 32px 120px; display: grid;
+    grid-template-columns: 220px 1fr; gap: 56px;
+    position: relative; z-index: 1; }
+  .sidebar { position: sticky; top: 80px; align-self: start;
+    max-height: calc(100vh - 96px); overflow-y: auto; }
+  .sb-label { font-family: var(--mono); font-size: 10.5px;
+    letter-spacing: 0.16em; text-transform: uppercase;
+    color: var(--text-mute); margin-bottom: 18px;
+    padding-bottom: 12px; border-bottom: 1px solid var(--line); }
+  .sb-list { list-style: none; }
+  .sb-list li a { display: flex; align-items: center; gap: 12px;
+    padding: 9px 0; font-size: 13.5px;
+    color: var(--text-dim); text-decoration: none;
+    border-left: 2px solid transparent; padding-left: 12px;
+    transition: all 0.2s; line-height: 1.4; }
+  .sb-list li a:hover { color: var(--text); }
+  .sb-list li a.active { color: var(--teal); border-left-color: var(--teal);
+    background: linear-gradient(90deg, rgba(99, 102, 241,0.05), transparent); }
+  .sb-list li a .num { font-family: var(--mono); font-size: 10.5px;
+    color: var(--text-mute); min-width: 22px; }
+  .sb-list li a.active .num { color: var(--teal); }
+
+  .content { min-width: 0; }
+  .crumb { display: flex; align-items: center; gap: 10px;
+    font-family: var(--mono); font-size: 11px;
+    letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--teal); margin-bottom: 22px; }
+  .crumb .bar { width: 24px; height: 1px; background: var(--teal); }
+  .crumb .sep { color: var(--text-mute); }
+  .crumb .dim { color: var(--text-dim); }
+
+  h1.module-title { font-size: clamp(34px, 5vw, 54px); font-weight: 800;
+    letter-spacing: -0.025em; line-height: 1.05;
+    margin-bottom: 18px; }
+  h1.module-title .accent { color: var(--teal); }
+  .lede { font-size: 18px; color: var(--text-dim); max-width: 700px; }
+
+  .hero-meta { display: flex; flex-wrap: wrap; gap: 20px;
+    margin-top: 26px; padding-top: 22px;
+    border-top: 1px solid var(--line); }
+  .hero-meta .m { display: flex; align-items: center; gap: 10px; }
+  .hero-meta .m-label { font-family: var(--mono); font-size: 10px;
+    letter-spacing: 0.14em; text-transform: uppercase; color: var(--text-mute); }
+  .hero-meta .m-val { font-family: var(--mono); font-size: 13px;
+    color: var(--text); font-weight: 500; }
+
+  .objectives { margin: 40px 0 64px;
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 14px; padding: 26px 28px;
+    position: relative; overflow: hidden; }
+  .objectives::before { content: ""; position: absolute; top: 0; left: 0; right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--teal) 30%, var(--purple) 70%, transparent); }
+  .obj-header { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+  .obj-icon { width: 32px; height: 32px;
+    background: rgba(99, 102, 241,0.12);
+    border: 1px solid rgba(99, 102, 241,0.3);
+    border-radius: 8px; display: grid; place-items: center; }
+  .obj-icon svg { width: 16px; height: 16px; }
+  .obj-title { font-family: var(--mono); font-size: 11px;
+    letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--teal); font-weight: 600; }
+  .obj-list { list-style: none; display: grid; gap: 10px; }
+  .obj-list li { display: grid; grid-template-columns: 22px 1fr;
+    gap: 12px; align-items: start;
+    color: #c2cad9; font-size: 14.5px; line-height: 1.55; }
+  .obj-list .check { width: 18px; height: 18px; border-radius: 4px;
+    border: 1.5px solid var(--line-strong); margin-top: 2px;
+    display: grid; place-items: center; color: var(--text-mute);
+    font-family: var(--mono); font-size: 11px;
+    cursor: pointer; transition: all 0.2s; }
+  .obj-list .check.done { background: rgba(99, 102, 241,0.15);
+    border-color: var(--teal); color: var(--teal); }
+
+  .section-label { font-family: var(--mono); font-size: 11px;
+    letter-spacing: 0.18em; text-transform: uppercase;
+    color: var(--text-mute); margin-bottom: 14px;
+    display: flex; align-items: center; gap: 12px; }
+  .section-label .sn { color: var(--teal); font-weight: 600; }
+  .section-label::before { content: ""; width: 6px; height: 6px;
+    background: var(--teal); border-radius: 1px; transform: rotate(45deg); }
+
+  h2 { font-size: 28px; font-weight: 700; letter-spacing: -0.015em;
+    margin-bottom: 18px; line-height: 1.2; }
+  h3.sub { font-size: 17px; font-weight: 700; margin: 30px 0 12px; color: var(--text); }
+  h3.sub .num { font-family: var(--mono); color: var(--teal); font-size: 12px; margin-right: 10px; }
+  section.block { margin-bottom: 72px; scroll-margin-top: 80px; }
+
+  p { color: #c2cad9; margin-bottom: 16px; }
+  p strong { color: var(--text); font-weight: 600; }
+  p code, li code, td code { font-family: var(--mono); font-size: 0.88em;
+    background: rgba(99, 102, 241, 0.08);
+    color: var(--teal); padding: 1px 6px; border-radius: 4px;
+    border: 1px solid rgba(99, 102, 241,0.15); }
+  ul.tight { list-style: none; padding: 0; margin: 14px 0 18px; }
+  ul.tight li { color: #c2cad9; padding: 6px 0 6px 22px; position: relative; }
+  ul.tight li::before { content: "›"; position: absolute; left: 4px; top: 6px;
+    color: var(--teal); font-family: var(--mono); font-weight: 600; }
+
+  .exercise-tag { display: inline-flex; align-items: center; gap: 8px;
+    font-family: var(--mono); font-size: 10.5px;
+    letter-spacing: 0.14em; text-transform: uppercase;
+    padding: 5px 12px; border-radius: 999px;
+    background: rgba(139, 92, 246,0.1);
+    border: 1px solid rgba(139, 92, 246,0.35);
+    color: var(--purple); margin-bottom: 12px; }
+  .exercise-tag .pulse { width: 6px; height: 6px;
+    background: var(--purple); border-radius: 50%;
+    animation: pulse 2s ease-in-out infinite; }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.4; transform: scale(1.3); }
+  }
+
+  .callout { border-left: 2px solid var(--teal);
+    background: linear-gradient(90deg, rgba(99, 102, 241,0.06), rgba(99, 102, 241,0));
+    padding: 18px 22px; margin: 22px 0;
+    border-radius: 0 6px 6px 0; }
+  .callout.purple { border-left-color: var(--purple);
+    background: linear-gradient(90deg, rgba(139, 92, 246,0.06), rgba(139, 92, 246,0)); }
+  .callout.amber { border-left-color: var(--amber);
+    background: linear-gradient(90deg, rgba(245, 158, 11,0.06), rgba(245, 158, 11,0)); }
+  .callout.red { border-left-color: var(--red);
+    background: linear-gradient(90deg, rgba(247, 118, 142,0.06), rgba(247, 118, 142,0)); }
+  .callout .tag { font-family: var(--mono); font-size: 10.5px;
+    letter-spacing: 0.16em; text-transform: uppercase;
+    color: var(--teal); margin-bottom: 6px; }
+  .callout.purple .tag { color: var(--purple); }
+  .callout.amber .tag { color: var(--amber); }
+  .callout.red .tag { color: var(--red); }
+  .callout p { margin-bottom: 0; }
+
+  /* ========= TRANSPORT COMPARISON ========= */
+  .tc-w { background: var(--panel); border: 1px solid var(--line);
+    border-radius: 14px; overflow: hidden; margin: 20px 0; }
+  .tc-head { padding: 14px 22px; background: var(--panel-2);
+    border-bottom: 1px solid var(--line);
+    display: flex; justify-content: space-between; align-items: center;
+    flex-wrap: wrap; gap: 10px; }
+  .tc-head .title { font-family: var(--mono); font-size: 11.5px;
+    letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-dim); }
+  .tc-tabs { display: flex; gap: 4px;
+    background: var(--panel-3); border-radius: 8px; padding: 3px;
+    font-family: var(--mono); font-size: 10.5px;
+    letter-spacing: 0.08em; text-transform: uppercase; }
+  .tc-tabs button { background: transparent; border: none;
+    color: var(--text-mute); padding: 5px 14px;
+    border-radius: 6px; cursor: pointer; transition: all 0.18s;
+    font-family: inherit; font-size: inherit;
+    letter-spacing: inherit; text-transform: inherit; }
+  .tc-tabs button.active.http { background: var(--teal); color: var(--bg); font-weight: 600; }
+  .tc-tabs button.active.grpc { background: var(--purple); color: var(--bg); font-weight: 600; }
+  .tc-stats { display: grid; grid-template-columns: repeat(4, 1fr);
+    background: var(--panel-2); border-bottom: 1px solid var(--line); }
+  .tc-stat { padding: 14px 18px; text-align: center; border-right: 1px solid var(--line);
+    transition: background 0.3s; }
+  .tc-stat:last-child { border-right: none; }
+  .tc-stat .v { font-family: var(--mono); font-size: 22px;
+    font-weight: 600; line-height: 1; margin-bottom: 4px;
+    transition: color 0.3s; }
+  .tc-stat .k { font-family: var(--mono); font-size: 10px;
+    letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-mute); }
+  .tc-w.mode-http .tc-stat .v { color: var(--teal); }
+  .tc-w.mode-grpc .tc-stat .v { color: var(--purple); }
+  .tc-body { display: grid; grid-template-columns: 1fr 1fr; }
+  .tc-col { padding: 22px 24px; border-right: 1px solid var(--line); }
+  .tc-col:last-child { border-right: none; background: var(--panel-2); }
+  .tc-col .h { font-family: var(--mono); font-size: 10.5px;
+    letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--text-mute); margin-bottom: 12px; }
+  .tc-row { display: flex; justify-content: space-between;
+    padding: 8px 0; border-bottom: 1px solid var(--line);
+    font-size: 13.5px; gap: 12px; }
+  .tc-row:last-child { border-bottom: none; }
+  .tc-row .k { color: var(--text-dim); font-family: var(--mono); font-size: 12px; }
+  .tc-row .v { color: var(--text); text-align: right; font-family: var(--mono); font-size: 12px; }
+  .tc-pre { font-family: var(--mono); font-size: 12px;
+    background: #06080f; border: 1px solid var(--line);
+    border-radius: 8px; padding: 12px 14px;
+    color: #c2cad9; line-height: 1.65;
+    overflow-x: auto; white-space: pre; max-height: 280px; overflow-y: auto; }
+  .tc-pre .k { color: var(--blue); }
+  .tc-pre .v { color: var(--teal); }
+  .tc-pre .n { color: var(--amber); }
+  .tc-pre .c { color: var(--text-mute); font-style: italic; }
+  .tc-pre .r { color: var(--red); }
+  .tc-pre .b { color: var(--purple); }
+  .tc-explain { padding: 16px 24px; background: var(--panel);
+    border-top: 1px solid var(--line); color: #c2cad9;
+    font-size: 13.5px; line-height: 1.6; }
+  .tc-explain strong { color: var(--text); }
+  .tc-explain code { font-family: var(--mono); font-size: 0.88em;
+    background: rgba(255,255,255,0.04); color: var(--text);
+    padding: 1px 5px; border-radius: 3px; border: none; }
+
+  /* ========= STREAMING MODES ========= */
+  .sm-w { background: var(--panel); border: 1px solid var(--line);
+    border-radius: 14px; overflow: hidden; margin: 20px 0; }
+  .sm-head { padding: 14px 22px; background: var(--panel-2);
+    border-bottom: 1px solid var(--line);
+    display: flex; justify-content: space-between; align-items: center;
+    flex-wrap: wrap; gap: 10px; }
+  .sm-head .title { font-family: var(--mono); font-size: 11.5px;
+    letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-dim); }
+  .sm-modes { display: flex; gap: 4px;
+    background: var(--panel-3); border-radius: 8px; padding: 3px;
+    font-family: var(--mono); font-size: 10.5px;
+    letter-spacing: 0.08em; text-transform: uppercase; flex-wrap: wrap; }
+  .sm-modes button { background: transparent; border: none;
+    color: var(--text-mute); padding: 5px 12px;
+    border-radius: 6px; cursor: pointer; transition: all 0.18s;
+    font-family: inherit; font-size: inherit;
+    letter-spacing: inherit; text-transform: inherit; }
+  .sm-modes button.active { background: var(--purple); color: var(--bg); font-weight: 600; }
+  .sm-controls { padding: 14px 22px;
+    background: var(--panel-2); border-bottom: 1px solid var(--line);
+    display: flex; gap: 8px; justify-content: flex-end; }
+  .sm-btn { font-family: var(--mono); font-size: 11px;
+    letter-spacing: 0.1em; text-transform: uppercase;
+    padding: 6px 14px; border-radius: 6px;
+    background: transparent; border: 1px solid var(--line-strong);
+    color: var(--text-dim); cursor: pointer; transition: all 0.15s; }
+  .sm-btn:hover { border-color: var(--teal); color: var(--teal); }
+  .sm-btn.primary { color: var(--teal); border-color: var(--teal); }
+  .sm-stage { padding: 28px 24px;
+    background: radial-gradient(ellipse 70% 50% at 50% 50%, rgba(139, 92, 246,0.04), transparent 70%);
+    min-height: 280px; }
+  .sm-svg { width: 100%; height: 240px; }
+  .sm-meta { padding: 12px 24px; background: var(--bg-2);
+    border-top: 1px solid var(--line); border-bottom: 1px solid var(--line);
+    font-family: var(--mono); font-size: 11.5px; color: var(--text-dim);
+    display: flex; gap: 22px; flex-wrap: wrap; }
+  .sm-meta .item { display: flex; align-items: center; gap: 8px; }
+  .sm-meta .item .v { color: var(--text); font-weight: 600; }
+  .sm-info { padding: 18px 24px; background: var(--panel-2);
+    color: #c2cad9; font-size: 13.5px; line-height: 1.6; }
+  .sm-info .lbl { font-family: var(--mono); font-size: 10.5px;
+    letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--purple); margin-bottom: 6px; }
+  .sm-info strong { color: var(--text); }
+  .sm-info code { font-family: var(--mono); font-size: 0.88em;
+    background: rgba(255,255,255,0.04); color: var(--text);
+    padding: 1px 5px; border-radius: 3px; border: none; }
+  .sm-proto { font-family: var(--mono); font-size: 12px;
+    background: #06080f; border: 1px solid var(--line);
+    border-radius: 6px; padding: 10px 12px;
+    color: #c2cad9; line-height: 1.55; margin-top: 8px;
+    white-space: pre; overflow-x: auto; }
+  .sm-proto .k { color: var(--purple); }
+  .sm-proto .t { color: var(--blue); }
+  .sm-proto .v { color: var(--teal); }
+  .sm-proto .n { color: var(--amber); }
+  .sm-proto .c { color: var(--text-mute); font-style: italic; }
+  .sm-proto .s { color: var(--pink); font-weight: 600; }
+
+  /* SVG packet anim */
+  .sm-actor { fill: var(--bg-2); stroke: var(--line-strong); stroke-width: 1.5; }
+  .sm-actor.client { stroke: var(--blue); fill: rgba(129, 140, 248,0.06); }
+  .sm-actor.server { stroke: var(--teal); fill: rgba(99, 102, 241,0.06); }
+  .sm-label { font-family: var(--mono); font-size: 11px; fill: var(--text); }
+  .sm-sub { font-family: var(--mono); font-size: 9.5px; fill: var(--text-mute); letter-spacing: 0.05em; }
+  .sm-axis { stroke: var(--line); stroke-width: 1; stroke-dasharray: 3 3; }
+
+  /* ========= PROTOBUF EXPLORER ========= */
+  .pb-w { background: var(--panel); border: 1px solid var(--line);
+    border-radius: 14px; overflow: hidden; margin: 20px 0; }
+  .pb-head { padding: 14px 22px; background: var(--panel-2);
+    border-bottom: 1px solid var(--line);
+    display: flex; justify-content: space-between; align-items: center; }
+  .pb-head .title { font-family: var(--mono); font-size: 11.5px;
+    letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-dim); }
+  .pb-head .hint { font-family: var(--mono); font-size: 10.5px; color: var(--text-mute); }
+  .pb-body { display: grid; grid-template-columns: 1fr 320px; min-height: 480px; }
+  .pb-code { padding: 22px 24px; font-family: var(--mono); font-size: 13px;
+    line-height: 2; color: #c2cad9;
+    border-right: 1px solid var(--line);
+    overflow-x: auto; white-space: pre; }
+  .pb-code .k { color: var(--purple); }
+  .pb-code .t { color: var(--blue); }
+  .pb-code .v { color: var(--teal); }
+  .pb-code .n { color: var(--amber); }
+  .pb-code .c { color: var(--text-mute); font-style: italic; }
+  .pb-code .s { color: var(--pink); }
+  .pb-hit { cursor: pointer; padding: 2px 4px; border-radius: 4px;
+    border: 1px solid transparent; transition: all 0.18s; }
+  .pb-hit:hover { background: rgba(129, 140, 248,0.08); }
+  .pb-hit.active { background: rgba(129, 140, 248,0.2);
+    border-color: var(--blue); box-shadow: 0 0 0 3px rgba(129, 140, 248,0.12); }
+  .pb-side { padding: 22px 24px; background: var(--panel-2); }
+  .pb-side .pk { font-family: var(--mono); font-size: 10.5px;
+    letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--blue); margin-bottom: 6px; }
+  .pb-side h4 { font-size: 17px; color: var(--text);
+    margin-bottom: 10px; font-family: var(--mono);
+    font-weight: 700; letter-spacing: -0.005em; }
+  .pb-side p { color: #c2cad9; font-size: 13px;
+    line-height: 1.6; margin-bottom: 12px; }
+  .pb-side p code { font-family: var(--mono); font-size: 0.88em;
+    background: rgba(255,255,255,0.04); color: var(--text);
+    padding: 1px 5px; border-radius: 3px; border: none; }
+  .pb-side .label { font-family: var(--mono); font-size: 10px;
+    letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--text-mute); margin-top: 12px; margin-bottom: 6px; }
+  .pb-side .wire { font-family: var(--mono); font-size: 11px;
+    background: #06080f; border: 1px solid var(--line);
+    border-radius: 6px; padding: 9px 11px; color: #c2cad9;
+    line-height: 1.5; white-space: pre; overflow-x: auto; }
+  .pb-side .wire .k { color: var(--blue); }
+  .pb-side .wire .v { color: var(--teal); }
+  .pb-side .wire .n { color: var(--amber); }
+  .pb-side .placeholder { color: var(--text-mute); font-size: 13px;
+    font-style: italic; line-height: 1.55; }
+
+  /* ========= HYBRID ARCHITECTURE ========= */
+  .ha-w { background: var(--panel); border: 1px solid var(--line);
+    border-radius: 14px; overflow: hidden; margin: 20px 0; }
+  .ha-head { padding: 14px 22px; background: var(--panel-2);
+    border-bottom: 1px solid var(--line);
+    display: flex; justify-content: space-between; align-items: center;
+    flex-wrap: wrap; gap: 10px; }
+  .ha-head .title { font-family: var(--mono); font-size: 11.5px;
+    letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-dim); }
+  .ha-clients { display: flex; gap: 6px; flex-wrap: wrap; }
+  .ha-clients button { font-family: var(--mono); font-size: 10.5px;
+    letter-spacing: 0.08em; text-transform: uppercase;
+    background: var(--bg-2); border: 1px solid var(--line);
+    color: var(--text-mute); padding: 6px 12px; border-radius: 6px;
+    cursor: pointer; transition: all 0.18s; }
+  .ha-clients button:hover { color: var(--text); border-color: var(--line-strong); }
+  .ha-clients button.active { background: rgba(99, 102, 241,0.08);
+    border-color: var(--teal); color: var(--teal); }
+  .ha-body { padding: 28px 24px;
+    background: radial-gradient(ellipse 70% 50% at 50% 50%, rgba(99, 102, 241,0.04), transparent 70%); }
+  .ha-svg { width: 100%; height: 360px; }
+  .ha-explain { padding: 18px 24px; background: var(--panel-2);
+    border-top: 1px solid var(--line);
+    border-left: 3px solid var(--teal); }
+  .ha-explain .lbl { font-family: var(--mono); font-size: 10.5px;
+    letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--teal); margin-bottom: 6px; }
+  .ha-explain.grpc { border-left-color: var(--purple); }
+  .ha-explain.grpc .lbl { color: var(--purple); }
+  .ha-explain.web { border-left-color: var(--amber); }
+  .ha-explain.web .lbl { color: var(--amber); }
+  .ha-explain h4 { font-size: 16px; color: var(--text); margin-bottom: 8px; font-weight: 700; }
+  .ha-explain p { color: #c2cad9; font-size: 13.5px;
+    line-height: 1.6; margin-bottom: 0; }
+  .ha-explain p code { font-family: var(--mono); font-size: 0.88em;
+    background: rgba(255,255,255,0.04); color: var(--text);
+    padding: 1px 5px; border-radius: 3px; border: none; }
+
+  /* shared svg styles */
+  .node-box { fill: var(--bg-2); stroke: var(--line-strong); stroke-width: 1.5; transition: all 0.3s; }
+  .node-box.client { stroke: var(--blue); fill: rgba(129, 140, 248,0.06); }
+  .node-box.proxy { stroke: var(--amber); fill: rgba(245, 158, 11,0.06); }
+  .node-box.teal { stroke: var(--teal); fill: rgba(99, 102, 241,0.06); }
+  .node-box.purple { stroke: var(--purple); fill: rgba(139, 92, 246,0.06); }
+  .node-box.lit { stroke-width: 2.5; filter: drop-shadow(0 0 8px rgba(99, 102, 241,0.5)); }
+  .node-box.lit.purple { filter: drop-shadow(0 0 8px rgba(139, 92, 246,0.5)); }
+  .node-box.lit.amber { filter: drop-shadow(0 0 8px rgba(245, 158, 11,0.5)); }
+  .node-text { font-family: var(--mono); font-size: 11px; fill: var(--text); line-height: 1.4; }
+  .node-sub { font-family: var(--mono); font-size: 9px; fill: var(--text-mute); letter-spacing: 0.05em; line-height: 1.3; }
+  .conn { stroke: var(--line-strong); stroke-width: 1.5; fill: none; }
+  .conn.teal { stroke: var(--teal); stroke-width: 2; }
+  .conn.purple { stroke: var(--purple); stroke-width: 2; }
+  .conn.amber { stroke: var(--amber); stroke-width: 2; }
+
+  /* ========= GRPC-WEB BRIDGE ========= */
+  .gw-w { background: var(--panel); border: 1px solid var(--line);
+    border-radius: 14px; overflow: hidden; margin: 20px 0; }
+  .gw-head { padding: 14px 22px; background: var(--panel-2);
+    border-bottom: 1px solid var(--line);
+    display: flex; justify-content: space-between; align-items: center; }
+  .gw-head .title { font-family: var(--mono); font-size: 11.5px;
+    letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-dim); }
+  .gw-head .ctl { display: flex; gap: 8px; }
+  .gw-stage-bar { padding: 16px 22px;
+    background: var(--panel-2); border-bottom: 1px solid var(--line); }
+  .gw-stages { display: flex; gap: 6px; align-items: stretch; }
+  .gw-stage { flex: 1; padding: 7px 10px; border-radius: 6px;
+    background: var(--bg-2); border: 1px solid var(--line);
+    font-family: var(--mono); font-size: 10px;
+    letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--text-mute);
+    text-align: center; transition: all 0.3s; cursor: pointer; }
+  .gw-stage.active { background: rgba(99, 102, 241,0.1);
+    border-color: var(--teal); color: var(--teal); font-weight: 600; }
+  .gw-stage.done { opacity: 0.55; }
+  .gw-body { padding: 28px 24px;
+    background: radial-gradient(ellipse 70% 50% at 50% 50%, rgba(129, 140, 248,0.04), transparent 70%); }
+  .gw-svg { width: 100%; height: 240px; }
+  .gw-narr { padding: 18px 24px; background: var(--bg-2);
+    border-top: 1px solid var(--line); border-left: 3px solid var(--teal); }
+  .gw-narr .lbl { font-family: var(--mono); font-size: 10.5px;
+    letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--teal); margin-bottom: 6px; }
+  .gw-narr h4 { font-size: 16px; color: var(--text); margin-bottom: 8px; font-weight: 700; }
+  .gw-narr p { color: #c2cad9; font-size: 13.5px; line-height: 1.6; margin-bottom: 0; }
+  .gw-narr p code { font-family: var(--mono); font-size: 0.88em;
+    background: rgba(255,255,255,0.04); color: var(--text);
+    padding: 1px 5px; border-radius: 3px; border: none; }
+
+  /* code block */
+  .code-pre { font-family: var(--mono); font-size: 13px;
+    background: #06080f;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 18px 20px;
+    line-height: 1.7;
+    color: #c2cad9;
+    overflow-x: auto;
+    white-space: pre;
+    border-left: 3px solid var(--teal);
+    margin: 18px 0; }
+  .code-pre.purple { border-left-color: var(--purple); }
+  .code-pre.amber { border-left-color: var(--amber); }
+  .code-pre .k { color: var(--purple); }
+  .code-pre .d { color: var(--pink); }
+  .code-pre .s { color: var(--teal); }
+  .code-pre .f { color: var(--blue); }
+  .code-pre .c { color: var(--text-mute); font-style: italic; }
+  .code-pre .n { color: var(--amber); }
+  .code-pre .t { color: var(--blue); }
+
+  /* knowledge check */
+  .kc { margin: 56px 0 24px;
+    background: linear-gradient(180deg, rgba(139, 92, 246,0.04), rgba(139, 92, 246,0) 50%), var(--panel);
+    border: 1px solid var(--line); border-radius: 14px;
+    padding: 28px; position: relative; overflow: hidden; }
+  .kc::before { content: ""; position: absolute; top: 0; left: 0; right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--purple), transparent); }
+  .kc-head { display: flex; align-items: center; gap: 14px; margin-bottom: 18px; }
+  .kc-icon { width: 36px; height: 36px;
+    background: rgba(139, 92, 246,0.12);
+    border: 1px solid rgba(139, 92, 246,0.3);
+    border-radius: 8px;
+    display: grid; place-items: center; }
+  .kc-icon svg { width: 17px; height: 17px; }
+  .kc-label { font-family: var(--mono); font-size: 11px;
+    letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--purple); font-weight: 600; }
+  .kc-title { font-size: 22px; font-weight: 700; letter-spacing: -0.01em; margin: 4px 0 0; }
+  .kc-q { margin-top: 22px; padding-top: 22px; border-top: 1px solid var(--line); }
+  .kc-q:first-of-type { border-top: none; padding-top: 0; margin-top: 0; }
+  .kc-prompt { font-size: 15px; color: var(--text); font-weight: 600;
+    margin-bottom: 14px; line-height: 1.45; }
+  .kc-prompt .qn { display: inline-block; font-family: var(--mono);
+    font-size: 11px; color: var(--purple); margin-right: 8px; letter-spacing: 0.1em; }
+  .kc-prompt code { font-family: var(--mono); font-size: 0.88em;
+    background: rgba(255,255,255,0.04);
+    color: var(--text); padding: 1px 5px;
+    border-radius: 3px; }
+  .kc-opts { display: grid; gap: 8px; }
+  .kc-opt { padding: 12px 16px; background: var(--panel-2);
+    border: 1px solid var(--line); border-radius: 8px;
+    color: #c2cad9; font-size: 14px;
+    cursor: pointer; transition: all 0.18s;
+    text-align: left;
+    display: grid; grid-template-columns: 20px 1fr;
+    gap: 12px; align-items: start;
+    font-family: inherit; line-height: 1.5; }
+  .kc-opt .marker { font-family: var(--mono); font-size: 11px;
+    color: var(--text-mute); margin-top: 2px; }
+  .kc-opt:hover { border-color: var(--purple); color: var(--text); }
+  .kc-opt.correct { border-color: var(--teal);
+    background: rgba(99, 102, 241,0.08); color: var(--teal); }
+  .kc-opt.correct .marker { color: var(--teal); }
+  .kc-opt.wrong { border-color: var(--red);
+    background: rgba(247, 118, 142,0.08); color: var(--red); }
+  .kc-opt.wrong .marker { color: var(--red); }
+  .kc-opt code { font-family: var(--mono); font-size: 0.88em;
+    background: rgba(255,255,255,0.04);
+    color: var(--text); padding: 1px 5px;
+    border-radius: 3px; }
+  .kc-opt.correct code, .kc-opt.wrong code { background: transparent; color: inherit; }
+  .kc-feedback { margin-top: 12px; padding: 10px 14px; border-radius: 6px;
+    font-size: 13px;
+    background: rgba(99, 102, 241,0.06);
+    border-left: 2px solid var(--teal);
+    color: #c2cad9; display: none; line-height: 1.55; }
+  .kc-feedback.show { display: block; }
+  .kc-feedback strong { color: var(--teal); }
+  .kc-feedback code { font-family: var(--mono); font-size: 0.88em;
+    background: rgba(255,255,255,0.04);
+    color: var(--text); padding: 1px 5px;
+    border-radius: 3px; }
+
+  /* resources */
+  .resources { margin-top: 96px; padding-top: 56px; border-top: 1px solid var(--line); }
+  .resources-header { margin-bottom: 36px; }
+  .resources-header .label { font-family: var(--mono); font-size: 11px;
+    letter-spacing: 0.18em; text-transform: uppercase;
+    color: var(--text-mute);
+    display: flex; align-items: center; gap: 12px;
+    margin-bottom: 18px; }
+  .resources-header .label::before { content: ""; width: 28px; height: 1px; background: var(--text-mute); }
+  .resources-header h2.r-h { font-size: clamp(28px, 4vw, 40px);
+    font-weight: 800; letter-spacing: -0.02em;
+    margin-bottom: 14px; line-height: 1.1; }
+  .resources-header h2.r-h .accent { color: var(--teal); }
+  .resources-header .r-sub { color: var(--text-dim); font-size: 15px; max-width: 620px; }
+  .r-card { background: var(--panel); border: 1px solid var(--line);
+    border-radius: 14px; padding: 26px 28px;
+    margin-bottom: 16px; position: relative;
+    transition: border-color 0.2s, transform 0.2s; }
+  .r-card:hover { border-color: var(--line-strong); transform: translateY(-1px); }
+  .r-card::before { content: ""; position: absolute;
+    left: -1px; top: 18px; bottom: 18px;
+    width: 3px; border-radius: 3px;
+    background: var(--accent, var(--teal)); }
+  .r-card.teal { --accent: var(--teal); }
+  .r-card.purple { --accent: var(--purple); }
+  .r-card.pink { --accent: var(--pink); }
+  .r-top { display: flex; align-items: flex-start; gap: 14px; margin-bottom: 16px; }
+  .r-icon { width: 38px; height: 38px; border-radius: 8px;
+    display: grid; place-items: center; flex-shrink: 0;
+    background: rgba(99, 102, 241,0.12);
+    border: 1px solid rgba(99, 102, 241,0.3); }
+  .r-card.purple .r-icon { background: rgba(139, 92, 246,0.12); border-color: rgba(139, 92, 246,0.3); }
+  .r-card.pink .r-icon { background: rgba(247, 118, 142,0.12); border-color: rgba(247, 118, 142,0.3); }
+  .r-icon svg { width: 18px; height: 18px; }
+  .r-titles .kind { font-size: 14px; font-weight: 700; color: var(--text); margin-bottom: 2px; }
+  .r-titles .tagline { font-family: var(--mono); font-size: 11.5px; color: var(--text-mute); }
+  .r-card h3.r-title { font-size: 18px; font-weight: 700;
+    margin-bottom: 10px; letter-spacing: -0.005em; }
+  .r-card.teal h3.r-title { color: var(--teal); }
+  .r-card.purple h3.r-title { color: var(--purple); }
+  .r-card.pink h3.r-title { color: var(--pink); }
+  .r-card p.r-desc { color: #b9c1d2; font-size: 14.5px;
+    line-height: 1.6; margin-bottom: 18px; }
+  .r-card p.r-desc code { font-family: var(--mono); font-size: 0.9em;
+    background: rgba(255,255,255,0.04); color: var(--text);
+    padding: 1px 5px; border-radius: 3px; border: none; }
+  .r-btn { display: inline-flex; align-items: center; gap: 10px;
+    font-family: var(--mono); font-size: 11.5px;
+    letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--text); text-decoration: none;
+    padding: 9px 18px;
+    border: 1px solid var(--line-strong); border-radius: 999px;
+    background: transparent; transition: all 0.18s; }
+  .r-card.teal .r-btn:hover { border-color: var(--teal); color: var(--teal); box-shadow: 0 0 0 4px rgba(99, 102, 241,0.08); }
+  .r-card.purple .r-btn:hover { border-color: var(--purple); color: var(--purple); box-shadow: 0 0 0 4px rgba(139, 92, 246,0.08); }
+  .r-card.pink .r-btn:hover { border-color: var(--pink); color: var(--pink); box-shadow: 0 0 0 4px rgba(247, 118, 142,0.08); }
+
+  .nav-foot { margin-top: 80px; padding-top: 32px;
+    border-top: 1px solid var(--line);
+    display: flex; justify-content: space-between; align-items: center;
+    font-family: var(--mono); font-size: 11.5px;
+    letter-spacing: 0.1em; text-transform: uppercase;
+    color: var(--text-mute); }
+  .nav-foot a { color: var(--teal); text-decoration: none; }
+
+  @media (max-width: 980px) {
+    .layout { grid-template-columns: 1fr; gap: 0; padding: 40px 24px 80px; }
+    .sidebar { display: none; }
+    .tc-body, .pb-body { grid-template-columns: 1fr; }
+    .tc-col, .pb-code { border-right: none; border-bottom: 1px solid var(--line); }
+    .tc-stats { grid-template-columns: 1fr 1fr; }
+    .topbar-inner { padding: 12px 20px; }
+    .track-progress { display: none; }
+  }
+  /* ===== M0 indigo / serif theme overlay ===== */
+  :root { --serif: 'Source Serif 4', Georgia, serif; }
+  h1.module-title { font-family: var(--serif); font-weight: 400; letter-spacing: -0.022em; }
+  h1.module-title .accent { font-style: italic; font-weight: 300; }
+  .lede { font-family: var(--serif); font-weight: 300; }
+  h2 { font-family: var(--serif); font-weight: 400; letter-spacing: -0.01em; }
+  p { font-family: var(--serif); font-weight: 300; }
+  ul.tight li { font-family: var(--serif); font-weight: 300; }
+  p em { font-style: italic; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-inner">
+    <div class="brand"><span class="dot"></span><span>MCP / Masterclass</span></div>
+    <div class="track-progress">
+      <div class="tp-item done">Track 0 · Foundations</div>
+      <div class="tp-item done">Track 1 · Protocol</div>
+      <div class="tp-item done">Track 2 · Servers</div>
+      <div class="tp-item done">Track 3 · Clients</div>
+      <div class="tp-item done">Track 4 · Security</div>
+      <div class="tp-item current">Track 5 · Production</div>
+      <div class="tp-item">Track 6 · Capstone</div>
+    </div>
+    <div class="progress-bar">
+      <span id="progressLabel">0%</span>
+      <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+    </div>
+  </div>
+</div>
+
+<div class="layout">
+
+  <aside class="sidebar">
+    <div class="sb-label">Module 5.4 · Contents</div>
+    <ul class="sb-list" id="sbList">
+      <li><a href="#s1" data-target="s1"><span class="num">01</span><span>HTTP/SSE vs gRPC</span></a></li>
+      <li><a href="#s2" data-target="s2"><span class="num">02</span><span>The four streaming modes</span></a></li>
+      <li><a href="#s3" data-target="s3"><span class="num">03</span><span>Protobuf, line by line</span></a></li>
+      <li><a href="#s4" data-target="s4"><span class="num">04</span><span>Hybrid architecture</span></a></li>
+      <li><a href="#s5" data-target="s5"><span class="num">05</span><span>gRPC-web for browsers</span></a></li>
+      <li><a href="#kc" data-target="kc"><span class="num">✓</span><span>Knowledge check</span></a></li>
+      <li><a href="#res" data-target="res"><span class="num">⌘</span><span>Resources</span></a></li>
+    </ul>
+  </aside>
+
+  <div class="content">
+
+    <div class="crumb">
+      <span class="bar"></span>
+      <span>Track 05 — Production, Deployment &amp; Ecosystem</span>
+      <span class="sep">/</span>
+      <span class="dim">Module 5.4</span>
+    </div>
+
+    <h1 class="module-title">Advanced transports <span class="accent">(gRPC &amp; extensions)</span>.</h1>
+    <p class="lede">
+      Streamable HTTP is what you ship. It works, it's the spec default, and it's behind every
+      production MCP server worth pointing at. So when does anyone reach for gRPC? When the
+      workload demands true bidirectional streaming, sub-millisecond latency, or strongly-typed
+      schemas across language boundaries. This module is the honest case for — and against —
+      adding gRPC to your stack, plus the bridge layer (gRPC-web) that makes either choice
+      reachable from a browser.
+    </p>
+
+    <div class="hero-meta">
+      <div class="m"><span class="m-label">Time</span><span class="m-val">50 min</span></div>
+      <div class="m"><span class="m-label">Format</span><span class="m-val">5 interactive widgets</span></div>
+      <div class="m"><span class="m-label">Builds on</span><span class="m-val">5.0–5.3</span></div>
+      <div class="m"><span class="m-label">Stack</span><span class="m-val">gRPC · Protobuf · Envoy · gRPC-web</span></div>
+    </div>
+
+    <div class="objectives">
+      <div class="obj-header">
+        <div class="obj-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M5 12h14M12 5l7 7-7 7"/>
+          </svg>
+        </div>
+        <div class="obj-title">What you'll master</div>
+      </div>
+      <ul class="obj-list" id="objList">
+        <li><div class="check" data-i="0">01</div><span>Compare HTTP/SSE and gRPC on a wire level — payload size, multiplexing, schema enforcement, and which one fits which workload.</span></li>
+        <li><div class="check" data-i="1">02</div><span>Distinguish the four gRPC streaming modes — unary, server-stream, client-stream, bidirectional — and pick the right one per RPC.</span></li>
+        <li><div class="check" data-i="2">03</div><span>Read and write a Protobuf <code>.proto</code> file, understanding tag numbers, wire types, and the rules for evolving a schema without breaking clients.</span></li>
+        <li><div class="check" data-i="3">04</div><span>Run a hybrid server that exposes the same logic over both <code>/mcp</code> (Streamable HTTP) and <code>:50051</code> (gRPC), with shared lifespan and tools.</span></li>
+        <li><div class="check" data-i="4">05</div><span>Bridge gRPC to browser clients via gRPC-web — knowing why the browser can't speak native gRPC and how the Envoy proxy handles the translation.</span></li>
+      </ul>
+    </div>
+
+    <!-- ============ SECTION 1 ============ -->
+    <section class="block" id="s1">
+      <div class="section-label"><span class="sn">01</span> &nbsp;HTTP/SSE vs gRPC</div>
+      <h2>Two transports, two completely different bets.</h2>
+
+      <p>
+        Streamable HTTP and gRPC are not interchangeable. They optimize for different things. HTTP
+        is the universal language of the internet — every load balancer, proxy, browser, and
+        ops tool understands it. gRPC is the modern RPC framework — denser on the wire, schema-
+        first, true bidirectional, but harder to deploy. Toggle between them to see what each one
+        actually emits on the wire and what it buys you:
+      </p>
+
+      <span class="exercise-tag"><span class="pulse"></span>Compare · wire format and properties</span>
+
+      <div class="tc-w mode-http" id="tcW">
+        <div class="tc-head">
+          <span class="title">Wire Format · Streamable HTTP vs gRPC</span>
+          <div class="tc-tabs">
+            <button class="http active" data-mode="http">Streamable HTTP</button>
+            <button class="grpc" data-mode="grpc">gRPC</button>
+          </div>
+        </div>
+        <div class="tc-stats" id="tcStats"></div>
+        <div class="tc-body">
+          <div class="tc-col">
+            <div class="h">Properties</div>
+            <div id="tcProps"></div>
+          </div>
+          <div class="tc-col">
+            <div class="h">A single <code>tools/call</code> on the wire</div>
+            <pre class="tc-pre" id="tcWire"></pre>
+          </div>
+        </div>
+        <div class="tc-explain" id="tcExplain"></div>
+      </div>
+
+      <h3 class="sub"><span class="num">›</span> The honest answer: pick HTTP unless you know why</h3>
+      <p>
+        For 95% of MCP servers, Streamable HTTP is the right answer for the reasons we covered in
+        5.0: every reverse proxy, every browser, every cloud LB, every cURL-based smoke test
+        understands it. gRPC is a deliberate choice for specific workloads:
+      </p>
+
+      <ul class="tight">
+        <li><strong>Backend-to-backend MCP traffic at high RPS.</strong> Service-mesh sidecar pattern where the "client" is itself a server. Protobuf's compactness and HTTP/2 multiplexing pay off when you're doing thousands of RPCs per second between trusted services.</li>
+        <li><strong>Strictly-typed multi-language teams.</strong> One <code>.proto</code> file generates clients in Python, Go, Java, TypeScript, Rust — all with identical types. JSON over HTTP gives you the same wire but every team writes their own (slightly different) types by hand.</li>
+        <li><strong>Genuinely bidirectional, low-latency streaming.</strong> SSE is one-way after the initial POST. If you need a continuous stream <em>both</em> directions (think collaborative editing of agent state), gRPC's bidi mode is what was actually designed for that.</li>
+      </ul>
+
+      <div class="callout amber">
+        <div class="tag">gRPC is not part of the MCP spec (today)</div>
+        <p>
+          As of the current spec, <code>stdio</code> and <code>streamable-http</code> are the only
+          transports MCP officially defines. gRPC servers exist in the wild as <em>extensions</em>
+          — typically wrapping the same FastMCP/SDK tool logic behind a hand-written gRPC service
+          definition. Clients that consume them are bespoke; Claude Desktop, Cursor, and other
+          mainstream hosts speak HTTP. Adding gRPC means accepting that the client side is yours
+          to build.
+        </p>
+      </div>
+    </section>
+
+    <!-- ============ SECTION 2 ============ -->
+    <section class="block" id="s2">
+      <div class="section-label"><span class="sn">02</span> &nbsp;The four streaming modes</div>
+      <h2>One Protobuf method, four different shapes of conversation.</h2>
+
+      <p>
+        gRPC's real differentiator over HTTP/SSE is that it natively supports four distinct
+        streaming patterns, and you pick per-method by adding (or omitting) the
+        <code>stream</code> keyword on either side of the signature. Switch between the modes to
+        see what each looks like as a sequence of messages, and what kind of RPC it fits:
+      </p>
+
+      <span class="exercise-tag"><span class="pulse"></span>Explore · the four modes</span>
+
+      <div class="sm-w" id="smW">
+        <div class="sm-head">
+          <span class="title">gRPC Streaming Modes · Message Choreography</span>
+          <div class="sm-modes">
+            <button class="active" data-mode="unary">Unary</button>
+            <button data-mode="sstream">Server-stream</button>
+            <button data-mode="cstream">Client-stream</button>
+            <button data-mode="bidi">Bidirectional</button>
+          </div>
+        </div>
+        <div class="sm-controls">
+          <button class="sm-btn" id="smReset">↺ Reset</button>
+          <button class="sm-btn primary" id="smPlay">▶ Play</button>
+        </div>
+        <div class="sm-stage">
+          <svg class="sm-svg" viewBox="0 0 700 260" preserveAspectRatio="xMidYMid meet" id="smSvg"></svg>
+        </div>
+        <div class="sm-meta" id="smMeta"></div>
+        <div class="sm-info" id="smInfo"></div>
+      </div>
+
+      <h3 class="sub"><span class="num">›</span> Mapping MCP concepts onto streaming modes</h3>
+      <ul class="tight">
+        <li><strong>Tool call with a single result</strong> → <strong>unary</strong>. The classic case. Send args, get answer. 90% of MCP tool surface fits here.</li>
+        <li><strong>Tool call with progress updates</strong> → <strong>server-stream</strong>. One request, many messages back. This is what SSE gives you over HTTP. gRPC formalizes it with a real stream type.</li>
+        <li><strong>Batch ingest from client</strong> → <strong>client-stream</strong>. The client uploads many small messages, the server collates and replies once. Rare in MCP but useful for "send me this whole document in chunks".</li>
+        <li><strong>Interactive sampling / elicitation conversation</strong> → <strong>bidirectional</strong>. Server asks the host for a model completion; host streams tokens back while server is also streaming more requests. Genuinely two-way, the case where SSE starts feeling inadequate.</li>
+      </ul>
+    </section>
+
+    <!-- ============ SECTION 3 ============ -->
+    <section class="block" id="s3">
+      <div class="section-label"><span class="sn">03</span> &nbsp;Protobuf, line by line</div>
+      <h2>The <code>.proto</code> file is the contract — and the source of truth.</h2>
+
+      <p>
+        Where REST/JSON-RPC gives you a free-form payload and hopes everyone agrees on the shape,
+        gRPC is schema-first. A single <code>.proto</code> file declares your services, methods,
+        and message shapes — and then code generators in every language emit identical clients
+        and stubs from it. Click any highlighted element to see what it does and what it becomes
+        on the wire:
+      </p>
+
+      <span class="exercise-tag"><span class="pulse"></span>Explore · click a .proto element</span>
+
+      <div class="pb-w">
+        <div class="pb-head">
+          <span class="title">mcp_extension.proto · the schema</span>
+          <span class="hint">Tap a highlighted element →</span>
+        </div>
+        <div class="pb-body">
+          <pre class="pb-code" id="pbCode"><span class="c">// mcp_extension.proto</span>
+<span class="k">syntax</span> = <span class="v">"proto3"</span>;
+
+<span class="k">package</span> mcp.extension.<span class="pb-hit" data-id="version">v1</span>;
+
+<span class="k">option</span> go_package = <span class="v">"github.com/example/mcp-ext/v1"</span>;
+
+<span class="c">// The service is the gRPC counterpart of an MCP server.</span>
+<span class="pb-hit" data-id="service"><span class="k">service</span> <span class="t">MCPExtension</span></span> {
+
+  <span class="c">// Unary: one request, one response. Most tool calls.</span>
+  <span class="pb-hit" data-id="unary"><span class="k">rpc</span> <span class="t">CallTool</span>(<span class="t">CallToolRequest</span>) <span class="k">returns</span> (<span class="t">CallToolResponse</span>);</span>
+
+  <span class="c">// Server-stream: progress updates while a long-running tool works.</span>
+  <span class="pb-hit" data-id="sstream"><span class="k">rpc</span> <span class="t">CallToolStreaming</span>(<span class="t">CallToolRequest</span>) <span class="k">returns</span> (<span class="k">stream</span> <span class="t">ToolEvent</span>);</span>
+
+  <span class="c">// Bidirectional: full duplex for sampling exchanges.</span>
+  <span class="pb-hit" data-id="bidi"><span class="k">rpc</span> <span class="t">Sample</span>(<span class="k">stream</span> <span class="t">SampleRequest</span>) <span class="k">returns</span> (<span class="k">stream</span> <span class="t">SampleResponse</span>);</span>
+}
+
+<span class="c">// Request message — keep tag numbers stable forever.</span>
+<span class="k">message</span> <span class="t">CallToolRequest</span> {
+  <span class="pb-hit" data-id="tag1"><span class="k">string</span> tool_name = <span class="n">1</span>;</span>
+  <span class="pb-hit" data-id="tag2"><span class="k">map</span>&lt;<span class="k">string</span>, <span class="t">google.protobuf.Value</span>&gt; arguments = <span class="n">2</span>;</span>
+  <span class="pb-hit" data-id="tag3"><span class="k">string</span> session_id = <span class="n">3</span>;</span>
+  <span class="pb-hit" data-id="reserved"><span class="k">reserved</span> <span class="n">4</span>, <span class="n">5</span>;</span>  <span class="c">// removed fields — never reuse the tag</span>
+  <span class="pb-hit" data-id="reserved_names"><span class="k">reserved</span> <span class="v">"old_user_field"</span>;</span>
+}
+
+<span class="k">message</span> <span class="t">CallToolResponse</span> {
+  <span class="k">oneof</span> outcome {
+    <span class="t">ToolResult</span> result = <span class="n">1</span>;
+    <span class="t">ToolError</span> error = <span class="n">2</span>;
+  }
+  <span class="k">repeated</span> <span class="k">string</span> warnings = <span class="n">3</span>;
+}</pre>
+          <div class="pb-side" id="pbSide">
+            <div class="placeholder">Each highlighted element is a different piece of the Protobuf contract. Click any one to see what it does, the rules around evolving it, and what it looks like on the wire.</div>
+          </div>
+        </div>
+      </div>
+
+      <h3 class="sub"><span class="num">›</span> The schema evolution rules you cannot break</h3>
+      <p>
+        The single biggest reason teams reach for Protobuf — and the single biggest reason teams
+        get burned by it — is schema evolution. Three rules:
+      </p>
+
+      <ul class="tight">
+        <li><strong>Tag numbers are forever.</strong> If field <code>user_id</code> was tag 3, it cannot ever become tag 4. If you delete the field, mark its tag <code>reserved</code> so nobody re-uses it for a different field later. Re-using a tag silently corrupts wire-incompatible clients.</li>
+        <li><strong>Adding a field is always safe.</strong> Old clients ignore unknown fields. New clients see <code>None</code>/empty when the field isn't present. Pick a fresh tag number and ship.</li>
+        <li><strong>Changing a type is never safe.</strong> Changing <code>int32</code> to <code>int64</code>? Usually fine. Changing <code>string</code> to <code>bytes</code>? Wire-compatible but semantically a different field. Changing <code>repeated</code>-ness? Breaks the world. When in doubt, add a new field with a new tag and deprecate the old one.</li>
+      </ul>
+
+      <div class="callout purple">
+        <div class="tag">Use <code>buf</code>, not raw <code>protoc</code></div>
+        <p>
+          The <code>buf</code> CLI is the modern, sane way to compile and lint <code>.proto</code>
+          files. It enforces the evolution rules above (it'll flag tag re-use, type changes, and
+          backward-incompatible renames before they ship), generates clients in every language
+          from one config, and integrates with CI. Don't reach for raw <code>protoc</code> in
+          2026; it's a working tool, but <code>buf</code> is the productivity layer everyone uses.
+        </p>
+      </div>
+    </section>
+
+    <!-- ============ SECTION 4 ============ -->
+    <section class="block" id="s4">
+      <div class="section-label"><span class="sn">04</span> &nbsp;Hybrid architecture</div>
+      <h2>The same tools, exposed over both transports, from one process.</h2>
+
+      <p>
+        The case for gRPC in MCP is rarely "instead of" — it's "in addition to". The same tool
+        logic, the same lifespan, the same Context, exposed simultaneously over Streamable HTTP
+        (for public/browser/Claude-Desktop traffic) and over gRPC (for internal high-volume
+        callers). Pick a client category to see which transport it lands on and why:
+      </p>
+
+      <span class="exercise-tag"><span class="pulse"></span>Pick · a client type</span>
+
+      <div class="ha-w" id="haW">
+        <div class="ha-head">
+          <span class="title">Dual-Transport MCP Server · One Process, Two Doors</span>
+          <div class="ha-clients">
+            <button class="active" data-c="claude">Claude.ai</button>
+            <button data-c="desktop">Claude Desktop</button>
+            <button data-c="cli">Internal Go service</button>
+            <button data-c="browser">Browser SPA</button>
+          </div>
+        </div>
+        <div class="ha-body">
+          <svg class="ha-svg" viewBox="0 0 700 360" preserveAspectRatio="xMidYMid meet" id="haSvg"></svg>
+        </div>
+        <div class="ha-explain" id="haExplain"></div>
+      </div>
+
+      <h3 class="sub"><span class="num">›</span> The FastMCP + grpcio shape</h3>
+      <p>
+        The trick to keeping the dual-transport server sane is to share <em>everything</em> above
+        the transport layer. One lifespan, one set of tool functions, one set of shared resources.
+        The two transport servers (Starlette for HTTP, grpc.aio for gRPC) just call into the
+        same handlers.
+      </p>
+
+<pre class="code-pre"><span class="k">import</span> asyncio
+<span class="k">from</span> contextlib <span class="k">import</span> asynccontextmanager
+<span class="k">from</span> fastmcp <span class="k">import</span> FastMCP
+<span class="k">import</span> grpc.aio
+<span class="k">from</span> .generated <span class="k">import</span> mcp_extension_pb2_grpc, mcp_extension_pb2
+
+<span class="c"># --- Shared business logic, transport-agnostic ---</span>
+<span class="d">@asynccontextmanager</span>
+<span class="k">async def</span> <span class="f">app_lifespan</span>(server):
+    db = <span class="k">await</span> <span class="f">create_pool</span>()
+    <span class="k">try</span>:
+        <span class="k">yield</span> {<span class="s">"db"</span>: db}
+    <span class="k">finally</span>:
+        <span class="k">await</span> db.<span class="f">close</span>()
+
+mcp = <span class="f">FastMCP</span>(<span class="s">"hybrid-server"</span>, lifespan=app_lifespan)
+
+<span class="d">@mcp.tool</span>
+<span class="k">async def</span> <span class="f">search</span>(query: <span class="k">str</span>, ctx: Context) -&gt; <span class="k">list</span>:
+    <span class="s">"""Full-text search."""</span>
+    db = ctx.request_context.lifespan_context[<span class="s">"db"</span>]
+    <span class="k">return</span> <span class="k">await</span> db.<span class="f">fetch</span>(<span class="s">"SELECT ... WHERE body LIKE $1"</span>, <span class="s">f"%{query}%"</span>)
+
+<span class="c"># --- gRPC servicer reuses the same tool logic ---</span>
+<span class="k">class</span> <span class="t">MCPExtensionServicer</span>(mcp_extension_pb2_grpc.<span class="t">MCPExtensionServicer</span>):
+    <span class="k">def</span> __init__(self, mcp_app, lifespan_ctx):
+        self.mcp_app = mcp_app
+        self.lifespan_ctx = lifespan_ctx
+
+    <span class="k">async def</span> <span class="f">CallTool</span>(self, request, context):
+        tool = self.mcp_app.<span class="f">get_tool</span>(request.tool_name)
+        result = <span class="k">await</span> tool.<span class="f">run</span>(
+            arguments=<span class="f">dict</span>(request.arguments),
+            lifespan_context=self.lifespan_ctx,
+        )
+        <span class="k">return</span> mcp_extension_pb2.<span class="t">CallToolResponse</span>(result=result.to_proto())
+
+<span class="c"># --- Run both transports from one process ---</span>
+<span class="k">async def</span> <span class="f">main</span>():
+    <span class="c"># HTTP transport (Streamable HTTP at :8000/mcp)</span>
+    http_task = asyncio.<span class="f">create_task</span>(
+        mcp.<span class="f">run_async</span>(transport=<span class="s">"streamable-http"</span>, port=<span class="n">8000</span>)
+    )
+    <span class="c"># gRPC transport (at :50051)</span>
+    grpc_server = grpc.aio.<span class="f">server</span>()
+    mcp_extension_pb2_grpc.<span class="f">add_MCPExtensionServicer_to_server</span>(
+        <span class="t">MCPExtensionServicer</span>(mcp, mcp.lifespan_context), grpc_server
+    )
+    grpc_server.<span class="f">add_insecure_port</span>(<span class="s">"[::]:50051"</span>)
+    <span class="k">await</span> grpc_server.<span class="f">start</span>()
+    <span class="k">await</span> asyncio.<span class="f">gather</span>(http_task, grpc_server.<span class="f">wait_for_termination</span>())
+
+asyncio.<span class="f">run</span>(<span class="f">main</span>())</pre>
+
+      <div class="callout">
+        <div class="tag">Keep one transport as the source of truth</div>
+        <p>
+          Two transports mean two contracts you have to keep in sync. The discipline that works:
+          treat your <code>@mcp.tool</code> definitions as the source of truth, and your
+          <code>.proto</code> as a thin gRPC-shaped projection of them — auto-generated where
+          possible. If the proto starts growing fields the MCP side doesn't have, you've already
+          built two servers instead of one.
+        </p>
+      </div>
+    </section>
+
+    <!-- ============ SECTION 5 ============ -->
+    <section class="block" id="s5">
+      <div class="section-label"><span class="sn">05</span> &nbsp;gRPC-web for browsers</div>
+      <h2>The bridge that lets a JavaScript client speak gRPC at all.</h2>
+
+      <p>
+        Native gRPC requires HTTP/2 trailers and binary frames the browser <em>cannot generate</em>
+        — the XHR and Fetch APIs don't expose them. Anyone who tells you "just use gRPC in the
+        browser" is hand-waving over a real translation layer. That layer is <strong>gRPC-web</strong>:
+        a wire-compatible subset of gRPC the browser <em>can</em> produce, plus an Envoy (or
+        equivalent) proxy that translates it into proper gRPC for the backend. Press play to
+        follow a request through:
+      </p>
+
+      <span class="exercise-tag"><span class="pulse"></span>Watch · the translation hop</span>
+
+      <div class="gw-w" id="gwW">
+        <div class="gw-head">
+          <span class="title">gRPC-web · How the Browser Reaches gRPC</span>
+          <div class="gw-head ctl">
+            <button class="sm-btn" id="gwReset">↺ Reset</button>
+            <button class="sm-btn primary" id="gwPlay">▶ Play</button>
+          </div>
+        </div>
+        <div class="gw-stage-bar">
+          <div class="gw-stages" id="gwStages">
+            <div class="gw-stage" data-i="0">1 · Browser POST</div>
+            <div class="gw-stage" data-i="1">2 · Envoy translates</div>
+            <div class="gw-stage" data-i="2">3 · gRPC to backend</div>
+            <div class="gw-stage" data-i="3">4 · Stream back</div>
+            <div class="gw-stage" data-i="4">5 · Envoy reframes</div>
+          </div>
+        </div>
+        <div class="gw-body">
+          <svg class="gw-svg" viewBox="0 0 700 220" preserveAspectRatio="xMidYMid meet" id="gwSvg"></svg>
+        </div>
+        <div class="gw-narr" id="gwNarr">
+          <div class="lbl">Idle</div>
+          <h4>Press play to trace one gRPC-web call</h4>
+          <p>A JavaScript client wants to call <code>CallTool</code>. It can't speak native gRPC because the browser won't emit HTTP/2 trailers. Envoy (or a similar proxy) bridges the gap.</p>
+        </div>
+      </div>
+
+      <h3 class="sub"><span class="num">›</span> The choice this forces on you</h3>
+      <p>
+        Adding gRPC means adding a proxy to your stack. Envoy is the canonical choice; alternatives
+        are <code>grpcwebproxy</code> (small Go binary) and Caddy with the gRPC-web module. None
+        of them are heavy, but all of them are extra moving parts compared to Streamable HTTP,
+        which is just HTTP. <strong>If your only browser client is the Anthropic-hosted Claude.ai
+        connector, you don't need gRPC-web at all</strong> — that's what Streamable HTTP is for.
+        gRPC-web becomes interesting when you have your own SPA that wants to talk to the same
+        gRPC backend your service-mesh sidecars are using.
+      </p>
+
+<pre class="code-pre amber"><span class="c"># envoy.yaml — the relevant filter chain</span>
+<span class="k">http_filters</span>:
+  - <span class="k">name</span>: envoy.filters.http.<span class="t">grpc_web</span>        <span class="c"># the translator</span>
+  - <span class="k">name</span>: envoy.filters.http.<span class="t">cors</span>            <span class="c"># browser CORS handling</span>
+  - <span class="k">name</span>: envoy.filters.http.router
+
+<span class="k">routes</span>:
+  - <span class="k">match</span>: { <span class="k">prefix</span>: <span class="s">"/mcp.extension.v1.MCPExtension/"</span> }
+    <span class="k">route</span>:
+      <span class="k">cluster</span>: mcp_backend
+      <span class="k">timeout</span>: <span class="n">0</span>s        <span class="c"># long streams</span>
+    <span class="k">cors</span>:
+      <span class="k">allow_origin_string_match</span>:
+        - { <span class="k">exact</span>: <span class="s">"https://app.example.com"</span> }
+      <span class="k">allow_methods</span>: <span class="s">"GET, PUT, DELETE, POST, OPTIONS"</span>
+      <span class="k">allow_headers</span>: <span class="s">"keep-alive,user-agent,cache-control,content-type,</span>
+<span class="s">                     content-transfer-encoding,custom-header-1,x-accept-content-transfer-encoding,</span>
+<span class="s">                     x-accept-response-streaming,x-user-agent,x-grpc-web,grpc-timeout"</span></pre>
+
+      <div class="callout red">
+        <div class="tag">gRPC-web doesn't do client-streaming or bidi</div>
+        <p>
+          gRPC-web supports <strong>unary</strong> and <strong>server-streaming</strong> only.
+          Client-streaming and bidirectional streaming require capabilities the browser doesn't
+          have. If you've designed your gRPC service to use bidirectional streams (the case where
+          gRPC's advantage is most visible), browser clients can't consume those methods — you'd
+          fall back to Streamable HTTP or WebSockets for those flows. Account for this when you
+          choose mode-per-method.
+        </p>
+      </div>
+    </section>
+
+    <!-- ============ KNOWLEDGE CHECK ============ -->
+    <section class="kc" id="kc">
+      <div class="kc-head">
+        <div class="kc-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
+          </svg>
+        </div>
+        <div>
+          <div class="kc-label">Knowledge Check · End of Module 5.4</div>
+          <div class="kc-title">Five checks before Module 5.5.</div>
+        </div>
+      </div>
+
+      <div class="kc-q">
+        <div class="kc-prompt"><span class="qn">Q1.</span>A teammate proposes "let's switch our MCP server from Streamable HTTP to gRPC for better performance". Your two-user internal tool sees 0.4 RPS at peak. What's the right response?</div>
+        <div class="kc-opts" data-correct="2">
+          <button class="kc-opt"><span class="marker">A</span><span>Switch immediately — gRPC is always faster</span></button>
+          <button class="kc-opt"><span class="marker">B</span><span>Run a benchmark to confirm the win</span></button>
+          <button class="kc-opt"><span class="marker">C</span><span>Push back: at 0.4 RPS the Protobuf compactness and HTTP/2 multiplexing buy you almost nothing, and you'll lose universal HTTP tooling (curl, browser, every proxy), Claude Desktop/Claude.ai compatibility, and add an Envoy proxy hop for any browser client. gRPC's win is at backend-to-backend at scale.</span></button>
+          <button class="kc-opt"><span class="marker">D</span><span>Add both — it can't hurt to have two transports</span></button>
+        </div>
+        <div class="kc-feedback"><strong>Right.</strong> gRPC is the right answer for specific workloads (high-RPS backend-to-backend, multi-language strict typing, true bidi streams). A 0.4 RPS internal tool is none of those. Pick the transport whose constraints fit your traffic, not the one with the better marketing.</div>
+      </div>
+
+      <div class="kc-q">
+        <div class="kc-prompt"><span class="qn">Q2.</span>You're defining a tool call with progress updates as the work proceeds. Which gRPC streaming mode fits?</div>
+        <div class="kc-opts" data-correct="1">
+          <button class="kc-opt"><span class="marker">A</span><span>Unary — one request, one response</span></button>
+          <button class="kc-opt"><span class="marker">B</span><span>Server-stream — <code>rpc CallToolStreaming(CallToolRequest) returns (stream ToolEvent)</code>. One request, many messages back, terminated when the tool finishes.</span></button>
+          <button class="kc-opt"><span class="marker">C</span><span>Client-stream — many requests, one response</span></button>
+          <button class="kc-opt"><span class="marker">D</span><span>Bidirectional — both sides stream simultaneously</span></button>
+        </div>
+        <div class="kc-feedback"><strong>Exactly.</strong> Progress notifications during a long tool execution are the canonical server-stream case. It's also what SSE gives you over HTTP, so the mental model carries cleanly across transports.</div>
+      </div>
+
+      <div class="kc-q">
+        <div class="kc-prompt"><span class="qn">Q3.</span>You remove a field from a <code>CallToolRequest</code> message. To make the schema safely evolvable, you should:</div>
+        <div class="kc-opts" data-correct="0">
+          <button class="kc-opt"><span class="marker">A</span><span>Mark its tag number <code>reserved</code> — and ideally the old field name too — so nobody can re-use the number for a different field later. Re-using a tag silently corrupts old clients.</span></button>
+          <button class="kc-opt"><span class="marker">B</span><span>Delete the field entirely; gRPC will figure it out</span></button>
+          <button class="kc-opt"><span class="marker">C</span><span>Re-use the tag number for a new field — it's "free"</span></button>
+          <button class="kc-opt"><span class="marker">D</span><span>Bump the package version to v2</span></button>
+        </div>
+        <div class="kc-feedback"><strong>Yes.</strong> Tag numbers are forever in Protobuf. <code>reserved 4, 5;</code> in the message body tells future maintainers (and the compiler) that those tags must never be reused. This is the rule the <code>buf</code> CLI enforces in CI.</div>
+      </div>
+
+      <div class="kc-q">
+        <div class="kc-prompt"><span class="qn">Q4.</span>A teammate ships a browser app that uses gRPC-web to call a service whose schema defines <code>rpc Chat(stream Msg) returns (stream Msg)</code>. The app fails at runtime. Why?</div>
+        <div class="kc-opts" data-correct="3">
+          <button class="kc-opt"><span class="marker">A</span><span>Envoy is misconfigured</span></button>
+          <button class="kc-opt"><span class="marker">B</span><span>The browser is too old</span></button>
+          <button class="kc-opt"><span class="marker">C</span><span>CORS headers are wrong</span></button>
+          <button class="kc-opt"><span class="marker">D</span><span>gRPC-web supports only unary and server-streaming. Bidirectional and client-streaming require browser capabilities (HTTP/2 trailers, request-body streaming) the browser doesn't expose. For bidi flows you fall back to Streamable HTTP or WebSockets.</span></button>
+        </div>
+        <div class="kc-feedback"><strong>Correct.</strong> This is the hard constraint of gRPC-web that catches teams off-guard. Design your gRPC service knowing browser clients can only consume two of the four streaming modes. Bidi-only methods belong to backend-to-backend traffic.</div>
+      </div>
+
+      <div class="kc-q">
+        <div class="kc-prompt"><span class="qn">Q5.</span>You're running a hybrid server with both Streamable HTTP at <code>:8000/mcp</code> and gRPC at <code>:50051</code>. To keep the two transports honest, the right discipline is:</div>
+        <div class="kc-opts" data-correct="1">
+          <button class="kc-opt"><span class="marker">A</span><span>Maintain two independent codebases per transport</span></button>
+          <button class="kc-opt"><span class="marker">B</span><span>Share the lifespan, tool functions, and Context. The two transport servers (Starlette + grpc.aio) become thin adapters that call into the same handlers. Use the MCP tool definitions as the source of truth and project the <code>.proto</code> from them.</span></button>
+          <button class="kc-opt"><span class="marker">C</span><span>Pick one transport and proxy the other to it</span></button>
+          <button class="kc-opt"><span class="marker">D</span><span>Run them in separate processes for isolation</span></button>
+        </div>
+        <div class="kc-feedback"><strong>Right.</strong> The win of a hybrid server is sharing everything above the transport layer. Two contracts to keep in sync is the cost; you minimize the divergence by treating the MCP side as canonical. The gRPC layer is a projection, not a parallel universe.</div>
+      </div>
+    </section>
+
+    <!-- ============ RESOURCES ============ -->
+    <section class="resources" id="res">
+      <div class="resources-header">
+        <div class="label">Schema &amp; Stack</div>
+        <h2 class="r-h">Resources for going <span class="accent">deeper</span></h2>
+        <p class="r-sub">
+          The gRPC project's official docs, the <code>buf</code> CLI for Protobuf workflows, and
+          Envoy's gRPC-web filter — the three pieces of any serious gRPC-on-MCP rollout.
+        </p>
+      </div>
+
+      <div class="r-card teal">
+        <div class="r-top">
+          <div class="r-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M5 12h14M12 5l7 7-7 7"/>
+            </svg>
+          </div>
+          <div class="r-titles">
+            <div class="kind">gRPC — Official docs</div>
+            <div class="tagline">Concepts, languages, streaming modes</div>
+          </div>
+        </div>
+        <h3 class="r-title">grpc.io · documentation</h3>
+        <p class="r-desc">
+          The canonical entry point. Read the <em>"Core concepts"</em> page for the four streaming
+          modes in formal terms, then the Python (or Go) quickstart. The <em>"Best practices"</em>
+          section on naming and versioning saves you from the schema-evolution mistakes everyone
+          makes on their first proto file.
+        </p>
+        <a class="r-btn" href="https://grpc.io/docs/" target="_blank" rel="noopener">
+          <span class="arr">↗</span> Open docs
+        </a>
+      </div>
+
+      <div class="r-card purple">
+        <div class="r-top">
+          <div class="r-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+              <polyline points="14 2 14 8 20 8"/>
+            </svg>
+          </div>
+          <div class="r-titles">
+            <div class="kind">Buf — Protobuf-first workflow</div>
+            <div class="tagline">Lint, generate, evolve</div>
+          </div>
+        </div>
+        <h3 class="r-title">buf.build · CLI &amp; Schema Registry</h3>
+        <p class="r-desc">
+          The modern alternative to raw <code>protoc</code>. Enforces backward-compatibility rules
+          (won't let you re-use a tag), generates clients for every language from one config,
+          and integrates with CI to fail builds on breaking changes. If you're shipping any
+          non-trivial <code>.proto</code>, this saves you from a class of bugs.
+        </p>
+        <a class="r-btn" href="https://buf.build/docs/" target="_blank" rel="noopener">
+          <span class="arr">↗</span> Open guide
+        </a>
+      </div>
+
+      <div class="r-card pink">
+        <div class="r-top">
+          <div class="r-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#f7768e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 0 1 4 9 15 15 0 0 1-4 9 15 15 0 0 1-4-9 15 15 0 0 1 4-9z"/>
+            </svg>
+          </div>
+          <div class="r-titles">
+            <div class="kind">Envoy — gRPC-web filter</div>
+            <div class="tagline">The bridge for browser clients</div>
+          </div>
+        </div>
+        <h3 class="r-title">envoyproxy.io · gRPC-web filter</h3>
+        <p class="r-desc">
+          Reference docs for the filter that translates browser gRPC-web requests into native
+          gRPC the backend understands. The configuration example here is the minimum filter
+          chain you need; the page also covers the limits (no client-streaming, no bidi) and the
+          CORS preflight requirements that catch most teams on their first integration.
+        </p>
+        <a class="r-btn" href="https://www.envoyproxy.io/docs/envoy/latest/configuration/http/http_filters/grpc_web_filter" target="_blank" rel="noopener">
+          <span class="arr">↗</span> Read filter docs
+        </a>
+      </div>
+    </section>
+
+    <div class="nav-foot">
+      <span>← <a href="#">5.3 Versioning, Registry &amp; Governance</a></span>
+      <span>Next → <a href="#">5.5 Production Readiness Checklist</a></span>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// ============ TRANSPORT COMPARISON ============
+const tcData = {
+  http: {
+    stats: [['HTTP/1.1+'],['JSON'],['text/event-stream'],['universal']],
+    statKeys: ['Protocol', 'Encoding', 'Streaming via', 'Tooling'],
+    props: [
+      ['Wire encoding', 'JSON / UTF-8'],
+      ['Multiplexing', 'HTTP/2 streams'],
+      ['Streaming', 'SSE (server→client)'],
+      ['Schema', 'JSON Schema (advisory)'],
+      ['Avg payload', '~480 bytes'],
+      ['Browser support', 'native'],
+      ['Reverse proxies', 'all of them'],
+      ['Debuggability', 'curl + browser DevTools'],
+    ],
+    wire: `<span class="c"># Request</span>
+<span class="k">POST</span> /mcp <span class="v">HTTP/1.1</span>
+<span class="k">Host</span>: mcp.example.com
+<span class="k">Content-Type</span>: <span class="v">application/json</span>
+<span class="k">Mcp-Session-Id</span>: <span class="v">S_4f17ab</span>
+
+{
+  <span class="k">"jsonrpc"</span>: <span class="v">"2.0"</span>,
+  <span class="k">"id"</span>: <span class="n">1</span>,
+  <span class="k">"method"</span>: <span class="v">"tools/call"</span>,
+  <span class="k">"params"</span>: {
+    <span class="k">"name"</span>: <span class="v">"search"</span>,
+    <span class="k">"arguments"</span>: { <span class="k">"q"</span>: <span class="v">"quarterly report"</span> }
+  }
+}
+
+<span class="c"># Response (single JSON, ~480 bytes)</span>
+<span class="k">HTTP/1.1</span> <span class="n">200</span> OK
+<span class="k">Content-Type</span>: <span class="v">application/json</span>
+
+{
+  <span class="k">"jsonrpc"</span>: <span class="v">"2.0"</span>, <span class="k">"id"</span>: <span class="n">1</span>,
+  <span class="k">"result"</span>: { <span class="k">"content"</span>: [...] }
+}`,
+    explain: '<strong>Streamable HTTP is the everywhere transport.</strong> JSON over HTTP — every browser, every proxy, every observability tool, every developer\'s curl muscle memory works. Multiplexing comes from HTTP/2 streams underneath. Streaming uses SSE (one-way, server→client) over the same connection. The trade-off is verbosity on the wire and the fact that the schema is advisory — both sides agree on JSON shapes by convention, not enforcement.'
+  },
+  grpc: {
+    stats: [['HTTP/2 only'],['Protobuf'],['native streams'],['ecosystem-specific']],
+    statKeys: ['Protocol', 'Encoding', 'Streaming via', 'Tooling'],
+    props: [
+      ['Wire encoding', 'Protobuf (binary)'],
+      ['Multiplexing', 'HTTP/2 streams (required)'],
+      ['Streaming', 'native, 4 modes'],
+      ['Schema', '.proto (enforced)'],
+      ['Avg payload', '~110 bytes'],
+      ['Browser support', 'no (needs gRPC-web)'],
+      ['Reverse proxies', 'HTTP/2-aware only'],
+      ['Debuggability', 'grpcurl / Wireshark + decoder'],
+    ],
+    wire: `<span class="c"># Request — HTTP/2 binary frame, displayed as hex+decoded</span>
+<span class="b">:method</span>: POST
+<span class="b">:path</span>: /mcp.extension.v1.MCPExtension/CallTool
+<span class="b">:scheme</span>: https
+<span class="b">content-type</span>: <span class="v">application/grpc</span>
+<span class="b">te</span>: trailers
+<span class="b">grpc-timeout</span>: <span class="n">30S</span>
+
+<span class="c"># Length-prefixed Protobuf payload (binary)</span>
+<span class="n">00 00 00 00 22</span>                        <span class="c"># compressed=false, len=34</span>
+<span class="n">0a 06</span> <span class="v">73 65 61 72 63 68</span>            <span class="c"># field 1: "search"</span>
+<span class="n">12 18</span> <span class="v">0a 01 71 12 13 71 75 61</span>   <span class="c"># field 2: arguments map</span>
+<span class="n">72 74 65 72 6c 79 20 72 65 70</span>
+<span class="n">6f 72 74</span>
+
+<span class="c"># Response (binary Protobuf + HTTP/2 trailers)</span>
+<span class="n">00 00 00 00 18 0a 16 ...</span>             <span class="c"># ~110 bytes total</span>
+<span class="b">grpc-status</span>: <span class="n">0</span>                          <span class="c"># trailer — OK</span>
+<span class="b">grpc-message</span>: <span class="v">""</span>`,
+    explain: '<strong>gRPC is denser, stricter, and harder to look at.</strong> Protobuf encodes the same data in ~25% the bytes of JSON. HTTP/2 trailers (which the browser can\'t generate) carry the per-call status. Native streaming has four modes vs SSE\'s one. The wire is binary so you can\'t curl it — you need <code>grpcurl</code> or a Wireshark dissector. In return: stricter types, better performance at high RPS, and a contract enforced by the schema rather than hoped-for between teams.'
+  }
+};
+
+const tcW = document.getElementById('tcW');
+const tcStats = document.getElementById('tcStats');
+const tcProps = document.getElementById('tcProps');
+const tcWire = document.getElementById('tcWire');
+const tcExplain = document.getElementById('tcExplain');
+
+function renderTc(mode) {
+  tcW.className = 'tc-w mode-' + mode;
+  const d = tcData[mode];
+  tcStats.innerHTML = d.stats.map((v, i) =>
+    `<div class="tc-stat"><div class="v">${v}</div><div class="k">${d.statKeys[i]}</div></div>`
+  ).join('');
+  tcProps.innerHTML = d.props.map(([k,v]) =>
+    `<div class="tc-row"><span class="k">${k}</span><span class="v">${v}</span></div>`
+  ).join('');
+  tcWire.innerHTML = d.wire;
+  tcExplain.innerHTML = d.explain;
+}
+document.querySelectorAll('.tc-tabs button').forEach(b => {
+  b.onclick = () => {
+    document.querySelectorAll('.tc-tabs button').forEach(x => x.classList.remove('active'));
+    b.classList.add('active');
+    renderTc(b.dataset.mode);
+  };
+});
+renderTc('http');
+
+// ============ STREAMING MODES ============
+const smModes = {
+  unary: {
+    name: 'Unary RPC',
+    fits: '~90% of MCP tool calls',
+    msgs: 4,
+    desc: '<strong>One request, one response.</strong> The default. The client sends one Protobuf message; the server processes it and sends back one Protobuf message. No streams, no progress. This is the gRPC equivalent of a "function call" — the simplest, lowest-overhead pattern. Maps cleanly to <code>tools/call</code> when no progress reporting is needed.',
+    proto: `<span class="k">rpc</span> <span class="t">CallTool</span>(<span class="t">CallToolRequest</span>) <span class="k">returns</span> (<span class="t">CallToolResponse</span>);`,
+    sequence: [
+      { from: 'c', t: 80 },
+      { from: 's', t: 220 },
+    ]
+  },
+  sstream: {
+    name: 'Server-Streaming RPC',
+    fits: 'Long tools with progress',
+    msgs: 6,
+    desc: '<strong>One request, many responses.</strong> The client sends one message; the server replies with a stream of zero-or-more messages, terminated by signaling end-of-stream. This is what SSE gives you over HTTP, but as a first-class gRPC concept with proper backpressure and termination. Use it for progress events during a long-running tool execution.',
+    proto: `<span class="k">rpc</span> <span class="t">CallToolStreaming</span>(<span class="t">CallToolRequest</span>) <span class="k">returns</span> (<span class="s">stream</span> <span class="t">ToolEvent</span>);`,
+    sequence: [
+      { from: 'c', t: 60 },
+      { from: 's', t: 130 },
+      { from: 's', t: 165 },
+      { from: 's', t: 200 },
+      { from: 's', t: 240 },
+    ]
+  },
+  cstream: {
+    name: 'Client-Streaming RPC',
+    fits: 'Batch ingest / chunked uploads',
+    msgs: 5,
+    desc: '<strong>Many requests, one response.</strong> The client streams a sequence of messages; when it signals end-of-stream, the server processes them collectively and sends one reply. Rare in MCP — you might use it for "send me this large document in chunks" or "ingest these log entries" patterns. The server cannot reply until the client closes its stream.',
+    proto: `<span class="k">rpc</span> <span class="t">UploadCorpus</span>(<span class="s">stream</span> <span class="t">Chunk</span>) <span class="k">returns</span> (<span class="t">UploadResult</span>);`,
+    sequence: [
+      { from: 'c', t: 60 },
+      { from: 'c', t: 95 },
+      { from: 'c', t: 130 },
+      { from: 'c', t: 165 },
+      { from: 's', t: 230 },
+    ]
+  },
+  bidi: {
+    name: 'Bidirectional Streaming RPC',
+    fits: 'Sampling, interactive state',
+    msgs: 7,
+    desc: '<strong>Both sides stream simultaneously.</strong> Each side reads and writes independently — full duplex over a single HTTP/2 stream. The choreography is entirely up to the application. This is where gRPC genuinely beats SSE: real two-way conversation. Useful for sampling exchanges where the server is streaming tokens out while also accepting more inputs from the host.',
+    proto: `<span class="k">rpc</span> <span class="t">Sample</span>(<span class="s">stream</span> <span class="t">SampleRequest</span>) <span class="k">returns</span> (<span class="s">stream</span> <span class="t">SampleResponse</span>);`,
+    sequence: [
+      { from: 'c', t: 60 },
+      { from: 's', t: 100 },
+      { from: 'c', t: 130 },
+      { from: 's', t: 160 },
+      { from: 's', t: 190 },
+      { from: 'c', t: 215 },
+      { from: 's', t: 240 },
+    ]
+  }
+};
+
+const smSvg = document.getElementById('smSvg');
+const smInfo = document.getElementById('smInfo');
+const smMeta = document.getElementById('smMeta');
+const smPlay = document.getElementById('smPlay');
+const smReset = document.getElementById('smReset');
+let smCurrent = 'unary';
+let smProgress = 0; // index in sequence visible
+let smTimer = null;
+
+function smRender() {
+  const m = smModes[smCurrent];
+  const clientX = 100, serverX = 600, yStart = 35, yEnd = 235;
+  let html = '';
+  // actors
+  html += `<rect class="sm-actor client" x="${clientX-70}" y="10" width="140" height="36" rx="6"/>`;
+  html += `<text class="sm-label" x="${clientX}" y="33" text-anchor="middle">Client</text>`;
+  html += `<rect class="sm-actor server" x="${serverX-70}" y="10" width="140" height="36" rx="6"/>`;
+  html += `<text class="sm-label" x="${serverX}" y="33" text-anchor="middle">Server</text>`;
+  // axis lines (time)
+  html += `<line class="sm-axis" x1="${clientX}" y1="46" x2="${clientX}" y2="${yEnd+10}"/>`;
+  html += `<line class="sm-axis" x1="${serverX}" y1="46" x2="${serverX}" y2="${yEnd+10}"/>`;
+  // messages
+  m.sequence.slice(0, smProgress).forEach((msg, i) => {
+    const y = msg.t;
+    const fromX = msg.from === 'c' ? clientX : serverX;
+    const toX = msg.from === 'c' ? serverX : clientX;
+    const color = msg.from === 'c' ? 'var(--blue)' : 'var(--teal)';
+    const xMid = (fromX + toX) / 2;
+    // draw arrow line
+    html += `<line x1="${fromX}" y1="${y}" x2="${toX}" y2="${y}" stroke="${color}" stroke-width="2" marker-end="url(#smArrow${msg.from})" opacity="0.85"/>`;
+    // packet dot at end
+    const animateX = msg.from === 'c' ? clientX : serverX;
+    const animateXEnd = msg.from === 'c' ? serverX : clientX;
+    html += `<circle cx="${animateXEnd}" cy="${y}" r="5" fill="${color}">
+      <animate attributeName="cx" from="${animateX}" to="${animateXEnd}" dur="0.5s" fill="freeze"/>
+    </circle>`;
+    // label
+    const label = msg.from === 'c' ? '→' : '←';
+    const lblTxt = msg.from === 'c' ? 'request' : 'response';
+    html += `<text x="${xMid}" y="${y - 5}" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="${msg.from === 'c' ? 'var(--blue)' : 'var(--teal)'}" letter-spacing="0.04em">${lblTxt} #${i+1}</text>`;
+  });
+  // arrow markers
+  html = `<defs>
+    <marker id="smArrowc" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="var(--blue)"/>
+    </marker>
+    <marker id="smArrows" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="var(--teal)"/>
+    </marker>
+  </defs>` + html;
+  smSvg.innerHTML = html;
+
+  // meta
+  smMeta.innerHTML = `
+    <div class="item">Mode: <span class="v">${m.name}</span></div>
+    <div class="item">Messages: <span class="v">${m.sequence.length}</span></div>
+    <div class="item">Fits: <span class="v">${m.fits}</span></div>
+    <div class="item">Shown: <span class="v">${smProgress}/${m.sequence.length}</span></div>
+  `;
+  smInfo.innerHTML = `
+    <div class="lbl">${m.name}</div>
+    <p>${m.desc}</p>
+    <div class="sm-proto">${m.proto}</div>
+  `;
+}
+function smAdvance() {
+  const m = smModes[smCurrent];
+  if (smProgress < m.sequence.length) { smProgress++; smRender(); }
+  else { clearInterval(smTimer); smTimer = null; smPlay.textContent = '▶ Play'; }
+}
+smPlay.onclick = () => {
+  if (smTimer) { clearInterval(smTimer); smTimer = null; smPlay.textContent = '▶ Play'; return; }
+  const m = smModes[smCurrent];
+  if (smProgress >= m.sequence.length) smProgress = 0;
+  smPlay.textContent = '⏸ Pause';
+  smTimer = setInterval(smAdvance, 700);
+  smAdvance();
+};
+smReset.onclick = () => {
+  if (smTimer) { clearInterval(smTimer); smTimer = null; smPlay.textContent = '▶ Play'; }
+  smProgress = 0;
+  smRender();
+};
+document.querySelectorAll('.sm-modes button').forEach(b => {
+  b.onclick = () => {
+    document.querySelectorAll('.sm-modes button').forEach(x => x.classList.remove('active'));
+    b.classList.add('active');
+    smCurrent = b.dataset.mode;
+    if (smTimer) { clearInterval(smTimer); smTimer = null; smPlay.textContent = '▶ Play'; }
+    smProgress = smModes[smCurrent].sequence.length;
+    smRender();
+  };
+});
+smProgress = smModes['unary'].sequence.length;
+smRender();
+
+// ============ PROTOBUF EXPLORER ============
+const pbData = {
+  version: {
+    name: 'package mcp.extension.v1',
+    desc: 'The <strong>package</strong> declaration namespaces all messages and services in this file. The <code>.v1</code> suffix is critical: it lets you ship breaking changes by introducing <code>v2</code> alongside <code>v1</code>, with clients pinning their dependency. Without versioned packages, you have one shot at the schema forever.',
+    label: 'On the wire',
+    wire: `<span class="c"># gRPC method paths embed the package name</span>
+<span class="k">:path</span>: <span class="v">/mcp.extension.v1.MCPExtension/CallTool</span>
+                  <span class="c">↑ package      ↑ service ↑ method</span>`
+  },
+  service: {
+    name: 'service MCPExtension',
+    desc: 'A <strong>service</strong> is the gRPC equivalent of an MCP server. It groups RPCs the way an MCP server groups tools. One service per file is conventional; many services in one file becomes hard to evolve. Code generation emits one client class and one servicer base class per service in every target language.',
+    label: 'Generated Python',
+    wire: `<span class="c"># From mcp_extension_pb2_grpc.py — auto-generated</span>
+<span class="k">class</span> <span class="v">MCPExtensionStub</span>:
+    <span class="k">def</span> __init__(<span class="k">self</span>, channel):
+        <span class="k">self</span>.<span class="v">CallTool</span> = channel.unary_unary(
+            <span class="v">"/mcp.extension.v1.MCPExtension/CallTool"</span>,
+            request_serializer=<span class="v">CallToolRequest.SerializeToString</span>,
+            response_deserializer=<span class="v">CallToolResponse.FromString</span>,
+        )`
+  },
+  unary: {
+    name: 'rpc CallTool — unary',
+    desc: 'A <strong>unary RPC</strong>: one request message, one response message, no streams on either side. The default and simplest pattern. For an MCP-style server, this maps to "call a tool that doesn\'t need to report progress." Use it whenever you can; only escalate to streaming when there\'s a real reason.',
+    label: 'Wire path',
+    wire: `<span class="c"># Client invocation</span>
+<span class="k">POST</span> /mcp.extension.v1.MCPExtension/CallTool
+<span class="k">content-type</span>: <span class="v">application/grpc</span>
+
+<span class="c"># Single length-prefixed Protobuf request</span>
+<span class="c"># → single length-prefixed Protobuf response</span>
+<span class="c"># → grpc-status trailer</span>`
+  },
+  sstream: {
+    name: 'rpc CallToolStreaming — server-stream',
+    desc: 'The <code>stream</code> keyword <em>after</em> <code>returns</code> makes this <strong>server-streaming</strong>. The client sends one <code>CallToolRequest</code>; the server replies with as many <code>ToolEvent</code> messages as it wants, then closes the stream. Equivalent to SSE\'s pattern but with proper backpressure and a typed message envelope.',
+    label: 'When to use this',
+    wire: `<span class="c"># Use server-streaming for:</span>
+<span class="v">• progress events from long tools</span>
+<span class="v">• large result sets returned in pages</span>
+<span class="v">• subscribed resource updates</span>
+<span class="v">• any case where SSE would have fit</span>`
+  },
+  bidi: {
+    name: 'rpc Sample — bidirectional',
+    desc: '<strong>Both</strong> request and response have <code>stream</code> — full-duplex. Each side reads and writes independently. The choreography is the application\'s call: the client may send 1 message and read 100, or send 100 and read 1, or interleave them. This is the genuinely-novel mode gRPC offers; SSE cannot do it.',
+    label: 'When to use this',
+    wire: `<span class="c"># Use bidi for:</span>
+<span class="v">• MCP sampling — server streams to host,</span>
+<span class="v">  host streams tokens back, simultaneously</span>
+<span class="v">• collaborative agent-state updates</span>
+<span class="v">• anything genuinely two-way streaming</span>
+
+<span class="c"># Browser clients cannot use bidi via gRPC-web.</span>`
+  },
+  tag1: {
+    name: 'string tool_name = 1;',
+    desc: 'A <strong>field</strong> with type <code>string</code>, name <code>tool_name</code>, and <strong>tag number 1</strong>. The tag is what\'s actually serialized on the wire — the name only exists in the <code>.proto</code> file and your code. <strong>Tag 1 belongs to <code>tool_name</code> forever.</strong> Even if you delete the field, you can never reuse tag 1 for anything else without corrupting existing clients.',
+    label: 'Wire encoding',
+    wire: `<span class="c"># Protobuf wire format for "tool_name=search"</span>
+<span class="n">0a</span>      <span class="c"># tag 1, wire type 2 (length-delimited)</span>
+<span class="n">06</span>      <span class="c"># length: 6 bytes</span>
+<span class="v">73 65 61 72 63 68</span>  <span class="c"># "search"</span>`
+  },
+  tag2: {
+    name: 'map<string, Value> arguments = 2;',
+    desc: 'A <strong>map field</strong>. On the wire, maps are encoded as a repeated message with key and value fields — Protobuf doesn\'t have a primitive map type. <code>google.protobuf.Value</code> is the well-known type for "any JSON-like value" (string, number, bool, null, list, struct). Use it when you genuinely need dynamic content; prefer typed fields otherwise.',
+    label: 'On the wire',
+    wire: `<span class="c"># Maps are sugar for repeated key/value messages</span>
+<span class="n">12 18</span>                    <span class="c"># tag 2, len 24</span>
+  <span class="n">0a 01</span> <span class="v">71</span>               <span class="c"># key: "q"</span>
+  <span class="n">12 13</span>                  <span class="c"># value: nested Value</span>
+    <span class="v">71 75 61 72 74 65 72 6c</span>
+    <span class="v">79 20 72 65 70 6f 72 74</span>  <span class="c"># "quarterly report"</span>`
+  },
+  tag3: {
+    name: 'string session_id = 3;',
+    desc: 'Tag 3 — the MCP session ID, carried alongside the tool call args. This is one of those fields where the value matters more than the type: it\'s what binds the call to the rest of the session (capabilities, lifespan state, SSE stream from Module 5.1). In a hybrid HTTP+gRPC server, this is what makes the two transports interoperable on session state.',
+    label: 'Pairs with HTTP header',
+    wire: `<span class="c"># Streamable HTTP — same data, different envelope</span>
+<span class="k">Mcp-Session-Id</span>: <span class="v">S_4f17ab</span>
+
+<span class="c"># gRPC — same data inside the message</span>
+<span class="k">session_id</span>: <span class="v">"S_4f17ab"</span>`
+  },
+  reserved: {
+    name: 'reserved 4, 5;',
+    desc: 'The single most important Protobuf statement for long-lived schemas. <strong>Tags 4 and 5 used to belong to fields that no longer exist.</strong> Reserving them tells the compiler — and every future developer — that those tags are permanently off-limits. Without this, a teammate could re-use tag 4 next year, and every client built against the old schema would interpret the new field as the old one. This is how silent data corruption ships.',
+    label: 'What gets enforced',
+    wire: `<span class="c"># protoc / buf will reject this at compile time:</span>
+<span class="k">message</span> <span class="v">CallToolRequest</span> {
+  <span class="k">reserved</span> <span class="n">4</span>, <span class="n">5</span>;
+  <span class="k">string</span> new_field = <span class="n">4</span>;   <span class="c">// ERROR: 4 is reserved</span>
+}`
+  },
+  reserved_names: {
+    name: 'reserved "old_user_field";',
+    desc: 'Same idea as <code>reserved</code> for tags, but for <strong>field names</strong>. Prevents a future developer from re-introducing a field with the old name (which would confuse anyone reading <code>.proto</code> diffs and potentially break JSON-Protobuf bridges that key on names). Belt-and-suspenders with the tag reservation.',
+    label: 'Best practice',
+    wire: `<span class="c"># Always reserve BOTH tag and name when deleting:</span>
+<span class="k">reserved</span> <span class="n">4</span>, <span class="n">5</span>;
+<span class="k">reserved</span> <span class="v">"old_user_field"</span>, <span class="v">"legacy_id"</span>;`
+  },
+};
+
+const pbCode = document.getElementById('pbCode');
+const pbSide = document.getElementById('pbSide');
+pbCode.querySelectorAll('.pb-hit').forEach(el => {
+  el.onclick = () => {
+    pbCode.querySelectorAll('.pb-hit').forEach(e => e.classList.remove('active'));
+    el.classList.add('active');
+    const d = pbData[el.dataset.id];
+    pbSide.innerHTML = `
+      <div class="pk">Protobuf element</div>
+      <h4>${d.name}</h4>
+      <p>${d.desc}</p>
+      <div class="label">${d.label}</div>
+      <pre class="wire">${d.wire}</pre>
+    `;
+  };
+});
+
+// ============ HYBRID ARCHITECTURE ============
+const haClients = {
+  claude: {
+    label: 'Claude.ai (web host)',
+    target: 'http',
+    explain: 'Claude.ai is a remote web host that connects to your server over <strong>Streamable HTTP at <code>:8000/mcp</code></strong>. It does not speak gRPC. Sticky LB (from Module 5.0) routes the session to the right replica; the SSE stream returns notifications. This is the majority traffic path for any public MCP server.',
+    explainClass: ''
+  },
+  desktop: {
+    label: 'Claude Desktop',
+    target: 'http',
+    explain: 'Claude Desktop is also an HTTP client to remote MCP servers (locally it can run stdio servers as subprocesses, but that\'s a different transport entirely). Same path as Claude.ai — <strong>Streamable HTTP at <code>:8000/mcp</code></strong>. The hybrid server\'s gRPC port is invisible to it.',
+    explainClass: ''
+  },
+  cli: {
+    label: 'Internal Go service',
+    target: 'grpc',
+    explain: 'Your internal Go service is the case where gRPC pays its rent. The teams running this service want <strong>strongly-typed Protobuf clients</strong>, sub-millisecond per-call overhead, and HTTP/2 multiplexing across hundreds of concurrent calls. It connects directly to <strong><code>:50051</code></strong>; no proxy, no JSON translation, no SSE shimming.',
+    explainClass: 'grpc'
+  },
+  browser: {
+    label: 'Browser SPA',
+    target: 'web',
+    explain: 'A browser SPA that wants to use the gRPC contract goes through <strong>Envoy as a gRPC-web bridge</strong>. The browser cannot generate HTTP/2 trailers, so it emits gRPC-web (XHR-compatible) requests; Envoy translates them into native gRPC and forwards to <code>:50051</code>. For most SPAs, talking Streamable HTTP directly is simpler — but if you want one schema across the whole stack, the bridge is the price.',
+    explainClass: 'web'
+  }
+};
+
+const haSvg = document.getElementById('haSvg');
+const haExplain = document.getElementById('haExplain');
+function renderHa(c) {
+  document.querySelectorAll('.ha-clients button').forEach(b => b.classList.toggle('active', b.dataset.c === c));
+  const cfg = haClients[c];
+  // server with two ports on right
+  const serverX = 470, serverY = 100, serverW = 200, serverH = 160;
+  const clientX = 30, clientY = 140;
+  let html = '';
+
+  // server box (containing two doors)
+  html += `<rect class="node-box teal" x="${serverX}" y="${serverY}" width="${serverW}" height="${serverH}" rx="10"/>`;
+  html += `<text class="node-text" x="${serverX + serverW/2}" y="${serverY + 24}" text-anchor="middle">Hybrid MCP Server</text>`;
+  html += `<text class="node-sub" x="${serverX + serverW/2}" y="${serverY + 38}" text-anchor="middle">one process, shared lifespan</text>`;
+
+  // tools box inside
+  html += `<rect x="${serverX + 20}" y="${serverY + 50}" width="${serverW - 40}" height="34" rx="6" fill="var(--bg-2)" stroke="var(--line)" stroke-width="1"/>`;
+  html += `<text class="node-text" x="${serverX + serverW/2}" y="${serverY + 65}" text-anchor="middle">@mcp.tool functions</text>`;
+  html += `<text class="node-sub" x="${serverX + serverW/2}" y="${serverY + 77}" text-anchor="middle">search, fetch, deep_research, ...</text>`;
+
+  // HTTP door
+  const httpLit = cfg.target === 'http';
+  html += `<rect x="${serverX + 20}" y="${serverY + 95}" width="80" height="50" rx="6" fill="${httpLit?'rgba(99, 102, 241,0.12)':'var(--bg-2)'}" stroke="${httpLit?'var(--teal)':'var(--line)'}" stroke-width="${httpLit?2.5:1}"${httpLit?' filter="drop-shadow(0 0 8px rgba(99, 102, 241,0.5))"':''}/>`;
+  html += `<text class="node-text" x="${serverX + 60}" y="${serverY + 116}" text-anchor="middle" ${httpLit?'style="fill:var(--teal)"':''}>HTTP :8000</text>`;
+  html += `<text class="node-sub" x="${serverX + 60}" y="${serverY + 132}" text-anchor="middle">/mcp · SSE</text>`;
+
+  // gRPC door
+  const grpcLit = cfg.target === 'grpc' || cfg.target === 'web';
+  html += `<rect x="${serverX + 100}" y="${serverY + 95}" width="80" height="50" rx="6" fill="${grpcLit?'rgba(139, 92, 246,0.12)':'var(--bg-2)'}" stroke="${grpcLit?'var(--purple)':'var(--line)'}" stroke-width="${grpcLit?2.5:1}"${grpcLit?' filter="drop-shadow(0 0 8px rgba(139, 92, 246,0.5))"':''}/>`;
+  html += `<text class="node-text" x="${serverX + 140}" y="${serverY + 116}" text-anchor="middle" ${grpcLit?'style="fill:var(--purple)"':''}>gRPC :50051</text>`;
+  html += `<text class="node-sub" x="${serverX + 140}" y="${serverY + 132}" text-anchor="middle">Protobuf · HTTP/2</text>`;
+
+  // client
+  html += `<rect class="node-box client" x="${clientX}" y="${clientY}" width="140" height="60" rx="8"/>`;
+  html += `<text class="node-text" x="${clientX + 70}" y="${clientY + 26}" text-anchor="middle">${cfg.label}</text>`;
+  html += `<text class="node-sub" x="${clientX + 70}" y="${clientY + 44}" text-anchor="middle">${cfg.target === 'http' ? 'Streamable HTTP' : cfg.target === 'grpc' ? 'gRPC native' : 'gRPC-web (browser)'}</text>`;
+
+  // path
+  if (cfg.target === 'http') {
+    html += `<path class="conn teal" d="M${clientX + 140} ${clientY + 30} L${serverX + 20} ${serverY + 120}" stroke-width="2.5"/>`;
+    html += `<text x="${(clientX + 140 + serverX + 20)/2}" y="${(clientY + 30 + serverY + 120)/2 - 8}" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="var(--teal)" letter-spacing="0.06em">POST /mcp · JSON</text>`;
+  } else if (cfg.target === 'grpc') {
+    html += `<path class="conn purple" d="M${clientX + 140} ${clientY + 30} L${serverX + 140} ${serverY + 120}" stroke-width="2.5"/>`;
+    html += `<text x="${(clientX + 140 + serverX + 140)/2}" y="${(clientY + 30 + serverY + 120)/2 - 8}" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="var(--purple)" letter-spacing="0.06em">native gRPC · Protobuf</text>`;
+  } else if (cfg.target === 'web') {
+    // through Envoy
+    const envoyX = 290, envoyY = 150;
+    html += `<rect class="node-box proxy" x="${envoyX}" y="${envoyY}" width="100" height="50" rx="8" filter="drop-shadow(0 0 6px rgba(245, 158, 11,0.4))"/>`;
+    html += `<text class="node-text" x="${envoyX + 50}" y="${envoyY + 22}" text-anchor="middle" style="fill:var(--amber)">Envoy</text>`;
+    html += `<text class="node-sub" x="${envoyX + 50}" y="${envoyY + 38}" text-anchor="middle">grpc-web filter</text>`;
+    html += `<path class="conn amber" d="M${clientX + 140} ${clientY + 30} L${envoyX} ${envoyY + 25}" stroke-width="2.5"/>`;
+    html += `<text x="${(clientX + 140 + envoyX)/2}" y="${(clientY + 30 + envoyY + 25)/2 - 6}" text-anchor="middle" font-family="JetBrains Mono" font-size="9.5" fill="var(--amber)">gRPC-web (XHR)</text>`;
+    html += `<path class="conn purple" d="M${envoyX + 100} ${envoyY + 25} L${serverX + 140} ${serverY + 120}" stroke-width="2.5"/>`;
+    html += `<text x="${(envoyX + 100 + serverX + 140)/2}" y="${(envoyY + 25 + serverY + 120)/2 - 6}" text-anchor="middle" font-family="JetBrains Mono" font-size="9.5" fill="var(--purple)">native gRPC</text>`;
+  }
+
+  haSvg.innerHTML = html;
+  haExplain.className = 'ha-explain ' + cfg.explainClass;
+  haExplain.innerHTML = `<div class="lbl">${cfg.label}</div><h4>Hop-by-hop path</h4><p>${cfg.explain}</p>`;
+}
+document.querySelectorAll('.ha-clients button').forEach(b => b.onclick = () => renderHa(b.dataset.c));
+renderHa('claude');
+
+// ============ GRPC-WEB BRIDGE ============
+const gwSvg = document.getElementById('gwSvg');
+const gwNarr = document.getElementById('gwNarr');
+const gwPlay = document.getElementById('gwPlay');
+const gwReset = document.getElementById('gwReset');
+
+const gwStages = [
+  { name: 'Browser POST', title: 'gRPC-web request leaves the browser', desc: 'The browser cannot generate HTTP/2 trailers, so the gRPC-web client (a JS library) emits a <code>POST</code> with <code>Content-Type: application/grpc-web+proto</code>. The Protobuf body is base64-encoded if the browser is on HTTP/1.1; raw binary on HTTP/2. The browser thinks it\'s sending a normal POST.' },
+  { name: 'Envoy translates', title: 'Envoy\'s grpc_web filter rewrites the request', desc: 'Envoy sits between browser and backend. Its <code>grpc_web</code> filter strips the gRPC-web framing, base64-decodes if necessary, adds the missing HTTP/2 trailers, and produces a request that looks identical to one from a native gRPC client.' },
+  { name: 'gRPC to backend', title: 'Backend sees native gRPC', desc: 'Your FastMCP-plus-grpcio server sees a normal <code>POST /mcp.extension.v1.MCPExtension/CallTool</code> with proper trailers. It has no idea a browser is on the other end. The servicer method runs, accesses lifespan resources, returns its Protobuf response.' },
+  { name: 'Stream back', title: 'gRPC response with trailers flows to Envoy', desc: 'For unary calls, one Protobuf response + grpc-status trailer. For server-stream, multiple Protobuf frames + final trailer. Either way, Envoy receives a fully-formed gRPC response on the upstream side.' },
+  { name: 'Envoy reframes', title: 'Envoy converts to gRPC-web for the browser', desc: 'The filter inverts the inbound translation: HTTP/2 trailers get re-encoded as a final binary frame the JS client can parse, the body gets base64-encoded if needed, and the response goes back as a normal HTTP response. The JS client unpacks it and the browser code sees a typed Protobuf object.' }
+];
+
+let gwIdx = -1, gwTimer = null;
+
+function gwRender() {
+  const nodes = [
+    { x: 30, y: 80, w: 110, h: 60, label: 'Browser', sub: 'JS gRPC-web client', cls: 'client' },
+    { x: 290, y: 80, w: 110, h: 60, label: 'Envoy', sub: 'grpc_web filter', cls: 'proxy' },
+    { x: 560, y: 80, w: 110, h: 60, label: 'gRPC server', sub: ':50051 · Protobuf', cls: 'purple' },
+  ];
+  let html = '';
+  // connections
+  for (let i = 0; i < nodes.length - 1; i++) {
+    const a = nodes[i], b = nodes[i+1];
+    const x1 = a.x + a.w, x2 = b.x;
+    const y = a.y + a.h/2;
+    let active = false, color = 'var(--line-strong)';
+    // forward in stages 0,1,2; backward in 3,4
+    if (gwIdx === 0 && i === 0) { active = true; color = 'var(--amber)'; }
+    if (gwIdx === 1 && i === 0) { active = true; color = 'var(--amber)'; }
+    if (gwIdx === 2 && i === 1) { active = true; color = 'var(--purple)'; }
+    if (gwIdx === 3 && i === 1) { active = true; color = 'var(--purple)'; }
+    if (gwIdx === 4 && i === 0) { active = true; color = 'var(--amber)'; }
+    html += `<line x1="${x1}" y1="${y}" x2="${x2}" y2="${y}" stroke="${color}" stroke-width="${active?2.5:1.5}" fill="none"/>`;
+    if (active) {
+      const reverse = gwIdx >= 3;
+      const fromX = reverse ? x2 : x1;
+      const toX = reverse ? x1 : x2;
+      const ay = reverse ? x1 + 8 : x2 - 8;
+      const dxa = reverse ? ay + 6 : ay - 6;
+      // arrow head
+      const arrowX = reverse ? x1 + 8 : x2 - 8;
+      const dxa2 = reverse ? arrowX + 6 : arrowX - 6;
+      html += `<polyline points="${dxa2},${y - 4} ${arrowX},${y} ${dxa2},${y + 4}" stroke="${color}" stroke-width="1.5" fill="none"/>`;
+      // packet anim
+      html += `<circle cx="${(x1+x2)/2}" cy="${y}" r="5" fill="${color}">
+        <animate attributeName="cx" from="${reverse ? x2 - 8 : x1 + 8}" to="${reverse ? x1 + 8 : x2 - 8}" dur="1.2s" repeatCount="indefinite"/>
+      </circle>`;
+    }
+  }
+  // nodes
+  nodes.forEach((n, i) => {
+    const isLit = (i === 0 && gwIdx === 0) || (i === 1 && (gwIdx === 1 || gwIdx === 4)) || (i === 2 && (gwIdx === 2 || gwIdx === 3));
+    const litCls = isLit ? (i === 1 ? 'lit amber' : i === 2 ? 'lit purple' : 'lit') : '';
+    html += `<rect class="node-box ${n.cls} ${litCls}" x="${n.x}" y="${n.y}" width="${n.w}" height="${n.h}" rx="8"/>`;
+    html += `<text class="node-text" x="${n.x + n.w/2}" y="${n.y + 26}" text-anchor="middle">${n.label}</text>`;
+    html += `<text class="node-sub" x="${n.x + n.w/2}" y="${n.y + 44}" text-anchor="middle">${n.sub}</text>`;
+  });
+  gwSvg.innerHTML = html;
+  // stages
+  document.querySelectorAll('.gw-stage').forEach((el, i) => {
+    el.classList.remove('active','done');
+    if (i === gwIdx) el.classList.add('active');
+    else if (i < gwIdx) el.classList.add('done');
+  });
+  if (gwIdx < 0) {
+    gwNarr.innerHTML = `<div class="lbl">Idle</div><h4>Press play to trace one gRPC-web call</h4><p>A JavaScript client wants to call <code>CallTool</code>. It can't speak native gRPC because the browser won't emit HTTP/2 trailers. Envoy (or a similar proxy) bridges the gap.</p>`;
+  } else {
+    const s = gwStages[gwIdx];
+    gwNarr.innerHTML = `<div class="lbl">Stage ${gwIdx+1} · ${s.name}</div><h4>${s.title}</h4><p>${s.desc}</p>`;
+  }
+}
+function gwAdvance() {
+  if (gwIdx < gwStages.length - 1) { gwIdx++; gwRender(); }
+  else { clearInterval(gwTimer); gwTimer = null; gwPlay.textContent = '▶ Play'; }
+}
+gwPlay.onclick = () => {
+  if (gwTimer) { clearInterval(gwTimer); gwTimer = null; gwPlay.textContent = '▶ Play'; return; }
+  if (gwIdx >= gwStages.length - 1) { gwIdx = -1; gwRender(); }
+  gwPlay.textContent = '⏸ Pause';
+  gwTimer = setInterval(gwAdvance, 2000);
+  gwAdvance();
+};
+gwReset.onclick = () => {
+  if (gwTimer) { clearInterval(gwTimer); gwTimer = null; gwPlay.textContent = '▶ Play'; }
+  gwIdx = -1; gwRender();
+};
+document.querySelectorAll('.gw-stage').forEach(el => el.onclick = () => { gwIdx = parseInt(el.dataset.i); gwRender(); });
+gwRender();
+
+// ============ KC + OBJECTIVES + SCROLL SPY ============
+document.querySelectorAll('.kc-opts').forEach(group => {
+  const correct = parseInt(group.dataset.correct);
+  const feedback = group.parentElement.querySelector('.kc-feedback');
+  Array.from(group.children).forEach((opt, i) => {
+    opt.onclick = () => {
+      Array.from(group.children).forEach(o => o.classList.remove('correct', 'wrong'));
+      if (i === correct) opt.classList.add('correct');
+      else { opt.classList.add('wrong'); group.children[correct].classList.add('correct'); }
+      feedback.classList.add('show');
+    };
+  });
+});
+document.querySelectorAll('#objList .check').forEach(c => {
+  c.onclick = () => c.classList.toggle('done');
+});
+const sections = ['s1','s2','s3','s4','s5','kc','res'].map(id => document.getElementById(id));
+const sbLinks = document.querySelectorAll('#sbList a');
+const progFill = document.getElementById('progressFill');
+const progLbl = document.getElementById('progressLabel');
+function onScroll() {
+  const docH = document.body.scrollHeight - window.innerHeight;
+  const pct = Math.min(100, Math.max(0, (window.scrollY / docH) * 100));
+  progFill.style.width = pct + '%';
+  progLbl.textContent = Math.round(pct) + '%';
+  const triggerY = window.scrollY + 140;
+  let activeId = null;
+  for (const s of sections) { if (s && s.offsetTop <= triggerY) activeId = s.id; }
+  sbLinks.forEach(a => a.classList.toggle('active', a.dataset.target === activeId));
+}
+window.addEventListener('scroll', onScroll, { passive: true });
+onScroll();
+</script>
+</body>
+</html>

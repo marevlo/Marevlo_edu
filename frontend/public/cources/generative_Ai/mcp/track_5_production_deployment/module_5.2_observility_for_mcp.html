@@ -1,0 +1,1833 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Module 5.2 — Observability for MCP</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Source+Serif+4:ital,opsz,wght@0,8..60,300;0,8..60,400;0,8..60,500;0,8..60,600;1,8..60,400&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #08090b; --bg-2: #0b0f1a;
+    --panel: #0d1117; --panel-2: #111827; --panel-3: #111827;
+    --line: #1e2330; --line-strong: #2a3142;
+    --text: #e8eaed; --text-dim: #a8aeb8; --text-mute: #6b7280;
+    --teal: #6366f1; --purple: #8b5cf6; --pink: #f7768e;
+    --amber: #f59e0b; --red: #f7768e; --blue: #818cf8;
+    --green: #10b981; --orange: #f59e0b;
+    --mono: 'JetBrains Mono', ui-monospace, monospace;
+    --sans: 'Outfit', system-ui, -apple-system, sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; scroll-padding-top: 80px; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans);
+    font-size: 16px; line-height: 1.65; -webkit-font-smoothing: antialiased; overflow-x: hidden; }
+  body::before {
+    content: ""; position: fixed; inset: 0;
+    background-image:
+      linear-gradient(rgba(99, 102, 241, 0.035) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(99, 102, 241, 0.035) 1px, transparent 1px);
+    background-size: 48px 48px; pointer-events: none; z-index: 0;
+    mask-image: radial-gradient(ellipse 80% 60% at 50% 30%, black 40%, transparent 100%);
+  }
+  body::after {
+    content: ""; position: fixed; inset: 0;
+    background:
+      radial-gradient(ellipse 50% 30% at 20% 10%, rgba(99, 102, 241,0.06), transparent 60%),
+      radial-gradient(ellipse 40% 25% at 90% 80%, rgba(139, 92, 246,0.05), transparent 60%);
+    pointer-events: none; z-index: 0;
+  }
+
+  /* topbar */
+  .topbar { position: sticky; top: 0; z-index: 50;
+    backdrop-filter: blur(14px); background: rgba(10,14,26,0.85);
+    border-bottom: 1px solid var(--line); }
+  .topbar-inner { max-width: 1200px; margin: 0 auto;
+    padding: 14px 32px; display: flex; align-items: center; gap: 24px; }
+  .brand { font-family: var(--mono); font-size: 12px;
+    letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--teal); font-weight: 600;
+    display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+  .brand .dot { width: 8px; height: 8px; background: var(--teal);
+    border-radius: 50%; box-shadow: 0 0 12px rgba(99, 102, 241,0.6); }
+  .track-progress { flex: 1; display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; }
+  .track-progress::-webkit-scrollbar { display: none; }
+  .tp-item { font-family: var(--mono); font-size: 10.5px;
+    letter-spacing: 0.1em; text-transform: uppercase;
+    color: var(--text-mute); padding: 4px 10px;
+    border-radius: 4px; border: 1px solid var(--line);
+    white-space: nowrap; }
+  .tp-item.done { color: var(--text-dim); }
+  .tp-item.done::before { content: "✓ "; color: var(--teal); }
+  .tp-item.current { color: var(--teal); border-color: var(--teal); background: rgba(99, 102, 241,0.06); }
+  .progress-bar { flex-shrink: 0; font-family: var(--mono); font-size: 11px;
+    color: var(--text-dim); display: flex; align-items: center; gap: 10px; }
+  .progress-track { width: 80px; height: 4px; background: var(--line);
+    border-radius: 2px; overflow: hidden; }
+  .progress-fill { height: 100%; background: linear-gradient(90deg, var(--teal), var(--purple));
+    width: 0%; transition: width 0.3s ease; }
+
+  /* layout */
+  .layout { max-width: 1200px; margin: 0 auto;
+    padding: 56px 32px 120px; display: grid;
+    grid-template-columns: 220px 1fr; gap: 56px;
+    position: relative; z-index: 1; }
+  .sidebar { position: sticky; top: 80px; align-self: start;
+    max-height: calc(100vh - 96px); overflow-y: auto; }
+  .sb-label { font-family: var(--mono); font-size: 10.5px;
+    letter-spacing: 0.16em; text-transform: uppercase;
+    color: var(--text-mute); margin-bottom: 18px;
+    padding-bottom: 12px; border-bottom: 1px solid var(--line); }
+  .sb-list { list-style: none; }
+  .sb-list li a { display: flex; align-items: center; gap: 12px;
+    padding: 9px 0; font-size: 13.5px;
+    color: var(--text-dim); text-decoration: none;
+    border-left: 2px solid transparent; padding-left: 12px;
+    transition: all 0.2s; line-height: 1.4; }
+  .sb-list li a:hover { color: var(--text); }
+  .sb-list li a.active { color: var(--teal); border-left-color: var(--teal);
+    background: linear-gradient(90deg, rgba(99, 102, 241,0.05), transparent); }
+  .sb-list li a .num { font-family: var(--mono); font-size: 10.5px;
+    color: var(--text-mute); min-width: 22px; }
+  .sb-list li a.active .num { color: var(--teal); }
+
+  .content { min-width: 0; }
+  .crumb { display: flex; align-items: center; gap: 10px;
+    font-family: var(--mono); font-size: 11px;
+    letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--teal); margin-bottom: 22px; }
+  .crumb .bar { width: 24px; height: 1px; background: var(--teal); }
+  .crumb .sep { color: var(--text-mute); }
+  .crumb .dim { color: var(--text-dim); }
+
+  h1.module-title { font-size: clamp(34px, 5vw, 54px); font-weight: 800;
+    letter-spacing: -0.025em; line-height: 1.05;
+    margin-bottom: 18px; }
+  h1.module-title .accent { color: var(--teal); }
+  .lede { font-size: 18px; color: var(--text-dim); max-width: 700px; }
+
+  .hero-meta { display: flex; flex-wrap: wrap; gap: 20px;
+    margin-top: 26px; padding-top: 22px;
+    border-top: 1px solid var(--line); }
+  .hero-meta .m { display: flex; align-items: center; gap: 10px; }
+  .hero-meta .m-label { font-family: var(--mono); font-size: 10px;
+    letter-spacing: 0.14em; text-transform: uppercase; color: var(--text-mute); }
+  .hero-meta .m-val { font-family: var(--mono); font-size: 13px;
+    color: var(--text); font-weight: 500; }
+
+  .objectives { margin: 40px 0 64px;
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 14px; padding: 26px 28px;
+    position: relative; overflow: hidden; }
+  .objectives::before { content: ""; position: absolute; top: 0; left: 0; right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--teal) 30%, var(--purple) 70%, transparent); }
+  .obj-header { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+  .obj-icon { width: 32px; height: 32px;
+    background: rgba(99, 102, 241,0.12);
+    border: 1px solid rgba(99, 102, 241,0.3);
+    border-radius: 8px; display: grid; place-items: center; }
+  .obj-icon svg { width: 16px; height: 16px; }
+  .obj-title { font-family: var(--mono); font-size: 11px;
+    letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--teal); font-weight: 600; }
+  .obj-list { list-style: none; display: grid; gap: 10px; }
+  .obj-list li { display: grid; grid-template-columns: 22px 1fr;
+    gap: 12px; align-items: start;
+    color: #c2cad9; font-size: 14.5px; line-height: 1.55; }
+  .obj-list .check { width: 18px; height: 18px; border-radius: 4px;
+    border: 1.5px solid var(--line-strong); margin-top: 2px;
+    display: grid; place-items: center; color: var(--text-mute);
+    font-family: var(--mono); font-size: 11px;
+    cursor: pointer; transition: all 0.2s; }
+  .obj-list .check.done { background: rgba(99, 102, 241,0.15);
+    border-color: var(--teal); color: var(--teal); }
+
+  .section-label { font-family: var(--mono); font-size: 11px;
+    letter-spacing: 0.18em; text-transform: uppercase;
+    color: var(--text-mute); margin-bottom: 14px;
+    display: flex; align-items: center; gap: 12px; }
+  .section-label .sn { color: var(--teal); font-weight: 600; }
+  .section-label::before { content: ""; width: 6px; height: 6px;
+    background: var(--teal); border-radius: 1px; transform: rotate(45deg); }
+
+  h2 { font-size: 28px; font-weight: 700; letter-spacing: -0.015em;
+    margin-bottom: 18px; line-height: 1.2; }
+  h3.sub { font-size: 17px; font-weight: 700; margin: 30px 0 12px; color: var(--text); }
+  h3.sub .num { font-family: var(--mono); color: var(--teal); font-size: 12px; margin-right: 10px; }
+  section.block { margin-bottom: 72px; scroll-margin-top: 80px; }
+
+  p { color: #c2cad9; margin-bottom: 16px; }
+  p strong { color: var(--text); font-weight: 600; }
+  p code, li code, td code { font-family: var(--mono); font-size: 0.88em;
+    background: rgba(99, 102, 241, 0.08);
+    color: var(--teal); padding: 1px 6px; border-radius: 4px;
+    border: 1px solid rgba(99, 102, 241,0.15); }
+  ul.tight { list-style: none; padding: 0; margin: 14px 0 18px; }
+  ul.tight li { color: #c2cad9; padding: 6px 0 6px 22px; position: relative; }
+  ul.tight li::before { content: "›"; position: absolute; left: 4px; top: 6px;
+    color: var(--teal); font-family: var(--mono); font-weight: 600; }
+
+  .exercise-tag { display: inline-flex; align-items: center; gap: 8px;
+    font-family: var(--mono); font-size: 10.5px;
+    letter-spacing: 0.14em; text-transform: uppercase;
+    padding: 5px 12px; border-radius: 999px;
+    background: rgba(139, 92, 246,0.1);
+    border: 1px solid rgba(139, 92, 246,0.35);
+    color: var(--purple); margin-bottom: 12px; }
+  .exercise-tag .pulse { width: 6px; height: 6px;
+    background: var(--purple); border-radius: 50%;
+    animation: pulse 2s ease-in-out infinite; }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.4; transform: scale(1.3); }
+  }
+
+  .callout { border-left: 2px solid var(--teal);
+    background: linear-gradient(90deg, rgba(99, 102, 241,0.06), rgba(99, 102, 241,0));
+    padding: 18px 22px; margin: 22px 0;
+    border-radius: 0 6px 6px 0; }
+  .callout.purple { border-left-color: var(--purple);
+    background: linear-gradient(90deg, rgba(139, 92, 246,0.06), rgba(139, 92, 246,0)); }
+  .callout.amber { border-left-color: var(--amber);
+    background: linear-gradient(90deg, rgba(245, 158, 11,0.06), rgba(245, 158, 11,0)); }
+  .callout.red { border-left-color: var(--red);
+    background: linear-gradient(90deg, rgba(247, 118, 142,0.06), rgba(247, 118, 142,0)); }
+  .callout .tag { font-family: var(--mono); font-size: 10.5px;
+    letter-spacing: 0.16em; text-transform: uppercase;
+    color: var(--teal); margin-bottom: 6px; }
+  .callout.purple .tag { color: var(--purple); }
+  .callout.amber .tag { color: var(--amber); }
+  .callout.red .tag { color: var(--red); }
+  .callout p { margin-bottom: 0; }
+
+  /* ========= THREE PILLARS ========= */
+  .pl-w { background: var(--panel); border: 1px solid var(--line);
+    border-radius: 14px; overflow: hidden; margin: 20px 0; }
+  .pl-head { padding: 14px 22px; background: var(--panel-2);
+    border-bottom: 1px solid var(--line);
+    display: flex; justify-content: space-between; align-items: center;
+    flex-wrap: wrap; gap: 10px; }
+  .pl-head .title { font-family: var(--mono); font-size: 11.5px;
+    letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-dim); }
+  .pl-tabs { display: flex; gap: 4px;
+    background: var(--panel-3); border-radius: 8px; padding: 3px;
+    font-family: var(--mono); font-size: 10.5px;
+    letter-spacing: 0.08em; text-transform: uppercase; }
+  .pl-tabs button { background: transparent; border: none;
+    color: var(--text-mute); padding: 5px 14px;
+    border-radius: 6px; cursor: pointer; transition: all 0.18s;
+    font-family: inherit; font-size: inherit;
+    letter-spacing: inherit; text-transform: inherit; }
+  .pl-tabs button.active.metrics { background: var(--teal); color: var(--bg); font-weight: 600; }
+  .pl-tabs button.active.logs { background: var(--blue); color: var(--bg); font-weight: 600; }
+  .pl-tabs button.active.traces { background: var(--purple); color: var(--bg); font-weight: 600; }
+  .pl-body { display: grid; grid-template-columns: 1fr 1fr; }
+  .pl-side { padding: 22px 24px; border-right: 1px solid var(--line); }
+  .pl-side:last-child { border-right: none; background: var(--panel-2); }
+  .pl-side .h { font-family: var(--mono); font-size: 10.5px;
+    letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--text-mute); margin-bottom: 12px; }
+  .pl-side h4 { font-size: 18px; font-weight: 700; margin-bottom: 10px;
+    font-family: var(--mono); letter-spacing: -0.005em; }
+  .pl-w.mode-metrics .pl-side h4 { color: var(--teal); }
+  .pl-w.mode-logs .pl-side h4 { color: var(--blue); }
+  .pl-w.mode-traces .pl-side h4 { color: var(--purple); }
+  .pl-side p { color: #c2cad9; font-size: 13.5px; line-height: 1.6; margin-bottom: 12px; }
+  .pl-side p code { font-family: var(--mono); font-size: 0.88em;
+    background: rgba(255,255,255,0.04); color: var(--text);
+    padding: 1px 5px; border-radius: 3px; border: none; }
+  .pl-side ul { list-style: none; padding: 0; margin: 8px 0; }
+  .pl-side ul li { font-size: 13px; color: #c2cad9;
+    padding: 4px 0 4px 18px; position: relative; line-height: 1.55; }
+  .pl-side ul li::before { content: "›"; position: absolute; left: 0;
+    color: var(--teal); font-family: var(--mono); }
+  .pl-w.mode-logs .pl-side ul li::before { color: var(--blue); }
+  .pl-w.mode-traces .pl-side ul li::before { color: var(--purple); }
+  .pl-emit { font-family: var(--mono); font-size: 12px;
+    background: #06080f; border: 1px solid var(--line);
+    border-radius: 8px; padding: 14px 16px;
+    color: #c2cad9; line-height: 1.7;
+    overflow-x: auto; white-space: pre; max-height: 280px; overflow-y: auto; }
+  .pl-emit .k { color: var(--purple); }
+  .pl-emit .v { color: var(--teal); }
+  .pl-emit .n { color: var(--amber); }
+  .pl-emit .c { color: var(--text-mute); font-style: italic; }
+  .pl-emit .b { color: var(--blue); }
+  .pl-emit .r { color: var(--red); }
+  .pl-emit .g { color: var(--green); }
+
+  /* ========= TRACE WATERFALL ========= */
+  .tw-w { background: var(--panel); border: 1px solid var(--line);
+    border-radius: 14px; overflow: hidden; margin: 20px 0; }
+  .tw-head { padding: 14px 22px; background: var(--panel-2);
+    border-bottom: 1px solid var(--line);
+    display: flex; justify-content: space-between; align-items: center;
+    flex-wrap: wrap; gap: 10px; }
+  .tw-head .title { font-family: var(--mono); font-size: 11.5px;
+    letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-dim); }
+  .tw-meta { font-family: var(--mono); font-size: 11px; color: var(--text-mute); display: flex; gap: 18px; }
+  .tw-meta .v { color: var(--text); }
+  .tw-body { display: grid; grid-template-columns: 1fr 300px; min-height: 460px; }
+  .tw-chart { padding: 22px 24px; border-right: 1px solid var(--line); overflow-x: auto; }
+  .tw-axis { font-family: var(--mono); font-size: 10px; color: var(--text-mute);
+    display: flex; justify-content: space-between; margin-bottom: 14px;
+    padding-bottom: 10px; border-bottom: 1px solid var(--line); }
+  .tw-row { display: grid; grid-template-columns: 200px 1fr;
+    gap: 14px; align-items: center;
+    padding: 5px 0; cursor: pointer; transition: background 0.15s; }
+  .tw-row:hover { background: rgba(255,255,255,0.02); }
+  .tw-row.active { background: rgba(99, 102, 241,0.06); }
+  .tw-row .label { font-family: var(--mono); font-size: 11.5px;
+    color: var(--text-dim); white-space: nowrap; overflow: hidden;
+    text-overflow: ellipsis; padding-left: var(--depth, 0px); }
+  .tw-row.active .label { color: var(--text); }
+  .tw-row .label .icon { display: inline-block; width: 8px; height: 8px;
+    border-radius: 2px; margin-right: 7px;
+    background: var(--bg-color, var(--teal)); }
+  .tw-bar-wrap { height: 18px; position: relative;
+    background: var(--bg-2); border-radius: 3px;
+    border: 1px solid var(--line); overflow: hidden; }
+  .tw-bar { position: absolute; top: 0; bottom: 0;
+    background: var(--bg-color, var(--teal));
+    opacity: 0.6; border-radius: 2px; transition: opacity 0.2s; }
+  .tw-row:hover .tw-bar, .tw-row.active .tw-bar { opacity: 0.9; box-shadow: 0 0 8px var(--bg-color, var(--teal)); }
+  .tw-bar .dur { position: absolute; right: -50px; top: 50%;
+    transform: translateY(-50%); font-family: var(--mono);
+    font-size: 10px; color: var(--text-dim); }
+  .tw-side { padding: 22px 24px; background: var(--panel-2); }
+  .tw-side .pk { font-family: var(--mono); font-size: 10.5px;
+    letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--purple); margin-bottom: 6px; }
+  .tw-side h4 { font-size: 15px; color: var(--text);
+    margin-bottom: 12px; font-family: var(--mono); font-weight: 700;
+    word-break: break-all; }
+  .tw-side .kv { display: grid; grid-template-columns: 90px 1fr;
+    gap: 8px; padding: 6px 0; font-size: 12px;
+    border-bottom: 1px solid var(--line); }
+  .tw-side .kv .k { font-family: var(--mono); color: var(--text-mute); }
+  .tw-side .kv .v { font-family: var(--mono); color: var(--text); word-break: break-all; }
+  .tw-side .lbl { font-family: var(--mono); font-size: 10px;
+    letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--text-mute); margin-top: 14px; margin-bottom: 6px; }
+  .tw-side .attrs { font-family: var(--mono); font-size: 11.5px;
+    background: #06080f; border: 1px solid var(--line);
+    border-radius: 6px; padding: 9px 11px;
+    color: #c2cad9; line-height: 1.55;
+    white-space: pre; overflow-x: auto; }
+  .tw-side .attrs .k { color: var(--blue); }
+  .tw-side .attrs .v { color: var(--teal); }
+  .tw-side .attrs .n { color: var(--amber); }
+
+  /* ========= METRICS DASHBOARD ========= */
+  .md-w { background: var(--panel); border: 1px solid var(--line);
+    border-radius: 14px; overflow: hidden; margin: 20px 0; }
+  .md-head { padding: 14px 22px; background: var(--panel-2);
+    border-bottom: 1px solid var(--line);
+    display: flex; justify-content: space-between; align-items: center;
+    flex-wrap: wrap; gap: 10px; }
+  .md-head .title { font-family: var(--mono); font-size: 11.5px;
+    letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-dim); }
+  .md-pills { display: flex; gap: 4px;
+    background: var(--panel-3); border-radius: 8px; padding: 3px;
+    font-family: var(--mono); font-size: 10px;
+    letter-spacing: 0.08em; text-transform: uppercase; }
+  .md-pills button { background: transparent; border: none;
+    color: var(--text-mute); padding: 5px 10px;
+    border-radius: 6px; cursor: pointer; transition: all 0.18s;
+    font-family: inherit; font-size: inherit;
+    letter-spacing: inherit; text-transform: inherit; }
+  .md-pills button.active { background: var(--teal); color: var(--bg); font-weight: 600; }
+  .md-summary { display: grid; grid-template-columns: repeat(4, 1fr);
+    background: var(--panel-2); border-bottom: 1px solid var(--line); }
+  .md-stat { padding: 16px 20px; border-right: 1px solid var(--line); }
+  .md-stat:last-child { border-right: none; }
+  .md-stat .k { font-family: var(--mono); font-size: 10px;
+    letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--text-mute); margin-bottom: 6px; }
+  .md-stat .v { font-family: var(--mono); font-size: 22px;
+    font-weight: 600; line-height: 1; color: var(--text); }
+  .md-stat .v.good { color: var(--green); }
+  .md-stat .v.warn { color: var(--amber); }
+  .md-stat .v.bad { color: var(--red); }
+  .md-stat .d { font-family: var(--mono); font-size: 11px;
+    color: var(--text-mute); margin-top: 6px; }
+  .md-stat .d.up { color: var(--green); }
+  .md-stat .d.down { color: var(--red); }
+  .md-charts { padding: 22px; display: grid;
+    grid-template-columns: 1fr 1fr; gap: 16px; }
+  .md-chart { background: var(--bg-2); border: 1px solid var(--line);
+    border-radius: 10px; padding: 16px 18px; }
+  .md-chart .ch-head { display: flex; justify-content: space-between;
+    align-items: center; margin-bottom: 12px; }
+  .md-chart .ch-title { font-family: var(--mono); font-size: 11.5px;
+    color: var(--text); letter-spacing: 0.04em; }
+  .md-chart .ch-legend { display: flex; gap: 12px; font-family: var(--mono); font-size: 10px; }
+  .md-chart .ch-legend .item { display: flex; align-items: center; gap: 5px; color: var(--text-dim); }
+  .md-chart .ch-legend .dot { width: 8px; height: 2px; border-radius: 1px; }
+  .md-chart svg { width: 100%; height: 140px; }
+  .md-tools { padding: 0 22px 22px; }
+  .md-tools-h { font-family: var(--mono); font-size: 11px;
+    letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--text-mute); margin: 16px 0 10px;
+    padding-top: 16px; border-top: 1px solid var(--line); }
+  .md-row { display: grid;
+    grid-template-columns: 1.4fr 1fr 1fr 1fr 1fr;
+    gap: 8px; padding: 10px 14px;
+    background: var(--bg-2); border: 1px solid var(--line);
+    border-radius: 8px; margin-bottom: 6px;
+    font-family: var(--mono); font-size: 12px;
+    align-items: center; transition: border-color 0.15s; }
+  .md-row:hover { border-color: var(--line-strong); }
+  .md-row.head { background: transparent; border-color: transparent;
+    color: var(--text-mute); font-size: 9.5px;
+    letter-spacing: 0.12em; text-transform: uppercase; padding: 6px 14px; }
+  .md-row .tn { color: var(--teal); font-weight: 600; }
+  .md-row .num { color: var(--text); text-align: right; }
+  .md-row .num.warn { color: var(--amber); }
+  .md-row .num.bad { color: var(--red); }
+  .md-row .pct { color: var(--text); text-align: right; }
+  .md-row .bar { position: relative; height: 6px;
+    background: var(--line); border-radius: 3px; overflow: hidden; text-align: left; }
+  .md-row .bar .fill { position: absolute; top: 0; bottom: 0; left: 0;
+    background: linear-gradient(90deg, var(--teal), var(--purple)); border-radius: 3px; }
+
+  /* ========= STRUCTURED LOG EXPLORER ========= */
+  .sl-w { background: var(--panel); border: 1px solid var(--line);
+    border-radius: 14px; overflow: hidden; margin: 20px 0; }
+  .sl-head { padding: 14px 22px; background: var(--panel-2);
+    border-bottom: 1px solid var(--line);
+    display: flex; justify-content: space-between; align-items: center;
+    flex-wrap: wrap; gap: 10px; }
+  .sl-head .title { font-family: var(--mono); font-size: 11.5px;
+    letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-dim); }
+  .sl-toggle { display: flex; gap: 4px;
+    background: var(--panel-3); border-radius: 8px; padding: 3px;
+    font-family: var(--mono); font-size: 10.5px;
+    letter-spacing: 0.08em; text-transform: uppercase; }
+  .sl-toggle button { background: transparent; border: none;
+    color: var(--text-mute); padding: 5px 12px;
+    border-radius: 6px; cursor: pointer; transition: all 0.18s;
+    font-family: inherit; font-size: inherit;
+    letter-spacing: inherit; text-transform: inherit; }
+  .sl-toggle button.active.un { background: var(--red); color: var(--bg); font-weight: 600; }
+  .sl-toggle button.active.st { background: var(--teal); color: var(--bg); font-weight: 600; }
+  .sl-body { display: grid; grid-template-columns: 1fr 1fr; min-height: 380px; }
+  .sl-pane { padding: 0; border-right: 1px solid var(--line); }
+  .sl-pane:last-child { border-right: none; }
+  .sl-pane .ph { padding: 10px 18px; background: var(--bg-2);
+    border-bottom: 1px solid var(--line);
+    font-family: var(--mono); font-size: 10.5px;
+    letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--text-mute); display: flex; align-items: center; gap: 10px; }
+  .sl-pane .ph .pip { width: 6px; height: 6px; border-radius: 50%; }
+  .sl-pane.bad .ph .pip { background: var(--red); }
+  .sl-pane.good .ph .pip { background: var(--teal); box-shadow: 0 0 8px rgba(99, 102, 241,0.6); }
+  .sl-pane .out {
+    font-family: var(--mono); font-size: 12px;
+    background: #06080f; padding: 16px 18px;
+    line-height: 1.7; color: #c2cad9;
+    white-space: pre; overflow-x: auto; min-height: 300px; }
+  .sl-pane .out .k { color: var(--blue); }
+  .sl-pane .out .v { color: var(--teal); }
+  .sl-pane .out .n { color: var(--amber); }
+  .sl-pane .out .c { color: var(--text-mute); font-style: italic; }
+  .sl-pane .out .r { color: var(--red); }
+  .sl-pane .out .b { color: var(--purple); }
+  .sl-explain { padding: 16px 24px; background: var(--panel);
+    color: #c2cad9; font-size: 13.5px; line-height: 1.6;
+    border-top: 1px solid var(--line); }
+  .sl-explain strong { color: var(--text); }
+  .sl-explain code { font-family: var(--mono); font-size: 0.88em;
+    background: rgba(255,255,255,0.04); color: var(--text);
+    padding: 1px 5px; border-radius: 3px; border: none; }
+
+  /* ========= SLO BUILDER ========= */
+  .slo-w { background: var(--panel); border: 1px solid var(--line);
+    border-radius: 14px; overflow: hidden; margin: 20px 0; }
+  .slo-head { padding: 14px 22px; background: var(--panel-2);
+    border-bottom: 1px solid var(--line);
+    display: flex; justify-content: space-between; align-items: center;
+    flex-wrap: wrap; gap: 10px; }
+  .slo-head .title { font-family: var(--mono); font-size: 11.5px;
+    letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-dim); }
+  .slo-body { display: grid; grid-template-columns: 280px 1fr;
+    min-height: 460px; }
+  .slo-controls { padding: 24px; border-right: 1px solid var(--line);
+    background: var(--bg-2); }
+  .slo-ctrl { margin-bottom: 22px; }
+  .slo-ctrl .lbl { font-family: var(--mono); font-size: 10px;
+    letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--text-mute); margin-bottom: 8px; }
+  .slo-ctrl select, .slo-ctrl input[type="range"] {
+    width: 100%; padding: 8px 12px;
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 8px; color: var(--text);
+    font-family: var(--mono); font-size: 13px;
+    accent-color: var(--teal); }
+  .slo-ctrl input[type="range"] { padding: 0; height: 6px; }
+  .slo-ctrl .val { font-family: var(--mono); font-size: 18px;
+    color: var(--teal); font-weight: 600; margin-top: 6px; }
+  .slo-display { padding: 24px;
+    background: radial-gradient(ellipse 70% 60% at 50% 40%, rgba(99, 102, 241,0.04), transparent 70%); }
+  .slo-result { padding: 18px 20px; background: var(--panel);
+    border: 1px solid var(--line); border-radius: 10px;
+    margin-bottom: 14px; }
+  .slo-result.good { border-color: rgba(16, 185, 129,0.4); }
+  .slo-result.warn { border-color: rgba(245, 158, 11,0.4); }
+  .slo-result.bad { border-color: rgba(247, 118, 142,0.4); }
+  .slo-result .verdict { font-family: var(--mono); font-size: 10.5px;
+    letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--text-mute); margin-bottom: 8px; }
+  .slo-result.good .verdict { color: var(--green); }
+  .slo-result.warn .verdict { color: var(--amber); }
+  .slo-result.bad .verdict { color: var(--red); }
+  .slo-result .big { font-family: var(--mono); font-size: 32px;
+    font-weight: 600; color: var(--text); line-height: 1; }
+  .slo-result.good .big { color: var(--green); }
+  .slo-result.warn .big { color: var(--amber); }
+  .slo-result.bad .big { color: var(--red); }
+  .slo-result .sub { font-size: 13px; color: var(--text-dim);
+    margin-top: 8px; line-height: 1.55; }
+  .slo-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .slo-cell { padding: 14px 16px; background: var(--bg-2);
+    border: 1px solid var(--line); border-radius: 8px; }
+  .slo-cell .k { font-family: var(--mono); font-size: 10px;
+    letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--text-mute); margin-bottom: 6px; }
+  .slo-cell .v { font-family: var(--mono); font-size: 18px;
+    color: var(--text); font-weight: 600; }
+  .slo-cell .d { font-size: 12px; color: var(--text-dim); margin-top: 4px; }
+  .slo-rule { margin-top: 16px; padding: 14px 16px;
+    background: #06080f; border: 1px solid var(--line);
+    border-radius: 8px; font-family: var(--mono); font-size: 12px;
+    color: #c2cad9; line-height: 1.7; white-space: pre; overflow-x: auto; }
+  .slo-rule .k { color: var(--purple); }
+  .slo-rule .v { color: var(--teal); }
+  .slo-rule .n { color: var(--amber); }
+  .slo-rule .c { color: var(--text-mute); font-style: italic; }
+
+  /* code block */
+  .code-pre { font-family: var(--mono); font-size: 13px;
+    background: #06080f;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 18px 20px;
+    line-height: 1.7;
+    color: #c2cad9;
+    overflow-x: auto;
+    white-space: pre;
+    border-left: 3px solid var(--teal);
+    margin: 18px 0; }
+  .code-pre.purple { border-left-color: var(--purple); }
+  .code-pre.amber { border-left-color: var(--amber); }
+  .code-pre .k { color: var(--purple); }
+  .code-pre .d { color: var(--pink); }
+  .code-pre .s { color: var(--teal); }
+  .code-pre .f { color: var(--blue); }
+  .code-pre .c { color: var(--text-mute); font-style: italic; }
+  .code-pre .n { color: var(--amber); }
+
+  /* knowledge check */
+  .kc { margin: 56px 0 24px;
+    background: linear-gradient(180deg, rgba(139, 92, 246,0.04), rgba(139, 92, 246,0) 50%), var(--panel);
+    border: 1px solid var(--line); border-radius: 14px;
+    padding: 28px; position: relative; overflow: hidden; }
+  .kc::before { content: ""; position: absolute; top: 0; left: 0; right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--purple), transparent); }
+  .kc-head { display: flex; align-items: center; gap: 14px; margin-bottom: 18px; }
+  .kc-icon { width: 36px; height: 36px;
+    background: rgba(139, 92, 246,0.12);
+    border: 1px solid rgba(139, 92, 246,0.3);
+    border-radius: 8px;
+    display: grid; place-items: center; }
+  .kc-icon svg { width: 17px; height: 17px; }
+  .kc-label { font-family: var(--mono); font-size: 11px;
+    letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--purple); font-weight: 600; }
+  .kc-title { font-size: 22px; font-weight: 700; letter-spacing: -0.01em; margin: 4px 0 0; }
+  .kc-q { margin-top: 22px; padding-top: 22px; border-top: 1px solid var(--line); }
+  .kc-q:first-of-type { border-top: none; padding-top: 0; margin-top: 0; }
+  .kc-prompt { font-size: 15px; color: var(--text); font-weight: 600;
+    margin-bottom: 14px; line-height: 1.45; }
+  .kc-prompt .qn { display: inline-block; font-family: var(--mono);
+    font-size: 11px; color: var(--purple); margin-right: 8px; letter-spacing: 0.1em; }
+  .kc-prompt code { font-family: var(--mono); font-size: 0.88em;
+    background: rgba(255,255,255,0.04);
+    color: var(--text); padding: 1px 5px;
+    border-radius: 3px; }
+  .kc-opts { display: grid; gap: 8px; }
+  .kc-opt { padding: 12px 16px; background: var(--panel-2);
+    border: 1px solid var(--line); border-radius: 8px;
+    color: #c2cad9; font-size: 14px;
+    cursor: pointer; transition: all 0.18s;
+    text-align: left;
+    display: grid; grid-template-columns: 20px 1fr;
+    gap: 12px; align-items: start;
+    font-family: inherit; line-height: 1.5; }
+  .kc-opt .marker { font-family: var(--mono); font-size: 11px;
+    color: var(--text-mute); margin-top: 2px; }
+  .kc-opt:hover { border-color: var(--purple); color: var(--text); }
+  .kc-opt.correct { border-color: var(--teal);
+    background: rgba(99, 102, 241,0.08); color: var(--teal); }
+  .kc-opt.correct .marker { color: var(--teal); }
+  .kc-opt.wrong { border-color: var(--red);
+    background: rgba(247, 118, 142,0.08); color: var(--red); }
+  .kc-opt.wrong .marker { color: var(--red); }
+  .kc-opt code { font-family: var(--mono); font-size: 0.88em;
+    background: rgba(255,255,255,0.04);
+    color: var(--text); padding: 1px 5px;
+    border-radius: 3px; }
+  .kc-opt.correct code, .kc-opt.wrong code { background: transparent; color: inherit; }
+  .kc-feedback { margin-top: 12px; padding: 10px 14px; border-radius: 6px;
+    font-size: 13px;
+    background: rgba(99, 102, 241,0.06);
+    border-left: 2px solid var(--teal);
+    color: #c2cad9; display: none; line-height: 1.55; }
+  .kc-feedback.show { display: block; }
+  .kc-feedback strong { color: var(--teal); }
+  .kc-feedback code { font-family: var(--mono); font-size: 0.88em;
+    background: rgba(255,255,255,0.04);
+    color: var(--text); padding: 1px 5px;
+    border-radius: 3px; }
+
+  /* resources */
+  .resources { margin-top: 96px; padding-top: 56px; border-top: 1px solid var(--line); }
+  .resources-header { margin-bottom: 36px; }
+  .resources-header .label { font-family: var(--mono); font-size: 11px;
+    letter-spacing: 0.18em; text-transform: uppercase;
+    color: var(--text-mute);
+    display: flex; align-items: center; gap: 12px;
+    margin-bottom: 18px; }
+  .resources-header .label::before { content: ""; width: 28px; height: 1px; background: var(--text-mute); }
+  .resources-header h2.r-h { font-size: clamp(28px, 4vw, 40px);
+    font-weight: 800; letter-spacing: -0.02em;
+    margin-bottom: 14px; line-height: 1.1; }
+  .resources-header h2.r-h .accent { color: var(--teal); }
+  .resources-header .r-sub { color: var(--text-dim); font-size: 15px; max-width: 620px; }
+  .r-card { background: var(--panel); border: 1px solid var(--line);
+    border-radius: 14px; padding: 26px 28px;
+    margin-bottom: 16px; position: relative;
+    transition: border-color 0.2s, transform 0.2s; }
+  .r-card:hover { border-color: var(--line-strong); transform: translateY(-1px); }
+  .r-card::before { content: ""; position: absolute;
+    left: -1px; top: 18px; bottom: 18px;
+    width: 3px; border-radius: 3px;
+    background: var(--accent, var(--teal)); }
+  .r-card.teal { --accent: var(--teal); }
+  .r-card.purple { --accent: var(--purple); }
+  .r-card.pink { --accent: var(--pink); }
+  .r-top { display: flex; align-items: flex-start; gap: 14px; margin-bottom: 16px; }
+  .r-icon { width: 38px; height: 38px; border-radius: 8px;
+    display: grid; place-items: center; flex-shrink: 0;
+    background: rgba(99, 102, 241,0.12);
+    border: 1px solid rgba(99, 102, 241,0.3); }
+  .r-card.purple .r-icon { background: rgba(139, 92, 246,0.12); border-color: rgba(139, 92, 246,0.3); }
+  .r-card.pink .r-icon { background: rgba(247, 118, 142,0.12); border-color: rgba(247, 118, 142,0.3); }
+  .r-icon svg { width: 18px; height: 18px; }
+  .r-titles .kind { font-size: 14px; font-weight: 700; color: var(--text); margin-bottom: 2px; }
+  .r-titles .tagline { font-family: var(--mono); font-size: 11.5px; color: var(--text-mute); }
+  .r-card h3.r-title { font-size: 18px; font-weight: 700;
+    margin-bottom: 10px; letter-spacing: -0.005em; }
+  .r-card.teal h3.r-title { color: var(--teal); }
+  .r-card.purple h3.r-title { color: var(--purple); }
+  .r-card.pink h3.r-title { color: var(--pink); }
+  .r-card p.r-desc { color: #b9c1d2; font-size: 14.5px;
+    line-height: 1.6; margin-bottom: 18px; }
+  .r-card p.r-desc code { font-family: var(--mono); font-size: 0.9em;
+    background: rgba(255,255,255,0.04); color: var(--text);
+    padding: 1px 5px; border-radius: 3px; border: none; }
+  .r-btn { display: inline-flex; align-items: center; gap: 10px;
+    font-family: var(--mono); font-size: 11.5px;
+    letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--text); text-decoration: none;
+    padding: 9px 18px;
+    border: 1px solid var(--line-strong); border-radius: 999px;
+    background: transparent; transition: all 0.18s; }
+  .r-card.teal .r-btn:hover { border-color: var(--teal); color: var(--teal); box-shadow: 0 0 0 4px rgba(99, 102, 241,0.08); }
+  .r-card.purple .r-btn:hover { border-color: var(--purple); color: var(--purple); box-shadow: 0 0 0 4px rgba(139, 92, 246,0.08); }
+  .r-card.pink .r-btn:hover { border-color: var(--pink); color: var(--pink); box-shadow: 0 0 0 4px rgba(247, 118, 142,0.08); }
+
+  .nav-foot { margin-top: 80px; padding-top: 32px;
+    border-top: 1px solid var(--line);
+    display: flex; justify-content: space-between; align-items: center;
+    font-family: var(--mono); font-size: 11.5px;
+    letter-spacing: 0.1em; text-transform: uppercase;
+    color: var(--text-mute); }
+  .nav-foot a { color: var(--teal); text-decoration: none; }
+
+  @media (max-width: 980px) {
+    .layout { grid-template-columns: 1fr; gap: 0; padding: 40px 24px 80px; }
+    .sidebar { display: none; }
+    .pl-body, .tw-body, .sl-body, .slo-body { grid-template-columns: 1fr; }
+    .pl-side, .tw-chart, .sl-pane, .slo-controls { border-right: none; border-bottom: 1px solid var(--line); }
+    .md-summary { grid-template-columns: 1fr 1fr; }
+    .md-charts { grid-template-columns: 1fr; }
+    .md-row { grid-template-columns: 1.4fr 1fr 1fr; font-size: 11px; }
+    .md-row .h3, .md-row .h4 { display: none; }
+    .topbar-inner { padding: 12px 20px; }
+    .track-progress { display: none; }
+  }
+  /* ===== M0 indigo / serif theme overlay ===== */
+  :root { --serif: 'Source Serif 4', Georgia, serif; }
+  h1.module-title { font-family: var(--serif); font-weight: 400; letter-spacing: -0.022em; }
+  h1.module-title .accent { font-style: italic; font-weight: 300; }
+  .lede { font-family: var(--serif); font-weight: 300; }
+  h2 { font-family: var(--serif); font-weight: 400; letter-spacing: -0.01em; }
+  p { font-family: var(--serif); font-weight: 300; }
+  ul.tight li { font-family: var(--serif); font-weight: 300; }
+  p em { font-style: italic; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-inner">
+    <div class="brand"><span class="dot"></span><span>MCP / Masterclass</span></div>
+    <div class="track-progress">
+      <div class="tp-item done">Track 0 · Foundations</div>
+      <div class="tp-item done">Track 1 · Protocol</div>
+      <div class="tp-item done">Track 2 · Servers</div>
+      <div class="tp-item done">Track 3 · Clients</div>
+      <div class="tp-item done">Track 4 · Security</div>
+      <div class="tp-item current">Track 5 · Production</div>
+      <div class="tp-item">Track 6 · Capstone</div>
+    </div>
+    <div class="progress-bar">
+      <span id="progressLabel">0%</span>
+      <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+    </div>
+  </div>
+</div>
+
+<div class="layout">
+
+  <aside class="sidebar">
+    <div class="sb-label">Module 5.2 · Contents</div>
+    <ul class="sb-list" id="sbList">
+      <li><a href="#s1" data-target="s1"><span class="num">01</span><span>The three pillars</span></a></li>
+      <li><a href="#s2" data-target="s2"><span class="num">02</span><span>OTel instrumentation</span></a></li>
+      <li><a href="#s3" data-target="s3"><span class="num">03</span><span>Per-tool metrics</span></a></li>
+      <li><a href="#s4" data-target="s4"><span class="num">04</span><span>Structured logging</span></a></li>
+      <li><a href="#s5" data-target="s5"><span class="num">05</span><span>SLOs &amp; alerting</span></a></li>
+      <li><a href="#kc" data-target="kc"><span class="num">✓</span><span>Knowledge check</span></a></li>
+      <li><a href="#res" data-target="res"><span class="num">⌘</span><span>Resources</span></a></li>
+    </ul>
+  </aside>
+
+  <div class="content">
+
+    <div class="crumb">
+      <span class="bar"></span>
+      <span>Track 05 — Production, Deployment &amp; Ecosystem</span>
+      <span class="sep">/</span>
+      <span class="dim">Module 5.2</span>
+    </div>
+
+    <h1 class="module-title">Observability for <span class="accent">MCP</span>.</h1>
+    <p class="lede">
+      Module 5.1 built a cluster that can take load. The next question is the one every on-call
+      engineer asks at 3am: <em>what is it actually doing right now?</em> This module wires up
+      OpenTelemetry across the MCP lifecycle, instruments per-tool metrics, structures your logs
+      so they're queryable, and turns the numbers into SLOs you can alert on without being woken
+      up by noise.
+    </p>
+
+    <div class="hero-meta">
+      <div class="m"><span class="m-label">Time</span><span class="m-val">54 min</span></div>
+      <div class="m"><span class="m-label">Format</span><span class="m-val">5 interactive widgets</span></div>
+      <div class="m"><span class="m-label">Builds on</span><span class="m-val">5.1</span></div>
+      <div class="m"><span class="m-label">Stack</span><span class="m-val">OTel · Prometheus · Loki · Grafana</span></div>
+    </div>
+
+    <div class="objectives">
+      <div class="obj-header">
+        <div class="obj-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 3v18h18"/><path d="M7 14l4-4 4 4 5-5"/>
+          </svg>
+        </div>
+        <div class="obj-title">What you'll master</div>
+      </div>
+      <ul class="obj-list" id="objList">
+        <li><div class="check" data-i="0">01</div><span>Map the three pillars (metrics, logs, traces) to the three questions they answer — and stop using one to do another's job.</span></li>
+        <li><div class="check" data-i="1">02</div><span>Wire OpenTelemetry into FastMCP so every <code>tools/call</code>, <code>sampling/createMessage</code>, and lifespan event becomes a span — with the right attributes for correlation.</span></li>
+        <li><div class="check" data-i="2">03</div><span>Define per-tool RED metrics (Rate, Errors, Duration), tag them by tool name and outcome, and ship them as Prometheus histograms.</span></li>
+        <li><div class="check" data-i="3">04</div><span>Replace ad-hoc <code>print</code> statements with structured JSON logs carrying trace IDs and session IDs — so a 3am query in Loki returns 12 lines, not 12 GB.</span></li>
+        <li><div class="check" data-i="4">05</div><span>Set realistic SLOs per tool, calculate error budgets, and write multi-window burn-rate alerts that fire on real degradations and stay silent on noise.</span></li>
+      </ul>
+    </div>
+
+    <!-- ============ SECTION 1 ============ -->
+    <section class="block" id="s1">
+      <div class="section-label"><span class="sn">01</span> &nbsp;The three pillars</div>
+      <h2>Three signal types, three questions. Don't confuse them.</h2>
+
+      <p>
+        "Observability" is the union of three signal types: <strong>metrics</strong>,
+        <strong>logs</strong>, and <strong>traces</strong>. Each one answers a different question
+        cheaply, and answers the other two expensively (or not at all). The most common production
+        observability bug is using one to do another's job — counting log lines for rate limits,
+        scanning traces for aggregate latency, building dashboards from individual log events.
+        Switch between the pillars to see what each one is for, what it costs, and what it emits
+        on the wire:
+      </p>
+
+      <span class="exercise-tag"><span class="pulse"></span>Compare · the three signals</span>
+
+      <div class="pl-w mode-metrics" id="plW">
+        <div class="pl-head">
+          <span class="title">Signal Type · What It Is &amp; What It Emits</span>
+          <div class="pl-tabs">
+            <button class="metrics active" data-mode="metrics">Metrics</button>
+            <button class="logs" data-mode="logs">Logs</button>
+            <button class="traces" data-mode="traces">Traces</button>
+          </div>
+        </div>
+        <div class="pl-body">
+          <div class="pl-side" id="plLeft"></div>
+          <div class="pl-side" id="plRight"></div>
+        </div>
+      </div>
+
+      <h3 class="sub"><span class="num">›</span> The mental model: which question, which pillar</h3>
+      <ul class="tight">
+        <li><strong>"Is the system healthy right now?"</strong> → metrics. Pre-aggregated time series, designed for fast aggregation and threshold alerts. P95 latency, RPS, error rate. Cheap to store, queryable in milliseconds, lose individual-request detail.</li>
+        <li><strong>"What happened during this specific request?"</strong> → traces. A per-request graph of every span (every operation, every downstream call) with parent-child relationships. Expensive but invaluable; you sample (e.g. 1%) in production.</li>
+        <li><strong>"What does the system <em>say</em> happened?"</strong> → logs. The narrative. Structured events for grep-after-the-fact diagnosis. Cheap to produce, expensive to query at scale, the only thing that's always there.</li>
+      </ul>
+
+      <div class="callout">
+        <div class="tag">Correlate, don't pick</div>
+        <p>
+          The mature production posture isn't "we use metrics instead of logs" — it's all three,
+          correlated by shared identifiers. A metric alert links to a Grafana panel that links to a
+          Loki log query filtered by <code>trace_id</code> that links to the full Jaeger trace.
+          Tools like Grafana, Datadog, and Honeycomb make that link cheap; designing your
+          instrumentation so the IDs are everywhere is what makes it possible.
+        </p>
+      </div>
+    </section>
+
+    <!-- ============ SECTION 2 ============ -->
+    <section class="block" id="s2">
+      <div class="section-label"><span class="sn">02</span> &nbsp;OTel instrumentation</div>
+      <h2>The trace of a single tool call, span by span.</h2>
+
+      <p>
+        OpenTelemetry is the vendor-neutral standard for emitting traces, metrics, and logs from
+        your code. You instrument once (in OTel's API), choose an exporter (Jaeger, Tempo, Honeycomb,
+        Datadog), and switch backends without changing code. For an MCP server, the trace shape is
+        very specific: one root span per JSON-RPC method, child spans for downstream HTTP/DB calls,
+        and special spans for sampling/elicitation that go back to the host. Click any span to see
+        its attributes:
+      </p>
+
+      <span class="exercise-tag"><span class="pulse"></span>Explore · click a span</span>
+
+      <div class="tw-w" id="twW">
+        <div class="tw-head">
+          <span class="title">Trace · POST /mcp · session=S1 · trace_id=4f17…</span>
+          <div class="tw-meta">
+            <span>Total: <span class="v">1842 ms</span></span>
+            <span>Spans: <span class="v">8</span></span>
+            <span>Status: <span class="v" style="color:var(--green)">OK</span></span>
+          </div>
+        </div>
+        <div class="tw-body">
+          <div class="tw-chart" id="twChart"></div>
+          <div class="tw-side" id="twSide"></div>
+        </div>
+      </div>
+
+      <h3 class="sub"><span class="num">›</span> Wiring OTel into FastMCP</h3>
+      <p>
+        The boilerplate is small and stays in lifespan. Set up a tracer provider, register an OTLP
+        exporter pointing at your collector, and decorate the tool functions you care about. The
+        FastMCP middleware can attach a span around every JSON-RPC method automatically — what you
+        add manually are the spans <em>inside</em> your tools.
+      </p>
+
+<pre class="code-pre"><span class="k">from</span> opentelemetry <span class="k">import</span> trace
+<span class="k">from</span> opentelemetry.sdk.trace <span class="k">import</span> TracerProvider
+<span class="k">from</span> opentelemetry.sdk.trace.export <span class="k">import</span> BatchSpanProcessor
+<span class="k">from</span> opentelemetry.exporter.otlp.proto.grpc.trace_exporter <span class="k">import</span> OTLPSpanExporter
+<span class="k">from</span> opentelemetry.sdk.resources <span class="k">import</span> Resource
+
+<span class="c"># --- Once, in lifespan startup ---</span>
+resource = <span class="f">Resource</span>.<span class="f">create</span>({
+    <span class="s">"service.name"</span>: <span class="s">"my-mcp-server"</span>,
+    <span class="s">"service.version"</span>: <span class="s">"1.4.2"</span>,
+    <span class="s">"deployment.environment"</span>: settings.ENV,
+})
+provider = <span class="f">TracerProvider</span>(resource=resource)
+provider.<span class="f">add_span_processor</span>(
+    <span class="f">BatchSpanProcessor</span>(
+        <span class="f">OTLPSpanExporter</span>(endpoint=<span class="s">"http://otel-collector:4317"</span>)
+    )
+)
+trace.<span class="f">set_tracer_provider</span>(provider)
+
+tracer = trace.<span class="f">get_tracer</span>(<span class="s">"my-mcp-server"</span>)
+
+<span class="c"># --- Inside a tool ---</span>
+<span class="d">@mcp.tool</span>
+<span class="k">async def</span> <span class="f">deep_research</span>(query: <span class="k">str</span>, ctx: Context) -&gt; <span class="k">str</span>:
+    <span class="k">with</span> tracer.<span class="f">start_as_current_span</span>(<span class="s">"deep_research"</span>) <span class="k">as</span> span:
+        span.<span class="f">set_attribute</span>(<span class="s">"mcp.tool.name"</span>, <span class="s">"deep_research"</span>)
+        span.<span class="f">set_attribute</span>(<span class="s">"mcp.session.id"</span>, ctx.session_id)
+        span.<span class="f">set_attribute</span>(<span class="s">"query.length"</span>, <span class="f">len</span>(query))
+
+        docs = <span class="k">await</span> <span class="f">fetch_docs</span>(query)      <span class="c"># auto-instrumented httpx span</span>
+        span.<span class="f">set_attribute</span>(<span class="s">"docs.count"</span>, <span class="f">len</span>(docs))
+
+        <span class="k">return</span> <span class="k">await</span> <span class="f">summarise</span>(docs)</pre>
+
+      <div class="callout purple">
+        <div class="tag">Use the semantic conventions</div>
+        <p>
+          OTel publishes a stable list of <em>semantic conventions</em> — agreed-upon attribute
+          names like <code>http.request.method</code>, <code>db.system</code>,
+          <code>gen_ai.request.model</code>. Use those names rather than inventing your own; every
+          backend's dashboards and queries are built around them. The
+          <code>gen_ai.*</code> namespace specifically covers LLM/agent observability and is the
+          right place to put model name, token counts, and completion latency.
+        </p>
+      </div>
+    </section>
+
+    <!-- ============ SECTION 3 ============ -->
+    <section class="block" id="s3">
+      <div class="section-label"><span class="sn">03</span> &nbsp;Per-tool metrics</div>
+      <h2>RED, USE, and the dashboard you should be staring at.</h2>
+
+      <p>
+        The default metric framework for request-driven services is <strong>RED</strong>:
+        <em>Rate</em> (requests per second), <em>Errors</em> (failures per second or as a ratio),
+        and <em>Duration</em> (latency distribution). For an MCP server, RED is computed per
+        <em>tool</em> — because aggregate "MCP latency" hides the one slow tool dragging down a
+        fast-tool service. Below is what your Grafana looks like once you've wired the histograms
+        correctly:
+      </p>
+
+      <span class="exercise-tag"><span class="pulse"></span>Observe · scrub the time range</span>
+
+      <div class="md-w">
+        <div class="md-head">
+          <span class="title">Per-Tool RED Dashboard · last 1h</span>
+          <div class="md-pills">
+            <button data-tr="5m">5m</button>
+            <button class="active" data-tr="1h">1h</button>
+            <button data-tr="6h">6h</button>
+            <button data-tr="24h">24h</button>
+          </div>
+        </div>
+        <div class="md-summary">
+          <div class="md-stat"><div class="k">Requests / sec</div><div class="v">42.3</div><div class="d up">▲ 12% vs prev</div></div>
+          <div class="md-stat"><div class="k">P95 latency</div><div class="v warn">920 ms</div><div class="d down">▼ slower than SLO</div></div>
+          <div class="md-stat"><div class="k">Error rate</div><div class="v good">0.34 %</div><div class="d">within budget</div></div>
+          <div class="md-stat"><div class="k">Active sessions</div><div class="v">187</div><div class="d up">▲ 8 since 09:00</div></div>
+        </div>
+        <div class="md-charts">
+          <div class="md-chart">
+            <div class="ch-head">
+              <div class="ch-title">Request rate (RPS, by tool)</div>
+              <div class="ch-legend">
+                <span class="item"><span class="dot" style="background:var(--teal)"></span>search</span>
+                <span class="item"><span class="dot" style="background:var(--purple)"></span>fetch</span>
+                <span class="item"><span class="dot" style="background:var(--amber)"></span>research</span>
+              </div>
+            </div>
+            <svg id="chRps" viewBox="0 0 300 140" preserveAspectRatio="none"></svg>
+          </div>
+          <div class="md-chart">
+            <div class="ch-head">
+              <div class="ch-title">Latency percentiles (ms)</div>
+              <div class="ch-legend">
+                <span class="item"><span class="dot" style="background:var(--teal)"></span>p50</span>
+                <span class="item"><span class="dot" style="background:var(--amber)"></span>p95</span>
+                <span class="item"><span class="dot" style="background:var(--red)"></span>p99</span>
+              </div>
+            </div>
+            <svg id="chLat" viewBox="0 0 300 140" preserveAspectRatio="none"></svg>
+          </div>
+        </div>
+        <div class="md-tools">
+          <div class="md-tools-h">Per-tool breakdown</div>
+          <div class="md-row head">
+            <span>tool</span><span style="text-align:right">rps</span><span style="text-align:right">p95</span><span style="text-align:right">errors</span><span>load</span>
+          </div>
+          <div class="md-row"><span class="tn">search</span><span class="num">18.4</span><span class="num">240 ms</span><span class="num">0.1 %</span><span class="bar"><div class="fill" style="width:78%"></div></span></div>
+          <div class="md-row"><span class="tn">fetch</span><span class="num">14.1</span><span class="num">410 ms</span><span class="num">0.4 %</span><span class="bar"><div class="fill" style="width:60%"></div></span></div>
+          <div class="md-row"><span class="tn">research</span><span class="num">6.0</span><span class="num warn">2140 ms</span><span class="num warn">1.8 %</span><span class="bar"><div class="fill" style="width:42%"></div></span></div>
+          <div class="md-row"><span class="tn">summarize</span><span class="num">2.8</span><span class="num">680 ms</span><span class="num">0.2 %</span><span class="bar"><div class="fill" style="width:24%"></div></span></div>
+          <div class="md-row"><span class="tn">send_email</span><span class="num">1.0</span><span class="num">180 ms</span><span class="num bad">3.6 %</span><span class="bar"><div class="fill" style="width:14%"></div></span></div>
+        </div>
+      </div>
+
+      <h3 class="sub"><span class="num">›</span> Emitting RED from FastMCP</h3>
+      <p>
+        OTel ships a Metrics API parallel to its Trace API. You get a Meter, create instruments
+        (counters, histograms), and observe per-call. The exporter ships them to your collector
+        which forwards them to Prometheus (or whatever you've configured). Three instruments
+        per tool covers the full RED picture:
+      </p>
+
+<pre class="code-pre"><span class="k">from</span> opentelemetry <span class="k">import</span> metrics
+
+meter = metrics.<span class="f">get_meter</span>(<span class="s">"my-mcp-server"</span>)
+
+tool_calls = meter.<span class="f">create_counter</span>(
+    name=<span class="s">"mcp.tool.calls"</span>,
+    unit=<span class="s">"1"</span>,
+    description=<span class="s">"Total tool invocations"</span>,
+)
+tool_errors = meter.<span class="f">create_counter</span>(
+    name=<span class="s">"mcp.tool.errors"</span>,
+    unit=<span class="s">"1"</span>,
+    description=<span class="s">"Total tool failures"</span>,
+)
+tool_duration = meter.<span class="f">create_histogram</span>(
+    name=<span class="s">"mcp.tool.duration"</span>,
+    unit=<span class="s">"ms"</span>,
+    description=<span class="s">"Tool execution time"</span>,
+)
+
+<span class="d">@mcp.tool</span>
+<span class="k">async def</span> <span class="f">search</span>(q: <span class="k">str</span>, ctx: Context) -&gt; <span class="k">list</span>:
+    attrs = {<span class="s">"tool.name"</span>: <span class="s">"search"</span>}
+    tool_calls.<span class="f">add</span>(<span class="n">1</span>, attrs)
+    t0 = time.<span class="f">monotonic</span>()
+    <span class="k">try</span>:
+        result = <span class="k">await</span> <span class="f">do_search</span>(q)
+        attrs[<span class="s">"outcome"</span>] = <span class="s">"ok"</span>
+        <span class="k">return</span> result
+    <span class="k">except</span> Exception <span class="k">as</span> e:
+        attrs[<span class="s">"outcome"</span>] = <span class="s">"error"</span>
+        attrs[<span class="s">"error.type"</span>] = <span class="f">type</span>(e).__name__
+        tool_errors.<span class="f">add</span>(<span class="n">1</span>, attrs)
+        <span class="k">raise</span>
+    <span class="k">finally</span>:
+        elapsed = (time.<span class="f">monotonic</span>() - t0) * <span class="n">1000</span>
+        tool_duration.<span class="f">record</span>(elapsed, attrs)</pre>
+
+      <div class="callout amber">
+        <div class="tag">Watch your cardinality</div>
+        <p>
+          Every distinct combination of attribute values is a new time series. Tagging by
+          <code>tool.name</code> and <code>outcome</code> is fine (~10 tools × 2 outcomes = 20
+          series). Tagging by <code>session.id</code> or <code>user.id</code> is catastrophic —
+          you'll have millions of series, your Prometheus will hate you, and your bill (if you're
+          on a managed service) will be a surprise. <em>High-cardinality fields belong on traces
+          and logs, not metrics.</em>
+        </p>
+      </div>
+    </section>
+
+    <!-- ============ SECTION 4 ============ -->
+    <section class="block" id="s4">
+      <div class="section-label"><span class="sn">04</span> &nbsp;Structured logging</div>
+      <h2>The 3am query that returns 12 lines instead of 12 GB.</h2>
+
+      <p>
+        Logs are still the workhorse of debugging. The question is whether your logs are <em>queryable</em>
+        or just <em>greppable</em>. Toggle between the two styles to see the difference — both have
+        the same information; only one will tell you anything useful at 3am when you're trying to
+        find "every failed <code>send_email</code> call for user <code>u_abc</code> in the last
+        hour where the upstream timed out":
+      </p>
+
+      <span class="exercise-tag"><span class="pulse"></span>Compare · unstructured vs structured</span>
+
+      <div class="sl-w" id="slW">
+        <div class="sl-head">
+          <span class="title">Same Information · Two Formats</span>
+          <div class="sl-toggle">
+            <button class="un active" data-view="un">Unstructured</button>
+            <button class="st" data-view="st">Structured (JSON)</button>
+          </div>
+        </div>
+        <div class="sl-body">
+          <div class="sl-pane bad">
+            <div class="ph"><span class="pip"></span>Raw stdout · grep-only</div>
+            <pre class="out" id="slLeft"></pre>
+          </div>
+          <div class="sl-pane good">
+            <div class="ph"><span class="pip"></span>LogQL query · returns 1 line</div>
+            <pre class="out" id="slRight"></pre>
+          </div>
+        </div>
+        <div class="sl-explain" id="slExplain"></div>
+      </div>
+
+      <h3 class="sub"><span class="num">›</span> The structlog setup that actually works</h3>
+      <p>
+        Python's <code>structlog</code> wraps the stdlib <code>logging</code> module and lets you
+        emit JSON natively without giving up familiar idioms. The OTel logging instrumentation
+        injects <code>trace_id</code> and <code>span_id</code> into every log record
+        automatically — which is what makes the correlation we keep talking about work in
+        practice.
+      </p>
+
+<pre class="code-pre purple"><span class="k">import</span> structlog, logging, sys
+<span class="k">from</span> opentelemetry.instrumentation.logging <span class="k">import</span> LoggingInstrumentor
+
+<span class="c"># Inject trace_id and span_id into every record</span>
+<span class="f">LoggingInstrumentor</span>().<span class="f">instrument</span>(set_logging_format=<span class="k">True</span>)
+
+structlog.<span class="f">configure</span>(
+    processors=[
+        structlog.contextvars.<span class="f">merge_contextvars</span>,     <span class="c"># request-scoped vars</span>
+        structlog.processors.<span class="f">add_log_level</span>,
+        structlog.processors.<span class="f">TimeStamper</span>(fmt=<span class="s">"iso"</span>),
+        structlog.processors.<span class="f">EventRenamer</span>(<span class="s">"message"</span>),
+        structlog.processors.<span class="f">JSONRenderer</span>(),         <span class="c"># stdout = JSON lines</span>
+    ],
+    wrapper_class=structlog.<span class="f">make_filtering_bound_logger</span>(logging.INFO),
+)
+log = structlog.<span class="f">get_logger</span>()
+
+<span class="c"># In a tool — context vars stick to every log inside this call</span>
+<span class="d">@mcp.tool</span>
+<span class="k">async def</span> <span class="f">send_email</span>(to: <span class="k">str</span>, body: <span class="k">str</span>, ctx: Context):
+    structlog.contextvars.<span class="f">bind_contextvars</span>(
+        tool=<span class="s">"send_email"</span>,
+        session_id=ctx.session_id,
+        user_id=ctx.user_id,
+    )
+    log.<span class="f">info</span>(<span class="s">"send_email.start"</span>, to=to, body_bytes=<span class="f">len</span>(body))
+    <span class="k">try</span>:
+        result = <span class="k">await</span> <span class="f">mailgun</span>.<span class="f">send</span>(to=to, body=body)
+        log.<span class="f">info</span>(<span class="s">"send_email.ok"</span>, message_id=result.id)
+        <span class="k">return</span> result
+    <span class="k">except</span> Exception <span class="k">as</span> e:
+        log.<span class="f">error</span>(<span class="s">"send_email.fail"</span>, error=<span class="f">str</span>(e),
+                  error_type=<span class="f">type</span>(e).__name__)
+        <span class="k">raise</span></pre>
+
+      <div class="callout">
+        <div class="tag">Sample your logs, not your traces (counter-intuitively)</div>
+        <p>
+          Production traffic generates <em>way</em> more log volume than trace volume — every tool
+          call might emit 5–10 log lines vs one trace. Tail-sample your traces (keep 100% of slow
+          or error traces, 1% of the rest) but rate-limit your logs at the source. <code>structlog</code>
+          and OTel both ship sampler primitives; use them. A 1% sampling of healthy traffic with
+          100% of errors is the standard recipe.
+        </p>
+      </div>
+    </section>
+
+    <!-- ============ SECTION 5 ============ -->
+    <section class="block" id="s5">
+      <div class="section-label"><span class="sn">05</span> &nbsp;SLOs &amp; alerting</div>
+      <h2>From metrics to a pager that only rings when it should.</h2>
+
+      <p>
+        The endgame of all this instrumentation is the <strong>SLO</strong>: a Service Level
+        Objective expressing what "good" means in a single number. "99% of <code>search</code>
+        calls complete in under 500ms over a rolling 30-day window." That number gives you a
+        derived <strong>error budget</strong> — 1% of calls × monthly traffic = the failures
+        you're allowed before alerting matters. Pick a tool below and watch the budget math:
+      </p>
+
+      <span class="exercise-tag"><span class="pulse"></span>Tune · pick a tool, set an SLO</span>
+
+      <div class="slo-w">
+        <div class="slo-head">
+          <span class="title">SLO Calculator · Per-Tool</span>
+        </div>
+        <div class="slo-body">
+          <div class="slo-controls">
+            <div class="slo-ctrl">
+              <div class="lbl">Tool</div>
+              <select id="sloTool">
+                <option value="search">search · 18.4 rps · p95=240ms</option>
+                <option value="fetch">fetch · 14.1 rps · p95=410ms</option>
+                <option value="research" selected>research · 6.0 rps · p95=2140ms</option>
+                <option value="summarize">summarize · 2.8 rps · p95=680ms</option>
+                <option value="email">send_email · 1.0 rps · p95=180ms</option>
+              </select>
+            </div>
+            <div class="slo-ctrl">
+              <div class="lbl">SLO target (success %)</div>
+              <input type="range" id="sloTarget" min="950" max="9999" value="990">
+              <div class="val" id="sloTargetVal">99.0%</div>
+            </div>
+            <div class="slo-ctrl">
+              <div class="lbl">Latency threshold (ms, p95)</div>
+              <input type="range" id="sloLat" min="100" max="5000" step="50" value="1000">
+              <div class="val" id="sloLatVal">1000 ms</div>
+            </div>
+            <div class="slo-ctrl">
+              <div class="lbl">Window</div>
+              <select id="sloWindow">
+                <option value="7">Rolling 7 days</option>
+                <option value="30" selected>Rolling 30 days</option>
+                <option value="90">Rolling 90 days</option>
+              </select>
+            </div>
+          </div>
+          <div class="slo-display">
+            <div class="slo-result" id="sloResult">
+              <div class="verdict" id="sloVerdict">— calculating —</div>
+              <div class="big" id="sloBig">—</div>
+              <div class="sub" id="sloSub">—</div>
+            </div>
+            <div class="slo-grid">
+              <div class="slo-cell"><div class="k">Total calls / window</div><div class="v" id="sloTotal">—</div><div class="d">across the window</div></div>
+              <div class="slo-cell"><div class="k">Allowed failures</div><div class="v" id="sloAllowed">—</div><div class="d">your error budget</div></div>
+              <div class="slo-cell"><div class="k">Observed failures</div><div class="v" id="sloObserved">—</div><div class="d">current bad events</div></div>
+              <div class="slo-cell"><div class="k">Budget remaining</div><div class="v" id="sloBudget">—</div><div class="d">until alert fires</div></div>
+            </div>
+            <div class="slo-rule" id="sloRule"></div>
+          </div>
+        </div>
+      </div>
+
+      <h3 class="sub"><span class="num">›</span> Multi-window burn-rate alerts (why your pager stops crying wolf)</h3>
+      <p>
+        A naive alert ("error rate &gt; 1%") fires on every blip. SRE practice replaced this with
+        <strong>burn-rate alerts</strong>: alert when error budget is being consumed
+        <em>too fast for the chosen window</em>. The trick is using <em>two</em> windows — a short
+        one (5 min, fast burn) and a long one (1 hour, sustained burn) — both must trip before
+        paging. Quick blips don't cross both; real degradation does.
+      </p>
+
+<pre class="code-pre amber"><span class="c"># Prometheus alert: page only if BOTH windows are burning fast</span>
+<span class="k">groups</span>:
+- <span class="k">name</span>: mcp_slo_burnrate
+  <span class="k">rules</span>:
+  - <span class="k">alert</span>: <span class="v">MCPToolErrorBudgetBurnFast</span>
+    <span class="k">expr</span>: |
+      (
+        sum(rate(mcp_tool_errors_total{tool="research"}[5m]))
+        /
+        sum(rate(mcp_tool_calls_total{tool="research"}[5m]))
+      ) &gt; (<span class="n">14.4</span> * <span class="n">0.01</span>)        <span class="c"># 14.4× budget burn over 5m</span>
+      <span class="k">and</span>
+      (
+        sum(rate(mcp_tool_errors_total{tool="research"}[1h]))
+        /
+        sum(rate(mcp_tool_calls_total{tool="research"}[1h]))
+      ) &gt; (<span class="n">14.4</span> * <span class="n">0.01</span>)        <span class="c"># AND also over 1h</span>
+    <span class="k">for</span>: <span class="n">2</span>m
+    <span class="k">labels</span>: { <span class="k">severity</span>: <span class="v">page</span> }
+    <span class="k">annotations</span>:
+      <span class="k">summary</span>: <span class="s">"research tool burning error budget at 14.4× sustained rate"</span></pre>
+
+      <div class="callout red">
+        <div class="tag">Don't alert on everything you measure</div>
+        <p>
+          The most expensive observability mistake is treating every metric as alert-worthy.
+          You should be measuring hundreds of things. You should be paging on maybe five. Alert on
+          symptoms (high error rate, latency past SLO, queue depth blowing up) — not causes
+          (high CPU, low disk). Causes are what you look at <em>after</em> the symptom alert fires.
+        </p>
+      </div>
+    </section>
+
+    <!-- ============ KNOWLEDGE CHECK ============ -->
+    <section class="kc" id="kc">
+      <div class="kc-head">
+        <div class="kc-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
+          </svg>
+        </div>
+        <div>
+          <div class="kc-label">Knowledge Check · End of Module 5.2</div>
+          <div class="kc-title">Five checks before Module 5.3.</div>
+        </div>
+      </div>
+
+      <div class="kc-q">
+        <div class="kc-prompt"><span class="qn">Q1.</span>Your dashboard shows aggregate "MCP P95 latency" sitting at 1.4s. The aggregate looks bad. Which signal do you reach for next?</div>
+        <div class="kc-opts" data-correct="1">
+          <button class="kc-opt"><span class="marker">A</span><span>Open Loki and grep for slow requests</span></button>
+          <button class="kc-opt"><span class="marker">B</span><span>Break the metric down by <code>tool.name</code> — you almost always find one slow tool dragging the aggregate up while everything else is healthy. RED tagged per-tool is exactly for this.</span></button>
+          <button class="kc-opt"><span class="marker">C</span><span>Pull every trace from the last hour and inspect manually</span></button>
+          <button class="kc-opt"><span class="marker">D</span><span>Restart the server</span></button>
+        </div>
+        <div class="kc-feedback"><strong>Right.</strong> Per-tool RED isn't optional — aggregate latency is almost always a Simpson's paradox in disguise. Drill from the aggregate to the per-tool breakdown first, then dive into traces for the offending tool.</div>
+      </div>
+
+      <div class="kc-q">
+        <div class="kc-prompt"><span class="qn">Q2.</span>A junior engineer adds <code>session_id</code> as an attribute on the <code>mcp.tool.duration</code> histogram. The Prometheus pod OOMs the next day. Why?</div>
+        <div class="kc-opts" data-correct="2">
+          <button class="kc-opt"><span class="marker">A</span><span>Prometheus is incompatible with OTel histograms</span></button>
+          <button class="kc-opt"><span class="marker">B</span><span>The histogram bucket boundaries are wrong</span></button>
+          <button class="kc-opt"><span class="marker">C</span><span>Every distinct attribute value is a new time series. <code>session_id</code> is high-cardinality (one per user session, potentially millions). Prometheus can't index that many series in memory. Session IDs belong on traces and logs, never on metrics.</span></button>
+          <button class="kc-opt"><span class="marker">D</span><span>OTel sampling kicked in</span></button>
+        </div>
+        <div class="kc-feedback"><strong>Exactly.</strong> Cardinality discipline is the single most important rule when designing metrics. Bounded sets (tool name, error type, region) are fine. Unbounded sets (session, user, request id) explode the time series count and break the store.</div>
+      </div>
+
+      <div class="kc-q">
+        <div class="kc-prompt"><span class="qn">Q3.</span>A customer reports their tool call hung for 8 seconds before returning. Which signal answers <em>"what exactly was happening in those 8 seconds"</em>?</div>
+        <div class="kc-opts" data-correct="0">
+          <button class="kc-opt"><span class="marker">A</span><span>The trace for that specific request — child spans show every downstream call, its duration, and where time was spent (DB query? LLM sampling? external HTTP?)</span></button>
+          <button class="kc-opt"><span class="marker">B</span><span>The P95 latency metric for that tool</span></button>
+          <button class="kc-opt"><span class="marker">C</span><span>The error counter</span></button>
+          <button class="kc-opt"><span class="marker">D</span><span>The pod's CPU utilization</span></button>
+        </div>
+        <div class="kc-feedback"><strong>Yes.</strong> Metrics answer "is the system healthy" (aggregate). Traces answer "what happened in this one request" (per-request). For a one-off slow call, you need the trace — and you find it by querying for spans with that trace_id (which your customer reported, because you propagated it through your structured logs).</div>
+      </div>
+
+      <div class="kc-q">
+        <div class="kc-prompt"><span class="qn">Q4.</span>Your alert "error rate &gt; 1% for 5 minutes" wakes the on-call engineer 12 times a week. Each time it's a 30-second blip that resolved itself. The right fix is:</div>
+        <div class="kc-opts" data-correct="1">
+          <button class="kc-opt"><span class="marker">A</span><span>Raise the threshold to 5%</span></button>
+          <button class="kc-opt"><span class="marker">B</span><span>Switch to a multi-window burn-rate alert that requires <em>both</em> a 5-minute and a 1-hour window to be burning fast — a 30-second blip doesn't move the 1-hour rate, so the alert doesn't fire.</span></button>
+          <button class="kc-opt"><span class="marker">C</span><span>Disable the alert</span></button>
+          <button class="kc-opt"><span class="marker">D</span><span>Add a 30-minute <code>for:</code> clause to the existing alert</span></button>
+        </div>
+        <div class="kc-feedback"><strong>Correct.</strong> Multi-window burn-rate alerts are the SRE-standard way to distinguish "real degradation" from "30-second blip". Two windows agreeing eliminates noise while still catching sustained problems quickly. (D) sort of works but delays detection too much for sustained outages.</div>
+      </div>
+
+      <div class="kc-q">
+        <div class="kc-prompt"><span class="qn">Q5.</span>You're staring at a JSON log line in Loki. It contains <code>tool=research</code>, <code>session_id=S1</code>, and <code>trace_id=4f17…</code>. What does that <code>trace_id</code> buy you?</div>
+        <div class="kc-opts" data-correct="2">
+          <button class="kc-opt"><span class="marker">A</span><span>Nothing — trace IDs are random</span></button>
+          <button class="kc-opt"><span class="marker">B</span><span>It identifies the user</span></button>
+          <button class="kc-opt"><span class="marker">C</span><span>It pivots you instantly from this log line to the full distributed trace in Tempo/Jaeger — and from there to every other log line emitted during the same request. The OTel logging instrumentation injects it precisely so this pivot is one click.</span></button>
+          <button class="kc-opt"><span class="marker">D</span><span>It's used for rate limiting</span></button>
+        </div>
+        <div class="kc-feedback"><strong>Exactly.</strong> Correlation IDs are what unify the three pillars. A metric alert links to a Grafana panel, which links to a Loki query filtered by <code>trace_id</code>, which links to the full trace. Designing your instrumentation so trace_id is everywhere is what makes that pivot work in production.</div>
+      </div>
+    </section>
+
+    <!-- ============ RESOURCES ============ -->
+    <section class="resources" id="res">
+      <div class="resources-header">
+        <div class="label">Instrument &amp; Operate</div>
+        <h2 class="r-h">Resources for going <span class="accent">deeper</span></h2>
+        <p class="r-sub">
+          The OpenTelemetry Python docs, the SRE book chapter on SLOs and error budgets, and
+          Grafana's reference architecture for the LGTM (Loki/Grafana/Tempo/Mimir) stack.
+        </p>
+      </div>
+
+      <div class="r-card teal">
+        <div class="r-top">
+          <div class="r-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 12c-1 0-3-1-3-3s2-3 3-3 3 1 3 3-2 3-3 3z" transform="translate(-9, 0)"/>
+              <path d="M2 21l9-9"/><path d="M14 7l2 2"/>
+            </svg>
+          </div>
+          <div class="r-titles">
+            <div class="kind">OpenTelemetry Python</div>
+            <div class="tagline">The instrumentation SDK</div>
+          </div>
+        </div>
+        <h3 class="r-title">opentelemetry.io · Python docs</h3>
+        <p class="r-desc">
+          The canonical entry point. Read the <em>"Getting Started"</em> page first, then the
+          <em>"Manual instrumentation"</em> guide. The <code>opentelemetry-instrumentation</code>
+          packages (httpx, sqlalchemy, asyncpg) auto-wire the downstream spans your tools depend
+          on without you adding code.
+        </p>
+        <a class="r-btn" href="https://opentelemetry.io/docs/languages/python/" target="_blank" rel="noopener">
+          <span class="arr">↗</span> Open docs
+        </a>
+      </div>
+
+      <div class="r-card purple">
+        <div class="r-top">
+          <div class="r-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
+            </svg>
+          </div>
+          <div class="r-titles">
+            <div class="kind">Google SRE book — Implementing SLOs</div>
+            <div class="tagline">The error-budget rulebook</div>
+          </div>
+        </div>
+        <h3 class="r-title">sre.google · The Site Reliability Workbook · Ch.2</h3>
+        <p class="r-desc">
+          Chapter 2 of the SRE Workbook is the practical guide to choosing SLIs, setting SLOs, and
+          deriving error budgets. Pair it with Chapter 5 (Alerting on SLOs) for the multi-window
+          burn-rate recipes the alert example in this module is based on. Free online.
+        </p>
+        <a class="r-btn" href="https://sre.google/workbook/implementing-slos/" target="_blank" rel="noopener">
+          <span class="arr">↗</span> Read chapter
+        </a>
+      </div>
+
+      <div class="r-card pink">
+        <div class="r-top">
+          <div class="r-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#f7768e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 3v18"/>
+            </svg>
+          </div>
+          <div class="r-titles">
+            <div class="kind">Grafana — LGTM reference stack</div>
+            <div class="tagline">Loki · Grafana · Tempo · Mimir</div>
+          </div>
+        </div>
+        <h3 class="r-title">grafana.com · Observability stack</h3>
+        <p class="r-desc">
+          The reference deployment of a full observability stack: Loki for logs, Tempo for traces,
+          Mimir for metrics, Grafana for dashboards — all OSS and OTel-native. The
+          <em>"Application observability"</em> setup wizard walks you through the exact OTLP
+          collector config to point your FastMCP server at.
+        </p>
+        <a class="r-btn" href="https://grafana.com/docs/grafana-cloud/monitor-applications/application-observability/" target="_blank" rel="noopener">
+          <span class="arr">↗</span> Open guide
+        </a>
+      </div>
+    </section>
+
+    <div class="nav-foot">
+      <span>← <a href="#">5.1 Scaling, Streaming &amp; Fault Tolerance</a></span>
+      <span>Next → <a href="#">5.3 Versioning, Registry &amp; Governance</a></span>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// ============ THREE PILLARS ============
+const plData = {
+  metrics: {
+    color: 'teal',
+    leftH: 'What it is',
+    leftTitle: 'Pre-aggregated numbers over time',
+    leftP: 'A <strong>metric</strong> is a number (counter, gauge, or histogram) tagged with a small set of labels and emitted periodically. Each unique combination of labels is a <em>time series</em>. Aggregation happens at the source; the storage layer indexes time + labels for fast lookups.',
+    leftList: [
+      '<strong>Cheap to store</strong> — millions of data points per series, billions of series in a Prometheus.',
+      '<strong>Fast to query</strong> — sub-second aggregations across a whole fleet.',
+      '<strong>Lossy</strong> — you can\'t get back to the individual events that produced the number.',
+      '<strong>Cardinality-bounded</strong> — labels must be low-cardinality or the store explodes.',
+    ],
+    rightH: 'On the wire (OTLP/Prometheus)',
+    emit: `<span class="c"># Prometheus exposition format</span>
+<span class="k">mcp_tool_calls_total</span>{tool=<span class="v">"search"</span>,outcome=<span class="v">"ok"</span>} <span class="n">8421</span>
+<span class="k">mcp_tool_calls_total</span>{tool=<span class="v">"search"</span>,outcome=<span class="v">"error"</span>} <span class="n">12</span>
+<span class="k">mcp_tool_duration_ms_bucket</span>{tool=<span class="v">"search"</span>,le=<span class="v">"50"</span>} <span class="n">102</span>
+<span class="k">mcp_tool_duration_ms_bucket</span>{tool=<span class="v">"search"</span>,le=<span class="v">"100"</span>} <span class="n">789</span>
+<span class="k">mcp_tool_duration_ms_bucket</span>{tool=<span class="v">"search"</span>,le=<span class="v">"250"</span>} <span class="n">7402</span>
+<span class="k">mcp_tool_duration_ms_bucket</span>{tool=<span class="v">"search"</span>,le=<span class="v">"500"</span>} <span class="n">8401</span>
+<span class="k">mcp_tool_duration_ms_bucket</span>{tool=<span class="v">"search"</span>,le=<span class="v">"+Inf"</span>} <span class="n">8421</span>
+<span class="k">mcp_tool_duration_ms_count</span>{tool=<span class="v">"search"</span>} <span class="n">8421</span>
+<span class="k">mcp_tool_duration_ms_sum</span>{tool=<span class="v">"search"</span>} <span class="n">2089604</span>
+
+<span class="c"># Query: P95 latency for search, last 5 minutes</span>
+<span class="g">histogram_quantile</span>(<span class="n">0.95</span>,
+  <span class="g">rate</span>(<span class="k">mcp_tool_duration_ms_bucket</span>{tool=<span class="v">"search"</span>}[<span class="v">5m</span>]))`,
+  },
+  logs: {
+    color: 'blue',
+    leftH: 'What it is',
+    leftTitle: 'Timestamped events with context',
+    leftP: 'A <strong>log</strong> is a discrete event — a structured (or unstructured) record produced when something happened. Logs are append-only, high-volume, and the only signal type that survives <em>everything</em> else failing. Structured logs (JSON) are queryable; unstructured logs are grep-only.',
+    leftList: [
+      '<strong>Cheap to produce</strong> — a print statement is a log.',
+      '<strong>Expensive to query at scale</strong> — you\'re scanning text unless you indexed.',
+      '<strong>Lossless</strong> — you see exactly what each event reported.',
+      '<strong>Unbounded cardinality</strong> — IDs, user input, error messages all go here.',
+    ],
+    rightH: 'On the wire (JSON lines)',
+    emit: `<span class="c"># JSON Lines — one event per line, all attributes typed</span>
+{<span class="k">"timestamp"</span>: <span class="v">"2026-05-30T14:23:01.482Z"</span>,
+ <span class="k">"level"</span>: <span class="v">"info"</span>,
+ <span class="k">"message"</span>: <span class="v">"send_email.ok"</span>,
+ <span class="k">"tool"</span>: <span class="v">"send_email"</span>,
+ <span class="k">"session_id"</span>: <span class="v">"S_4f17ab"</span>,
+ <span class="k">"user_id"</span>: <span class="v">"u_e8x"</span>,
+ <span class="k">"trace_id"</span>: <span class="v">"4f17abcde981..."</span>,
+ <span class="k">"span_id"</span>: <span class="v">"7c3a..."</span>,
+ <span class="k">"message_id"</span>: <span class="v">"msg_2891xx"</span>,
+ <span class="k">"duration_ms"</span>: <span class="n">187</span>}
+
+<span class="c"># LogQL query — Loki indexes by labels, not text body</span>
+{service=<span class="v">"mcp-server"</span>, level=<span class="v">"error"</span>}
+  | <span class="b">json</span>
+  | tool = <span class="v">"send_email"</span>
+  | user_id = <span class="v">"u_e8x"</span>
+  | error_type = <span class="v">"TimeoutError"</span>`,
+  },
+  traces: {
+    color: 'purple',
+    leftH: 'What it is',
+    leftTitle: 'A per-request graph of spans',
+    leftP: 'A <strong>trace</strong> is the full picture of one request: a tree of <em>spans</em>, each representing an operation, with parent-child relationships and per-span attributes. Spans link via <code>trace_id</code> across services. The most expensive signal per request; the most informative for debugging.',
+    leftList: [
+      '<strong>Expensive per request</strong> — many spans, many bytes.',
+      '<strong>Highest signal</strong> — you see exactly where time went.',
+      '<strong>Sampled in production</strong> — typically 1% of healthy traffic, 100% of errors.',
+      '<strong>Cross-service</strong> — spans flow naturally across replicas, queues, and downstream services.',
+    ],
+    rightH: 'On the wire (OTLP span)',
+    emit: `<span class="c"># OTLP span (JSON form) — one of many in a trace</span>
+{
+  <span class="k">"trace_id"</span>: <span class="v">"4f17abcde981..."</span>,
+  <span class="k">"span_id"</span>: <span class="v">"7c3a..."</span>,
+  <span class="k">"parent_span_id"</span>: <span class="v">"a118..."</span>,
+  <span class="k">"name"</span>: <span class="v">"tool.send_email"</span>,
+  <span class="k">"kind"</span>: <span class="v">"SERVER"</span>,
+  <span class="k">"start_time_unix_nano"</span>: <span class="n">1748614981482000000</span>,
+  <span class="k">"end_time_unix_nano"</span>: <span class="n">1748614981669000000</span>,
+  <span class="k">"attributes"</span>: {
+    <span class="k">"mcp.tool.name"</span>: <span class="v">"send_email"</span>,
+    <span class="k">"mcp.session.id"</span>: <span class="v">"S_4f17ab"</span>,
+    <span class="k">"user.id"</span>: <span class="v">"u_e8x"</span>
+  },
+  <span class="k">"status"</span>: { <span class="k">"code"</span>: <span class="v">"OK"</span> }
+}`,
+  },
+};
+
+const plW = document.getElementById('plW');
+const plLeft = document.getElementById('plLeft');
+const plRight = document.getElementById('plRight');
+function renderPl(mode) {
+  plW.className = 'pl-w mode-' + mode;
+  const d = plData[mode];
+  plLeft.innerHTML = `
+    <div class="h">${d.leftH}</div>
+    <h4>${d.leftTitle}</h4>
+    <p>${d.leftP}</p>
+    <ul>${d.leftList.map(x => `<li>${x}</li>`).join('')}</ul>
+  `;
+  plRight.innerHTML = `
+    <div class="h">${d.rightH}</div>
+    <pre class="pl-emit">${d.emit}</pre>
+  `;
+}
+document.querySelectorAll('.pl-tabs button').forEach(b => {
+  b.onclick = () => {
+    document.querySelectorAll('.pl-tabs button').forEach(x => x.classList.remove('active'));
+    b.classList.add('active');
+    renderPl(b.dataset.mode);
+  };
+});
+renderPl('metrics');
+
+// ============ TRACE WATERFALL ============
+const twSpans = [
+  { id: 's0', name: 'POST /mcp · tools/call', depth: 0, start: 0, dur: 1842, color: 'var(--teal)', kind: 'SERVER',
+    attrs: { 'http.method': 'POST', 'http.route': '/mcp', 'mcp.session.id': 'S_4f17ab', 'mcp.method': 'tools/call', 'rpc.system': 'jsonrpc' } },
+  { id: 's1', name: 'auth.verify_oauth_token', depth: 1, start: 4, dur: 38, color: 'var(--blue)', kind: 'INTERNAL',
+    attrs: { 'auth.scheme': 'oauth2', 'auth.scope': 'mcp:tools', 'cache.hit': 'true' } },
+  { id: 's2', name: 'tool.deep_research', depth: 1, start: 50, dur: 1780, color: 'var(--teal)', kind: 'INTERNAL',
+    attrs: { 'mcp.tool.name': 'deep_research', 'query.length': '42', 'docs.count': '8' } },
+  { id: 's3', name: 'http.get search-api', depth: 2, start: 58, dur: 240, color: 'var(--amber)', kind: 'CLIENT',
+    attrs: { 'http.method': 'GET', 'http.url': 'https://api.search/v2/q', 'http.status_code': '200', 'http.response.size': '14821' } },
+  { id: 's4', name: 'db.query · index lookup', depth: 2, start: 300, dur: 96, color: 'var(--purple)', kind: 'CLIENT',
+    attrs: { 'db.system': 'postgresql', 'db.operation': 'SELECT', 'db.rows_affected': '23' } },
+  { id: 's5', name: 'sampling/createMessage', depth: 2, start: 400, dur: 1340, color: 'var(--pink)', kind: 'CLIENT',
+    attrs: { 'gen_ai.system': 'anthropic', 'gen_ai.request.model': 'claude-opus-4-7', 'gen_ai.usage.input_tokens': '1820', 'gen_ai.usage.output_tokens': '412' } },
+  { id: 's6', name: 'cache.set summary', depth: 2, start: 1745, dur: 18, color: 'var(--green)', kind: 'CLIENT',
+    attrs: { 'cache.backend': 'redis', 'cache.key': 'summary:42abc...', 'cache.ttl_seconds': '3600' } },
+  { id: 's7', name: 'serialize response', depth: 1, start: 1832, dur: 8, color: 'var(--text-mute)', kind: 'INTERNAL',
+    attrs: { 'response.bytes': '4218', 'serialization.format': 'json-rpc-2.0' } },
+];
+const twTotal = 1842;
+
+const twChart = document.getElementById('twChart');
+const twSide = document.getElementById('twSide');
+function twRenderChart() {
+  let html = '<div class="tw-axis"><span>0ms</span><span>500ms</span><span>1000ms</span><span>1500ms</span><span>1842ms</span></div>';
+  twSpans.forEach(s => {
+    const left = (s.start / twTotal) * 100;
+    const width = Math.max((s.dur / twTotal) * 100, 0.5);
+    html += `<div class="tw-row" data-id="${s.id}" style="--depth: ${s.depth * 14}px">
+      <span class="label"><span class="icon" style="--bg-color:${s.color}"></span>${s.name}</span>
+      <div class="tw-bar-wrap">
+        <div class="tw-bar" style="left:${left}%; width:${width}%; --bg-color:${s.color}">
+          <span class="dur">${s.dur}ms</span>
+        </div>
+      </div>
+    </div>`;
+  });
+  twChart.innerHTML = html;
+  twChart.querySelectorAll('.tw-row').forEach(r => {
+    r.onclick = () => {
+      twChart.querySelectorAll('.tw-row').forEach(x => x.classList.remove('active'));
+      r.classList.add('active');
+      renderTwSide(r.dataset.id);
+    };
+  });
+}
+function renderTwSide(id) {
+  const s = twSpans.find(x => x.id === id);
+  twSide.innerHTML = `
+    <div class="pk">Span</div>
+    <h4>${s.name}</h4>
+    <div class="kv"><span class="k">duration</span><span class="v">${s.dur} ms</span></div>
+    <div class="kv"><span class="k">start</span><span class="v">+${s.start} ms</span></div>
+    <div class="kv"><span class="k">kind</span><span class="v">${s.kind}</span></div>
+    <div class="kv"><span class="k">depth</span><span class="v">${s.depth}</span></div>
+    <div class="lbl">Attributes</div>
+    <div class="attrs">${Object.entries(s.attrs).map(([k,v]) => `<span class="k">${k}</span>: <span class="v">"${v}"</span>`).join('\n')}</div>
+  `;
+}
+twRenderChart();
+twChart.querySelector('.tw-row').classList.add('active');
+renderTwSide('s0');
+
+// ============ METRICS DASHBOARD CHARTS ============
+function genSeries(n, base, variance, trend = 0) {
+  const arr = [];
+  let v = base;
+  for (let i = 0; i < n; i++) {
+    v = base + Math.sin(i / 5) * variance * 0.5 + (Math.random() - 0.5) * variance + trend * i;
+    arr.push(Math.max(0, v));
+  }
+  return arr;
+}
+function drawLine(svgId, series, colors, ymax) {
+  const svg = document.getElementById(svgId);
+  const w = 300, h = 140, pad = 8;
+  let html = '';
+  // grid
+  for (let i = 1; i < 4; i++) {
+    const y = pad + (h - 2*pad) * (i/4);
+    html += `<line x1="${pad}" x2="${w-pad}" y1="${y}" y2="${y}" stroke="var(--line)" stroke-width="0.5" stroke-dasharray="2 3"/>`;
+  }
+  series.forEach((s, idx) => {
+    const pts = s.map((v, i) => {
+      const x = pad + (i / (s.length - 1)) * (w - 2*pad);
+      const y = h - pad - (v / ymax) * (h - 2*pad);
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    }).join(' ');
+    html += `<polyline points="${pts}" fill="none" stroke="${colors[idx]}" stroke-width="1.6" opacity="0.9"/>`;
+    // dot at end
+    const lastX = pad + (w - 2*pad);
+    const lastY = h - pad - (s[s.length-1] / ymax) * (h - 2*pad);
+    html += `<circle cx="${lastX}" cy="${lastY}" r="3" fill="${colors[idx]}"/>`;
+  });
+  svg.innerHTML = html;
+}
+drawLine('chRps', [
+  genSeries(40, 18, 4),
+  genSeries(40, 14, 3),
+  genSeries(40, 6, 1.5)
+], ['var(--teal)', 'var(--purple)', 'var(--amber)'], 28);
+drawLine('chLat', [
+  genSeries(40, 280, 60),
+  genSeries(40, 720, 180),
+  genSeries(40, 1400, 420)
+], ['var(--teal)', 'var(--amber)', 'var(--red)'], 2400);
+
+document.querySelectorAll('.md-pills button').forEach(b => {
+  b.onclick = () => {
+    document.querySelectorAll('.md-pills button').forEach(x => x.classList.remove('active'));
+    b.classList.add('active');
+    // regenerate with different variance for the visual variety
+    const tr = b.dataset.tr;
+    const seed = tr === '5m' ? 0.3 : tr === '1h' ? 1 : tr === '6h' ? 1.4 : 2;
+    drawLine('chRps', [
+      genSeries(40, 18, 4*seed),
+      genSeries(40, 14, 3*seed),
+      genSeries(40, 6, 1.5*seed)
+    ], ['var(--teal)', 'var(--purple)', 'var(--amber)'], 28+seed*4);
+    drawLine('chLat', [
+      genSeries(40, 280, 60*seed),
+      genSeries(40, 720, 180*seed),
+      genSeries(40, 1400, 420*seed)
+    ], ['var(--teal)', 'var(--amber)', 'var(--red)'], 2400+seed*200);
+  };
+});
+
+// ============ STRUCTURED LOG EXPLORER ============
+const slLeft = document.getElementById('slLeft');
+const slRight = document.getElementById('slRight');
+const slExplain = document.getElementById('slExplain');
+
+const unstructuredText = `<span class="c">2026-05-30 14:22:54 INFO  starting tool call: send_email to=alice@example.com body=412 bytes</span>
+<span class="c">2026-05-30 14:22:54 INFO  resolving mailgun connection from pool</span>
+<span class="c">2026-05-30 14:22:55 INFO  sending request to https://api.mailgun.net/v3/...</span>
+<span class="r">2026-05-30 14:22:59 ERROR mailgun returned 502 Bad Gateway after 4.1s</span>
+<span class="r">2026-05-30 14:22:59 ERROR send_email failed for session S_4f17ab user u_e8x</span>
+<span class="c">2026-05-30 14:23:01 INFO  starting tool call: send_email to=bob@example.com body=89 bytes</span>
+<span class="c">2026-05-30 14:23:01 INFO  resolving mailgun connection from pool</span>
+<span class="c">2026-05-30 14:23:01 INFO  sending request to https://api.mailgun.net/v3/...</span>
+<span class="c">2026-05-30 14:23:01 INFO  send_email succeeded msg_2891xx in 187ms</span>
+
+<span class="r">grep -c "send_email failed" app.log
+1
+
+# But which user? Which session? Which trace? Which</span>
+<span class="r"># error type? What was the timeout? Was it always</span>
+<span class="r"># mailgun? You're going to grep, awk, and sed your</span>
+<span class="r"># way through 12GB of text to find out.</span>`;
+
+const structuredText = `<span class="b">{</span>
+  <span class="k">"timestamp"</span>: <span class="v">"2026-05-30T14:22:59.412Z"</span>,
+  <span class="k">"level"</span>: <span class="v">"error"</span>,
+  <span class="k">"message"</span>: <span class="v">"send_email.fail"</span>,
+  <span class="k">"service"</span>: <span class="v">"mcp-server"</span>,
+  <span class="k">"tool"</span>: <span class="v">"send_email"</span>,
+  <span class="k">"session_id"</span>: <span class="v">"S_4f17ab"</span>,
+  <span class="k">"user_id"</span>: <span class="v">"u_e8x"</span>,
+  <span class="k">"trace_id"</span>: <span class="v">"4f17abcde981..."</span>,
+  <span class="k">"span_id"</span>: <span class="v">"7c3a..."</span>,
+  <span class="k">"error_type"</span>: <span class="v">"BadGatewayError"</span>,
+  <span class="k">"upstream"</span>: <span class="v">"mailgun"</span>,
+  <span class="k">"upstream_status"</span>: <span class="n">502</span>,
+  <span class="k">"upstream_latency_ms"</span>: <span class="n">4112</span>,
+  <span class="k">"retry_count"</span>: <span class="n">0</span>
+<span class="b">}</span>
+
+<span class="c"># LogQL → Loki indexes by labels, scans only matching streams</span>
+<span class="b">{</span>service=<span class="v">"mcp-server"</span>, tool=<span class="v">"send_email"</span><span class="b">}</span>
+  | <span class="b">json</span>
+  | level = <span class="v">"error"</span>
+  | user_id = <span class="v">"u_e8x"</span>
+  | error_type = <span class="v">"BadGatewayError"</span>
+
+<span class="c"># → returns 1 line in &lt;100ms. With trace_id you can</span>
+<span class="c"># pivot straight to the full Tempo trace.</span>`;
+
+function renderSl(view) {
+  if (view === 'un') {
+    slLeft.innerHTML = unstructuredText;
+    slLeft.parentElement.querySelector('.ph').lastChild.textContent = ' Raw stdout · grep-only';
+    slRight.innerHTML = `<span class="c">$ grep -E "send_email.*failed" app.log | grep "u_e8x" | grep "TimeoutError"
+                                                                                                
+# (you scrolled past it three minutes ago)
+# (you'll find it in another twelve minutes)
+# (this is what 3am at the keyboard looks like)</span>`;
+    slExplain.innerHTML = `<strong>Unstructured logs are write-only.</strong> They're easy to produce — anything that calls <code>print</code> is a logger — but they're terrible to query. Every field is a substring inside a free-text string. Grep doesn't know that <code>u_e8x</code> is a user ID; it's just characters. Multi-field queries become regex compositions. At 3am this is the difference between an outage that resolves in 8 minutes and one that resolves in 80.`;
+  } else {
+    slLeft.innerHTML = structuredText.split('\n').slice(0, 14).join('\n') + '\n<span class="c">...</span>';
+    slLeft.parentElement.querySelector('.ph').lastChild.textContent = ' JSON line · all fields typed';
+    slRight.innerHTML = structuredText.split('\n').slice(15).join('\n');
+    slExplain.innerHTML = `<strong>Structured logs are first-class data.</strong> Every log record is a typed event. Loki (or any modern log store) indexes by labels (service, tool) and lets you filter against parsed JSON fields. The exact query "every <code>BadGatewayError</code> from <code>send_email</code> for user <code>u_e8x</code>" returns in milliseconds and yields <em>exactly the lines you need</em> — not 12GB of context. The <code>trace_id</code> is the pivot to the full distributed trace.`;
+  }
+}
+document.querySelectorAll('.sl-toggle button').forEach(b => {
+  b.onclick = () => {
+    document.querySelectorAll('.sl-toggle button').forEach(x => x.classList.remove('active'));
+    b.classList.add('active');
+    renderSl(b.dataset.view);
+  };
+});
+renderSl('un');
+
+// ============ SLO CALCULATOR ============
+const sloRps = { search: 18.4, fetch: 14.1, research: 6.0, summarize: 2.8, email: 1.0 };
+const sloP95 = { search: 240, fetch: 410, research: 2140, summarize: 680, email: 180 };
+const sloErrRate = { search: 0.001, fetch: 0.004, research: 0.018, summarize: 0.002, email: 0.036 };
+const sloP95ExceedShare = { search: 0.005, fetch: 0.015, research: 0.08, summarize: 0.020, email: 0.012 };
+
+const sloTool = document.getElementById('sloTool');
+const sloTarget = document.getElementById('sloTarget');
+const sloLat = document.getElementById('sloLat');
+const sloWindow = document.getElementById('sloWindow');
+const sloTargetVal = document.getElementById('sloTargetVal');
+const sloLatVal = document.getElementById('sloLatVal');
+
+function recalcSlo() {
+  const tool = sloTool.value;
+  const target = parseInt(sloTarget.value) / 100;  // 990 -> 99.0
+  const latThr = parseInt(sloLat.value);
+  const days = parseInt(sloWindow.value);
+  const rps = sloRps[tool];
+  const errRate = sloErrRate[tool];
+  // P95 exceed share is roughly 0.05 at p95 = latency threshold by definition; scale it.
+  // We'll synthesize a "bad event rate" combining error and latency-over-threshold.
+  const currentP95 = sloP95[tool];
+  // If user's threshold is above current p95, latency violations are well under 5%; if below, well over 5%.
+  // Simple model: violations ratio at threshold = 0.05 * (currentP95 / threshold)^1.5
+  const latShare = Math.min(0.5, 0.05 * Math.pow(currentP95 / latThr, 1.5));
+  const badEventRate = errRate + latShare * (1 - errRate);
+  const observedSuccess = 1 - badEventRate;
+
+  sloTargetVal.textContent = (target * 100).toFixed(1) + '%';
+  sloLatVal.textContent = latThr + ' ms';
+
+  const totalCalls = Math.round(rps * 60 * 60 * 24 * days);
+  const allowedFailures = Math.round(totalCalls * (1 - target));
+  const observedFailures = Math.round(totalCalls * badEventRate);
+  const budgetRemaining = allowedFailures - observedFailures;
+  const budgetPct = allowedFailures > 0 ? (budgetRemaining / allowedFailures) : 0;
+
+  // verdict
+  const result = document.getElementById('sloResult');
+  const verdict = document.getElementById('sloVerdict');
+  const big = document.getElementById('sloBig');
+  const sub = document.getElementById('sloSub');
+  result.classList.remove('good','warn','bad');
+  let cls, vtext, btext, stext;
+  if (budgetPct > 0.5) {
+    cls = 'good'; vtext = 'SLO is comfortably met';
+    btext = (budgetPct * 100).toFixed(0) + '%';
+    stext = `Observed success ${ (observedSuccess*100).toFixed(2)}% is well above the ${(target*100).toFixed(1)}% target. ${budgetRemaining.toLocaleString()} failures of headroom remain in the ${days}-day window.`;
+  } else if (budgetPct > 0) {
+    cls = 'warn'; vtext = 'Budget is being consumed';
+    btext = (budgetPct * 100).toFixed(0) + '%';
+    stext = `Observed success ${ (observedSuccess*100).toFixed(2)}% is above target but burning budget. Watch this — sustained burn rate would breach SLO within the window.`;
+  } else {
+    cls = 'bad'; vtext = 'SLO breached — budget exhausted';
+    btext = ((budgetPct) * 100).toFixed(0) + '%';
+    stext = `Observed success ${ (observedSuccess*100).toFixed(2)}% is below the ${(target*100).toFixed(1)}% target. The error budget is exhausted; this is a paging event.`;
+  }
+  result.classList.add(cls);
+  verdict.textContent = vtext;
+  big.textContent = btext + ' budget left';
+  sub.textContent = stext;
+
+  document.getElementById('sloTotal').textContent = totalCalls.toLocaleString();
+  document.getElementById('sloAllowed').textContent = allowedFailures.toLocaleString();
+  document.getElementById('sloObserved').textContent = observedFailures.toLocaleString();
+  document.getElementById('sloBudget').textContent = (budgetRemaining >= 0 ? '+' : '') + budgetRemaining.toLocaleString();
+
+  document.getElementById('sloRule').innerHTML = `<span class="c"># Prometheus recording + alert</span>
+- <span class="k">record</span>: <span class="v">slo:${tool}:success_ratio_${days}d</span>
+  <span class="k">expr</span>: |
+    <span class="v">1 - (</span>
+      <span class="v">sum(rate(mcp_tool_errors_total{tool="${tool}"}[${days}d]))</span>
+      <span class="v">/</span>
+      <span class="v">sum(rate(mcp_tool_calls_total{tool="${tool}"}[${days}d]))</span>
+    <span class="v">)</span>
+
+- <span class="k">alert</span>: <span class="v">${tool.charAt(0).toUpperCase()+tool.slice(1)}SLOBreach</span>
+  <span class="k">expr</span>: slo:${tool}:success_ratio_${days}d &lt; <span class="n">${target.toFixed(3)}</span>
+  <span class="k">for</span>: <span class="n">5m</span>
+  <span class="k">labels</span>: { <span class="k">severity</span>: <span class="v">page</span> }`;
+}
+[sloTool, sloTarget, sloLat, sloWindow].forEach(el => el.addEventListener('input', recalcSlo));
+recalcSlo();
+
+// ============ KC + OBJECTIVES + SCROLL SPY ============
+document.querySelectorAll('.kc-opts').forEach(group => {
+  const correct = parseInt(group.dataset.correct);
+  const feedback = group.parentElement.querySelector('.kc-feedback');
+  Array.from(group.children).forEach((opt, i) => {
+    opt.onclick = () => {
+      Array.from(group.children).forEach(o => o.classList.remove('correct', 'wrong'));
+      if (i === correct) opt.classList.add('correct');
+      else { opt.classList.add('wrong'); group.children[correct].classList.add('correct'); }
+      feedback.classList.add('show');
+    };
+  });
+});
+document.querySelectorAll('#objList .check').forEach(c => {
+  c.onclick = () => c.classList.toggle('done');
+});
+const sections = ['s1','s2','s3','s4','s5','kc','res'].map(id => document.getElementById(id));
+const sbLinks = document.querySelectorAll('#sbList a');
+const progFill = document.getElementById('progressFill');
+const progLbl = document.getElementById('progressLabel');
+function onScroll() {
+  const docH = document.body.scrollHeight - window.innerHeight;
+  const pct = Math.min(100, Math.max(0, (window.scrollY / docH) * 100));
+  progFill.style.width = pct + '%';
+  progLbl.textContent = Math.round(pct) + '%';
+  const triggerY = window.scrollY + 140;
+  let activeId = null;
+  for (const s of sections) { if (s && s.offsetTop <= triggerY) activeId = s.id; }
+  sbLinks.forEach(a => a.classList.toggle('active', a.dataset.target === activeId));
+}
+window.addEventListener('scroll', onScroll, { passive: true });
+onScroll();
+</script>
+</body>
+</html>

@@ -1,0 +1,727 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sliding Window Median</title>
+    <style>
+        :root {
+            --bg-page: #070b14;
+            --bg-surface: rgba(255, 255, 255, 0.045);
+            --bg-input: rgba(255, 255, 255, 0.04);
+            --border-main: rgba(255, 255, 255, 0.10);
+            --btn-bg: rgba(255, 255, 255, 0.05);
+            --btn-hover: rgba(255, 255, 255, 0.10);
+            --text-main: #e8eefb;
+            --text-dim: #8b98b3;
+            --accent-orange: #f5a524;   /* value in motion / entering      */
+            --accent-blue:   #06b6d4;    /* min-heap (upper half) / chrome  */
+            --accent-green:  #22c55e;    /* settled / median                */
+            --accent-red:    #f43f5e;    /* leaving / lazy-deleted          */
+            --accent-purple: #a855f7;    /* max-heap (lower half) / window  */
+            --mono: ui-monospace, 'SF Mono', 'Cascadia Code', 'Courier New', monospace;
+            --sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+            --shell: 940px;
+        }
+
+        * { box-sizing: border-box; }
+        html, body { overflow-x: hidden; }
+        body {
+            background:
+                radial-gradient(1100px 600px at 15% -10%, rgba(168, 85, 247, 0.12), transparent 60%),
+                radial-gradient(900px 600px at 100% 10%, rgba(6, 182, 212, 0.10), transparent 55%),
+                linear-gradient(160deg, #070b14 0%, #0b1120 55%, #0a0f1c 100%);
+            background-attachment: fixed;
+            color: var(--text-main); font-family: var(--sans); margin: 0;
+            display: flex; flex-direction: column; align-items: center; min-height: 100vh;
+            padding-bottom: 48px; -webkit-font-smoothing: antialiased;
+        }
+        body::before, body::after { content: ''; position: fixed; border-radius: 50%; filter: blur(70px); pointer-events: none; z-index: 0; opacity: 0.45; }
+        body::before { width: 380px; height: 380px; top: 8%; left: -120px; background: radial-gradient(circle, rgba(168,85,247,0.30), transparent 70%); }
+        body::after  { width: 420px; height: 420px; bottom: 4%; right: -140px; background: radial-gradient(circle, rgba(6,182,212,0.22), transparent 70%); }
+        body > * { position: relative; z-index: 1; }
+
+        .input-bar {
+            width: 100%; background: rgba(10, 15, 28, 0.55);
+            backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+            padding: 14px 16px; display: flex; justify-content: center; align-items: center; gap: 10px;
+            border-bottom: 1px solid var(--border-main); flex-wrap: wrap; position: sticky; top: 0; z-index: 50;
+        }
+        label.ui-label, .ui-label { font-family: var(--mono); font-size: 13px; color: var(--text-dim); letter-spacing: 0.2px; }
+        input[type="text"], input[type="number"] {
+            background: var(--bg-input); border: 1px solid var(--border-main); color: var(--text-main);
+            height: 34px; border-radius: 9px; padding: 0 12px; font-size: 13px; font-family: var(--mono);
+            transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+        }
+        #nums-input { width: 210px; }
+        #k-input { width: 64px; }
+        input:focus { outline: none; border-color: var(--accent-purple); box-shadow: 0 0 0 3px rgba(168,85,247,0.18); background: rgba(168,85,247,0.06); }
+
+        button {
+            height: 34px; border-radius: 9px; padding: 0 14px; background: var(--btn-bg);
+            border: 1px solid var(--border-main); color: var(--text-main); font-size: 13px; font-weight: 600; cursor: pointer;
+            transition: transform 0.15s ease, background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+        }
+        button:hover { background: var(--btn-hover); border-color: rgba(168, 85, 247, 0.5); box-shadow: 0 0 18px rgba(168, 85, 247, 0.18); transform: translateY(-1px); }
+        button:active { transform: translateY(0); }
+        #play-btn { background: linear-gradient(135deg, rgba(168,85,247,0.22), rgba(168,85,247,0.10)); border-color: rgba(168, 85, 247, 0.45); color: #e9d5ff; min-width: 80px; }
+        .op-btn.run { border-color: rgba(245,165,36,0.4); color: #ffe2b0; font-family: var(--mono); }
+
+        .shell { width: var(--shell); max-width: 95%; margin: 24px auto 0; display: flex; flex-direction: column; gap: 16px; }
+
+        .title-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+        .title-row h1 { font-size: 18px; font-weight: 800; margin: 0; letter-spacing: 0.2px; }
+        .title-row .sub { color: var(--text-dim); font-weight: 500; font-size: 13px; }
+        .step-badge { font-family: var(--mono); font-size: 12px; font-weight: 700; color: #e9d5ff; background: rgba(168,85,247,0.12); border: 1px solid rgba(168,85,247,0.3); padding: 4px 10px; border-radius: 999px; white-space: nowrap; }
+        .progress-track { height: 4px; width: 100%; background: rgba(255,255,255,0.07); border-radius: 999px; overflow: hidden; margin-top: -6px; }
+        .progress-fill { height: 100%; width: 0%; border-radius: 999px; background: linear-gradient(90deg, var(--accent-purple), var(--accent-blue)); box-shadow: 0 0 12px rgba(168,85,247,0.5); transition: width 0.45s cubic-bezier(0.34,1.1,0.64,1); }
+
+        .op-feed { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+        .op-chip { font-family: var(--mono); font-size: 11px; font-weight: 700; padding: 4px 9px; border-radius: 8px; border: 1px solid var(--border-main); color: var(--text-dim); background: rgba(255,255,255,0.03); transition: all 0.3s; white-space: nowrap; }
+        .op-chip.done { opacity: 0.45; }
+        .op-chip.current { color: #fff; border-color: rgba(168,85,247,0.6); background: rgba(168,85,247,0.16); box-shadow: 0 0 12px rgba(168,85,247,0.3); }
+
+        .narration { background: var(--bg-surface); border: 1px solid rgba(168,85,247,0.22); border-radius: 12px; padding: 12px 18px; font-family: var(--mono); font-size: 14px; line-height: 1.5; color: #ede9fe; min-height: 48px; display: flex; align-items: center; gap: 10px; transition: border-color 0.3s, background 0.3s; }
+        .narration::before { content: '\25B8'; color: var(--accent-purple); font-size: 13px; }
+        .narration.done { border-color: rgba(34,197,94,0.4); background: rgba(34,197,94,0.06); }
+        .narration.done::before { content: '\2713'; color: var(--accent-green); }
+        .narration code { background: rgba(168,85,247,0.14); color: #d8b4fe; padding: 1px 6px; border-radius: 5px; font-size: 12.5px; }
+        .narration b { color: #fff; }
+
+        .stage-card { background: var(--bg-surface); border: 1px solid var(--border-main); border-radius: 18px; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); box-shadow: 0 12px 38px rgba(0,0,0,0.4); overflow: hidden; }
+        .stage-screen { position: relative; margin: 14px; border-radius: 14px; background: radial-gradient(700px 300px at 50% -10%, rgba(168,85,247,0.08), transparent 70%), #090d18; border: 1px solid rgba(255,255,255,0.06); padding: 18px 16px 16px; }
+
+        /* array + sliding window */
+        .seg-label { font-family: var(--mono); font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--text-dim); text-align: center; margin-bottom: 10px; }
+        .num-rail { position: relative; display: flex; gap: 6px; justify-content: center; flex-wrap: nowrap; min-height: 60px; }
+        .ncell { width: 46px; height: 46px; border-radius: 10px; display: flex; align-items: center; justify-content: center; position: relative;
+            font-family: var(--mono); font-weight: 800; font-size: 16px; border: 2px solid var(--border-main); background: rgba(255,255,255,0.04); color: var(--text-main); flex: 0 0 auto;
+            transition: background 0.35s, border-color 0.35s, color 0.35s, box-shadow 0.35s, opacity 0.35s; }
+        .ncell.win { border-color: rgba(168,85,247,0.55); background: rgba(168,85,247,0.10); color: #e9d5ff; }
+        .ncell.enter { border-color: var(--accent-orange); background: rgba(245,165,36,0.18); color: #ffd591; box-shadow: 0 0 18px rgba(245,165,36,0.55); }
+        .ncell.leave { border-color: var(--accent-red); background: rgba(244,63,94,0.16); color: #fecdd3; box-shadow: 0 0 16px rgba(244,63,94,0.45); }
+        .ncell.dim { opacity: 0.32; }
+        .ncell .ni { position: absolute; bottom: -16px; left: 0; right: 0; text-align: center; font-size: 9px; color: var(--text-dim); font-weight: 700; }
+        .win-band { position: absolute; top: -6px; height: 58px; border-radius: 12px; border: 2px dashed rgba(168,85,247,0.6); background: rgba(168,85,247,0.05); box-shadow: 0 0 18px rgba(168,85,247,0.25); pointer-events: none; z-index: 0;
+            transition: transform 0.5s cubic-bezier(0.34,1.1,0.64,1), width 0.4s ease, opacity 0.3s; }
+
+        /* two heaps: tree + array each */
+        .heaps-row { display: flex; gap: 16px; margin-top: 26px; justify-content: center; flex-wrap: wrap; }
+        .heap-col { flex: 1 1 300px; min-width: 280px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.07); padding: 10px 8px 8px; background: rgba(255,255,255,0.015); }
+        .heap-col.lower { border-color: rgba(168,85,247,0.30); }
+        .heap-col.upper { border-color: rgba(6,182,212,0.30); }
+        .heap-head { display: flex; align-items: center; justify-content: center; gap: 8px; font-family: var(--mono); font-size: 11px; font-weight: 700; letter-spacing: 0.6px; text-transform: uppercase; margin-bottom: 6px; }
+        .heap-head .dot { width: 8px; height: 8px; border-radius: 50%; }
+        .heap-col.lower .heap-head { color: #d8b4fe; } .heap-col.lower .dot { background: var(--accent-purple); box-shadow: 0 0 8px var(--accent-purple); }
+        .heap-col.upper .heap-head { color: #a5f3fc; } .heap-col.upper .dot { background: var(--accent-blue); box-shadow: 0 0 8px var(--accent-blue); }
+        .heap-stage { position: relative; width: 100%; height: 150px; overflow: hidden; }
+        .heap-canvas { position: relative; margin: 0 auto; }
+        .hedges { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; z-index: 1; }
+        .edge-ln { stroke-width: 2; fill: none; opacity: 0.4; transition: stroke 0.3s, opacity 0.3s; }
+        .heap-col.lower .edge-ln { stroke: var(--accent-purple); }
+        .heap-col.upper .edge-ln { stroke: var(--accent-blue); }
+
+        .hnode { position: absolute; width: 40px; height: 40px; margin: -20px 0 0 -20px; display: flex; align-items: center; justify-content: center;
+            border-radius: 50%; font-family: var(--mono); font-weight: 800; font-size: 14px;
+            border: 2px solid var(--border-main); background: rgba(255,255,255,0.06); color: var(--text-main);
+            z-index: 2; will-change: transform; transition: background 0.35s, border-color 0.35s, color 0.35s, box-shadow 0.35s; }
+        .heap-col.lower .hnode.top { border-color: var(--accent-purple); background: rgba(168,85,247,0.18); color: #e9d5ff; box-shadow: 0 0 18px rgba(168,85,247,0.5); }
+        .heap-col.upper .hnode.top { border-color: var(--accent-blue); background: rgba(6,182,212,0.18); color: #a5f3fc; box-shadow: 0 0 18px rgba(6,182,212,0.5); }
+        .hnode.enter { border-color: var(--accent-orange); background: rgba(245,165,36,0.18); color: #ffd591; box-shadow: 0 0 20px rgba(245,165,36,0.6); }
+        .hnode.median { border-color: var(--accent-green); background: rgba(34,197,94,0.18); color: #bbf7d0; box-shadow: 0 0 22px rgba(34,197,94,0.6); }
+
+        .harr-rail { display: flex; gap: 4px; justify-content: center; flex-wrap: wrap; margin-top: 6px; min-height: 30px; }
+        .hcell { min-width: 28px; height: 28px; padding: 0 5px; border-radius: 7px; display: flex; align-items: center; justify-content: center;
+            font-family: var(--mono); font-weight: 800; font-size: 12px; border: 1.5px solid var(--border-main); background: rgba(255,255,255,0.04); color: var(--text-main);
+            transition: background 0.3s, border-color 0.3s, color 0.3s; }
+        .heap-col.lower .hcell.top { border-color: var(--accent-purple); color: #d8b4fe; }
+        .heap-col.upper .hcell.top { border-color: var(--accent-blue); color: #a5f3fc; }
+        .hcell.ghost { opacity: 0.28; text-decoration: line-through; border-style: dashed; }
+        .heap-empty { color: var(--text-dim); font-family: var(--mono); font-size: 11px; opacity: 0.6; }
+
+        /* median balance bar */
+        .balance-row { display: flex; align-items: center; justify-content: center; gap: 14px; margin-top: 16px; font-family: var(--mono); font-size: 13px; }
+        .balance-tag { color: var(--text-dim); }
+        .balance-tag b { color: var(--text-main); }
+        .median-pill { font-family: var(--mono); font-weight: 800; font-size: 16px; padding: 5px 14px; border-radius: 999px; border: 2px solid var(--accent-green); background: rgba(34,197,94,0.14); color: #bbf7d0; box-shadow: 0 0 16px rgba(34,197,94,0.3); transition: all 0.3s; min-width: 56px; text-align: center; }
+        .median-pill.muted { border-color: var(--border-main); background: rgba(255,255,255,0.03); color: var(--text-dim); box-shadow: none; }
+
+        /* result row */
+        .result-zone { padding: 8px 16px 14px; }
+        .result-rail { display: flex; gap: 6px; align-items: center; min-height: 30px; flex-wrap: wrap; justify-content: center; }
+        .res-tile { min-width: 34px; height: 32px; padding: 0 7px; border-radius: 9px; display: flex; align-items: center; justify-content: center; font-family: var(--mono); font-size: 14px; font-weight: 800; border: 2px solid var(--accent-green); background: rgba(34,197,94,0.14); color: #bbf7d0; transition: transform 0.3s; }
+        .res-tile.pending { border-color: var(--border-main); background: rgba(255,255,255,0.03); color: var(--text-dim); }
+
+        #confetti { position: absolute; inset: 0; overflow: visible; pointer-events: none; }
+        .confetti-piece { position: absolute; top: 0; left: 50%; width: 8px; height: 13px; border-radius: 2px; opacity: 0; animation: confettiFall ease-out forwards; }
+
+        .controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: center; }
+        .controls .kbd-hint { font-size: 11px; color: var(--text-dim); font-family: var(--mono); margin-left: 4px; }
+        .kbd { background: rgba(255,255,255,0.07); border: 1px solid var(--border-main); border-radius: 5px; padding: 1px 6px; font-size: 10px; }
+        input[type="range"] { accent-color: var(--accent-purple); width: 110px; cursor: pointer; }
+
+        .details-toggle { align-self: center; height: 32px; padding: 0 16px; border-radius: 999px; cursor: pointer; background: rgba(255,255,255,0.04); border: 1px solid var(--border-main); color: var(--text-dim); font-family: var(--mono); font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; gap: 8px; transition: color 0.2s, border-color 0.2s, background 0.2s; }
+        .details-toggle:hover { color: var(--text-main); border-color: rgba(168,85,247,0.4); background: rgba(168,85,247,0.06); }
+        .details-toggle .chev { transition: transform 0.3s ease; }
+        .details-wrap.open .details-toggle .chev { transform: rotate(180deg); }
+        .details-body { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.4s ease; }
+        .details-wrap.open .details-body { grid-template-rows: 1fr; }
+        .details-inner { overflow: hidden; min-height: 0; }
+        .details-grid { display: flex; flex-direction: column; gap: 14px; padding-top: 14px; }
+
+        .panel-card { background: var(--bg-surface); border: 1px solid var(--border-main); border-radius: 16px; backdrop-filter: blur(10px); box-shadow: 0 8px 30px rgba(0,0,0,0.35); }
+        .panel-head { display: flex; align-items: center; gap: 8px; padding: 11px 16px; border-bottom: 1px solid var(--border-main); font-size: 11px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; color: var(--text-dim); }
+        .panel-head .pip { width: 7px; height: 7px; border-radius: 50%; background: var(--accent-purple); box-shadow: 0 0 8px var(--accent-purple); }
+        .code-body { padding: 12px 6px 14px; font-family: var(--mono); font-size: 12.5px; line-height: 1.7; }
+        .code-line { display: flex; gap: 12px; padding: 1px 16px; border-left: 2px solid transparent; transition: background 0.3s, border-color 0.3s; white-space: pre; }
+        .code-line .lno { color: #4b5772; width: 16px; text-align: right; user-select: none; }
+        .code-line .src { color: #c4cee0; }
+        .code-line .kw { color: #c792ea; }
+        .code-line .fn { color: #82aaff; }
+        .code-line.active { background: rgba(168,85,247,0.12); border-left-color: var(--accent-purple); }
+        .code-line.active .src, .code-line.active .lno { color: #e8eefb; }
+
+        .log-panel { border-radius: 14px; padding: 12px 16px; height: 110px; overflow-y: auto; font-family: var(--mono); font-size: 12.5px; line-height: 1.5; background: var(--bg-surface); border: 1px solid var(--border-main); }
+        .log-panel::-webkit-scrollbar { width: 8px; }
+        .log-panel::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 8px; }
+
+        @keyframes confettiFall { 0%{ opacity:1; transform: translate(-50%, 0) rotate(0deg); } 100%{ opacity:0; transform: translate(calc(-50% + var(--x)), 220px) rotate(var(--rot)); } }
+        @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; } }
+    </style>
+</head>
+<body>
+
+    <div class="input-bar">
+        <span class="ui-label">nums</span>
+        <input type="text" id="nums-input" placeholder="1,3,-1,-3,5,3,6,7">
+        <span class="ui-label">k</span>
+        <input type="number" id="k-input" min="1" max="9" placeholder="3">
+        <button class="op-btn run" onclick="runCustom()">Run</button>
+        <span class="ui-label" style="opacity:.5">|</span>
+        <button onclick="loadExample(0)">Example 1</button>
+        <button onclick="loadExample(1)">Example 2</button>
+        <button onclick="resetSim()">&#8634; Reset</button>
+    </div>
+
+    <div class="shell">
+        <div class="title-row">
+            <h1>Sliding Window Median <span class="sub">&middot; two heaps &middot; max-heap (lower half) &#8804; min-heap (upper half) &middot; lazy deletion as the window slides</span></h1>
+            <span class="step-badge" id="step-badge">Step 1 / 1</span>
+        </div>
+        <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+
+        <div class="op-feed" id="op-feed"></div>
+
+        <div class="narration" id="main-panel">&mdash;</div>
+
+        <div class="stage-card">
+            <div class="stage-screen">
+                <div class="seg-label">input array &middot; window of size <span id="k-tag">k</span> slides left &#8594; right</div>
+                <div class="num-rail" id="num-rail">
+                    <div class="win-band" id="win-band" style="opacity:0"></div>
+                </div>
+
+                <div class="heaps-row">
+                    <div class="heap-col lower" id="lower-col">
+                        <div class="heap-head"><span class="dot"></span> max-heap &middot; lower half (root = largest)</div>
+                        <div class="heap-stage"><div class="heap-canvas" id="lower-canvas"><svg class="hedges" id="lower-edges"></svg></div></div>
+                        <div class="harr-rail" id="lower-rail"></div>
+                    </div>
+                    <div class="heap-col upper" id="upper-col">
+                        <div class="heap-head"><span class="dot"></span> min-heap &middot; upper half (root = smallest)</div>
+                        <div class="heap-stage"><div class="heap-canvas" id="upper-canvas"><svg class="hedges" id="upper-edges"></svg></div></div>
+                        <div class="harr-rail" id="upper-rail"></div>
+                    </div>
+                </div>
+
+                <div class="balance-row">
+                    <span class="balance-tag">|lower| = <b id="lo-size">0</b></span>
+                    <span class="balance-tag">median &#8594;</span>
+                    <span class="median-pill muted" id="median-pill">&mdash;</span>
+                    <span class="balance-tag">|upper| = <b id="up-size">0</b></span>
+                </div>
+            </div>
+            <div class="result-zone">
+                <div class="seg-label">window medians</div>
+                <div class="result-rail" id="result-rail"></div>
+            </div>
+        </div>
+
+        <div class="action-stage" style="position:relative">
+            <div id="confetti"></div>
+        </div>
+
+        <div class="controls">
+            <button onclick="resetSim()">&#8634; Reset</button>
+            <button onclick="prevStep()">&#8592; Back</button>
+            <button onclick="togglePlay()" id="play-btn">Play</button>
+            <button onclick="nextStep()">Next &#8594;</button>
+            <span class="ui-label" style="margin-left:6px; font-size:11px">Speed</span>
+            <input type="range" id="speed" min="0" max="2" value="1">
+            <span class="kbd-hint"><span class="kbd">&#8592;</span> <span class="kbd">&#8594;</span> step &middot; <span class="kbd">space</span> play</span>
+        </div>
+
+        <div class="details-wrap" id="details-wrap">
+            <button class="details-toggle" onclick="toggleDetails()" aria-expanded="false">
+                <span id="details-label">Show code &amp; log</span> <span class="chev">&#9662;</span>
+            </button>
+            <div class="details-body">
+                <div class="details-inner">
+                    <div class="details-grid">
+                        <div class="panel-card">
+                            <div class="panel-head"><span class="pip"></span> Algorithm</div>
+                            <div class="code-body" id="code-panel"></div>
+                        </div>
+                        <div class="log-panel" id="log"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        'use strict';
+
+        // ───────── Motion engine ─────────
+        const REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        const FRAME = 1000 / 60;
+        function sampleSpring(stiffness, damping, mass) {
+            const dt = 1 / 60; let x = 1, v = 0; const out = [];
+            for (let i = 0; i < 240; i++) { const a = (-stiffness * x - damping * v) / mass; v += a * dt; x += v * dt; out.push(1 - x); if (Math.abs(x) < 0.0015 && Math.abs(v) < 0.0015) break; }
+            out.push(1); return out;
+        }
+        const SPRING_POS = sampleSpring(320, 30, 1);
+        const SPRING_POP = sampleSpring(520, 17, 1);
+        const durOf = (a) => a.length * FRAME;
+        const Motion = {
+            move(el, x, y) {
+                const px = el._x, py = el._y;
+                const commit = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px)`;
+                if (REDUCED || px == null || (Math.abs(x - px) < 0.5 && Math.abs(y - py) < 0.5)) { el._x = x; el._y = y; el.style.transform = commit; return; }
+                const dx = x - px, dy = y - py;
+                const kf = SPRING_POS.map(p => ({ transform: `translate(${(px + dx * p).toFixed(1)}px, ${(py + dy * p).toFixed(1)}px)` }));
+                el.animate(kf, { duration: durOf(SPRING_POS), easing: 'linear' });
+                el._x = x; el._y = y; el.style.transform = commit;
+            },
+            pop(el) {
+                if (REDUCED) { el.style.opacity = '1'; return; }
+                const kf = SPRING_POP.map(p => ({ opacity: Math.min(1, p * 2).toFixed(3), transform: `translate(${el._x.toFixed(1)}px, ${el._y.toFixed(1)}px) scale(${(0.3 + 0.7 * p).toFixed(3)})` }));
+                const a = el.animate(kf, { duration: durOf(SPRING_POP), easing: 'linear' });
+                a.onfinish = () => { el.style.transform = `translate(${el._x.toFixed(1)}px, ${el._y.toFixed(1)}px)`; };
+            },
+        };
+
+        // ───────── State ─────────
+        let nums = [];
+        let K = 3;
+        let steps = [];
+        let stepIdx = 0;
+        let timer = null;
+        let confettiArmed = true;
+        const delays = [1600, 850, 420];
+        // persistent DOM keyed by stable id
+        const loNodeEls = {}, loEdgeEls = {}, upNodeEls = {}, upEdgeEls = {};
+
+        const CODE = [
+            [['src','  '],['fn','medianSlidingWindow'],['src','(nums, k):']],
+            [['kw','    for '],['src','i, x in enumerate(nums):']],
+            [['src','      add(x)        # push to lo or hi']],
+            [['kw','      if '],['src','i >= k: remove(nums[i-k])']],
+            [['src','      rebalance()   # |lo| == |hi| or |lo|+1']],
+            [['kw','      if '],['src','i >= k-1: out.append(median())']],
+            [['src','  '],['fn','add'],['src','(x): x<=lo.top ? lo.push : hi.push']],
+            [['src','  '],['fn','remove'],['src','(x): mark x deleted (lazy)']],
+            [['src','  '],['fn','median'],['src','(): k odd -> lo.top']],
+            [['src','              else -> (lo.top + hi.top)/2']],
+        ];
+        function buildCodePanel() {
+            const panel = document.getElementById('code-panel'); panel.innerHTML = '';
+            CODE.forEach((tokens, i) => {
+                const line = document.createElement('div'); line.className = 'code-line'; line.dataset.line = i;
+                const lno = document.createElement('span'); lno.className = 'lno'; lno.textContent = i + 1; line.appendChild(lno);
+                const src = document.createElement('span');
+                tokens.forEach(([cls, txt]) => { const s = document.createElement('span'); s.className = cls; s.textContent = txt; src.appendChild(s); });
+                line.appendChild(src); panel.appendChild(line);
+            });
+        }
+        function highlightCode(arr) { document.querySelectorAll('.code-line').forEach(el => el.classList.toggle('active', arr && arr.includes(+el.dataset.line))); }
+        function toggleDetails() {
+            const wrap = document.getElementById('details-wrap'); const open = wrap.classList.toggle('open');
+            wrap.querySelector('.details-toggle').setAttribute('aria-expanded', open ? 'true' : 'false');
+            document.getElementById('details-label').textContent = open ? 'Hide code & log' : 'Show code & log';
+        }
+
+        // ───────── heap helpers (binary heap on arrays) ─────────
+        // lo is a MAX-heap (we store negatives so the array is a valid min-heap of -x)
+        // hi is a MIN-heap (plain)
+        const par = (i) => (i - 1) >> 1;
+        function siftUp(h, i) { while (i > 0 && h[i] < h[par(i)]) { [h[i], h[par(i)]] = [h[par(i)], h[i]]; i = par(i); } }
+        function siftDown(h, i) {
+            const n = h.length;
+            while (true) { let s = i; const l = 2 * i + 1, r = 2 * i + 2;
+                if (l < n && h[l] < h[s]) s = l; if (r < n && h[r] < h[s]) s = r;
+                if (s === i) break; [h[i], h[s]] = [h[s], h[i]]; i = s; }
+        }
+        function hPush(h, v) { h.push(v); siftUp(h, h.length - 1); }
+        function hPop(h) { const top = h[0]; const last = h.pop(); if (h.length) { h[0] = last; siftDown(h, 0); } return top; }
+        function loTop(lo) { return -lo[0]; }   // actual largest of lower half
+        function hiTop(hi) { return hi[0]; }     // actual smallest of upper half
+
+        // display values (actual numbers) from stored arrays
+        const loVals = (lo) => lo.map(v => -v);
+        const upVals = (hi) => hi.slice();
+
+        // ───────── step generation (lazy-deletion two-heap, real trace) ─────────
+        function generateSteps() {
+            steps = [];
+            const lo = [];               // max-heap of lower half (stored negated)
+            const hi = [];               // min-heap of upper half
+            const toDelete = new Map();   // value -> pending deletions (lazy)
+            let loSize = 0, hiSize = 0;   // logical (non-deleted) sizes
+            const medians = [];
+            const n = nums.length, k = K;
+            const odd = (k % 2 === 1);
+
+            const snap = (extra) => Object.assign({
+                lo: loVals(lo), hi: upVals(hi),
+                loSize, hiSize, winLo: -1, winHi: -1,
+                enterIdx: -1, leaveIdx: -1, enterVal: null, leaveVal: null,
+                enterSide: null, ghostLo: null, ghostHi: null,
+                medians: medians.slice(), median: null, showMedian: false,
+                code: [], action: '', panel: '', log: '', windowIdx: null
+            }, extra);
+
+            const prune = (h, sign) => {
+                // remove a lazily-deleted value if it is currently at the root
+                while (h.length) {
+                    const top = sign < 0 ? -h[0] : h[0];
+                    const c = toDelete.get(top) || 0;
+                    if (c > 0) { toDelete.set(top, c - 1); hPop(h); } else break;
+                }
+            };
+
+            steps.push(snap({
+                code: [0], action: 'init',
+                panel: `<b>Sliding-window median</b> over <code>nums = [${nums.join(', ')}]</code> with <code>k = ${k}</code>. We keep two heaps: a <b style="color:#d8b4fe">max-heap</b> for the lower half and a <b style="color:#a5f3fc">min-heap</b> for the upper half. The median sits at their tops.`,
+                log: `init  nums=[${nums.join(', ')}], k=${k}` }));
+
+            for (let i = 0; i < n; i++) {
+                const x = nums[i];
+
+                // ── add x ──
+                const goLow = (lo.length === 0) || (x <= loTop(lo));
+                if (goLow) { hPush(lo, -x); loSize++; } else { hPush(hi, x); hiSize++; }
+                steps.push(snap({
+                    windowIdx: null, code: [2, 6], enterIdx: i, enterVal: x, enterSide: goLow ? 'lo' : 'hi',
+                    winLo: Math.max(0, i - k + 1), winHi: i,
+                    action: 'ADD ' + x,
+                    panel: `Insert <code>nums[${i}] = ${x}</code>. Since ${lo.length && !goLow ? `<code>${x} &gt; lo.top(${loTop(lo)})</code>` : `<code>${x} &#8804; lo.top</code>`}, push it to the <b style="color:${goLow ? '#d8b4fe' : '#a5f3fc'}">${goLow ? 'max-heap (lower)' : 'min-heap (upper)'}</b>.`,
+                    log: `i=${i}  add ${x} -> ${goLow ? 'lo' : 'hi'}` }));
+
+                // ── remove the element leaving the window (lazy) ──
+                if (i >= k) {
+                    const out = nums[i - k];
+                    toDelete.set(out, (toDelete.get(out) || 0) + 1);
+                    if (out <= loTop(lo)) loSize--; else hiSize--;
+                    steps.push(snap({
+                        code: [3, 7], leaveIdx: i - k, leaveVal: out,
+                        winLo: i - k + 1, winHi: i,
+                        ghostLo: (out <= loTop(lo)) ? out : null, ghostHi: (out > loTop(lo)) ? out : null,
+                        action: 'REMOVE ' + out,
+                        panel: `<code>nums[${i - k}] = ${out}</code> leaves the window. Mark it deleted in the <b style="color:${out <= loTop(lo) ? '#d8b4fe' : '#a5f3fc'}">${out <= loTop(lo) ? 'lower' : 'upper'}</b> heap (<b style="color:#fecdd3">lazy deletion</b>) &#8212; it is purged only when it reaches a root.`,
+                        log: `i=${i}  remove ${out} (lazy) from ${out <= loTop(lo) ? 'lo' : 'hi'}` }));
+                }
+
+                // ── prune any deleted roots, then rebalance by logical size ──
+                prune(lo, -1); prune(hi, 1);
+                // rebalance: lo holds the extra when k is odd; sizes differ by at most 1
+                let moved = false, moveDesc = '';
+                if (loSize > hiSize + 1) {
+                    prune(lo, -1); const v = -hPop(lo); loSize--; hPush(hi, v); hiSize++;
+                    prune(hi, 1); moved = true; moveDesc = `lower has too many &#8594; move <b>${v}</b> up to the min-heap`;
+                } else if (hiSize > loSize) {
+                    prune(hi, 1); const v = hPop(hi); hiSize--; hPush(lo, -v); loSize++;
+                    prune(lo, -1); moved = true; moveDesc = `upper has too many &#8594; move <b>${v}</b> down to the max-heap`;
+                }
+                prune(lo, -1); prune(hi, 1);
+
+                if (moved || i >= k) {
+                    steps.push(snap({
+                        code: [4], winLo: Math.max(0, i - k + 1), winHi: i,
+                        action: moved ? 'REBALANCE' : 'PRUNE',
+                        panel: moved
+                            ? `Rebalance so the halves stay even: ${moveDesc}. Now <code>|lower| = ${loSize}</code>, <code>|upper| = ${hiSize}</code>.`
+                            : `Sizes already balanced: <code>|lower| = ${loSize}</code>, <code>|upper| = ${hiSize}</code>. Deleted roots are purged lazily.`,
+                        log: `i=${i}  rebalance  |lo|=${loSize} |hi|=${hiSize}` }));
+                }
+
+                // ── read median once the first full window exists ──
+                if (i >= k - 1) {
+                    prune(lo, -1); prune(hi, 1);
+                    const med = odd ? loTop(lo) : (loTop(lo) + hiTop(hi)) / 2;
+                    const medOut = Number(med.toFixed(1));
+                    medians.push(medOut);
+                    const wLo = i - k + 1;
+                    steps.push(snap({
+                        code: odd ? [5, 8] : [5, 9], winLo: wLo, winHi: i,
+                        median: medOut, showMedian: true, windowIdx: medians.length - 1,
+                        medians: medians.slice(),
+                        action: 'MEDIAN = ' + medOut,
+                        panel: odd
+                            ? `Window <code>[${nums.slice(wLo, i + 1).join(', ')}]</code> is full. <code>k</code> is odd &#8594; median is the max-heap root: <b style="color:#bbf7d0">${medOut}</b>.`
+                            : `Window <code>[${nums.slice(wLo, i + 1).join(', ')}]</code> is full. <code>k</code> is even &#8594; median is the mean of the two roots <code>(${loTop(lo)} + ${hiTop(hi)})/2</code> = <b style="color:#bbf7d0">${medOut}</b>.`,
+                        log: `i=${i}  window [${nums.slice(wLo, i + 1).join(', ')}] -> median ${medOut}` }));
+                }
+            }
+
+            steps.push(snap({
+                complete: true, confetti: true, code: [5], medians: medians.slice(),
+                action: '✓ DONE',
+                panel: `All windows processed. Medians: <code>[${medians.join(', ')}]</code>. Each slide added one element and lazily removed one in <code>O(log k)</code>.`,
+                log: `done  medians = [${medians.join(', ')}]` }));
+        }
+
+        // ───────── heap tree layout (complete binary tree by index) ─────────
+        const ROW = 42, NODE = 40, PADY = 22;
+        function layout(arr, width) {
+            const n = arr.length;
+            if (n === 0) return { pos: [], height: 60 };
+            const maxLevel = Math.floor(Math.log2(n));
+            const pos = [];
+            for (let i = 0; i < n; i++) {
+                const L = Math.floor(Math.log2(i + 1));
+                const levelStart = Math.pow(2, L) - 1;
+                const posInLevel = i - levelStart;
+                const countInLevel = Math.pow(2, L);
+                const x = (posInLevel + 0.5) / countInLevel * width;
+                const y = L * ROW + PADY;
+                pos.push({ x, y });
+            }
+            return { pos, height: maxLevel * ROW + PADY + 14 };
+        }
+
+        // generic heap renderer (tree + array) with persistent keyed DOM
+        function renderHeap(prefix, canvasId, edgesId, railId, vals, opts) {
+            const canvas = document.getElementById(canvasId);
+            const svg = document.getElementById(edgesId);
+            const nodeEls = (prefix === 'lo') ? loNodeEls : upNodeEls;
+            const edgeEls = (prefix === 'lo') ? loEdgeEls : upEdgeEls;
+            const stage = canvas.parentElement;
+            const width = Math.max(stage.clientWidth, 160);
+            const n = vals.length;
+            const { pos, height } = layout(vals, width);
+            canvas.style.width = width + 'px'; canvas.style.height = Math.max(height, 60) + 'px';
+            svg.setAttribute('width', width); svg.setAttribute('height', Math.max(height, 60));
+
+            const used = new Set();
+            for (let i = 0; i < n; i++) {
+                const key = prefix + ':n:' + i; used.add(key);
+                let el = nodeEls[key]; const fresh = !el;
+                if (!el) { el = document.createElement('div'); el.className = 'hnode'; canvas.appendChild(el); nodeEls[key] = el; }
+                el.textContent = vals[i];
+                let cls = 'hnode';
+                if (i === 0) cls += ' top';
+                if (opts.enterVal != null && i === opts.enterArrIdx) cls += ' enter';
+                if (opts.medianHighlight && i === 0) cls += ' median';
+                el.className = cls;
+                if (fresh) { el._x = pos[i].x; el._y = pos[i].y; el.style.transform = `translate(${pos[i].x}px, ${pos[i].y}px)`; el.style.opacity = '0'; Motion.pop(el); }
+                else Motion.move(el, pos[i].x, pos[i].y);
+            }
+            Object.keys(nodeEls).forEach(k => { if (!used.has(k)) { nodeEls[k].remove(); delete nodeEls[k]; } });
+
+            const usedE = new Set();
+            for (let i = 1; i < n; i++) {
+                const p = (i - 1) >> 1; const key = prefix + ':e:' + i; usedE.add(key);
+                let ln = edgeEls[key];
+                if (!ln) { ln = document.createElementNS('http://www.w3.org/2000/svg', 'line'); ln.setAttribute('class', 'edge-ln'); svg.appendChild(ln); edgeEls[key] = ln; }
+                ln.setAttribute('x1', pos[p].x); ln.setAttribute('y1', pos[p].y); ln.setAttribute('x2', pos[i].x); ln.setAttribute('y2', pos[i].y);
+            }
+            Object.keys(edgeEls).forEach(k => { if (!usedE.has(k)) { edgeEls[k].remove(); delete edgeEls[k]; } });
+
+            // array rail (rebuilt; small + cheap, not the animated layer)
+            const rail = document.getElementById(railId); rail.innerHTML = '';
+            if (n === 0) { const e = document.createElement('span'); e.className = 'heap-empty'; e.textContent = 'empty'; rail.appendChild(e); }
+            vals.forEach((v, i) => {
+                const c = document.createElement('div'); c.className = 'hcell' + (i === 0 ? ' top' : '');
+                if (opts.ghost != null && v === opts.ghost && i === opts.ghostArrIdx) c.className += ' ghost';
+                c.textContent = v; rail.appendChild(c);
+            });
+        }
+
+        // ───────── full render (pure function of step) ─────────
+        function renderStep(idx) {
+            stepIdx = idx; const step = steps[idx]; if (!step) return;
+
+            // input array row + window band
+            renderNumRail(step);
+
+            // determine the array index of the entering node (last pushed) for highlight
+            const loEnterIdx = (step.enterSide === 'lo' && step.enterVal != null) ? step.lo.indexOf(step.enterVal) : -1;
+            const hiEnterIdx = (step.enterSide === 'hi' && step.enterVal != null) ? step.hi.indexOf(step.enterVal) : -1;
+            const ghostLoIdx = step.ghostLo != null ? step.lo.indexOf(step.ghostLo) : -1;
+            const ghostHiIdx = step.ghostHi != null ? step.hi.indexOf(step.ghostHi) : -1;
+
+            renderHeap('lo', 'lower-canvas', 'lower-edges', 'lower-rail', step.lo, {
+                enterVal: step.enterSide === 'lo' ? step.enterVal : null, enterArrIdx: loEnterIdx,
+                medianHighlight: step.showMedian, ghost: step.ghostLo, ghostArrIdx: ghostLoIdx });
+            renderHeap('up', 'upper-canvas', 'upper-edges', 'upper-rail', step.hi, {
+                enterVal: step.enterSide === 'hi' ? step.enterVal : null, enterArrIdx: hiEnterIdx,
+                medianHighlight: step.showMedian && (K % 2 === 0), ghost: step.ghostHi, ghostArrIdx: ghostHiIdx });
+
+            // balance + median pill
+            document.getElementById('lo-size').textContent = step.loSize;
+            document.getElementById('up-size').textContent = step.hiSize;
+            const pill = document.getElementById('median-pill');
+            if (step.showMedian && step.median != null) { pill.textContent = step.median; pill.className = 'median-pill'; }
+            else { pill.textContent = '—'; pill.className = 'median-pill muted'; }
+
+            // result row
+            renderResults(step);
+
+            // narration / chrome
+            const mp = document.getElementById('main-panel');
+            mp.innerHTML = step.panel || '&mdash;';
+            mp.classList.toggle('done', !!step.complete);
+            highlightCode(step.code);
+
+            if (step.confetti) { if (confettiArmed) { fireConfetti(); confettiArmed = false; } } else confettiArmed = true;
+
+            renderOpFeed(step.windowIdx);
+            document.getElementById('step-badge').textContent = `Step ${idx + 1} / ${steps.length}`;
+            document.getElementById('progress-fill').style.width = `${(idx / Math.max(1, steps.length - 1)) * 100}%`;
+
+            const logEl = document.getElementById('log');
+            logEl.innerHTML = steps.slice(0, idx + 1).map(s => `<div style="margin:3px 0;white-space:pre-wrap;">${s.log}</div>`).join('');
+            logEl.scrollTop = logEl.scrollHeight;
+        }
+
+        function renderNumRail(step) {
+            const rail = document.getElementById('num-rail');
+            // keep the band element, rebuild cells
+            [...rail.querySelectorAll('.ncell')].forEach(c => c.remove());
+            const band = document.getElementById('win-band');
+            nums.forEach((v, i) => {
+                const c = document.createElement('div'); c.className = 'ncell';
+                const inWin = step.winLo >= 0 && i >= step.winLo && i <= step.winHi;
+                if (inWin) c.className += ' win';
+                if (i === step.enterIdx) c.className += ' enter';
+                if (i === step.leaveIdx) c.className += ' leave';
+                if (step.winLo >= 0 && !inWin && i !== step.leaveIdx) c.className += ' dim';
+                c.innerHTML = `${v}<span class="ni">${i}</span>`;
+                rail.appendChild(c);
+            });
+            // slide window band over the cells
+            if (step.winLo >= 0 && nums.length) {
+                const cells = rail.querySelectorAll('.ncell');
+                const first = cells[step.winLo], last = cells[step.winHi];
+                if (first && last) {
+                    const railBox = rail.getBoundingClientRect();
+                    const fb = first.getBoundingClientRect(), lb = last.getBoundingClientRect();
+                    const left = fb.left - railBox.left - 5;
+                    const w = (lb.right - fb.left) + 10;
+                    band.style.opacity = '1';
+                    band.style.width = w + 'px';
+                    band.style.transform = `translateX(${left}px)`;
+                }
+            } else { band.style.opacity = '0'; }
+        }
+
+        function renderResults(step) {
+            const rail = document.getElementById('result-rail'); rail.innerHTML = '';
+            const total = Math.max(0, nums.length - K + 1);
+            for (let i = 0; i < total; i++) {
+                const t = document.createElement('div');
+                if (i < step.medians.length) { t.className = 'res-tile'; t.textContent = step.medians[i]; }
+                else { t.className = 'res-tile pending'; t.textContent = '?'; }
+                if (i === step.windowIdx) t.style.transform = 'scale(1.12)';
+                rail.appendChild(t);
+            }
+            if (total === 0) { const e = document.createElement('span'); e.className = 'heap-empty'; e.textContent = 'window larger than array'; rail.appendChild(e); }
+        }
+
+        function renderOpFeed(currentWinIdx) {
+            const feed = document.getElementById('op-feed'); feed.innerHTML = '';
+            const total = Math.max(0, nums.length - K + 1);
+            for (let i = 0; i < total; i++) {
+                const chip = document.createElement('div');
+                const wLo = i, wHi = i + K - 1;
+                chip.className = 'op-chip' + (currentWinIdx === i ? ' current' : (currentWinIdx != null && i < currentWinIdx ? ' done' : ''));
+                chip.textContent = `[${wLo}‥${wHi}]`;
+                feed.appendChild(chip);
+            }
+        }
+
+        function fireConfetti() {
+            const host = document.getElementById('confetti'); if (!host || REDUCED) return;
+            const colors = ['#22c55e', '#06b6d4', '#a855f7', '#f5a524', '#f43f5e'];
+            for (let i = 0; i < 38; i++) {
+                const p = document.createElement('div'); p.className = 'confetti-piece';
+                p.style.setProperty('--x', ((Math.random() * 2 - 1) * 220) + 'px');
+                p.style.setProperty('--rot', ((Math.random() * 720 - 360)) + 'deg');
+                p.style.background = colors[i % colors.length];
+                p.style.animationDuration = (0.9 + Math.random() * 0.8) + 's';
+                p.style.animationDelay = (Math.random() * 0.15) + 's';
+                host.appendChild(p); setTimeout(() => p.remove(), 1900);
+            }
+        }
+
+        // ───────── controls ─────────
+        function nextStep() { if (stepIdx < steps.length - 1) renderStep(stepIdx + 1); else pause(); }
+        function prevStep() { if (stepIdx > 0) renderStep(stepIdx - 1); }
+        function resetSim() { pause(); renderStep(0); }
+        function togglePlay() {
+            const btn = document.getElementById('play-btn');
+            if (timer) { pause(); return; }
+            btn.textContent = 'Pause';
+            if (stepIdx >= steps.length - 1) renderStep(0);
+            timer = setInterval(() => { if (stepIdx < steps.length - 1) nextStep(); else pause(); }, delays[document.getElementById('speed').value]);
+        }
+        function pause() { clearInterval(timer); timer = null; document.getElementById('play-btn').textContent = 'Play'; }
+
+        function clearDom() {
+            [loNodeEls, upNodeEls, loEdgeEls, upEdgeEls].forEach(map => Object.keys(map).forEach(k => { map[k].remove(); delete map[k]; }));
+            confettiArmed = true;
+        }
+        function loadCase(arr, k) {
+            pause();
+            nums = arr.slice();
+            K = Math.max(1, Math.min(k, arr.length || 1));
+            document.getElementById('k-tag').textContent = K;
+            clearDom();
+            generateSteps();
+            renderStep(0);
+        }
+        function runCustom() {
+            const raw = document.getElementById('nums-input').value.trim();
+            const kRaw = parseInt(document.getElementById('k-input').value, 10);
+            let arr = raw.split(/[,\s]+/).map(s => parseInt(s, 10)).filter(v => !isNaN(v));
+            if (!arr.length) { document.getElementById('nums-input').focus(); return; }
+            const k = (!isNaN(kRaw) && kRaw >= 1) ? kRaw : 3;
+            loadCase(arr, k);
+        }
+        function loadExample(n) {
+            const exs = [
+                { nums: [1, 3, -1, -3, 5, 3, 6, 7], k: 3 },
+                { nums: [1, 2, 3, 4, 5], k: 4 },
+            ];
+            const ex = exs[n];
+            document.getElementById('nums-input').value = ex.nums.join(',');
+            document.getElementById('k-input').value = ex.k;
+            loadCase(ex.nums, ex.k);
+        }
+
+        document.addEventListener('keydown', (e) => {
+            const tag = (e.target.tagName || '').toLowerCase(); if (tag === 'input' || tag === 'textarea') return;
+            if (e.key === 'ArrowRight') { e.preventDefault(); pause(); nextStep(); }
+            else if (e.key === 'ArrowLeft') { e.preventDefault(); pause(); prevStep(); }
+            else if (e.key === ' ') { e.preventDefault(); togglePlay(); }
+        });
+        document.getElementById('nums-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') runCustom(); });
+        document.getElementById('k-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') runCustom(); });
+        window.addEventListener('resize', () => renderStep(stepIdx));
+
+        buildCodePanel();
+        window.onload = () => loadExample(0);
+    </script>
+</body>
+</html>

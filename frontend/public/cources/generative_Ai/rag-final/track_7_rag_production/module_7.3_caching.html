@@ -1,0 +1,2024 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>RAG Academy • Module 7.3 — Caching Strategies</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  if (typeof console !== 'undefined') {
+    const origWarn = console.warn;
+    console.warn = function(...args) {
+      if (args[0] && typeof args[0] === 'string' && args[0].includes('cdn.tailwindcss.com')) return;
+      origWarn.apply(console, args);
+    };
+  }
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700;800;900&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+<style>
+  :root {
+    --bg-deep: #02030a;
+    --bg-mid: #060818;
+    --bg-card: rgba(12, 16, 38, 0.6);
+    --neon-cyan: #00f0ff;
+    --neon-blue: #4d8eff;
+    --neon-purple: #b86bff;
+    --neon-pink: #ff4dcf;
+    --neon-amber: #ffb84d;
+    --neon-green: #4dffb8;
+    --text-primary: #e8efff;
+    --text-secondary: #8a96b8;
+    --border-glow: rgba(0, 240, 255, 0.25);
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    font-family: 'Inter', sans-serif;
+    background: var(--bg-deep);
+    color: var(--text-primary);
+    overflow-x: hidden;
+    min-height: 100vh;
+  }
+
+  .font-display { font-family: 'Orbitron', sans-serif; letter-spacing: 0.02em; }
+  .font-mono { font-family: 'JetBrains Mono', monospace; }
+
+  /* ===== STARFIELD ===== */
+  #starfield { position: fixed; inset: 0; z-index: 0; pointer-events: none; }
+  .nebula {
+    position: fixed; border-radius: 50%; filter: blur(120px);
+    opacity: 0.35; pointer-events: none; z-index: 0;
+  }
+  .nebula-1 { top: -10%; left: -5%; width: 50vw; height: 50vw; background: radial-gradient(circle, #4d8eff, transparent 70%); animation: drift1 22s ease-in-out infinite; }
+  .nebula-2 { top: 30%; right: -10%; width: 45vw; height: 45vw; background: radial-gradient(circle, #b86bff, transparent 70%); animation: drift2 28s ease-in-out infinite; }
+  .nebula-3 { bottom: -10%; left: 20%; width: 40vw; height: 40vw; background: radial-gradient(circle, #00f0ff, transparent 70%); animation: drift3 25s ease-in-out infinite; opacity: 0.22; }
+  @keyframes drift1 { 0%,100% { transform: translate(0,0); } 50% { transform: translate(40px, 60px); } }
+  @keyframes drift2 { 0%,100% { transform: translate(0,0); } 50% { transform: translate(-50px, 40px); } }
+  @keyframes drift3 { 0%,100% { transform: translate(0,0); } 50% { transform: translate(30px, -50px); } }
+
+  /* ===== NAV ===== */
+  .top-nav {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 50;
+    backdrop-filter: blur(20px); background: rgba(2, 3, 10, 0.7);
+    border-bottom: 1px solid rgba(0, 240, 255, 0.15);
+  }
+  .nav-logo {
+    background: linear-gradient(135deg, var(--neon-cyan), var(--neon-purple));
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+
+  /* ===== HOLO CARDS ===== */
+  .holo-card {
+    background: linear-gradient(135deg, rgba(12, 16, 38, 0.7), rgba(20, 12, 50, 0.5));
+    border: 1px solid rgba(0, 240, 255, 0.18);
+    border-radius: 18px;
+    backdrop-filter: blur(14px);
+    position: relative;
+    overflow: hidden;
+    transition: all 0.4s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  .holo-card::before {
+    content: ''; position: absolute; inset: 0;
+    background: linear-gradient(135deg, transparent 40%, rgba(0, 240, 255, 0.08) 50%, transparent 60%);
+    transform: translateX(-100%); transition: transform 0.8s ease; pointer-events: none;
+  }
+  .holo-card:hover::before { transform: translateX(100%); }
+  .holo-card:hover {
+    border-color: rgba(0, 240, 255, 0.5);
+    box-shadow: 0 0 40px rgba(0, 240, 255, 0.15), inset 0 0 30px rgba(77, 142, 255, 0.05);
+    transform: translateY(-4px);
+  }
+
+  /* ===== GRADIENT TEXT ===== */
+  .gradient-cyan { background: linear-gradient(135deg, #00f0ff, #4d8eff); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .gradient-purple { background: linear-gradient(135deg, #b86bff, #ff4dcf); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .gradient-amber { background: linear-gradient(135deg, #ffb84d, #ff4dcf); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .gradient-multi { background: linear-gradient(135deg, #00f0ff 0%, #4d8eff 35%, #b86bff 70%, #ff4dcf 100%); -webkit-background-clip: text; background-clip: text; color: transparent; }
+
+  /* ===== BUTTONS ===== */
+  .btn-primary {
+    background: linear-gradient(135deg, #00f0ff, #4d8eff);
+    color: #02030a; font-weight: 700; padding: 14px 28px;
+    border-radius: 12px; border: none; position: relative; overflow: hidden;
+    transition: all 0.3s ease; cursor: pointer;
+    box-shadow: 0 0 30px rgba(0, 240, 255, 0.35);
+  }
+  .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 0 50px rgba(0, 240, 255, 0.6); }
+  .btn-ghost {
+    background: rgba(12, 16, 38, 0.5); border: 1px solid rgba(0, 240, 255, 0.3);
+    color: var(--text-primary); font-weight: 600; padding: 14px 28px;
+    border-radius: 12px; transition: all 0.3s ease; cursor: pointer;
+  }
+  .btn-ghost:hover { border-color: var(--neon-cyan); background: rgba(0, 240, 255, 0.08); }
+
+  /* ===== HERO ===== */
+  .hero-title { font-size: clamp(2.5rem, 7vw, 6rem); line-height: 0.95; font-weight: 900; }
+  .scan-line {
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--neon-cyan), transparent);
+    animation: scan 4s linear infinite;
+  }
+  @keyframes scan { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }
+
+  /* ===== ORBIT ===== */
+  .orbit-container {
+    position: relative; width: 100%; max-width: 520px;
+    aspect-ratio: 1; margin: 0 auto;
+  }
+  .orbit-core {
+    position: absolute; top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 110px; height: 110px; border-radius: 50%;
+    background: radial-gradient(circle, #00f0ff 0%, #4d8eff 40%, #b86bff 100%);
+    box-shadow: 0 0 60px rgba(0, 240, 255, 0.7), 0 0 120px rgba(77, 142, 255, 0.4);
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Orbitron', sans-serif; font-weight: 900; color: #02030a;
+    font-size: 1.05rem; z-index: 5;
+    animation: pulse-core 3s ease-in-out infinite;
+  }
+  @keyframes pulse-core {
+    0%,100% { box-shadow: 0 0 60px rgba(0, 240, 255, 0.7), 0 0 120px rgba(77, 142, 255, 0.4); }
+    50% { box-shadow: 0 0 80px rgba(0, 240, 255, 1), 0 0 160px rgba(184, 107, 255, 0.6); }
+  }
+  .orbit-ring {
+    position: absolute; top: 50%; left: 50%; border-radius: 50%;
+    border: 1px dashed rgba(0, 240, 255, 0.25);
+    transform: translate(-50%, -50%);
+  }
+  .ring-1 { width: 50%; height: 50%; animation: spin 20s linear infinite; }
+  .ring-2 { width: 75%; height: 75%; animation: spin 35s linear infinite reverse; }
+  .ring-3 { width: 100%; height: 100%; animation: spin 50s linear infinite; }
+  @keyframes spin { from { transform: translate(-50%, -50%) rotate(0deg); } to { transform: translate(-50%, -50%) rotate(360deg); } }
+  .orbit-planet {
+    position: absolute; width: 44px; height: 44px;
+    border-radius: 50%; display: flex;
+    align-items: center; justify-content: center;
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(255,255,255,0.2);
+  }
+  .orbit-planet i { width: 20px; height: 20px; }
+
+  /* ===== STAT ===== */
+  .stat-num {
+    font-family: 'Orbitron', sans-serif; font-weight: 800; font-size: 2.4rem;
+    background: linear-gradient(135deg, #00f0ff, #b86bff);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+
+  /* ===== PILL ===== */
+  .pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 6px 14px; border-radius: 999px;
+    font-size: 0.75rem; font-weight: 600;
+    letter-spacing: 0.08em; text-transform: uppercase;
+    border: 1px solid rgba(0, 240, 255, 0.3);
+    background: rgba(0, 240, 255, 0.06);
+    color: var(--neon-cyan);
+  }
+
+  /* ===== ROADMAP NODES ===== */
+  .roadmap-node { transition: all 0.3s ease; cursor: pointer; }
+  .roadmap-node:hover { transform: scale(1.05); }
+  .roadmap-node.active .node-circle {
+    background: linear-gradient(135deg, var(--neon-cyan), var(--neon-purple));
+    box-shadow: 0 0 30px rgba(0, 240, 255, 0.6);
+  }
+  .node-circle {
+    width: 60px; height: 60px; border-radius: 50%;
+    background: rgba(12, 16, 38, 0.8);
+    border: 2px solid rgba(0, 240, 255, 0.3);
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Orbitron', sans-serif; font-weight: 700;
+    color: var(--neon-cyan); transition: all 0.3s ease;
+  }
+
+  /* ===== CODE BLOCK ===== */
+  .code-block {
+    background: rgba(2, 3, 10, 0.8);
+    border: 1px solid rgba(0, 240, 255, 0.2);
+    border-radius: 14px; padding: 24px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.82rem; line-height: 1.7;
+    overflow-x: auto; position: relative;
+  }
+  .code-block::before {
+    content: ''; position: absolute; top: 0; left: 0; right: 0;
+    height: 1px; background: linear-gradient(90deg, transparent, var(--neon-cyan), transparent);
+  }
+  .tok-keyword { color: #ff4dcf; }
+  .tok-string { color: #4dffb8; }
+  .tok-fn { color: #00f0ff; }
+  .tok-comment { color: #5a6788; font-style: italic; }
+  .tok-num { color: #ffb84d; }
+  .tok-var { color: #e8efff; }
+  .tok-deco { color: #ffb84d; }
+
+  /* ===== FLOAT ===== */
+  .float-y { animation: floaty 6s ease-in-out infinite; }
+  @keyframes floaty { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-12px); } }
+
+  /* ===== REVEAL ===== */
+  .reveal { transition: opacity 1s cubic-bezier(0.2, 0.8, 0.2, 1), transform 1s cubic-bezier(0.2, 0.8, 0.2, 1); }
+  .js-reveal .reveal { opacity: 0; transform: translateY(40px); }
+  .js-reveal .reveal.in { opacity: 1; transform: translateY(0); }
+
+  /* ===== USE CASE ICON ===== */
+  .use-case-icon {
+    width: 56px; height: 56px; border-radius: 14px;
+    display: flex; align-items: center; justify-content: center;
+    margin-bottom: 16px;
+  }
+
+  /* ===== PROGRESS ===== */
+  .progress-bar { height: 6px; background: rgba(0, 240, 255, 0.1); border-radius: 999px; overflow: hidden; position: relative; }
+  .progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--neon-cyan), var(--neon-purple), var(--neon-pink));
+    border-radius: 999px;
+    transition: width 1.5s cubic-bezier(0.2, 0.8, 0.2, 1);
+    position: relative;
+  }
+  .progress-fill::after {
+    content: ''; position: absolute; inset: 0;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
+    animation: shimmer 2s linear infinite;
+  }
+  @keyframes shimmer { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }
+
+  /* ===== CHECKPOINT ===== */
+  .checkpoint-glow {
+    background: radial-gradient(circle at center, rgba(0, 240, 255, 0.12), transparent 70%);
+    border: 1px solid rgba(0, 240, 255, 0.3);
+  }
+
+  /* ===== SIDE DOTS ===== */
+  .side-dots {
+    position: fixed; right: 24px; top: 50%; transform: translateY(-50%);
+    z-index: 40; display: flex; flex-direction: column; gap: 14px;
+  }
+  @media (max-width: 1024px) { .side-dots { display: none; } }
+  .dot {
+    width: 10px; height: 10px; border-radius: 50%;
+    background: rgba(0, 240, 255, 0.2);
+    border: 1px solid rgba(0, 240, 255, 0.4);
+    transition: all 0.3s ease; cursor: pointer;
+  }
+  .dot.active { background: var(--neon-cyan); box-shadow: 0 0 15px var(--neon-cyan); transform: scale(1.3); }
+
+  /* ===== SCROLLBAR ===== */
+  ::-webkit-scrollbar { width: 10px; }
+  ::-webkit-scrollbar-track { background: var(--bg-deep); }
+  ::-webkit-scrollbar-thumb { background: linear-gradient(180deg, var(--neon-cyan), var(--neon-purple)); border-radius: 10px; }
+
+  /* ===== HOLO BORDER ===== */
+  .holo-border { position: relative; }
+  .holo-border::after {
+    content: ''; position: absolute; inset: -1px;
+    border-radius: inherit; padding: 1px;
+    background: linear-gradient(135deg, var(--neon-cyan), transparent 40%, transparent 60%, var(--neon-purple));
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    pointer-events: none; opacity: 0.6;
+  }
+
+  /* ===== GRID FLOOR ===== */
+  .grid-floor {
+    position: absolute; bottom: 0; left: 0; right: 0; height: 30vh;
+    background-image:
+      linear-gradient(rgba(0, 240, 255, 0.15) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0, 240, 255, 0.15) 1px, transparent 1px);
+    background-size: 50px 50px;
+    opacity: 0.4;
+    mask-image: linear-gradient(180deg, transparent, black 50%);
+    -webkit-mask-image: linear-gradient(180deg, transparent, black 50%);
+  }
+
+  /* ===== CALLOUTS ===== */
+  .callout {
+    background: linear-gradient(135deg, rgba(255, 184, 77, 0.08), rgba(255, 77, 207, 0.04));
+    border-left: 3px solid var(--neon-amber);
+    border-radius: 8px; padding: 16px 20px;
+  }
+  .callout-cyan {
+    background: linear-gradient(135deg, rgba(0, 240, 255, 0.08), rgba(77, 142, 255, 0.04));
+    border-left: 3px solid var(--neon-cyan);
+    border-radius: 8px; padding: 16px 20px;
+  }
+  .callout-pink {
+    background: linear-gradient(135deg, rgba(255, 77, 207, 0.08), rgba(184, 107, 255, 0.04));
+    border-left: 3px solid var(--neon-pink);
+    border-radius: 8px; padding: 16px 20px;
+  }
+  .callout-green {
+    background: linear-gradient(135deg, rgba(77, 255, 184, 0.08), rgba(0, 240, 255, 0.04));
+    border-left: 3px solid var(--neon-green);
+    border-radius: 8px; padding: 16px 20px;
+  }
+
+  /* ===== QUIZ ===== */
+  .quiz-option {
+    background: rgba(12, 16, 38, 0.6);
+    border: 1px solid rgba(0, 240, 255, 0.2);
+    border-radius: 12px;
+    padding: 14px 18px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    text-align: left;
+    width: 100%;
+    color: var(--text-primary);
+    font-family: 'Inter', sans-serif;
+  }
+  .quiz-option:hover { border-color: rgba(0, 240, 255, 0.5); background: rgba(0, 240, 255, 0.04); }
+  .quiz-option.correct { border-color: var(--neon-green); background: rgba(77, 255, 184, 0.08); color: #d4ffe8; }
+  .quiz-option.wrong { border-color: var(--neon-pink); background: rgba(255, 77, 207, 0.08); color: #ffd0ec; }
+  .quiz-option.disabled { cursor: not-allowed; pointer-events: none; }
+
+  /* ===== DATA TABLE ===== */
+  .data-table {
+    width: 100%; border-collapse: separate; border-spacing: 0;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.82rem;
+  }
+  .data-table th {
+    background: rgba(0, 240, 255, 0.08);
+    color: var(--neon-cyan);
+    text-align: left; padding: 12px 14px;
+    font-weight: 600; letter-spacing: 0.05em;
+    border-bottom: 1px solid rgba(0, 240, 255, 0.25);
+  }
+  .data-table td {
+    padding: 12px 14px;
+    color: var(--text-primary);
+    border-bottom: 1px solid rgba(0, 240, 255, 0.08);
+  }
+  .data-table tr:hover td { background: rgba(0, 240, 255, 0.03); }
+
+  /* ===== CACHE LAYER CARD ===== */
+  .layer-card {
+    background: rgba(12, 16, 38, 0.6);
+    border: 1px solid rgba(0, 240, 255, 0.2);
+    border-radius: 14px;
+    padding: 18px;
+    transition: all 0.3s ease;
+    cursor: pointer;
+    position: relative;
+  }
+  .layer-card:hover {
+    border-color: rgba(0, 240, 255, 0.5);
+    transform: translateY(-3px);
+    box-shadow: 0 8px 30px rgba(0, 240, 255, 0.12);
+  }
+  .layer-card.active {
+    border-color: var(--neon-cyan);
+    box-shadow: 0 0 30px rgba(0, 240, 255, 0.3);
+    background: rgba(0, 240, 255, 0.05);
+  }
+  .layer-num {
+    position: absolute; top: -10px; left: 14px;
+    background: var(--bg-deep);
+    padding: 2px 10px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.7rem; color: var(--neon-cyan);
+    border: 1px solid rgba(0,240,255,0.3);
+    border-radius: 999px;
+  }
+
+  /* ===== HIT RATE METER ===== */
+  .hit-track {
+    height: 12px;
+    background: rgba(0, 240, 255, 0.08);
+    border-radius: 999px;
+    overflow: hidden;
+    position: relative;
+  }
+  .hit-fill {
+    height: 100%;
+    border-radius: 999px;
+    background: linear-gradient(90deg, var(--neon-cyan), var(--neon-purple), var(--neon-pink));
+    transition: width 1.5s cubic-bezier(0.2, 0.8, 0.2, 1);
+    position: relative;
+    box-shadow: 0 0 16px rgba(0, 240, 255, 0.4);
+  }
+  .hit-fill::after {
+    content: ''; position: absolute; inset: 0;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.35), transparent);
+    animation: shimmer 2.5s linear infinite;
+  }
+
+  /* ===== ROI CHART WRAPPER ===== */
+  .roi-chart-wrapper { position: relative; width: 100%; height: 280px; }
+  #roiChart { max-height: 280px !important; display: block !important; }
+
+  /* ===== FLOW STEP ===== */
+  .flow-step {
+    background: rgba(12, 16, 38, 0.7);
+    border: 1px solid rgba(0, 240, 255, 0.3);
+    border-radius: 12px;
+    padding: 14px 16px;
+    transition: all 0.3s ease;
+    text-align: center;
+  }
+  .flow-step:hover {
+    border-color: var(--neon-cyan);
+    box-shadow: 0 0 20px rgba(0, 240, 255, 0.2);
+  }
+  .flow-step.hit { border-color: rgba(77, 255, 184, 0.5); background: rgba(77, 255, 184, 0.05); }
+  .flow-step.miss { border-color: rgba(255, 77, 207, 0.5); background: rgba(255, 77, 207, 0.05); }
+
+  /* ===== MOBILE ===== */
+  @media (max-width: 768px) {
+    .orbit-container { max-width: 340px; }
+    .code-block { font-size: 0.72rem; padding: 16px; }
+    .data-table { font-size: 0.72rem; }
+  }
+
+
+  /* ===== LEARN & PRACTICE CARDS ===== */
+  .resource-stack {
+    max-width: 860px;
+    margin: 0 auto;
+    display: grid;
+    gap: 14px;
+  }
+  .resource-card {
+    background: linear-gradient(135deg, rgba(6, 8, 24, 0.92), rgba(10, 12, 34, 0.86));
+    border: 1px solid rgba(0, 240, 255, 0.32);
+    border-radius: 16px;
+    padding: 20px;
+    box-shadow: 0 0 28px rgba(0, 240, 255, 0.08);
+  }
+  .resource-card.repo {
+    border-color: rgba(255, 77, 207, 0.35);
+    box-shadow: 0 0 28px rgba(255, 77, 207, 0.08);
+  }
+  .resource-icon {
+    width: 34px;
+    height: 34px;
+    border-radius: 10px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid rgba(0, 240, 255, 0.4);
+    background: rgba(0, 240, 255, 0.08);
+    color: var(--neon-cyan);
+    flex-shrink: 0;
+  }
+  .resource-card.repo .resource-icon {
+    border-color: rgba(255, 77, 207, 0.45);
+    background: rgba(255, 77, 207, 0.1);
+    color: var(--neon-pink);
+  }
+  .resource-cta {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 12px;
+    padding: 10px 18px;
+    border-radius: 10px;
+    border: 1px solid rgba(0, 240, 255, 0.55);
+    color: var(--neon-cyan);
+    font-family: 'Orbitron', sans-serif;
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    background: rgba(0, 240, 255, 0.06);
+    transition: all 0.25s ease;
+  }
+  .resource-cta:hover {
+    background: rgba(0, 240, 255, 0.12);
+    box-shadow: 0 0 20px rgba(0, 240, 255, 0.22);
+  }
+  .resource-card.repo .resource-cta {
+    border-color: rgba(255, 77, 207, 0.55);
+    color: var(--neon-pink);
+    background: rgba(255, 77, 207, 0.08);
+  }
+  .resource-card.repo .resource-cta:hover {
+    background: rgba(255, 77, 207, 0.15);
+    box-shadow: 0 0 20px rgba(255, 77, 207, 0.24);
+  }
+
+</style>
+</head>
+
+<body>
+
+<div class="nebula nebula-1"></div>
+<div class="nebula nebula-2"></div>
+<div class="nebula nebula-3"></div>
+
+<canvas id="starfield"></canvas>
+
+<!-- TOP NAV -->
+<nav class="top-nav">
+  <div class="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
+    <div class="flex items-center gap-3">
+      <div class="w-10 h-10 rounded-xl flex items-center justify-center" style="background: linear-gradient(135deg, #00f0ff, #b86bff); box-shadow: 0 0 20px rgba(0,240,255,0.5);">
+        <i data-lucide="orbit" class="w-5 h-5 text-black"></i>
+      </div>
+      <div>
+        <div class="font-display font-bold text-lg nav-logo">RAG ACADEMY</div>
+        <div class="text-[10px] text-gray-400 tracking-widest -mt-1">TRACK 07 · MODULE 7.3</div>
+      </div>
+    </div>
+
+    <div class="hidden md:flex items-center gap-8 text-sm">
+      <a href="#hero" class="text-cyan-300 font-medium">Overview</a>
+      <a href="#why" class="text-gray-300 hover:text-cyan-300 transition">Why Cache</a>
+      <a href="#layers" class="text-gray-300 hover:text-cyan-300 transition">3 Layers</a>
+      <a href="#semantic" class="text-gray-300 hover:text-cyan-300 transition">Semantic</a>
+      <a href="#invalidation" class="text-gray-300 hover:text-cyan-300 transition">Invalidation</a>
+      <a href="#roi" class="text-gray-300 hover:text-cyan-300 transition">ROI</a>
+      <a href="#never" class="text-gray-300 hover:text-cyan-300 transition">When Not To</a>
+      <a href="#checkpoint" class="text-gray-300 hover:text-cyan-300 transition">Checkpoint</a>
+    </div>
+
+    <div class="flex items-center gap-3">
+      <div class="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full" style="background: rgba(0,240,255,0.08); border: 1px solid rgba(0,240,255,0.25);">
+        <div class="w-2 h-2 rounded-full" style="background: #4dffb8; box-shadow: 0 0 8px #4dffb8;"></div>
+        <span class="text-xs font-mono text-cyan-200">CADET ONLINE</span>
+      </div>
+      <button class="btn-ghost text-sm py-2 px-4">Save Progress</button>
+    </div>
+  </div>
+  <div class="scan-line"></div>
+</nav>
+
+<!-- SIDE DOTS -->
+<div class="side-dots">
+  <div class="dot active" data-target="hero"></div>
+  <div class="dot" data-target="why"></div>
+  <div class="dot" data-target="layers"></div>
+  <div class="dot" data-target="semantic"></div>
+  <div class="dot" data-target="invalidation"></div>
+  <div class="dot" data-target="roi"></div>
+  <div class="dot" data-target="never"></div>
+  <div class="dot" data-target="checkpoint"></div>
+</div>
+
+<!-- ========== HERO ========== -->
+<section id="hero" class="relative min-h-screen flex items-center pt-32 pb-24 px-6">
+  <div class="grid-floor"></div>
+
+  <div class="max-w-7xl mx-auto w-full grid lg:grid-cols-2 gap-16 items-center relative z-10">
+    <div class="reveal">
+      <div class="flex items-center gap-3 mb-6">
+        <span class="pill"><i data-lucide="zap" class="w-3 h-3"></i> Track 7 · Module 7.3</span>
+        <span class="text-xs text-gray-400 font-mono">EST. 50 MIN</span>
+      </div>
+
+      <h1 class="hero-title font-display mb-6">
+        <span class="block text-white">Caching</span>
+        <span class="block gradient-multi">Strategies</span>
+      </h1>
+
+      <p class="text-lg md:text-xl text-gray-300 leading-relaxed mb-8 max-w-xl">
+        Cut RAG cost by <span class="text-cyan-300 font-semibold">30-50%</span> and latency by
+        <span class="text-purple-300 font-semibold">5-10×</span> on cache hits.
+        Three layers — prompt, embedding, semantic — each with its own ROI and invalidation rules.
+      </p>
+
+      <div class="flex flex-wrap gap-4 mb-12">
+        <button class="btn-primary flex items-center gap-2" onclick="document.getElementById('why').scrollIntoView({behavior:'smooth'})">
+          <i data-lucide="play" class="w-4 h-4"></i> Begin Module
+        </button>
+        <button class="btn-ghost flex items-center gap-2" onclick="document.getElementById('roi').scrollIntoView({behavior:'smooth'})">
+          <i data-lucide="trending-up" class="w-4 h-4"></i> Jump to ROI
+        </button>
+      </div>
+
+      <div class="grid grid-cols-3 gap-4">
+        <div class="holo-card p-4">
+          <div class="stat-num" data-count="3">0</div>
+          <div class="text-xs text-gray-400 uppercase tracking-wider mt-1">Cache Layers</div>
+        </div>
+        <div class="holo-card p-4">
+          <div class="stat-num"><span data-count="50">0</span>%</div>
+          <div class="text-xs text-gray-400 uppercase tracking-wider mt-1">Hit-Rate Target</div>
+        </div>
+        <div class="holo-card p-4">
+          <div class="stat-num"><span data-count="10">0</span>×</div>
+          <div class="text-xs text-gray-400 uppercase tracking-wider mt-1">Latency Win</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ORBIT -->
+    <div class="reveal flex flex-col items-center">
+      <div class="orbit-container float-y">
+        <div class="orbit-ring ring-3"></div>
+        <div class="orbit-ring ring-2"></div>
+        <div class="orbit-ring ring-1"></div>
+        <div class="orbit-core">CACHE</div>
+
+        <div class="orbit-planet" style="top: 5%; left: 50%; transform: translate(-50%,-50%); background: rgba(77, 142, 255, 0.25); color: #4d8eff;">
+          <i data-lucide="zap"></i>
+        </div>
+        <div class="orbit-planet" style="top: 50%; right: 0%; transform: translate(50%,-50%); background: rgba(184, 107, 255, 0.25); color: #b86bff;">
+          <i data-lucide="binary"></i>
+        </div>
+        <div class="orbit-planet" style="bottom: 5%; left: 50%; transform: translate(-50%,50%); background: rgba(255, 77, 207, 0.25); color: #ff4dcf;">
+          <i data-lucide="sparkles"></i>
+        </div>
+        <div class="orbit-planet" style="top: 50%; left: 0%; transform: translate(-50%,-50%); background: rgba(0, 240, 255, 0.25); color: #00f0ff;">
+          <i data-lucide="database"></i>
+        </div>
+        <div class="orbit-planet" style="top: 15%; right: 15%; background: rgba(255, 184, 77, 0.25); color: #ffb84d;">
+          <i data-lucide="dollar-sign"></i>
+        </div>
+        <div class="orbit-planet" style="bottom: 15%; left: 15%; background: rgba(77, 255, 184, 0.25); color: #4dffb8;">
+          <i data-lucide="refresh-ccw"></i>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========== WHY CACHE ========== -->
+<section id="why" class="relative py-24 px-6 z-10">
+  <div class="max-w-7xl mx-auto">
+    <div class="text-center mb-16 reveal">
+      <span class="pill mb-4"><i data-lucide="trending-up" class="w-3 h-3"></i> The Pareto Win</span>
+      <h2 class="font-display text-4xl md:text-5xl font-bold mt-4">
+        Why <span class="gradient-cyan">Caching</span> Matters For RAG
+      </h2>
+      <p class="text-gray-400 mt-4 max-w-3xl mx-auto">
+        Real RAG traffic isn't uniform. 20% of queries account for 80% of volume — and 60% of users ask near-identical questions. Caching turns repetition into a free win.
+      </p>
+    </div>
+
+    <!-- THE 3 WINS -->
+    <div class="grid md:grid-cols-3 gap-6 mb-12">
+      <div class="holo-card p-7 reveal">
+        <div class="use-case-icon" style="background: linear-gradient(135deg, rgba(0,240,255,0.15), rgba(77,142,255,0.05)); color: #00f0ff;">
+          <i data-lucide="dollar-sign" class="w-7 h-7"></i>
+        </div>
+        <div class="font-mono text-[10px] text-gray-500 tracking-widest mb-1">WIN · 01</div>
+        <h3 class="font-display font-bold text-lg mb-2" style="color:#00f0ff;">Cost</h3>
+        <p class="text-sm text-gray-400 leading-relaxed mb-3">A cache hit costs <span class="text-cyan-300">~0.01¢</span> (Redis lookup). A cache miss costs <span class="text-pink-300">2-15¢</span> (LLM tokens).</p>
+        <div class="font-mono text-xs p-2.5 rounded-md" style="background: rgba(2,3,10,0.6); color: #aaffd6;">
+          50% hit rate ≈ 50% cost cut
+        </div>
+      </div>
+
+      <div class="holo-card p-7 reveal">
+        <div class="use-case-icon" style="background: linear-gradient(135deg, rgba(184,107,255,0.15), rgba(255,77,207,0.05)); color: #b86bff;">
+          <i data-lucide="timer" class="w-7 h-7"></i>
+        </div>
+        <div class="font-mono text-[10px] text-gray-500 tracking-widest mb-1">WIN · 02</div>
+        <h3 class="font-display font-bold text-lg mb-2" style="color:#b86bff;">Latency</h3>
+        <p class="text-sm text-gray-400 leading-relaxed mb-3">Cache hit: <span class="text-purple-300">~10 ms</span>. LLM call: <span class="text-pink-300">1-3 seconds</span>. The cached user feels the difference instantly.</p>
+        <div class="font-mono text-xs p-2.5 rounded-md" style="background: rgba(2,3,10,0.6); color: #aaffd6;">
+          ~100-300× faster on hits
+        </div>
+      </div>
+
+      <div class="holo-card p-7 reveal">
+        <div class="use-case-icon" style="background: linear-gradient(135deg, rgba(255,77,207,0.15), rgba(255,184,77,0.05)); color: #ff4dcf;">
+          <i data-lucide="shield" class="w-7 h-7"></i>
+        </div>
+        <div class="font-mono text-[10px] text-gray-500 tracking-widest mb-1">WIN · 03</div>
+        <h3 class="font-display font-bold text-lg mb-2" style="color:#ff4dcf;">Resilience</h3>
+        <p class="text-sm text-gray-400 leading-relaxed mb-3">OpenAI down? Cached answers still serve. <span class="text-pink-300">A cache is also a backup brain.</span></p>
+        <div class="font-mono text-xs p-2.5 rounded-md" style="background: rgba(2,3,10,0.6); color: #aaffd6;">
+          Graceful degradation
+        </div>
+      </div>
+    </div>
+
+    <!-- TRAFFIC DISTRIBUTION -->
+    <div class="reveal">
+      <div class="flex items-center gap-3 mb-6">
+        <i data-lucide="bar-chart-3" class="w-5 h-5 text-cyan-400"></i>
+        <h3 class="font-display font-bold text-xl">Real Traffic Looks Like This</h3>
+      </div>
+      <div class="holo-card p-8">
+        <div class="space-y-4">
+          <div>
+            <div class="flex justify-between text-sm mb-2">
+              <span class="text-gray-300">Top 5 unique questions</span>
+              <span class="font-mono text-cyan-300">38% of all traffic</span>
+            </div>
+            <div class="hit-track"><div class="hit-fill" style="width: 38%;"></div></div>
+          </div>
+          <div>
+            <div class="flex justify-between text-sm mb-2">
+              <span class="text-gray-300">Top 20 unique questions</span>
+              <span class="font-mono text-cyan-300">62% of all traffic</span>
+            </div>
+            <div class="hit-track"><div class="hit-fill" style="width: 62%;"></div></div>
+          </div>
+          <div>
+            <div class="flex justify-between text-sm mb-2">
+              <span class="text-gray-300">Top 100 unique questions</span>
+              <span class="font-mono text-cyan-300">81% of all traffic</span>
+            </div>
+            <div class="hit-track"><div class="hit-fill" style="width: 81%;"></div></div>
+          </div>
+          <div>
+            <div class="flex justify-between text-sm mb-2">
+              <span class="text-gray-300">Long tail (everything else)</span>
+              <span class="font-mono text-gray-500">19%</span>
+            </div>
+            <div class="hit-track"><div class="hit-fill" style="width: 19%; background: linear-gradient(90deg, #5a6788, #8a96b8); box-shadow: none;"></div></div>
+          </div>
+        </div>
+        <div class="callout-cyan mt-6 text-sm text-gray-300">
+          <strong class="text-cyan-300">📍 The implication:</strong>
+          You only need to cache <span class="text-cyan-200">100 question answers</span> to cover 81% of traffic. That's a tiny cache (~1 MB) for an enormous cost cut. Caching is one of the highest-ROI moves in RAG.
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========== CACHE TYPES COMPARISON ========== -->
+<section id="cache-types" class="relative py-24 px-6 z-10">
+  <div class="max-w-7xl mx-auto">
+    <div class="text-center mb-16 reveal">
+      <span class="pill mb-4"><i data-lucide="git-compare-arrows" class="w-3 h-3"></i> Don't Mix These Up</span>
+      <h2 class="font-display text-4xl md:text-5xl font-bold mt-4">
+        <span class="gradient-cyan">Exact</span> vs <span class="gradient-purple">Semantic</span> vs <span class="gradient-pink">Prompt</span> Cache
+      </h2>
+      <p class="text-gray-400 mt-4 max-w-3xl mx-auto">Three caches sit in a RAG stack — same word, three completely different mechanisms. Conflating them is why teams over-cache, under-cache, or trust a hit they shouldn't have.</p>
+    </div>
+
+    <div class="grid lg:grid-cols-3 gap-6 reveal mb-10">
+      <div class="holo-card p-6">
+        <div class="text-xs text-cyan-300 uppercase tracking-wider mb-2">Type 1</div>
+        <h3 class="font-display font-bold text-xl text-white mb-3">Exact Cache</h3>
+        <p class="text-sm text-gray-300 mb-4">Hash the normalized query (lowercased, trimmed, optionally tokenized) → look up exact response.</p>
+        <div class="font-mono text-xs bg-black/30 p-3 rounded border border-cyan-500/20 text-gray-300 space-y-1">
+          <div><span class="text-cyan-300">key:</span> sha256("refund window?")</div>
+          <div><span class="text-cyan-300">value:</span> stored answer + sources</div>
+          <div><span class="text-cyan-300">store:</span> Redis · &lt;1ms</div>
+        </div>
+        <div class="mt-4 space-y-2 text-xs">
+          <div class="text-green-300"><strong>✓ Hit rate:</strong> 10-20% (only literal repeats)</div>
+          <div class="text-green-300"><strong>✓ Risk:</strong> ~zero — same key = same answer</div>
+          <div class="text-pink-300"><strong>✗ Brittle:</strong> "refund window" vs "Refund window?" → miss</div>
+        </div>
+      </div>
+
+      <div class="holo-card p-6" style="border-color: rgba(184,107,255,0.3);">
+        <div class="text-xs text-purple-300 uppercase tracking-wider mb-2">Type 2</div>
+        <h3 class="font-display font-bold text-xl text-white mb-3">Semantic Cache</h3>
+        <p class="text-sm text-gray-300 mb-4">Embed the query, do ANN search over cached query embeddings. Hit if cosine &gt; threshold.</p>
+        <div class="font-mono text-xs bg-black/30 p-3 rounded border border-purple-500/20 text-gray-300 space-y-1">
+          <div><span class="text-purple-300">key:</span> emb("refund window?")</div>
+          <div><span class="text-purple-300">value:</span> ANN-matched answer if sim ≥ 0.92</div>
+          <div><span class="text-purple-300">store:</span> Qdrant/Redis-vector · 10-30ms</div>
+        </div>
+        <div class="mt-4 space-y-2 text-xs">
+          <div class="text-green-300"><strong>✓ Hit rate:</strong> 30-50% (paraphrases hit too)</div>
+          <div class="text-amber-300"><strong>⚠ Risk:</strong> false hits if threshold too low</div>
+          <div class="text-pink-300"><strong>✗ Unsafe for:</strong> time-sensitive, personalized, factual queries</div>
+        </div>
+      </div>
+
+      <div class="holo-card p-6" style="border-color: rgba(255,77,207,0.3);">
+        <div class="text-xs text-pink-300 uppercase tracking-wider mb-2">Type 3</div>
+        <h3 class="font-display font-bold text-xl text-white mb-3">Prompt Cache</h3>
+        <p class="text-sm text-gray-300 mb-4">A provider feature (OpenAI, Anthropic, Gemini): the <em>shared prefix</em> of consecutive prompts is cached on the provider's side — first-token latency and token cost drop.</p>
+        <div class="font-mono text-xs bg-black/30 p-3 rounded border border-pink-500/20 text-gray-300 space-y-1">
+          <div><span class="text-pink-300">key:</span> hash of prompt prefix (provider-side)</div>
+          <div><span class="text-pink-300">value:</span> KV cache state at prefix boundary</div>
+          <div><span class="text-pink-300">store:</span> provider GPU memory · transparent</div>
+        </div>
+        <div class="mt-4 space-y-2 text-xs">
+          <div class="text-green-300"><strong>✓ Hit rate:</strong> high — stable system prompts hit every call</div>
+          <div class="text-green-300"><strong>✓ Risk:</strong> none — answer is still computed fresh</div>
+          <div class="text-amber-300"><strong>⚠ Different goal:</strong> latency &amp; cost, NOT response reuse</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="holo-card p-6 reveal mb-8 overflow-x-auto">
+      <div class="font-mono text-xs text-cyan-300 tracking-widest mb-4">SIDE-BY-SIDE — WHEN EACH ONE FIRES</div>
+      <table class="index-table" style="font-size: 0.82rem;">
+        <thead><tr><th>Dimension</th><th>Exact Cache</th><th>Semantic Cache</th><th>Prompt Cache</th></tr></thead>
+        <tbody>
+          <tr><td>What's cached</td><td>full response</td><td>full response</td><td>LLM internal KV state at prefix</td></tr>
+          <tr><td>What you control</td><td>everything</td><td>everything</td><td>just the prompt structure</td></tr>
+          <tr><td>Hit decision</td><td>byte-exact key</td><td>cosine ≥ threshold</td><td>provider-internal</td></tr>
+          <tr><td>Latency saved</td><td>1500ms → &lt;5ms</td><td>1500ms → ~25ms</td><td>~50% TTFT</td></tr>
+          <tr><td>Cost saved</td><td class="text-green-300">100% of LLM cost</td><td class="text-green-300">100% of LLM cost</td><td>~75% of input tokens</td></tr>
+          <tr><td>Freshness risk</td><td>low (exact match)</td><td class="text-amber-300">medium (paraphrase risk)</td><td>none</td></tr>
+          <tr><td>Per-user safe?</td><td>partition by user_id</td><td class="text-pink-300">careful — paraphrase across users may bleed</td><td class="text-green-300">always safe</td></tr>
+          <tr><td>Best for</td><td>FAQs, lookups, repeat traffic</td><td>natural-language paraphrases</td><td>any pipeline with stable system prompts</td></tr>
+          <tr><td>Worst for</td><td>natural-language UX (low hit)</td><td>fresh data, personalization, citations</td><td>nothing — always wins if available</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="grid lg:grid-cols-2 gap-8 reveal mb-8">
+      <div class="win-card">
+        <h4 class="font-display font-bold text-base text-white mb-3">Stacking them — the production layout</h4>
+        <div class="font-mono text-xs bg-black/30 p-4 rounded border border-green-500/20 text-gray-300 leading-relaxed space-y-1">
+          <div>request</div>
+          <div>  ↓</div>
+          <div>L1: <span class="text-cyan-300">Exact cache</span>  (hit? return)</div>
+          <div>  ↓ miss</div>
+          <div>L2: <span class="text-purple-300">Semantic cache</span>  (hit? return)</div>
+          <div>  ↓ miss</div>
+          <div>retrieve · rerank · build prompt</div>
+          <div>  ↓</div>
+          <div>L3: <span class="text-pink-300">Prompt cache</span>  (provider, free win)</div>
+          <div>  ↓</div>
+          <div>LLM call · stream response</div>
+          <div>  ↓</div>
+          <div>write L1 + L2 (TTL'd)</div>
+        </div>
+        <p class="text-xs text-gray-500 mt-3">Each layer fires only on misses from the one above. L1 catches literal repeats cheap; L2 catches paraphrases; L3 makes the misses themselves cheaper.</p>
+      </div>
+
+      <div class="space-y-4">
+        <div class="callout-cyan text-sm text-gray-300">
+          <strong class="text-cyan-300">⚡ The most common confusion:</strong> "we added semantic caching, our prompt-cache hit rate dropped" — these are different things. The prompt cache fires <em>after</em> retrieval (your prompt prefix is the same), regardless of whether L1/L2 hit. They compound.
+        </div>
+        <div class="callout text-sm text-gray-300">
+          <strong class="text-amber-300">⚠ When semantic cache becomes a footgun:</strong> "What's <em>my</em> refund status?" — cosine-matching across users will hand user A's status to user B. Either partition the cache by user_id (drops the hit rate) or simply don't semantic-cache personalized queries (route them past L2).
+        </div>
+      </div>
+    </div>
+
+    <div class="callout-cyan reveal text-sm text-gray-300">
+      <strong class="text-cyan-300">⚡ Rule of thumb for which to add first:</strong> turn on <em>prompt cache</em> the day you ship — it's free, provider-side, no code. Add <em>exact cache</em> for your top 100 FAQ-shaped queries. Reach for <em>semantic cache</em> only after you have eval coverage to catch false hits — otherwise it's the cache that quietly hurts users.
+    </div>
+  </div>
+</section>
+
+<!-- ========== 3 CACHE LAYERS ========== -->
+<section id="layers" class="relative py-24 px-6 z-10">
+  <div class="max-w-7xl mx-auto">
+    <div class="text-center mb-16 reveal">
+      <span class="pill mb-4"><i data-lucide="layers" class="w-3 h-3"></i> The Stack</span>
+      <h2 class="font-display text-4xl md:text-5xl font-bold mt-4">
+        Three <span class="gradient-cyan">Cache Layers</span> In a RAG
+      </h2>
+      <p class="text-gray-400 mt-4 max-w-3xl mx-auto">
+        Each layer targets a different cost: input tokens, embedding calls, and end-to-end inference. Stack them and the savings compound.
+      </p>
+    </div>
+
+    <!-- INTERACTIVE LAYERS -->
+    <div class="reveal">
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8" id="layerGrid">
+        <!-- injected -->
+      </div>
+      <div class="holo-card p-8" id="layerDetail">
+        <!-- filled -->
+      </div>
+    </div>
+
+    <!-- STACKED FLOW -->
+    <div class="mt-16 reveal">
+      <div class="flex items-center gap-3 mb-6">
+        <i data-lucide="git-fork" class="w-5 h-5 text-cyan-400"></i>
+        <h3 class="font-display font-bold text-xl">How They Stack — A Request's Path</h3>
+      </div>
+      <div class="holo-card p-8">
+        <div class="grid grid-cols-1 md:grid-cols-7 gap-3 items-center text-sm">
+          <div class="flow-step">
+            <i data-lucide="user" class="w-5 h-5 mx-auto mb-1" style="color: #00f0ff;"></i>
+            <div class="font-mono text-xs">User Q</div>
+          </div>
+          <div class="text-center text-cyan-400 hidden md:block">→</div>
+          <div class="flow-step hit">
+            <i data-lucide="sparkles" class="w-5 h-5 mx-auto mb-1" style="color: #4dffb8;"></i>
+            <div class="font-mono text-xs">Semantic?</div>
+            <div class="text-[10px] text-gray-500 mt-1">~10 ms</div>
+          </div>
+          <div class="text-center text-cyan-400 hidden md:block">→</div>
+          <div class="flow-step">
+            <i data-lucide="binary" class="w-5 h-5 mx-auto mb-1" style="color: #b86bff;"></i>
+            <div class="font-mono text-xs">Embed?</div>
+            <div class="text-[10px] text-gray-500 mt-1">~5 ms</div>
+          </div>
+          <div class="text-center text-cyan-400 hidden md:block">→</div>
+          <div class="flow-step">
+            <i data-lucide="cpu" class="w-5 h-5 mx-auto mb-1" style="color: #ffb84d;"></i>
+            <div class="font-mono text-xs">Prompt?</div>
+            <div class="text-[10px] text-gray-500 mt-1">~50% off</div>
+          </div>
+        </div>
+
+        <div class="callout mt-6 text-sm text-gray-300">
+          <strong class="text-amber-300">⚡ Read top-down:</strong>
+          Check semantic cache → if miss, check embedding cache → if miss, call LLM but enable prompt caching.
+          <span class="text-amber-200">Each layer catches misses from the one above.</span> The biggest win is usually semantic (full skip), but all three combined push hit rate to 50%+.
+        </div>
+      </div>
+    </div>
+
+    <!-- CODE EXAMPLE: TIERED -->
+    <div class="mt-12 reveal">
+      <div class="flex items-center gap-3 mb-6">
+        <i data-lucide="code-2" class="w-5 h-5 text-cyan-400"></i>
+        <h3 class="font-display font-bold text-xl">A Tiered Cache In ~30 Lines</h3>
+      </div>
+      <div class="code-block">
+<pre><span class="tok-keyword">import</span> <span class="tok-var">redis</span>, <span class="tok-var">hashlib</span>, <span class="tok-var">json</span>
+
+<span class="tok-var">cache</span> <span class="tok-keyword">=</span> <span class="tok-var">redis</span>.<span class="tok-fn">Redis</span>(<span class="tok-var">host</span><span class="tok-keyword">=</span><span class="tok-string">"redis"</span>)
+
+<span class="tok-keyword">def</span> <span class="tok-fn">_key</span>(<span class="tok-var">prefix</span>, <span class="tok-var">text</span>):
+    <span class="tok-keyword">return</span> <span class="tok-string">f"{prefix}:{hashlib.sha256(text.encode()).hexdigest()[:16]}"</span>
+
+<span class="tok-keyword">async def</span> <span class="tok-fn">answer</span>(<span class="tok-var">question</span>):
+    <span class="tok-comment"># ---------- LAYER 1: semantic cache ----------</span>
+    <span class="tok-var">hit</span> <span class="tok-keyword">=</span> <span class="tok-keyword">await</span> <span class="tok-fn">semantic_lookup</span>(<span class="tok-var">question</span>, <span class="tok-var">threshold</span><span class="tok-keyword">=</span><span class="tok-num">0.95</span>)
+    <span class="tok-keyword">if</span> <span class="tok-var">hit</span>:
+        <span class="tok-fn">log_cache</span>(<span class="tok-string">"semantic_hit"</span>)
+        <span class="tok-keyword">return</span> <span class="tok-var">hit</span>[<span class="tok-string">"answer"</span>]
+
+    <span class="tok-comment"># ---------- LAYER 2: embedding cache ----------</span>
+    <span class="tok-var">k_emb</span> <span class="tok-keyword">=</span> <span class="tok-fn">_key</span>(<span class="tok-string">"emb"</span>, <span class="tok-var">question</span>)
+    <span class="tok-var">vec</span> <span class="tok-keyword">=</span> <span class="tok-var">cache</span>.<span class="tok-fn">get</span>(<span class="tok-var">k_emb</span>)
+    <span class="tok-keyword">if</span> <span class="tok-var">vec</span>:
+        <span class="tok-var">vec</span> <span class="tok-keyword">=</span> <span class="tok-fn">json</span>.<span class="tok-fn">loads</span>(<span class="tok-var">vec</span>)
+    <span class="tok-keyword">else</span>:
+        <span class="tok-var">vec</span> <span class="tok-keyword">=</span> <span class="tok-keyword">await</span> <span class="tok-fn">embed</span>(<span class="tok-var">question</span>)
+        <span class="tok-var">cache</span>.<span class="tok-fn">setex</span>(<span class="tok-var">k_emb</span>, <span class="tok-num">86400</span>, <span class="tok-fn">json</span>.<span class="tok-fn">dumps</span>(<span class="tok-var">vec</span>))   <span class="tok-comment"># 24h TTL</span>
+
+    <span class="tok-var">chunks</span> <span class="tok-keyword">=</span> <span class="tok-keyword">await</span> <span class="tok-var">qdrant</span>.<span class="tok-fn">search</span>(<span class="tok-var">vec</span>, <span class="tok-var">k</span><span class="tok-keyword">=</span><span class="tok-num">5</span>)
+
+    <span class="tok-comment"># ---------- LAYER 3: prompt cache (provider-native) ----------</span>
+    <span class="tok-var">resp</span> <span class="tok-keyword">=</span> <span class="tok-keyword">await</span> <span class="tok-var">llm</span>.<span class="tok-var">messages</span>.<span class="tok-fn">create</span>(
+        <span class="tok-var">model</span><span class="tok-keyword">=</span><span class="tok-string">"claude-sonnet-4-5"</span>,
+        <span class="tok-var">system</span><span class="tok-keyword">=</span>[{
+            <span class="tok-string">"type"</span>: <span class="tok-string">"text"</span>,
+            <span class="tok-string">"text"</span>: <span class="tok-var">SYSTEM_PROMPT</span>,
+            <span class="tok-string">"cache_control"</span>: {<span class="tok-string">"type"</span>: <span class="tok-string">"ephemeral"</span>}   <span class="tok-comment"># ← cached input!</span>
+        }],
+        <span class="tok-var">messages</span><span class="tok-keyword">=</span>[{<span class="tok-string">"role"</span>:<span class="tok-string">"user"</span>, <span class="tok-string">"content"</span>: <span class="tok-fn">build_msg</span>(<span class="tok-var">question</span>, <span class="tok-var">chunks</span>)}]
+    )
+
+    <span class="tok-var">answer</span> <span class="tok-keyword">=</span> <span class="tok-var">resp</span>.<span class="tok-var">content</span>[<span class="tok-num">0</span>].<span class="tok-var">text</span>
+    <span class="tok-keyword">await</span> <span class="tok-fn">semantic_store</span>(<span class="tok-var">question</span>, <span class="tok-var">vec</span>, <span class="tok-var">answer</span>, <span class="tok-var">ttl</span><span class="tok-keyword">=</span><span class="tok-num">3600</span>)   <span class="tok-comment"># 1h TTL</span>
+    <span class="tok-keyword">return</span> <span class="tok-var">answer</span></pre>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========== SEMANTIC CACHE DEEP DIVE ========== -->
+<section id="semantic" class="relative py-24 px-6 z-10">
+  <div class="max-w-7xl mx-auto">
+    <div class="text-center mb-16 reveal">
+      <span class="pill mb-4"><i data-lucide="sparkles" class="w-3 h-3"></i> The Big Win</span>
+      <h2 class="font-display text-4xl md:text-5xl font-bold mt-4">
+        Semantic Caching with <span class="gradient-purple">Redis</span>
+      </h2>
+      <p class="text-gray-400 mt-4 max-w-3xl mx-auto">
+        Exact-match caching catches "What's our refund policy?" twice. Semantic caching also catches "How do refunds work?" — same answer, paraphrased question. This is where the real volume hides.
+      </p>
+    </div>
+
+    <!-- EXACT vs SEMANTIC -->
+    <div class="grid md:grid-cols-2 gap-6 mb-12">
+      <div class="holo-card p-7 reveal" style="border-color: rgba(255,184,77,0.3);">
+        <div class="flex items-center gap-3 mb-4">
+          <div class="w-12 h-12 rounded-xl flex items-center justify-center" style="background: rgba(255,184,77,0.15);">
+            <i data-lucide="equal" class="w-6 h-6" style="color:#ffb84d;"></i>
+          </div>
+          <div>
+            <div class="text-xs uppercase tracking-wider" style="color:#ffb84d;">Exact-Match Cache</div>
+            <h4 class="font-display font-bold text-xl">Hash → Answer</h4>
+          </div>
+        </div>
+        <p class="text-sm text-gray-400 mb-4">Hash the question, store the answer. Lightning fast, but misses any paraphrase.</p>
+        <div class="space-y-2 text-xs">
+          <div class="font-mono text-gray-300"><span class="text-green-300">✓ HIT</span> &nbsp;"What's our refund policy?"</div>
+          <div class="font-mono text-gray-300"><span class="text-pink-300">✗ MISS</span> "What is our refund policy?"</div>
+          <div class="font-mono text-gray-300"><span class="text-pink-300">✗ MISS</span> "How do refunds work?"</div>
+          <div class="font-mono text-gray-300"><span class="text-pink-300">✗ MISS</span> "refund policy please"</div>
+        </div>
+        <div class="mt-4 pt-4 border-t border-cyan-500/10 text-[11px] text-amber-200">
+          Typical hit rate: 5-15%
+        </div>
+      </div>
+
+      <div class="holo-card p-7 reveal holo-border" style="border-color: rgba(184,107,255,0.4);">
+        <div class="flex items-center gap-3 mb-4">
+          <div class="w-12 h-12 rounded-xl flex items-center justify-center" style="background: rgba(184,107,255,0.15);">
+            <i data-lucide="sparkles" class="w-6 h-6" style="color:#b86bff;"></i>
+          </div>
+          <div>
+            <div class="text-xs uppercase tracking-wider" style="color:#b86bff;">Semantic Cache</div>
+            <h4 class="font-display font-bold text-xl">Embed → ANN Search</h4>
+          </div>
+        </div>
+        <p class="text-sm text-gray-400 mb-4">Embed the question. If a stored question is similar enough (cosine ≥ 0.95), return its answer.</p>
+        <div class="space-y-2 text-xs">
+          <div class="font-mono text-gray-300"><span class="text-green-300">✓ HIT</span> &nbsp;"What's our refund policy?"</div>
+          <div class="font-mono text-gray-300"><span class="text-green-300">✓ HIT</span> &nbsp;"What is our refund policy?"</div>
+          <div class="font-mono text-gray-300"><span class="text-green-300">✓ HIT</span> &nbsp;"How do refunds work?"</div>
+          <div class="font-mono text-gray-300"><span class="text-green-300">✓ HIT</span> &nbsp;"refund policy please"</div>
+        </div>
+        <div class="mt-4 pt-4 border-t border-cyan-500/10 text-[11px] text-purple-200">
+          Typical hit rate: 25-50%
+        </div>
+      </div>
+    </div>
+
+    <!-- SEMANTIC CODE -->
+    <div class="reveal mb-12">
+      <div class="flex items-center gap-3 mb-6">
+        <i data-lucide="code-2" class="w-5 h-5 text-purple-400"></i>
+        <h3 class="font-display font-bold text-xl">Building It — Redis + Embeddings</h3>
+      </div>
+      <div class="code-block">
+<pre><span class="tok-keyword">from</span> <span class="tok-var">redis.commands.search.field</span> <span class="tok-keyword">import</span> <span class="tok-var">VectorField</span>, <span class="tok-var">TextField</span>
+<span class="tok-keyword">from</span> <span class="tok-var">redis.commands.search.query</span> <span class="tok-keyword">import</span> <span class="tok-var">Query</span>
+<span class="tok-keyword">import</span> <span class="tok-var">numpy</span> <span class="tok-keyword">as</span> <span class="tok-var">np</span>
+
+<span class="tok-comment"># ---------- ONE-TIME SETUP ----------</span>
+<span class="tok-var">r</span> <span class="tok-keyword">=</span> <span class="tok-var">redis</span>.<span class="tok-fn">Redis</span>()
+<span class="tok-var">r</span>.<span class="tok-var">ft</span>(<span class="tok-string">"semcache"</span>).<span class="tok-fn">create_index</span>([
+    <span class="tok-fn">VectorField</span>(<span class="tok-string">"vec"</span>, <span class="tok-string">"HNSW"</span>, {<span class="tok-string">"TYPE"</span>:<span class="tok-string">"FLOAT32"</span>, <span class="tok-string">"DIM"</span>:<span class="tok-num">1536</span>, <span class="tok-string">"DISTANCE_METRIC"</span>:<span class="tok-string">"COSINE"</span>}),
+    <span class="tok-fn">TextField</span>(<span class="tok-string">"answer"</span>),
+    <span class="tok-fn">TextField</span>(<span class="tok-string">"question"</span>),
+])
+
+<span class="tok-comment"># ---------- LOOKUP ----------</span>
+<span class="tok-keyword">async def</span> <span class="tok-fn">semantic_lookup</span>(<span class="tok-var">question</span>, <span class="tok-var">threshold</span><span class="tok-keyword">=</span><span class="tok-num">0.95</span>):
+    <span class="tok-var">vec</span> <span class="tok-keyword">=</span> <span class="tok-keyword">await</span> <span class="tok-fn">embed</span>(<span class="tok-var">question</span>)
+    <span class="tok-var">q</span> <span class="tok-keyword">=</span> <span class="tok-fn">Query</span>(<span class="tok-string">"*=>[KNN 1 @vec $vec AS score]"</span>).<span class="tok-fn">return_fields</span>(<span class="tok-string">"answer"</span>,<span class="tok-string">"score"</span>).<span class="tok-fn">dialect</span>(<span class="tok-num">2</span>)
+    <span class="tok-var">res</span> <span class="tok-keyword">=</span> <span class="tok-var">r</span>.<span class="tok-var">ft</span>(<span class="tok-string">"semcache"</span>).<span class="tok-fn">search</span>(<span class="tok-var">q</span>, <span class="tok-var">query_params</span><span class="tok-keyword">=</span>{<span class="tok-string">"vec"</span>: <span class="tok-fn">np</span>.<span class="tok-fn">array</span>(<span class="tok-var">vec</span>, <span class="tok-fn">np</span>.<span class="tok-var">float32</span>).<span class="tok-fn">tobytes</span>()})
+
+    <span class="tok-keyword">if</span> <span class="tok-fn">len</span>(<span class="tok-var">res</span>.<span class="tok-var">docs</span>) <span class="tok-keyword">and</span> <span class="tok-fn">float</span>(<span class="tok-var">res</span>.<span class="tok-var">docs</span>[<span class="tok-num">0</span>].<span class="tok-var">score</span>) <span class="tok-keyword">&gt;=</span> <span class="tok-var">threshold</span>:
+        <span class="tok-keyword">return</span> {<span class="tok-string">"answer"</span>: <span class="tok-var">res</span>.<span class="tok-var">docs</span>[<span class="tok-num">0</span>].<span class="tok-var">answer</span>}
+    <span class="tok-keyword">return</span> <span class="tok-keyword">None</span>
+
+<span class="tok-comment"># ---------- STORE ----------</span>
+<span class="tok-keyword">async def</span> <span class="tok-fn">semantic_store</span>(<span class="tok-var">question</span>, <span class="tok-var">vec</span>, <span class="tok-var">answer</span>, <span class="tok-var">ttl</span><span class="tok-keyword">=</span><span class="tok-num">3600</span>):
+    <span class="tok-var">key</span> <span class="tok-keyword">=</span> <span class="tok-string">f"semcache:{hashlib.sha256(question.encode()).hexdigest()[:16]}"</span>
+    <span class="tok-var">r</span>.<span class="tok-fn">hset</span>(<span class="tok-var">key</span>, <span class="tok-var">mapping</span><span class="tok-keyword">=</span>{
+        <span class="tok-string">"vec"</span>: <span class="tok-fn">np</span>.<span class="tok-fn">array</span>(<span class="tok-var">vec</span>, <span class="tok-fn">np</span>.<span class="tok-var">float32</span>).<span class="tok-fn">tobytes</span>(),
+        <span class="tok-string">"question"</span>: <span class="tok-var">question</span>,
+        <span class="tok-string">"answer"</span>: <span class="tok-var">answer</span>
+    })
+    <span class="tok-var">r</span>.<span class="tok-fn">expire</span>(<span class="tok-var">key</span>, <span class="tok-var">ttl</span>)</pre>
+      </div>
+      <div class="callout-cyan mt-6 text-sm text-gray-300">
+        <strong class="text-cyan-300">🎯 The threshold dial:</strong>
+        <span class="font-mono text-cyan-200">0.95</span> = strict, near-paraphrase only — safest default.
+        <span class="font-mono text-cyan-200">0.90</span> = looser, catches more, occasional wrong-answer risk.
+        <span class="font-mono text-cyan-200">0.98</span> = nearly exact — barely better than hash. Tune with offline eval.
+      </div>
+    </div>
+
+    <!-- THE 4 SEMANTIC RISKS -->
+    <div class="reveal">
+      <div class="flex items-center gap-3 mb-6">
+        <i data-lucide="alert-triangle" class="w-5 h-5 text-pink-400"></i>
+        <h3 class="font-display font-bold text-xl">Where Semantic Caching Goes Wrong</h3>
+      </div>
+      <div class="grid md:grid-cols-2 gap-5">
+        <div class="holo-card p-5">
+          <div class="font-mono text-[10px] text-pink-300 tracking-widest mb-2">RISK · 01</div>
+          <h4 class="font-display font-bold text-base mb-2">Same intent, different parameter</h4>
+          <p class="text-sm text-gray-400 mb-3">"refund for order 4421" vs "refund for order 9930" — embedding may flag them as similar. <span class="text-pink-300">Wrong answer returned.</span></p>
+          <div class="font-mono text-xs p-2.5 rounded-md" style="background: rgba(2,3,10,0.6); color: #aaffd6;">
+            ✓ Don't cache personalized / parametric queries
+          </div>
+        </div>
+        <div class="holo-card p-5">
+          <div class="font-mono text-[10px] text-pink-300 tracking-widest mb-2">RISK · 02</div>
+          <h4 class="font-display font-bold text-base mb-2">User context bleed</h4>
+          <p class="text-sm text-gray-400 mb-3">"What's MY balance?" cached from user A served to user B. <span class="text-pink-300">Privacy incident.</span></p>
+          <div class="font-mono text-xs p-2.5 rounded-md" style="background: rgba(2,3,10,0.6); color: #aaffd6;">
+            ✓ Namespace by user_id or tenant_id
+          </div>
+        </div>
+        <div class="holo-card p-5">
+          <div class="font-mono text-[10px] text-pink-300 tracking-widest mb-2">RISK · 03</div>
+          <h4 class="font-display font-bold text-base mb-2">Stale on doc updates</h4>
+          <p class="text-sm text-gray-400 mb-3">Cache says "30-day window" but the policy doc changed to 14 days yesterday. <span class="text-pink-300">Old answer keeps shipping.</span></p>
+          <div class="font-mono text-xs p-2.5 rounded-md" style="background: rgba(2,3,10,0.6); color: #aaffd6;">
+            ✓ Short TTL + invalidation on doc reindex
+          </div>
+        </div>
+        <div class="holo-card p-5">
+          <div class="font-mono text-[10px] text-pink-300 tracking-widest mb-2">RISK · 04</div>
+          <h4 class="font-display font-bold text-base mb-2">Threshold too loose</h4>
+          <p class="text-sm text-gray-400 mb-3">Hit rate jumps to 80%, but users complain about wrong answers. <span class="text-pink-300">Semantic ≠ identical.</span></p>
+          <div class="font-mono text-xs p-2.5 rounded-md" style="background: rgba(2,3,10,0.6); color: #aaffd6;">
+            ✓ Eval before tuning down — measure correctness on hits
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========== INVALIDATION ========== -->
+<section id="invalidation" class="relative py-24 px-6 z-10">
+  <div class="max-w-7xl mx-auto">
+    <div class="text-center mb-16 reveal">
+      <span class="pill mb-4"><i data-lucide="refresh-ccw" class="w-3 h-3"></i> The Hardest Problem</span>
+      <h2 class="font-display text-4xl md:text-5xl font-bold mt-4">
+        Cache <span class="gradient-amber">Invalidation</span>
+      </h2>
+      <p class="text-gray-400 mt-4 max-w-3xl mx-auto">
+        "There are only two hard things in computer science: cache invalidation and naming things." For RAG, invalidation is doubly hard — your docs change, your prompts change, your model changes.
+      </p>
+    </div>
+
+    <!-- 4 INVALIDATION STRATEGIES -->
+    <div class="grid md:grid-cols-2 lg:grid-cols-4 gap-5 mb-12">
+      <div class="holo-card p-6 reveal">
+        <div class="use-case-icon" style="background: linear-gradient(135deg, rgba(0,240,255,0.15), rgba(77,142,255,0.05)); color: #00f0ff;">
+          <i data-lucide="timer" class="w-7 h-7"></i>
+        </div>
+        <div class="font-mono text-[10px] text-gray-500 tracking-widest mb-1">STRATEGY · 01</div>
+        <h3 class="font-display font-bold text-base mb-2" style="color:#00f0ff;">TTL Expiry</h3>
+        <p class="text-xs text-gray-400 leading-relaxed mb-3">Every entry expires after N seconds. Dumb, automatic, almost always your default.</p>
+        <div class="font-mono text-[11px] p-2 rounded-md" style="background: rgba(2,3,10,0.6); color: #aaffd6;">
+          1h for hot data<br>24h for slow-changing
+        </div>
+      </div>
+
+      <div class="holo-card p-6 reveal">
+        <div class="use-case-icon" style="background: linear-gradient(135deg, rgba(77,142,255,0.15), rgba(184,107,255,0.05)); color: #4d8eff;">
+          <i data-lucide="tags" class="w-7 h-7"></i>
+        </div>
+        <div class="font-mono text-[10px] text-gray-500 tracking-widest mb-1">STRATEGY · 02</div>
+        <h3 class="font-display font-bold text-base mb-2" style="color:#4d8eff;">Tag-Based Eviction</h3>
+        <p class="text-xs text-gray-400 leading-relaxed mb-3">Tag entries with chunk IDs / doc IDs. When a doc updates, evict all entries with that tag.</p>
+        <div class="font-mono text-[11px] p-2 rounded-md" style="background: rgba(2,3,10,0.6); color: #aaffd6;">
+          tags: [doc_42, doc_88]<br>on update → evict
+        </div>
+      </div>
+
+      <div class="holo-card p-6 reveal">
+        <div class="use-case-icon" style="background: linear-gradient(135deg, rgba(184,107,255,0.15), rgba(255,77,207,0.05)); color: #b86bff;">
+          <i data-lucide="git-commit" class="w-7 h-7"></i>
+        </div>
+        <div class="font-mono text-[10px] text-gray-500 tracking-widest mb-1">STRATEGY · 03</div>
+        <h3 class="font-display font-bold text-base mb-2" style="color:#b86bff;">Version Namespacing</h3>
+        <p class="text-xs text-gray-400 leading-relaxed mb-3">Cache keys include prompt/model version. New version = whole cache effectively empty.</p>
+        <div class="font-mono text-[11px] p-2 rounded-md" style="background: rgba(2,3,10,0.6); color: #aaffd6;">
+          key: "v3:emb:abc..."<br>bump v → fresh space
+        </div>
+      </div>
+
+      <div class="holo-card p-6 reveal">
+        <div class="use-case-icon" style="background: linear-gradient(135deg, rgba(255,77,207,0.15), rgba(255,184,77,0.05)); color: #ff4dcf;">
+          <i data-lucide="hand" class="w-7 h-7"></i>
+        </div>
+        <div class="font-mono text-[10px] text-gray-500 tracking-widest mb-1">STRATEGY · 04</div>
+        <h3 class="font-display font-bold text-base mb-2" style="color:#ff4dcf;">Manual / Admin Flush</h3>
+        <p class="text-xs text-gray-400 leading-relaxed mb-3">An ops endpoint or feedback button (👎) clears specific entries on demand.</p>
+        <div class="font-mono text-[11px] p-2 rounded-md" style="background: rgba(2,3,10,0.6); color: #aaffd6;">
+          POST /admin/cache/flush<br>or per-key invalidation
+        </div>
+      </div>
+    </div>
+
+    <!-- DECISION TABLE -->
+    <div class="reveal">
+      <div class="flex items-center gap-3 mb-6">
+        <i data-lucide="route" class="w-5 h-5 text-cyan-400"></i>
+        <h3 class="font-display font-bold text-xl">Which Strategy For Which Trigger?</h3>
+      </div>
+      <div class="holo-card overflow-hidden">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Trigger</th>
+              <th>Strategy</th>
+              <th>Notes</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Time-sensitive (news, pricing)</td>
+              <td style="color:#00f0ff;">TTL (5-60 min)</td>
+              <td>Tradeoff freshness vs hit rate</td>
+            </tr>
+            <tr>
+              <td>Doc reindexed in pipeline</td>
+              <td style="color:#4d8eff;">Tag eviction by doc_id</td>
+              <td>Hook into your ingestion job</td>
+            </tr>
+            <tr>
+              <td>New prompt template deployed</td>
+              <td style="color:#b86bff;">Version namespace bump</td>
+              <td>Whole cache effectively reset</td>
+            </tr>
+            <tr>
+              <td>User clicks 👎</td>
+              <td style="color:#ff4dcf;">Manual evict that key</td>
+              <td>Don't poison future users</td>
+            </tr>
+            <tr>
+              <td>Model switch (gpt-4o → 4o-mini)</td>
+              <td style="color:#b86bff;">Version namespace</td>
+              <td>Different model = different answer</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="callout-pink mt-12 max-w-4xl mx-auto text-sm text-gray-300 reveal">
+      <strong class="text-pink-300">🚨 The unforgivable bug:</strong>
+      Forgetting to invalidate after a doc update — and serving stale answers for weeks because the cache never expires. <span class="text-pink-200">Wire your ingestion job to the cache from day one,</span> even if it just calls a no-op endpoint for now. It's far harder to add later.
+    </div>
+  </div>
+</section>
+
+<!-- ========== ROI ANALYSIS ========== -->
+<section id="roi" class="relative py-24 px-6 z-10">
+  <div class="max-w-7xl mx-auto">
+    <div class="text-center mb-16 reveal">
+      <span class="pill mb-4"><i data-lucide="trending-up" class="w-3 h-3"></i> The Numbers</span>
+      <h2 class="font-display text-4xl md:text-5xl font-bold mt-4">
+        ROI Analysis — <span class="gradient-cyan">Hit Rate</span> vs Cost
+      </h2>
+      <p class="text-gray-400 mt-4 max-w-3xl mx-auto">
+        Caching's value isn't binary. Hit rate is a dial — and the savings curve is non-linear. Here's how to size your cache and target the right hit rate.
+      </p>
+    </div>
+
+    <!-- ROI CHART -->
+    <div class="holo-card p-8 mb-12 reveal">
+      <div class="flex flex-wrap items-center justify-between gap-4 mb-6">
+        <div>
+          <h3 class="font-display font-bold text-xl">Monthly Cost vs Cache Hit Rate</h3>
+          <p class="text-sm text-gray-400 mt-1">100k requests/month · $0.04 per cache miss · $0.0001 per cache hit</p>
+        </div>
+        <span class="pill"><i data-lucide="dollar-sign" class="w-3 h-3"></i> Cost curve</span>
+      </div>
+      <div class="roi-chart-wrapper">
+        <canvas id="roiChart" width="800" height="280"></canvas>
+      </div>
+      <div class="callout-cyan mt-6 text-sm text-gray-300">
+        <strong class="text-cyan-300">📍 What this chart tells you:</strong>
+        Going from 0% → 30% hit rate saves $1,200/month. Going from 30% → 60% saves another $1,200. Going from 60% → 80% saves only $800 — and gets <span class="text-cyan-200">much harder to achieve safely.</span> The 30-50% range is the sweet spot for most RAG.
+      </div>
+    </div>
+
+    <!-- 3 ROI TIERS -->
+    <div class="grid md:grid-cols-3 gap-6 mb-12">
+      <div class="holo-card p-6 reveal">
+        <div class="text-center mb-3">
+          <div class="font-display font-bold text-4xl gradient-amber">10%</div>
+          <div class="text-xs text-gray-400 mt-1 uppercase tracking-widest">Hit Rate</div>
+        </div>
+        <h3 class="font-display font-bold text-base mb-2 text-center">Bare Minimum</h3>
+        <p class="text-xs text-gray-400 leading-relaxed">Exact-match cache only. Saves on the most-asked questions. Maybe a Friday afternoon project.</p>
+        <div class="font-mono text-xs p-2.5 rounded-md mt-3 text-center" style="background: rgba(2,3,10,0.6); color: #ffd99b;">
+          ~$400/mo saved
+        </div>
+      </div>
+      <div class="holo-card p-6 reveal holo-border" style="border-color: rgba(0,240,255,0.4);">
+        <div class="text-center mb-3">
+          <div class="font-display font-bold text-4xl gradient-cyan">30-50%</div>
+          <div class="text-xs text-gray-400 mt-1 uppercase tracking-widest">Hit Rate · Target</div>
+        </div>
+        <h3 class="font-display font-bold text-base mb-2 text-center">Sweet Spot</h3>
+        <p class="text-xs text-gray-400 leading-relaxed">Semantic + embedding + prompt cache. ~1 sprint to build. The right target for most production RAG.</p>
+        <div class="font-mono text-xs p-2.5 rounded-md mt-3 text-center" style="background: rgba(2,3,10,0.6); color: #9be9ff;">
+          ~$1,500-2,500/mo saved
+        </div>
+      </div>
+      <div class="holo-card p-6 reveal">
+        <div class="text-center mb-3">
+          <div class="font-display font-bold text-4xl gradient-purple">70%+</div>
+          <div class="text-xs text-gray-400 mt-1 uppercase tracking-widest">Hit Rate</div>
+        </div>
+        <h3 class="font-display font-bold text-base mb-2 text-center">Diminishing Returns</h3>
+        <p class="text-xs text-gray-400 leading-relaxed">Requires aggressive thresholds &amp; longer TTLs. Quality risk grows fast. Only chase if cost is critical.</p>
+        <div class="font-mono text-xs p-2.5 rounded-md mt-3 text-center" style="background: rgba(2,3,10,0.6); color: #d4b5ff;">
+          ~$3,000+/mo · risk tradeoff
+        </div>
+      </div>
+    </div>
+
+    <!-- METRICS TO MONITOR -->
+    <div class="reveal">
+      <div class="flex items-center gap-3 mb-6">
+        <i data-lucide="bar-chart-3" class="w-5 h-5 text-cyan-400"></i>
+        <h3 class="font-display font-bold text-xl">The Five Cache Metrics That Matter</h3>
+      </div>
+      <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-5">
+        <div class="holo-card p-5">
+          <div class="font-mono text-[10px] text-cyan-300 tracking-widest mb-2">METRIC · 01</div>
+          <h4 class="font-display font-bold text-base mb-1">Hit Rate</h4>
+          <p class="text-xs text-gray-400">Percentage of requests served from cache. Track per-layer (semantic / embedding / prompt) separately.</p>
+        </div>
+        <div class="holo-card p-5">
+          <div class="font-mono text-[10px] text-purple-300 tracking-widest mb-2">METRIC · 02</div>
+          <h4 class="font-display font-bold text-base mb-1">Hit-Latency</h4>
+          <p class="text-xs text-gray-400">P95 latency of cache hits. Should be &lt; 50ms. If higher, your cache is the wrong tool or misconfigured.</p>
+        </div>
+        <div class="holo-card p-5">
+          <div class="font-mono text-[10px] text-pink-300 tracking-widest mb-2">METRIC · 03</div>
+          <h4 class="font-display font-bold text-base mb-1">Stale-Serve Rate</h4>
+          <p class="text-xs text-gray-400">% of cache hits where the answer was outdated (caught via re-eval). Should be near 0%.</p>
+        </div>
+        <div class="holo-card p-5">
+          <div class="font-mono text-[10px] text-amber-300 tracking-widest mb-2">METRIC · 04</div>
+          <h4 class="font-display font-bold text-base mb-1">Eviction Rate</h4>
+          <p class="text-xs text-gray-400">If items are evicted before being read, your cache is undersized — or your TTL is too short.</p>
+        </div>
+        <div class="holo-card p-5">
+          <div class="font-mono text-[10px] text-green-300 tracking-widest mb-2">METRIC · 05</div>
+          <h4 class="font-display font-bold text-base mb-1">$ Saved</h4>
+          <p class="text-xs text-gray-400"><span class="font-mono">hits × cost_per_miss − hits × cost_per_hit</span>. The number that justifies the cache to your CFO.</p>
+        </div>
+        <div class="holo-card p-5">
+          <div class="font-mono text-[10px] text-blue-300 tracking-widest mb-2">METRIC · 06</div>
+          <h4 class="font-display font-bold text-base mb-1">Quality on Hits</h4>
+          <p class="text-xs text-gray-400">Periodically re-eval cached answers. Catches semantic-cache false positives early.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========== WHEN NOT TO CACHE ========== -->
+<section id="never" class="relative py-24 px-6 z-10">
+  <div class="max-w-7xl mx-auto">
+    <div class="text-center mb-16 reveal">
+      <span class="pill mb-4" style="border-color: rgba(255,77,207,0.4); color:#ff4dcf; background:rgba(255,77,207,0.06);">
+        <i data-lucide="x-circle" class="w-3 h-3"></i> The Exceptions
+      </span>
+      <h2 class="font-display text-4xl md:text-5xl font-bold mt-4">
+        When NOT to <span class="gradient-purple">Cache</span>
+      </h2>
+      <p class="text-gray-400 mt-4 max-w-3xl mx-auto">
+        Caching is a default win — except when it isn't. Six situations where caching does more harm than good.
+      </p>
+    </div>
+
+    <div class="grid md:grid-cols-2 gap-5">
+      <div class="holo-card p-6 reveal" style="border-color: rgba(255,77,207,0.3);">
+        <div class="flex items-center gap-3 mb-3">
+          <div class="w-10 h-10 rounded-lg flex items-center justify-center" style="background: rgba(255,77,207,0.15);">
+            <i data-lucide="user-x" class="w-5 h-5" style="color:#ff4dcf;"></i>
+          </div>
+          <h3 class="font-display font-bold text-lg">Personalized Answers</h3>
+        </div>
+        <p class="text-sm text-gray-400 mb-3">"My balance", "my open tickets", "my account status". The answer depends on <em>who's asking</em>.</p>
+        <div class="font-mono text-xs p-3 rounded-lg" style="background: rgba(2,3,10,0.6); color: #aaffd6;">
+          ✓ Either: bypass cache, or namespace by user_id
+        </div>
+      </div>
+
+      <div class="holo-card p-6 reveal" style="border-color: rgba(255,184,77,0.3);">
+        <div class="flex items-center gap-3 mb-3">
+          <div class="w-10 h-10 rounded-lg flex items-center justify-center" style="background: rgba(255,184,77,0.15);">
+            <i data-lucide="clock" class="w-5 h-5" style="color:#ffb84d;"></i>
+          </div>
+          <h3 class="font-display font-bold text-lg">Time-Critical Queries</h3>
+        </div>
+        <p class="text-sm text-gray-400 mb-3">"What's the latest news about X?" "Current stock price?" Even 1-minute stale is wrong.</p>
+        <div class="font-mono text-xs p-3 rounded-lg" style="background: rgba(2,3,10,0.6); color: #aaffd6;">
+          ✓ Bypass cache or TTL &lt; 30 seconds
+        </div>
+      </div>
+
+      <div class="holo-card p-6 reveal" style="border-color: rgba(184,107,255,0.3);">
+        <div class="flex items-center gap-3 mb-3">
+          <div class="w-10 h-10 rounded-lg flex items-center justify-center" style="background: rgba(184,107,255,0.15);">
+            <i data-lucide="dices" class="w-5 h-5" style="color:#b86bff;"></i>
+          </div>
+          <h3 class="font-display font-bold text-lg">Creative / Random Outputs</h3>
+        </div>
+        <p class="text-sm text-gray-400 mb-3">"Write me a joke." "Suggest a name." Users expect variety — same input shouldn't equal same output.</p>
+        <div class="font-mono text-xs p-3 rounded-lg" style="background: rgba(2,3,10,0.6); color: #aaffd6;">
+          ✓ Skip cache for creative endpoints
+        </div>
+      </div>
+
+      <div class="holo-card p-6 reveal" style="border-color: rgba(0,240,255,0.3);">
+        <div class="flex items-center gap-3 mb-3">
+          <div class="w-10 h-10 rounded-lg flex items-center justify-center" style="background: rgba(0,240,255,0.15);">
+            <i data-lucide="zap" class="w-5 h-5" style="color:#00f0ff;"></i>
+          </div>
+          <h3 class="font-display font-bold text-lg">Tiny / Cheap Calls</h3>
+        </div>
+        <p class="text-sm text-gray-400 mb-3">If your LLM call costs $0.0001 and takes 200ms, the cache lookup costs $0.00005 and 10ms. Tiny savings + added complexity.</p>
+        <div class="font-mono text-xs p-3 rounded-lg" style="background: rgba(2,3,10,0.6); color: #aaffd6;">
+          ✓ Cache pays off above ~$0.005/call
+        </div>
+      </div>
+
+      <div class="holo-card p-6 reveal" style="border-color: rgba(77,255,184,0.3);">
+        <div class="flex items-center gap-3 mb-3">
+          <div class="w-10 h-10 rounded-lg flex items-center justify-center" style="background: rgba(77,255,184,0.15);">
+            <i data-lucide="users" class="w-5 h-5" style="color:#4dffb8;"></i>
+          </div>
+          <h3 class="font-display font-bold text-lg">Low-Volume / Long-Tail</h3>
+        </div>
+        <p class="text-sm text-gray-400 mb-3">10 requests/day, each a unique question. Cache hit rate ≈ 0%. Pure overhead.</p>
+        <div class="font-mono text-xs p-3 rounded-lg" style="background: rgba(2,3,10,0.6); color: #aaffd6;">
+          ✓ Skip caching until traffic justifies it
+        </div>
+      </div>
+
+      <div class="holo-card p-6 reveal" style="border-color: rgba(77,142,255,0.3);">
+        <div class="flex items-center gap-3 mb-3">
+          <div class="w-10 h-10 rounded-lg flex items-center justify-center" style="background: rgba(77,142,255,0.15);">
+            <i data-lucide="shield-alert" class="w-5 h-5" style="color:#4d8eff;"></i>
+          </div>
+          <h3 class="font-display font-bold text-lg">High-Stakes Domains</h3>
+        </div>
+        <p class="text-sm text-gray-400 mb-3">Medical, legal, financial. A stale or near-paraphrase answer can cause real harm. Strict policies, careful audit.</p>
+        <div class="font-mono text-xs p-3 rounded-lg" style="background: rgba(2,3,10,0.6); color: #aaffd6;">
+          ✓ Exact-match only, short TTL, full audit log
+        </div>
+      </div>
+    </div>
+
+    <div class="callout-green mt-12 max-w-4xl mx-auto text-sm text-gray-300 reveal">
+      <strong class="text-green-300">🌱 The default decision:</strong>
+      Cache by default. Bypass for the 6 cases above. Measure quality on hits to catch silent regressions.
+      <span class="text-cyan-200">A well-instrumented cache is one of the most profitable engineering investments in any RAG system.</span>
+    </div>
+  </div>
+</section>
+
+<!-- ========== QUIZ ========== -->
+<section id="quiz" class="relative py-24 px-6 z-10">
+  <div class="max-w-4xl mx-auto">
+    <div class="text-center mb-12 reveal">
+      <span class="pill mb-4"><i data-lucide="brain" class="w-3 h-3"></i> Lock It In</span>
+      <h2 class="font-display text-4xl md:text-5xl font-bold mt-4">
+        Quick <span class="gradient-amber">Check</span>
+      </h2>
+    </div>
+
+    <div class="holo-card p-8 reveal" id="quizCard">
+      <div class="flex items-center justify-between mb-4">
+        <div class="font-mono text-xs text-cyan-300 tracking-widest">QUESTION <span id="qNum">1</span> / 4</div>
+        <div class="font-mono text-xs text-gray-400">SCORE <span id="qScore" class="text-cyan-300">0</span></div>
+      </div>
+      <h3 class="font-display font-bold text-xl mb-6" id="qText">Loading...</h3>
+      <div class="space-y-3" id="qOptions"></div>
+      <div id="qFeedback" class="mt-6 hidden text-sm"></div>
+      <div class="mt-6 flex justify-end">
+        <button class="btn-primary text-sm py-2 px-5 hidden" id="qNext" onclick="nextQuestion()">
+          Next <i data-lucide="arrow-right" class="w-4 h-4 inline ml-1"></i>
+        </button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========== CHECKPOINT ========== -->
+
+<!-- RESOURCE SECTION -->
+<section class="relative py-16 px-6 z-10">
+  <div class="max-w-7xl mx-auto">
+    <div class="text-center mb-12 reveal">
+      <span class="pill mb-4"><i data-lucide="book" class="w-3 h-3"></i> Continue Learning</span>
+      <h3 class="font-display text-4xl md:text-5xl font-bold mt-4">Learn &amp; <span class="gradient-purple">Practice</span></h3>
+      <p class="text-gray-400 mt-2">Explore curated resources and practice with real code</p>
+    </div>
+
+    <div class="resource-stack mb-12">
+      <article class="resource-card">
+        <div class="flex items-start gap-3">
+          <div class="resource-icon">
+            <i data-lucide="lightbulb" class="w-4 h-4"></i>
+          </div>
+          <div class="min-w-0 flex-1">
+            <h4 class="font-display text-2xl font-bold leading-none">Progressive Article</h4>
+            <p class="text-xs text-gray-400 mt-1">Stuck? Start here - beginner-friendly explanation</p>
+            <p class="text-lg font-semibold mt-4 text-cyan-300">Redis Semantic Caching</p>
+            <a href="https://medium.com/@srajsonu/redis-semantic-caching-cut-your-llm-costs-by-80-with-smarter-cache-hits-8512cdcbb7be" target="_blank" rel="noopener noreferrer" class="resource-cta" title="Redis Semantic Caching">
+              <i data-lucide="external-link" class="w-4 h-4"></i> Read Article
+            </a>
+          </div>
+        </div>
+      </article>
+      <article class="resource-card">
+        <div class="flex items-start gap-3">
+          <div class="resource-icon">
+            <i data-lucide="file-text" class="w-4 h-4"></i>
+          </div>
+          <div class="min-w-0 flex-1">
+            <h4 class="font-display text-2xl font-bold leading-none">Canonical Article</h4>
+            <p class="text-xs text-gray-400 mt-1">Authoritative source - official docs or research</p>
+            <p class="text-lg font-semibold mt-4 text-cyan-300">Redis - What is semantic caching?</p>
+            <a href="https://redis.io/blog/what-is-semantic-caching/" target="_blank" rel="noopener noreferrer" class="resource-cta" title="Redis - What is semantic caching?">
+              <i data-lucide="external-link" class="w-4 h-4"></i> Read Canonical
+            </a>
+          </div>
+        </div>
+      </article>
+      <article class="resource-card repo">
+        <div class="flex items-start gap-3">
+          <div class="resource-icon">
+            <i data-lucide="github" class="w-4 h-4"></i>
+          </div>
+          <div class="min-w-0 flex-1">
+            <h4 class="font-display text-2xl font-bold leading-none">GitHub Repository</h4>
+            <p class="text-xs text-gray-400 mt-1">Hands-on - reference implementation & examples</p>
+            <p class="text-lg font-semibold mt-4 text-pink-400">RedisVL SemanticCache</p>
+            <a href="https://github.com/redis/redis-vl-python" target="_blank" rel="noopener noreferrer" class="resource-cta" title="RedisVL SemanticCache">
+              <i data-lucide="external-link" class="w-4 h-4"></i> Explore Repo
+            </a>
+          </div>
+        </div>
+      </article>
+      <article class="resource-card repo">
+        <div class="flex items-start gap-3">
+          <div class="resource-icon">
+            <i data-lucide="github" class="w-4 h-4"></i>
+          </div>
+          <div class="min-w-0 flex-1">
+            <h4 class="font-display text-2xl font-bold leading-none">GitHub Repository</h4>
+            <p class="text-xs text-gray-400 mt-1">Hands-on - reference implementation & examples</p>
+            <p class="text-lg font-semibold mt-4 text-pink-400">GPTCache</p>
+            <a href="https://github.com/zilliztech/GPTCache" target="_blank" rel="noopener noreferrer" class="resource-cta" title="GPTCache">
+              <i data-lucide="external-link" class="w-4 h-4"></i> Explore Repo
+            </a>
+          </div>
+        </div>
+      </article>
+    </div>
+  </div>
+</section>
+
+<section id="checkpoint" class="relative py-24 px-6 z-10">
+  <div class="max-w-5xl mx-auto">
+    <div class="checkpoint-glow holo-card p-10 md:p-16 reveal text-center">
+      <div class="inline-flex items-center justify-center w-20 h-20 rounded-full mb-6" style="background: linear-gradient(135deg, #00f0ff, #b86bff); box-shadow: 0 0 60px rgba(0,240,255,0.5);">
+        <i data-lucide="flag" class="w-9 h-9 text-black"></i>
+      </div>
+
+      <span class="pill mb-4"><i data-lucide="check-circle" class="w-3 h-3"></i> Module 7.3 · Checkpoint</span>
+      <h2 class="font-display text-3xl md:text-5xl font-bold mt-4 mb-4">
+        <span class="gradient-multi">Mission 7.3 Complete</span>
+      </h2>
+      <p class="text-gray-300 max-w-2xl mx-auto mb-8">
+        You can stack prompt, embedding, and semantic caches to hit the 30-50% sweet spot — and know exactly when caching does more harm than good.
+      </p>
+
+      <div class="grid md:grid-cols-3 gap-4 text-left mb-10">
+        <div class="holo-card p-5">
+          <div class="font-mono text-xs text-cyan-300 mb-2">CHECK 01</div>
+          <p class="text-sm text-gray-300">Can you explain the <span class="text-cyan-300 font-semibold">3 cache layers</span> and what each saves?</p>
+        </div>
+        <div class="holo-card p-5">
+          <div class="font-mono text-xs text-purple-300 mb-2">CHECK 02</div>
+          <p class="text-sm text-gray-300">Can you build a <span class="text-purple-300 font-semibold">semantic cache</span> with Redis and explain its 4 risks?</p>
+        </div>
+        <div class="holo-card p-5">
+          <div class="font-mono text-xs text-pink-300 mb-2">CHECK 03</div>
+          <p class="text-sm text-gray-300">Can you list <span class="text-pink-300 font-semibold">3 situations</span> where caching should be skipped entirely?</p>
+        </div>
+      </div>
+
+      <div class="flex flex-wrap gap-4 justify-center mb-8">
+        <button class="btn-primary flex items-center gap-2" onclick="completeModule()">
+          <i data-lucide="check" class="w-4 h-4"></i> Mark Module Complete
+        </button>
+        <button class="btn-ghost flex items-center gap-2">
+          <i data-lucide="arrow-right" class="w-4 h-4"></i> Module 7.4 · Auth &amp; Multi-Tenancy
+        </button>
+      </div>
+
+      <div class="max-w-md mx-auto">
+        <div class="flex justify-between text-xs text-gray-400 mb-2 font-mono">
+          <span>TRACK 7 PROGRESS</span>
+          <span id="progressText">4 / 7 modules</span>
+        </div>
+        <div class="progress-bar"><div class="progress-fill" id="courseProgress" style="width: 42%;"></div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer class="relative py-12 px-6 z-10 border-t border-cyan-500/10">
+  <div class="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4 text-sm text-gray-500">
+    <div class="flex items-center gap-3">
+      <i data-lucide="orbit" class="w-4 h-4 text-cyan-400"></i>
+      <span class="font-display tracking-wider">RAG ACADEMY · GENAI GALAXY</span>
+    </div>
+    <div class="font-mono text-xs">v1.0.0 · Module 7.3 · Stardate 2026.05</div>
+  </div>
+</footer>
+
+<script>
+  function safeCreateIcons() {
+    try { if (typeof lucide !== 'undefined' && lucide.createIcons) lucide.createIcons(); } catch(e) {}
+  }
+  safeCreateIcons();
+
+  // ===== STARFIELD =====
+  const canvas = document.getElementById('starfield');
+  const ctx = canvas.getContext('2d');
+  let stars = [];
+
+  function resizeCanvas() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    initStars();
+  }
+  function initStars() {
+    stars = [];
+    const count = Math.floor((canvas.width * canvas.height) / 8000);
+    for (let i = 0; i < count; i++) {
+      stars.push({
+        x: Math.random() * canvas.width,
+        y: Math.random() * canvas.height,
+        z: Math.random() * 1.5 + 0.3,
+        size: Math.random() * 1.5,
+        twinkle: Math.random() * Math.PI * 2
+      });
+    }
+  }
+  function drawStars() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const now = Date.now() * 0.001;
+    stars.forEach(s => {
+      const alpha = 0.4 + 0.6 * Math.abs(Math.sin(s.twinkle + now * s.z));
+      ctx.beginPath();
+      ctx.fillStyle = `rgba(${180 + s.z*30}, ${220 + s.z*20}, 255, ${alpha})`;
+      ctx.arc(s.x, s.y, s.size * s.z, 0, Math.PI * 2);
+      ctx.fill();
+      s.y += s.z * 0.08;
+      if (s.y > canvas.height) { s.y = 0; s.x = Math.random() * canvas.width; }
+    });
+    requestAnimationFrame(drawStars);
+  }
+  window.addEventListener('resize', resizeCanvas);
+  resizeCanvas(); drawStars();
+
+  // ===== REVEAL =====
+  document.documentElement.classList.add('js-reveal');
+  const revealEls = document.querySelectorAll('.reveal');
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('in');
+        observer.unobserve(entry.target);
+      }
+    });
+  }, { threshold: 0.05, rootMargin: '0px 0px -50px 0px' });
+  revealEls.forEach(el => observer.observe(el));
+
+  function revealVisibleNow() {
+    revealEls.forEach(el => {
+      const rect = el.getBoundingClientRect();
+      if (rect.top < window.innerHeight && rect.bottom > 0) el.classList.add('in');
+    });
+  }
+  revealVisibleNow();
+  setTimeout(revealVisibleNow, 100);
+  setTimeout(revealVisibleNow, 500);
+  setTimeout(() => revealEls.forEach(el => el.classList.add('in')), 2000);
+
+  // ===== COUNTERS =====
+  function animateCounters() {
+    document.querySelectorAll('[data-count]').forEach(el => {
+      const target = parseInt(el.dataset.count);
+      let current = 0;
+      const step = Math.max(1, Math.ceil(target / 40));
+      const timer = setInterval(() => {
+        current += step;
+        if (current >= target) { current = target; clearInterval(timer); }
+        el.textContent = current;
+      }, 40);
+    });
+  }
+  setTimeout(animateCounters, 600);
+
+  // ===== CACHE LAYERS INTERACTIVE =====
+  const layers = [
+    { num:'01', name:'Prompt Cache', icon:'cpu', color:'#ffb84d',
+      tagline:'Cache stable prefixes',
+      desc:'Provider-native (Anthropic, OpenAI). You mark the system prompt / large fixed context as cacheable. The provider caches its KV-state. Next call with the same prefix gets ~90% off input tokens and lower latency.',
+      where:'Inside the LLM call · cache_control: ephemeral',
+      saves:'Up to 90% off input tokens',
+      ttl:'Provider-controlled (typically 5 min)',
+      example:'System prompt + retrieved chunks marked as cached. User question varies; the prefix is reused.' },
+    { num:'02', name:'Embedding Cache', icon:'binary', color:'#b86bff',
+      tagline:'Skip redundant embed calls',
+      desc:'Hash the question string. Look it up in Redis. If found, return the cached embedding. If not, call the embedding model and store the result with a TTL.',
+      where:'Before the vector DB lookup',
+      saves:'Embedding API cost (small but adds up)',
+      ttl:'24h is safe — embeddings rarely change',
+      example:'Same question text → same embedding. Skip the API call entirely.' },
+    { num:'03', name:'Semantic Cache', icon:'sparkles', color:'#00f0ff',
+      tagline:'Catch paraphrases',
+      desc:'Embed the question. Search a Redis vector index of past Q&A pairs. If cosine similarity ≥ 0.95, return the stored answer. This skips retrieval, generation, everything.',
+      where:'FIRST check, before any pipeline stage',
+      saves:'Entire LLM call · 100% of cost &amp; latency',
+      ttl:'Short (1h) for fresh data; longer for stable',
+      example:'"refund policy?" hits cache stored from "what\'s the refund policy".' },
+  ];
+
+  const lg = document.getElementById('layerGrid');
+  const ld = document.getElementById('layerDetail');
+
+  layers.forEach((l, i) => {
+    const node = document.createElement('div');
+    node.className = 'layer-card';
+    node.dataset.idx = i;
+    node.innerHTML = `
+      <div class="layer-num">LAYER ${l.num}</div>
+      <div class="flex items-start gap-3 mt-2">
+        <div class="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0" style="background: ${l.color}18;">
+          <i data-lucide="${l.icon}" style="color:${l.color}; width:20px; height:20px;"></i>
+        </div>
+        <div>
+          <div class="font-display font-bold text-base" style="color:${l.color};">${l.name}</div>
+          <div class="text-xs text-gray-400 mt-0.5">${l.tagline}</div>
+        </div>
+      </div>`;
+    node.addEventListener('click', () => setLayer(i));
+    lg.appendChild(node);
+  });
+
+  function setLayer(i) {
+    const l = layers[i];
+    document.querySelectorAll('.layer-card').forEach(n => n.classList.remove('active'));
+    document.querySelector(`.layer-card[data-idx="${i}"]`).classList.add('active');
+    ld.innerHTML = `
+      <div class="grid md:grid-cols-3 gap-8 items-center">
+        <div class="md:col-span-1 text-center">
+          <div class="inline-flex items-center justify-center w-24 h-24 rounded-2xl mb-4" style="background: ${l.color}15; border: 1px solid ${l.color}40;">
+            <i data-lucide="${l.icon}" style="color: ${l.color}; width: 44px; height: 44px;"></i>
+          </div>
+          <div class="font-mono text-xs text-gray-500 tracking-widest">LAYER ${l.num}</div>
+          <h3 class="font-display font-bold text-2xl mt-1" style="color: ${l.color};">${l.name}</h3>
+        </div>
+        <div class="md:col-span-2">
+          <p class="text-gray-300 leading-relaxed text-base mb-4">${l.desc}</p>
+          <div class="grid sm:grid-cols-2 gap-3 mb-4">
+            <div class="p-3 rounded-lg" style="background: rgba(77,255,184,0.06); border-left: 3px solid #4dffb8;">
+              <div class="text-[10px] text-gray-500 uppercase tracking-widest font-mono">Saves</div>
+              <div class="text-sm text-gray-300 mt-1">${l.saves}</div>
+            </div>
+            <div class="p-3 rounded-lg" style="background: rgba(0,240,255,0.06); border-left: 3px solid #00f0ff;">
+              <div class="text-[10px] text-gray-500 uppercase tracking-widest font-mono">TTL</div>
+              <div class="text-sm text-gray-300 mt-1">${l.ttl}</div>
+            </div>
+          </div>
+          <div class="font-mono text-xs p-3 rounded-lg" style="background: rgba(2,3,10,0.6); border-left: 3px solid ${l.color}; color: ${l.color};">
+            ▸ ${l.example}
+          </div>
+        </div>
+      </div>`;
+    safeCreateIcons();
+  }
+  setLayer(0);
+
+  // ===== ROI CHART =====
+  const ctx2 = document.getElementById('roiChart').getContext('2d');
+  const hitRates = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90];
+  const requests = 100000;
+  const missCost = 0.04;
+  const hitCost = 0.0001;
+  const totalCost = hitRates.map(hr => {
+    const hits = requests * (hr / 100);
+    const misses = requests - hits;
+    return (hits * hitCost + misses * missCost).toFixed(0);
+  });
+  const savings = hitRates.map(hr => {
+    const baseline = requests * missCost;
+    const hits = requests * (hr / 100);
+    const misses = requests - hits;
+    const actual = hits * hitCost + misses * missCost;
+    return (baseline - actual).toFixed(0);
+  });
+
+  const g1 = ctx2.createLinearGradient(0, 0, 0, 280);
+  g1.addColorStop(0, 'rgba(255, 77, 207, 0.4)');
+  g1.addColorStop(1, 'rgba(255, 77, 207, 0)');
+  const g2 = ctx2.createLinearGradient(0, 0, 0, 280);
+  g2.addColorStop(0, 'rgba(0, 240, 255, 0.4)');
+  g2.addColorStop(1, 'rgba(0, 240, 255, 0)');
+
+  new Chart(ctx2, {
+    type: 'line',
+    data: {
+      labels: hitRates.map(h => h + '%'),
+      datasets: [
+        {
+          label: 'Monthly cost ($)',
+          data: totalCost,
+          borderColor: '#ff4dcf',
+          backgroundColor: g1,
+          tension: 0.4, fill: true, borderWidth: 2.5,
+          pointBackgroundColor: '#ff4dcf', pointRadius: 3, pointHoverRadius: 7,
+          yAxisID: 'y'
+        },
+        {
+          label: 'Monthly savings ($)',
+          data: savings,
+          borderColor: '#00f0ff',
+          backgroundColor: g2,
+          tension: 0.4, fill: true, borderWidth: 2.5,
+          pointBackgroundColor: '#00f0ff', pointRadius: 3, pointHoverRadius: 7,
+          yAxisID: 'y'
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { labels: { color: '#8a96b8', font: { family: 'Inter', size: 12 }, usePointStyle: true, padding: 20 } },
+        tooltip: {
+          backgroundColor: 'rgba(2, 3, 10, 0.95)',
+          borderColor: 'rgba(0, 240, 255, 0.3)',
+          borderWidth: 1,
+          titleFont: { family: 'Orbitron' },
+          bodyFont: { family: 'JetBrains Mono' },
+          callbacks: { label: ctx => ctx.dataset.label + ': $' + ctx.parsed.y }
+        }
+      },
+      scales: {
+        x: { title: { display: true, text: 'Cache Hit Rate', color: '#8a96b8', font: {family:'Inter'} }, grid: { color: 'rgba(0, 240, 255, 0.05)' }, ticks: { color: '#8a96b8', font: { family: 'JetBrains Mono', size: 10 } } },
+        y: { grid: { color: 'rgba(0, 240, 255, 0.05)' }, ticks: { color: '#8a96b8', font: { family: 'JetBrains Mono', size: 10 }, callback: v => '$' + v } }
+      }
+    }
+  });
+
+  // ===== QUIZ =====
+  const quizQs = [
+    {
+      q: 'Your exact-match cache has a 12% hit rate, but logs show users ask the same question phrased 5 different ways. What\'s the right upgrade?',
+      opts: [
+        'Increase the cache TTL to 7 days',
+        'Add a semantic cache that matches paraphrases via embedding similarity',
+        'Use a bigger Redis instance',
+        'Move to LRU eviction'
+      ],
+      ans: 1,
+      exp: 'Exact-match misses paraphrases. A semantic cache (embed → ANN search at threshold ~0.95) catches "refund policy?" and "what\'s the refund policy" as the same. Hit rate typically jumps from 5-15% to 25-50%.'
+    },
+    {
+      q: 'You launch a semantic cache at threshold 0.90 and hit rate jumps to 80% — but users start complaining about wrong answers. What\'s the cause?',
+      opts: [
+        'Redis is too slow',
+        'The threshold is too loose — semantically similar questions can have different correct answers',
+        'You need to add more cache memory',
+        'The embedding model is broken'
+      ],
+      ans: 1,
+      exp: 'A loose threshold treats different-intent questions as the same. "Refund for order 4421" and "refund for order 9930" embed very close but need different answers. Tune threshold up to ~0.95 and measure quality on hits.'
+    },
+    {
+      q: 'A doc is updated in your knowledge base. Which invalidation strategy ensures cached answers using that doc get refreshed?',
+      opts: [
+        'Wait for TTL expiry',
+        'Tag cache entries with the doc IDs they reference, then evict by tag when the doc updates',
+        'Flush the entire cache',
+        'Switch to a bigger embedding model'
+      ],
+      ans: 1,
+      exp: 'Tag-based eviction is the precise tool: each cache entry tracks which docs it cites, and your ingestion job evicts only the affected entries. TTL is a fallback; full flush is wasteful; embeddings are unrelated.'
+    },
+    {
+      q: 'Which of the following should NOT be cached?',
+      opts: [
+        'FAQ-style questions like "What\'s your return policy?"',
+        'Product documentation lookups',
+        'Personalized queries like "What\'s my account balance?"',
+        'Common how-to questions'
+      ],
+      ans: 2,
+      exp: 'Personalized answers depend on WHO\'s asking. Cache them naively and you\'ll serve User A\'s data to User B — a privacy incident. If you must cache, namespace strictly by user_id.'
+    }
+  ];
+
+  let qIdx = 0, qScore = 0;
+
+  function renderQ() {
+    const q = quizQs[qIdx];
+    document.getElementById('qNum').textContent = qIdx + 1;
+    document.getElementById('qScore').textContent = qScore;
+    document.getElementById('qText').textContent = q.q;
+    document.getElementById('qFeedback').classList.add('hidden');
+    document.getElementById('qNext').classList.add('hidden');
+
+    const opts = document.getElementById('qOptions');
+    opts.innerHTML = '';
+    q.opts.forEach((o, i) => {
+      const btn = document.createElement('button');
+      btn.className = 'quiz-option';
+      btn.textContent = o;
+      btn.onclick = () => answerQ(i);
+      opts.appendChild(btn);
+    });
+  }
+
+  function answerQ(picked) {
+    const q = quizQs[qIdx];
+    const opts = document.querySelectorAll('#qOptions .quiz-option');
+    opts.forEach((o, i) => {
+      o.classList.add('disabled');
+      if (i === q.ans) o.classList.add('correct');
+      if (i === picked && picked !== q.ans) o.classList.add('wrong');
+    });
+
+    const fb = document.getElementById('qFeedback');
+    fb.classList.remove('hidden');
+    if (picked === q.ans) {
+      qScore++;
+      fb.innerHTML = `<div class="callout-cyan"><strong class="text-cyan-300">✓ Correct.</strong> <span class="text-gray-300">${q.exp}</span></div>`;
+    } else {
+      fb.innerHTML = `<div class="callout-pink"><strong class="text-pink-300">✗ Not quite.</strong> <span class="text-gray-300">${q.exp}</span></div>`;
+    }
+    document.getElementById('qScore').textContent = qScore;
+    document.getElementById('qNext').classList.remove('hidden');
+    if (qIdx >= quizQs.length - 1) {
+      document.getElementById('qNext').innerHTML = 'Finish <i data-lucide="check" class="w-4 h-4 inline ml-1"></i>';
+      safeCreateIcons();
+    }
+  }
+
+  function nextQuestion() {
+    if (qIdx >= quizQs.length - 1) {
+      document.getElementById('quizCard').innerHTML = `
+        <div class="text-center py-6">
+          <div class="inline-flex items-center justify-center w-16 h-16 rounded-full mb-4" style="background: linear-gradient(135deg, #4dffb8, #00f0ff); box-shadow: 0 0 40px rgba(77,255,184,0.4);">
+            <i data-lucide="award" class="w-8 h-8 text-black"></i>
+          </div>
+          <h3 class="font-display font-bold text-2xl gradient-cyan mb-2">Quiz Complete</h3>
+          <p class="text-gray-400">You scored <span class="text-cyan-300 font-bold">${qScore} / ${quizQs.length}</span></p>
+          <p class="text-sm text-gray-500 mt-2">${qScore === quizQs.length ? 'Perfect run. Ready for Module 7.4 — Auth & Multi-Tenancy.' : 'Review the layers and invalidation sections, then retry.'}</p>
+        </div>`;
+      safeCreateIcons();
+      return;
+    }
+    qIdx++;
+    renderQ();
+  }
+  renderQ();
+
+  // ===== SIDE NAV =====
+  const sections = ['hero','why','layers','semantic','invalidation','roi','never','checkpoint'];
+  const dots = document.querySelectorAll('.dot');
+  dots.forEach(dot => {
+    dot.addEventListener('click', () => {
+      document.getElementById(dot.dataset.target).scrollIntoView({ behavior: 'smooth' });
+    });
+  });
+  window.addEventListener('scroll', () => {
+    const scrollPos = window.scrollY + window.innerHeight / 2;
+    sections.forEach((id, i) => {
+      const el = document.getElementById(id);
+      if (el && el.offsetTop <= scrollPos && el.offsetTop + el.offsetHeight > scrollPos) {
+        dots.forEach(d => d.classList.remove('active'));
+        dots[i]?.classList.add('active');
+      }
+    });
+  });
+
+  // ===== COMPLETION =====
+  function completeModule() {
+    document.getElementById('courseProgress').style.width = '56%';
+    document.getElementById('progressText').textContent = '4 / 7 modules ✓';
+
+    try {
+      const saved = JSON.parse(localStorage.getItem('rag_academy_progress') || '{}');
+      saved.completed = saved.completed || [];
+      if (!saved.completed.includes('7.3')) saved.completed.push('7.3');
+      saved.lastModule = '7.3';
+      localStorage.setItem('rag_academy_progress', JSON.stringify(saved));
+    } catch(e) {}
+
+    const burst = document.createElement('div');
+    burst.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);font-family:Orbitron,sans-serif;font-size:2rem;font-weight:900;color:#00f0ff;text-shadow:0 0 30px #00f0ff;z-index:9999;pointer-events:none;opacity:0;transition:all 0.8s ease;';
+    burst.textContent = '✦ MISSION COMPLETE ✦';
+    document.body.appendChild(burst);
+    requestAnimationFrame(() => {
+      burst.style.opacity = '1';
+      burst.style.transform = 'translate(-50%, -50%) scale(1.2)';
+    });
+    setTimeout(() => { burst.style.opacity = '0'; setTimeout(() => burst.remove(), 800); }, 1800);
+  }
+  window.completeModule = completeModule;
+
+  try {
+    const saved = JSON.parse(localStorage.getItem('rag_academy_progress') || '{}');
+    if (saved.completed && saved.completed.includes('7.3')) {
+      document.getElementById('courseProgress').style.width = '56%';
+      document.getElementById('progressText').textContent = '4 / 7 modules ✓';
+    }
+  } catch(e) {}
+</script>
+
+</body>
+</html>

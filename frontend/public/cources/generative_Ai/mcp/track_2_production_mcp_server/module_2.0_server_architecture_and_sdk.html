@@ -1,0 +1,2037 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Module 2.0 — Server Architecture &amp; SDKs</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Source+Serif+4:ital,opsz,wght@0,8..60,300;0,8..60,400;0,8..60,500;0,8..60,600;1,8..60,400&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #08090b; --bg-2: #0b0f1a;
+    --panel: #0d1117; --panel-2: #111827; --panel-3: #111827;
+    --line: #1e2330; --line-strong: #2a3142;
+    --text: #e8eaed; --text-dim: #a8aeb8; --text-mute: #6b7280;
+    --teal: #6366f1; --purple: #8b5cf6; --pink: #f7768e;
+    --amber: #f59e0b; --red: #f7768e; --blue: #818cf8;
+    --green: #10b981; --orange: #f59e0b;
+    --mono: 'JetBrains Mono', ui-monospace, monospace;
+    --sans: 'Outfit', system-ui, -apple-system, sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; scroll-padding-top: 80px; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans);
+    font-size: 16px; line-height: 1.65; -webkit-font-smoothing: antialiased; overflow-x: hidden; }
+  body::before {
+    content: ""; position: fixed; inset: 0;
+    background-image:
+      linear-gradient(rgba(99, 102, 241, 0.035) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(99, 102, 241, 0.035) 1px, transparent 1px);
+    background-size: 48px 48px; pointer-events: none; z-index: 0;
+    mask-image: radial-gradient(ellipse 80% 60% at 50% 30%, black 40%, transparent 100%);
+  }
+  body::after {
+    content: ""; position: fixed; inset: 0;
+    background:
+      radial-gradient(ellipse 50% 30% at 20% 10%, rgba(99, 102, 241,0.06), transparent 60%),
+      radial-gradient(ellipse 40% 25% at 90% 80%, rgba(139, 92, 246,0.05), transparent 60%);
+    pointer-events: none; z-index: 0;
+  }
+
+  /* topbar */
+  .topbar { position: sticky; top: 0; z-index: 50;
+    backdrop-filter: blur(14px); background: rgba(10,14,26,0.85);
+    border-bottom: 1px solid var(--line); }
+  .topbar-inner { max-width: 1200px; margin: 0 auto;
+    padding: 14px 32px; display: flex; align-items: center; gap: 24px; }
+  .brand { font-family: var(--mono); font-size: 12px;
+    letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--teal); font-weight: 600;
+    display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+  .brand .dot { width: 8px; height: 8px; background: var(--teal);
+    border-radius: 50%; box-shadow: 0 0 12px rgba(99, 102, 241,0.6); }
+  .track-progress { flex: 1; display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; }
+  .track-progress::-webkit-scrollbar { display: none; }
+  .tp-item { font-family: var(--mono); font-size: 10.5px;
+    letter-spacing: 0.1em; text-transform: uppercase;
+    color: var(--text-mute); padding: 4px 10px;
+    border-radius: 4px; border: 1px solid var(--line);
+    white-space: nowrap; }
+  .tp-item.done { color: var(--text-dim); }
+  .tp-item.done::before { content: "✓ "; color: var(--teal); }
+  .tp-item.current { color: var(--teal); border-color: var(--teal); background: rgba(99, 102, 241,0.06); }
+  .progress-bar { flex-shrink: 0; font-family: var(--mono); font-size: 11px;
+    color: var(--text-dim); display: flex; align-items: center; gap: 10px; }
+  .progress-track { width: 80px; height: 4px; background: var(--line);
+    border-radius: 2px; overflow: hidden; }
+  .progress-fill { height: 100%; background: linear-gradient(90deg, var(--teal), var(--purple));
+    width: 0%; transition: width 0.3s ease; }
+
+  /* layout */
+  .layout { max-width: 1200px; margin: 0 auto;
+    padding: 56px 32px 120px; display: grid;
+    grid-template-columns: 220px 1fr; gap: 56px;
+    position: relative; z-index: 1; }
+  .sidebar { position: sticky; top: 80px; align-self: start;
+    max-height: calc(100vh - 96px); overflow-y: auto; }
+  .sb-label { font-family: var(--mono); font-size: 10.5px;
+    letter-spacing: 0.16em; text-transform: uppercase;
+    color: var(--text-mute); margin-bottom: 18px;
+    padding-bottom: 12px; border-bottom: 1px solid var(--line); }
+  .sb-list { list-style: none; }
+  .sb-list li a { display: flex; align-items: center; gap: 12px;
+    padding: 9px 0; font-size: 13.5px;
+    color: var(--text-dim); text-decoration: none;
+    border-left: 2px solid transparent; padding-left: 12px;
+    transition: all 0.2s; line-height: 1.4; }
+  .sb-list li a:hover { color: var(--text); }
+  .sb-list li a.active { color: var(--teal); border-left-color: var(--teal);
+    background: linear-gradient(90deg, rgba(99, 102, 241,0.05), transparent); }
+  .sb-list li a .num { font-family: var(--mono); font-size: 10.5px;
+    color: var(--text-mute); min-width: 22px; }
+  .sb-list li a.active .num { color: var(--teal); }
+
+  .content { min-width: 0; }
+  .crumb { display: flex; align-items: center; gap: 10px;
+    font-family: var(--mono); font-size: 11px;
+    letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--teal); margin-bottom: 22px; }
+  .crumb .bar { width: 24px; height: 1px; background: var(--teal); }
+  .crumb .sep { color: var(--text-mute); }
+  .crumb .dim { color: var(--text-dim); }
+
+  h1.module-title { font-size: clamp(34px, 5vw, 54px); font-weight: 800;
+    letter-spacing: -0.025em; line-height: 1.05;
+    margin-bottom: 18px; }
+  h1.module-title .accent { color: var(--teal); }
+  .lede { font-size: 18px; color: var(--text-dim); max-width: 700px; }
+
+  .hero-meta { display: flex; flex-wrap: wrap; gap: 20px;
+    margin-top: 26px; padding-top: 22px;
+    border-top: 1px solid var(--line); }
+  .hero-meta .m { display: flex; align-items: center; gap: 10px; }
+  .hero-meta .m-label { font-family: var(--mono); font-size: 10px;
+    letter-spacing: 0.14em; text-transform: uppercase; color: var(--text-mute); }
+  .hero-meta .m-val { font-family: var(--mono); font-size: 13px;
+    color: var(--text); font-weight: 500; }
+
+  .objectives { margin: 40px 0 64px;
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 14px; padding: 26px 28px;
+    position: relative; overflow: hidden; }
+  .objectives::before { content: ""; position: absolute; top: 0; left: 0; right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--teal) 30%, var(--purple) 70%, transparent); }
+  .obj-header { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+  .obj-icon { width: 32px; height: 32px;
+    background: rgba(99, 102, 241,0.12);
+    border: 1px solid rgba(99, 102, 241,0.3);
+    border-radius: 8px; display: grid; place-items: center; }
+  .obj-icon svg { width: 16px; height: 16px; }
+  .obj-title { font-family: var(--mono); font-size: 11px;
+    letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--teal); font-weight: 600; }
+  .obj-list { list-style: none; display: grid; gap: 10px; }
+  .obj-list li { display: grid; grid-template-columns: 22px 1fr;
+    gap: 12px; align-items: start;
+    color: #c2cad9; font-size: 14.5px; line-height: 1.55; }
+  .obj-list .check { width: 18px; height: 18px; border-radius: 4px;
+    border: 1.5px solid var(--line-strong); margin-top: 2px;
+    display: grid; place-items: center; color: var(--text-mute);
+    font-family: var(--mono); font-size: 11px;
+    cursor: pointer; transition: all 0.2s; }
+  .obj-list .check.done { background: rgba(99, 102, 241,0.15);
+    border-color: var(--teal); color: var(--teal); }
+
+  .section-label { font-family: var(--mono); font-size: 11px;
+    letter-spacing: 0.18em; text-transform: uppercase;
+    color: var(--text-mute); margin-bottom: 14px;
+    display: flex; align-items: center; gap: 12px; }
+  .section-label .sn { color: var(--teal); font-weight: 600; }
+  .section-label::before { content: ""; width: 6px; height: 6px;
+    background: var(--teal); border-radius: 1px; transform: rotate(45deg); }
+
+  h2 { font-size: 28px; font-weight: 700; letter-spacing: -0.015em;
+    margin-bottom: 18px; line-height: 1.2; }
+  h3.sub { font-size: 17px; font-weight: 700; margin: 30px 0 12px; color: var(--text); }
+  h3.sub .num { font-family: var(--mono); color: var(--teal); font-size: 12px; margin-right: 10px; }
+  section.block { margin-bottom: 72px; scroll-margin-top: 80px; }
+
+  p { color: #c2cad9; margin-bottom: 16px; }
+  p strong { color: var(--text); font-weight: 600; }
+  p code, li code, td code { font-family: var(--mono); font-size: 0.88em;
+    background: rgba(99, 102, 241, 0.08);
+    color: var(--teal); padding: 1px 6px; border-radius: 4px;
+    border: 1px solid rgba(99, 102, 241,0.15); }
+  ul.tight { list-style: none; padding: 0; margin: 14px 0 18px; }
+  ul.tight li { color: #c2cad9; padding: 6px 0 6px 22px; position: relative; }
+  ul.tight li::before { content: "›"; position: absolute; left: 4px; top: 6px;
+    color: var(--teal); font-family: var(--mono); font-weight: 600; }
+
+  .exercise-tag { display: inline-flex; align-items: center; gap: 8px;
+    font-family: var(--mono); font-size: 10.5px;
+    letter-spacing: 0.14em; text-transform: uppercase;
+    padding: 5px 12px; border-radius: 999px;
+    background: rgba(139, 92, 246,0.1);
+    border: 1px solid rgba(139, 92, 246,0.35);
+    color: var(--purple); margin-bottom: 12px; }
+  .exercise-tag .pulse { width: 6px; height: 6px;
+    background: var(--purple); border-radius: 50%;
+    animation: pulse 2s ease-in-out infinite; }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.4; transform: scale(1.3); }
+  }
+
+  .callout { border-left: 2px solid var(--teal);
+    background: linear-gradient(90deg, rgba(99, 102, 241,0.06), rgba(99, 102, 241,0));
+    padding: 18px 22px; margin: 22px 0;
+    border-radius: 0 6px 6px 0; }
+  .callout.purple { border-left-color: var(--purple);
+    background: linear-gradient(90deg, rgba(139, 92, 246,0.06), rgba(139, 92, 246,0)); }
+  .callout.amber { border-left-color: var(--amber);
+    background: linear-gradient(90deg, rgba(245, 158, 11,0.06), rgba(245, 158, 11,0)); }
+  .callout .tag { font-family: var(--mono); font-size: 10.5px;
+    letter-spacing: 0.16em; text-transform: uppercase;
+    color: var(--teal); margin-bottom: 6px; }
+  .callout.purple .tag { color: var(--purple); }
+  .callout.amber .tag { color: var(--amber); }
+  .callout p { margin-bottom: 0; }
+
+  /* ========= SDK LANDSCAPE ========= */
+  .sdk-w { background: var(--panel); border: 1px solid var(--line);
+    border-radius: 14px; overflow: hidden; margin: 20px 0; }
+  .sdk-head { padding: 14px 22px; background: var(--panel-2);
+    border-bottom: 1px solid var(--line);
+    display: flex; justify-content: space-between; align-items: center;
+    flex-wrap: wrap; gap: 10px; }
+  .sdk-head .title { font-family: var(--mono); font-size: 11.5px;
+    letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-dim); }
+  .sdk-grid { padding: 22px;
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 12px; }
+  .sdk-card {
+    background: var(--bg-2);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 16px 18px;
+    cursor: pointer; transition: all 0.18s;
+    position: relative; overflow: hidden;
+  }
+  .sdk-card:hover { border-color: var(--line-strong); transform: translateY(-1px); }
+  .sdk-card.active { border-color: var(--teal); background: rgba(99, 102, 241,0.04); }
+  .sdk-card .lang { font-family: var(--mono); font-size: 14px;
+    font-weight: 600; color: var(--text); margin-bottom: 4px; }
+  .sdk-card .pkg { font-family: var(--mono); font-size: 11px;
+    color: var(--teal); margin-bottom: 12px; line-height: 1.5; }
+  .sdk-card .meta { display: flex; justify-content: space-between;
+    font-family: var(--mono); font-size: 10px;
+    color: var(--text-mute);
+    letter-spacing: 0.06em; text-transform: uppercase; }
+  .sdk-card .status {
+    padding: 2px 8px; border-radius: 4px;
+    background: rgba(16, 185, 129,0.1); color: var(--green);
+    border: 1px solid rgba(16, 185, 129,0.3);
+  }
+  .sdk-card .status.beta {
+    background: rgba(245, 158, 11,0.1); color: var(--amber);
+    border-color: rgba(245, 158, 11,0.3);
+  }
+  .sdk-card .status.community {
+    background: rgba(139, 92, 246,0.1); color: var(--purple);
+    border-color: rgba(139, 92, 246,0.3);
+  }
+
+  .sdk-detail {
+    padding: 20px 24px;
+    background: var(--panel-2);
+    border-top: 1px solid var(--line);
+  }
+  .sdk-detail .pk {
+    font-family: var(--mono); font-size: 10.5px;
+    letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--text-mute); margin-bottom: 6px;
+  }
+  .sdk-detail h4 { font-size: 18px; color: var(--text);
+    margin-bottom: 12px; font-weight: 700; }
+  .sdk-detail p { font-size: 13.5px; color: #c2cad9;
+    line-height: 1.6; margin-bottom: 12px; }
+  .sdk-detail p code { font-family: var(--mono); font-size: 0.88em;
+    background: rgba(255,255,255,0.04); color: var(--text);
+    padding: 1px 5px; border-radius: 3px; border: none; }
+  .sdk-install {
+    font-family: var(--mono); font-size: 12.5px;
+    background: #06080f; border: 1px solid var(--line);
+    border-radius: 8px; padding: 12px 14px;
+    color: var(--text-dim);
+  }
+  .sdk-install .prompt { color: var(--teal); margin-right: 6px; }
+
+  /* ========= FASTMCP VS LOW-LEVEL ========= */
+  .vs-w { background: var(--panel); border: 1px solid var(--line);
+    border-radius: 14px; overflow: hidden; margin: 20px 0; }
+  .vs-head { padding: 14px 22px; background: var(--panel-2);
+    border-bottom: 1px solid var(--line);
+    display: flex; justify-content: space-between; align-items: center;
+    flex-wrap: wrap; gap: 10px; }
+  .vs-head .title { font-family: var(--mono); font-size: 11.5px;
+    letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-dim); }
+  .vs-toggle { display: flex; gap: 4px;
+    background: var(--panel-3); border-radius: 8px; padding: 3px;
+    font-family: var(--mono); font-size: 10.5px;
+    letter-spacing: 0.08em; text-transform: uppercase; }
+  .vs-toggle button {
+    background: transparent; border: none;
+    color: var(--text-mute); padding: 5px 12px;
+    border-radius: 6px; cursor: pointer; transition: all 0.18s;
+    font-family: inherit; font-size: inherit;
+    letter-spacing: inherit; text-transform: inherit;
+  }
+  .vs-toggle button.active.fast { background: var(--teal); color: var(--bg); font-weight: 600; }
+  .vs-toggle button.active.low { background: var(--purple); color: var(--bg); font-weight: 600; }
+  .vs-stats {
+    display: grid; grid-template-columns: repeat(4, 1fr);
+    gap: 0;
+    background: var(--panel-2);
+    border-bottom: 1px solid var(--line);
+  }
+  .vs-stat {
+    padding: 14px 18px;
+    text-align: center;
+    border-right: 1px solid var(--line);
+    transition: background 0.3s;
+  }
+  .vs-stat:last-child { border-right: none; }
+  .vs-stat .v {
+    font-family: var(--mono); font-size: 24px;
+    font-weight: 600; line-height: 1;
+    margin-bottom: 4px;
+    transition: color 0.3s;
+  }
+  .vs-stat .k {
+    font-family: var(--mono); font-size: 10px;
+    letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--text-mute);
+  }
+  .vs-w.mode-fast .vs-stat .v { color: var(--teal); }
+  .vs-w.mode-low .vs-stat .v { color: var(--purple); }
+
+  .vs-body { padding: 24px; }
+  .vs-pre {
+    font-family: var(--mono); font-size: 13px;
+    background: #06080f;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 18px 20px;
+    line-height: 1.7;
+    color: #c2cad9;
+    overflow-x: auto;
+    white-space: pre;
+    border-left: 3px solid var(--accent, var(--teal));
+  }
+  .vs-w.mode-fast .vs-pre { --accent: var(--teal); }
+  .vs-w.mode-low .vs-pre { --accent: var(--purple); }
+  .vs-pre .k { color: var(--purple); }
+  .vs-pre .d { color: var(--pink); }
+  .vs-pre .s { color: var(--teal); }
+  .vs-pre .f { color: var(--blue); }
+  .vs-pre .c { color: var(--text-mute); font-style: italic; }
+  .vs-pre .n { color: var(--amber); }
+  .vs-explain {
+    padding: 16px 24px;
+    background: var(--panel-2);
+    color: #c2cad9; font-size: 13.5px; line-height: 1.6;
+    border-top: 1px solid var(--line);
+  }
+  .vs-explain strong { color: var(--text); }
+  .vs-explain code {
+    font-family: var(--mono); font-size: 0.88em;
+    background: rgba(255,255,255,0.04);
+    color: var(--text); padding: 1px 5px;
+    border-radius: 3px; border: none;
+  }
+
+  /* ========= FILE TREE ========= */
+  .ft-w { background: var(--panel); border: 1px solid var(--line);
+    border-radius: 14px; overflow: hidden; margin: 20px 0; }
+  .ft-head { padding: 14px 22px; background: var(--panel-2);
+    border-bottom: 1px solid var(--line);
+    display: flex; justify-content: space-between; align-items: center; }
+  .ft-head .title { font-family: var(--mono); font-size: 11.5px;
+    letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-dim); }
+  .ft-body { display: grid; grid-template-columns: 300px 1fr;
+    min-height: 460px; }
+  .ft-tree { padding: 18px 0; background: var(--bg-2);
+    border-right: 1px solid var(--line);
+    font-family: var(--mono); font-size: 13px;
+    overflow-y: auto; max-height: 460px; }
+  .ft-node {
+    padding: 6px 18px 6px 12px;
+    cursor: pointer;
+    color: var(--text-dim);
+    border-left: 2px solid transparent;
+    transition: all 0.15s;
+    display: flex; align-items: center; gap: 8px;
+    white-space: nowrap;
+  }
+  .ft-node:hover { color: var(--text); background: rgba(255,255,255,0.02); }
+  .ft-node.active { color: var(--teal); border-left-color: var(--teal);
+    background: rgba(99, 102, 241,0.06); }
+  .ft-node .ico {
+    font-size: 13px; flex-shrink: 0; width: 14px; text-align: center;
+  }
+  .ft-node.dir .ico { color: var(--amber); }
+  .ft-node.file .ico { color: var(--text-mute); }
+  .ft-node.active.file .ico { color: var(--teal); }
+  .ft-node.depth-1 { padding-left: 12px; }
+  .ft-node.depth-2 { padding-left: 30px; }
+  .ft-node.depth-3 { padding-left: 48px; }
+  .ft-node.depth-4 { padding-left: 66px; }
+
+  .ft-detail { padding: 24px 28px; min-width: 0; }
+  .ft-detail .breadcrumb-path {
+    font-family: var(--mono); font-size: 11px;
+    color: var(--text-mute); margin-bottom: 8px;
+    letter-spacing: 0.04em;
+  }
+  .ft-detail h4 {
+    font-size: 20px; color: var(--text);
+    margin-bottom: 10px;
+    font-weight: 700; letter-spacing: -0.01em;
+    font-family: var(--mono);
+  }
+  .ft-detail .role {
+    display: inline-block;
+    font-family: var(--mono); font-size: 10px;
+    letter-spacing: 0.14em; text-transform: uppercase;
+    padding: 3px 8px; border-radius: 4px;
+    background: rgba(99, 102, 241,0.1); color: var(--teal);
+    border: 1px solid rgba(99, 102, 241,0.25);
+    margin-bottom: 14px;
+  }
+  .ft-detail p {
+    color: #c2cad9; font-size: 13.5px;
+    line-height: 1.6; margin-bottom: 12px;
+  }
+  .ft-detail p code { font-family: var(--mono); font-size: 0.88em;
+    background: rgba(255,255,255,0.04);
+    color: var(--text); padding: 1px 5px;
+    border-radius: 3px; border: none; }
+  .ft-content {
+    font-family: var(--mono); font-size: 12px;
+    background: #06080f;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 14px 16px;
+    line-height: 1.65;
+    color: #c2cad9; margin-top: 12px;
+    overflow-x: auto;
+    white-space: pre;
+    max-height: 280px;
+    overflow-y: auto;
+  }
+  .ft-content .k { color: var(--purple); }
+  .ft-content .d { color: var(--pink); }
+  .ft-content .s { color: var(--teal); }
+  .ft-content .f { color: var(--blue); }
+  .ft-content .c { color: var(--text-mute); font-style: italic; }
+  .ft-content .n { color: var(--amber); }
+
+  /* ========= LIFESPAN TIMELINE ========= */
+  .lf-w { background: var(--panel); border: 1px solid var(--line);
+    border-radius: 14px; overflow: hidden; margin: 20px 0; }
+  .lf-head { padding: 14px 22px; background: var(--panel-2);
+    border-bottom: 1px solid var(--line);
+    display: flex; justify-content: space-between; align-items: center;
+    flex-wrap: wrap; gap: 10px; }
+  .lf-head .title { font-family: var(--mono); font-size: 11.5px;
+    letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-dim); }
+  .lf-controls { display: flex; gap: 8px; }
+  .lf-btn { font-family: var(--mono); font-size: 11px;
+    letter-spacing: 0.1em; text-transform: uppercase;
+    padding: 6px 14px; border-radius: 6px;
+    background: transparent; border: 1px solid var(--line-strong);
+    color: var(--text-dim); cursor: pointer; transition: all 0.15s; }
+  .lf-btn:hover { border-color: var(--teal); color: var(--teal); }
+  .lf-btn.primary { color: var(--teal); border-color: var(--teal); }
+
+  .lf-stage-bar {
+    padding: 20px 24px 12px;
+    background: var(--panel-2);
+    border-bottom: 1px solid var(--line);
+  }
+  .lf-stages {
+    display: flex; gap: 6px;
+    height: 36px;
+    align-items: stretch;
+  }
+  .lf-stage {
+    flex: 0 0 auto;
+    padding: 0 18px;
+    border-radius: 6px;
+    background: var(--bg-2);
+    border: 1px solid var(--line);
+    display: flex; align-items: center;
+    font-family: var(--mono); font-size: 11px;
+    letter-spacing: 0.1em; text-transform: uppercase;
+    color: var(--text-mute);
+    transition: all 0.3s;
+  }
+  .lf-stage.startup { flex: 1; }
+  .lf-stage.req { flex: 1.4; }
+  .lf-stage.shut { flex: 1; }
+  .lf-stage.active {
+    background: rgba(99, 102, 241,0.1);
+    border-color: var(--teal);
+    color: var(--teal);
+    font-weight: 600;
+  }
+  .lf-stage.active.startup {
+    background: rgba(139, 92, 246,0.1);
+    border-color: var(--purple);
+    color: var(--purple);
+  }
+  .lf-stage.active.shut {
+    background: rgba(247, 118, 142,0.1);
+    border-color: var(--red);
+    color: var(--red);
+  }
+  .lf-stage.done {
+    opacity: 0.5;
+  }
+
+  .lf-body { padding: 24px; }
+  .lf-resources {
+    background: var(--bg-2);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 18px;
+    margin-bottom: 22px;
+  }
+  .lf-res-h {
+    font-family: var(--mono); font-size: 10.5px;
+    letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--text-mute); margin-bottom: 12px;
+  }
+  .lf-res-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 8px;
+  }
+  .lf-res {
+    padding: 10px 12px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    transition: all 0.3s;
+    opacity: 0.3;
+  }
+  .lf-res.alive {
+    opacity: 1;
+    border-color: rgba(99, 102, 241,0.4);
+    background: rgba(99, 102, 241,0.04);
+  }
+  .lf-res .name {
+    font-family: var(--mono); font-size: 12px;
+    color: var(--text); margin-bottom: 2px;
+    font-weight: 600;
+  }
+  .lf-res .desc {
+    font-size: 11.5px; color: var(--text-mute);
+    line-height: 1.4;
+  }
+  .lf-res.alive .name { color: var(--teal); }
+
+  .lf-narration {
+    background: var(--bg-2);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 18px 20px;
+    border-left: 3px solid var(--accent, var(--teal));
+    transition: border-color 0.3s;
+  }
+  .lf-narration.startup { --accent: var(--purple); }
+  .lf-narration.operating { --accent: var(--teal); }
+  .lf-narration.shutting { --accent: var(--red); }
+  .lf-narration .lbl {
+    font-family: var(--mono); font-size: 10.5px;
+    letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--accent, var(--teal));
+    margin-bottom: 6px;
+    transition: color 0.3s;
+  }
+  .lf-narration h4 {
+    font-size: 16px; color: var(--text);
+    margin-bottom: 10px; font-weight: 700;
+  }
+  .lf-narration p {
+    color: #c2cad9; font-size: 13.5px;
+    line-height: 1.6; margin-bottom: 0;
+  }
+  .lf-narration p code {
+    font-family: var(--mono); font-size: 0.88em;
+    background: rgba(255,255,255,0.04);
+    color: var(--text); padding: 1px 5px;
+    border-radius: 3px; border: none;
+  }
+
+  /* ========= CONTEXT INSPECTOR ========= */
+  .ctx-w { background: var(--panel); border: 1px solid var(--line);
+    border-radius: 14px; overflow: hidden; margin: 20px 0; }
+  .ctx-head { padding: 14px 22px; background: var(--panel-2);
+    border-bottom: 1px solid var(--line);
+    display: flex; justify-content: space-between; align-items: center; }
+  .ctx-head .title { font-family: var(--mono); font-size: 11.5px;
+    letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-dim); }
+  .ctx-head .hint { font-family: var(--mono); font-size: 10.5px; color: var(--text-mute); }
+
+  .ctx-body { display: grid;
+    grid-template-columns: 1fr 320px;
+    min-height: 460px; }
+  .ctx-code {
+    padding: 22px 24px;
+    font-family: var(--mono); font-size: 13px;
+    line-height: 2;
+    color: #c2cad9;
+    border-right: 1px solid var(--line);
+    overflow-x: auto;
+    white-space: pre;
+  }
+  .ctx-code .k { color: var(--purple); }
+  .ctx-code .d { color: var(--pink); }
+  .ctx-code .s { color: var(--teal); }
+  .ctx-code .f { color: var(--blue); }
+  .ctx-code .c { color: var(--text-mute); font-style: italic; }
+  .ctx-code .n { color: var(--amber); }
+
+  .ctx-hit {
+    cursor: pointer;
+    padding: 2px 4px;
+    border-radius: 4px;
+    border: 1px solid transparent;
+    transition: all 0.18s;
+    color: var(--blue);
+  }
+  .ctx-hit:hover { background: rgba(129, 140, 248,0.08); }
+  .ctx-hit.active {
+    background: rgba(129, 140, 248,0.2);
+    border-color: var(--blue);
+    box-shadow: 0 0 0 3px rgba(129, 140, 248,0.12);
+  }
+
+  .ctx-side { padding: 22px 24px; background: var(--panel-2); }
+  .ctx-side .placeholder {
+    color: var(--text-mute); font-size: 13px;
+    font-style: italic; line-height: 1.55;
+  }
+  .ctx-side .pk {
+    font-family: var(--mono); font-size: 10.5px;
+    letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--blue); margin-bottom: 6px;
+  }
+  .ctx-side h4 {
+    font-size: 17px; color: var(--text);
+    margin-bottom: 10px;
+    font-family: var(--mono); font-weight: 700;
+    letter-spacing: -0.005em;
+  }
+  .ctx-side p {
+    color: #c2cad9; font-size: 13px;
+    line-height: 1.6; margin-bottom: 14px;
+  }
+  .ctx-side p code {
+    font-family: var(--mono); font-size: 0.88em;
+    background: rgba(255,255,255,0.04);
+    color: var(--text); padding: 1px 5px;
+    border-radius: 3px; border: none;
+  }
+  .ctx-side .label {
+    font-family: var(--mono); font-size: 10px;
+    letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--text-mute);
+    margin-top: 12px; margin-bottom: 6px;
+  }
+  .ctx-side .emit {
+    font-family: var(--mono); font-size: 11px;
+    background: #06080f;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 10px 12px;
+    color: #c2cad9;
+    line-height: 1.55;
+    overflow-x: auto;
+    white-space: pre;
+  }
+  .ctx-side .emit .k { color: var(--blue); }
+  .ctx-side .emit .v { color: var(--teal); }
+  .ctx-side .emit .n { color: var(--amber); }
+  .ctx-side .req {
+    display: inline-block;
+    font-family: var(--mono); font-size: 10px;
+    padding: 3px 8px; border-radius: 4px;
+    background: rgba(99, 102, 241,0.08);
+    color: var(--teal);
+    border: 1px solid rgba(99, 102, 241,0.3);
+    margin-top: 4px;
+  }
+
+  /* knowledge check */
+  .kc { margin: 56px 0 24px;
+    background: linear-gradient(180deg, rgba(139, 92, 246,0.04), rgba(139, 92, 246,0) 50%), var(--panel);
+    border: 1px solid var(--line); border-radius: 14px;
+    padding: 28px; position: relative; overflow: hidden; }
+  .kc::before { content: ""; position: absolute; top: 0; left: 0; right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--purple), transparent); }
+  .kc-head { display: flex; align-items: center; gap: 14px; margin-bottom: 18px; }
+  .kc-icon { width: 36px; height: 36px;
+    background: rgba(139, 92, 246,0.12);
+    border: 1px solid rgba(139, 92, 246,0.3);
+    border-radius: 8px;
+    display: grid; place-items: center; }
+  .kc-icon svg { width: 17px; height: 17px; }
+  .kc-label { font-family: var(--mono); font-size: 11px;
+    letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--purple); font-weight: 600; }
+  .kc-title { font-size: 22px; font-weight: 700; letter-spacing: -0.01em; margin: 4px 0 0; }
+  .kc-q { margin-top: 22px; padding-top: 22px; border-top: 1px solid var(--line); }
+  .kc-q:first-of-type { border-top: none; padding-top: 0; margin-top: 0; }
+  .kc-prompt { font-size: 15px; color: var(--text); font-weight: 600;
+    margin-bottom: 14px; line-height: 1.45; }
+  .kc-prompt .qn { display: inline-block; font-family: var(--mono);
+    font-size: 11px; color: var(--purple); margin-right: 8px; letter-spacing: 0.1em; }
+  .kc-prompt code { font-family: var(--mono); font-size: 0.88em;
+    background: rgba(255,255,255,0.04);
+    color: var(--text); padding: 1px 5px;
+    border-radius: 3px; }
+  .kc-opts { display: grid; gap: 8px; }
+  .kc-opt { padding: 12px 16px; background: var(--panel-2);
+    border: 1px solid var(--line); border-radius: 8px;
+    color: #c2cad9; font-size: 14px;
+    cursor: pointer; transition: all 0.18s;
+    text-align: left;
+    display: grid; grid-template-columns: 20px 1fr;
+    gap: 12px; align-items: start;
+    font-family: inherit; line-height: 1.5; }
+  .kc-opt .marker { font-family: var(--mono); font-size: 11px;
+    color: var(--text-mute); margin-top: 2px; }
+  .kc-opt:hover { border-color: var(--purple); color: var(--text); }
+  .kc-opt.correct { border-color: var(--teal);
+    background: rgba(99, 102, 241,0.08); color: var(--teal); }
+  .kc-opt.correct .marker { color: var(--teal); }
+  .kc-opt.wrong { border-color: var(--red);
+    background: rgba(247, 118, 142,0.08); color: var(--red); }
+  .kc-opt.wrong .marker { color: var(--red); }
+  .kc-opt code { font-family: var(--mono); font-size: 0.88em;
+    background: rgba(255,255,255,0.04);
+    color: var(--text); padding: 1px 5px;
+    border-radius: 3px; }
+  .kc-opt.correct code, .kc-opt.wrong code { background: transparent; color: inherit; }
+  .kc-feedback { margin-top: 12px; padding: 10px 14px; border-radius: 6px;
+    font-size: 13px;
+    background: rgba(99, 102, 241,0.06);
+    border-left: 2px solid var(--teal);
+    color: #c2cad9; display: none; line-height: 1.55; }
+  .kc-feedback.show { display: block; }
+  .kc-feedback strong { color: var(--teal); }
+  .kc-feedback code { font-family: var(--mono); font-size: 0.88em;
+    background: rgba(255,255,255,0.04);
+    color: var(--text); padding: 1px 5px;
+    border-radius: 3px; }
+
+  /* resources */
+  .resources { margin-top: 96px; padding-top: 56px; border-top: 1px solid var(--line); }
+  .resources-header { margin-bottom: 36px; }
+  .resources-header .label { font-family: var(--mono); font-size: 11px;
+    letter-spacing: 0.18em; text-transform: uppercase;
+    color: var(--text-mute);
+    display: flex; align-items: center; gap: 12px;
+    margin-bottom: 18px; }
+  .resources-header .label::before { content: ""; width: 28px; height: 1px; background: var(--text-mute); }
+  .resources-header h2.r-h { font-size: clamp(28px, 4vw, 40px);
+    font-weight: 800; letter-spacing: -0.02em;
+    margin-bottom: 14px; line-height: 1.1; }
+  .resources-header h2.r-h .accent { color: var(--teal); }
+  .resources-header .r-sub { color: var(--text-dim); font-size: 15px; max-width: 620px; }
+  .r-card { background: var(--panel); border: 1px solid var(--line);
+    border-radius: 14px; padding: 26px 28px;
+    margin-bottom: 16px; position: relative;
+    transition: border-color 0.2s, transform 0.2s; }
+  .r-card:hover { border-color: var(--line-strong); transform: translateY(-1px); }
+  .r-card::before { content: ""; position: absolute;
+    left: -1px; top: 18px; bottom: 18px;
+    width: 3px; border-radius: 3px;
+    background: var(--accent, var(--teal)); }
+  .r-card.teal { --accent: var(--teal); }
+  .r-card.purple { --accent: var(--purple); }
+  .r-card.pink { --accent: var(--pink); }
+  .r-top { display: flex; align-items: flex-start; gap: 14px; margin-bottom: 16px; }
+  .r-icon { width: 38px; height: 38px; border-radius: 8px;
+    display: grid; place-items: center; flex-shrink: 0;
+    background: rgba(99, 102, 241,0.12);
+    border: 1px solid rgba(99, 102, 241,0.3); }
+  .r-card.purple .r-icon { background: rgba(139, 92, 246,0.12); border-color: rgba(139, 92, 246,0.3); }
+  .r-card.pink .r-icon { background: rgba(247, 118, 142,0.12); border-color: rgba(247, 118, 142,0.3); }
+  .r-icon svg { width: 18px; height: 18px; }
+  .r-titles .kind { font-size: 14px; font-weight: 700; color: var(--text); margin-bottom: 2px; }
+  .r-titles .tagline { font-family: var(--mono); font-size: 11.5px; color: var(--text-mute); }
+  .r-card h3.r-title { font-size: 18px; font-weight: 700;
+    margin-bottom: 10px; letter-spacing: -0.005em; }
+  .r-card.teal h3.r-title { color: var(--teal); }
+  .r-card.purple h3.r-title { color: var(--purple); }
+  .r-card.pink h3.r-title { color: var(--pink); }
+  .r-card p.r-desc { color: #b9c1d2; font-size: 14.5px;
+    line-height: 1.6; margin-bottom: 18px; }
+  .r-card p.r-desc code { font-family: var(--mono); font-size: 0.9em;
+    background: rgba(255,255,255,0.04); color: var(--text);
+    padding: 1px 5px; border-radius: 3px; border: none; }
+  .r-btn { display: inline-flex; align-items: center; gap: 10px;
+    font-family: var(--mono); font-size: 11.5px;
+    letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--text); text-decoration: none;
+    padding: 9px 18px;
+    border: 1px solid var(--line-strong); border-radius: 999px;
+    background: transparent; transition: all 0.18s; }
+  .r-card.teal .r-btn:hover { border-color: var(--teal); color: var(--teal); box-shadow: 0 0 0 4px rgba(99, 102, 241,0.08); }
+  .r-card.purple .r-btn:hover { border-color: var(--purple); color: var(--purple); box-shadow: 0 0 0 4px rgba(139, 92, 246,0.08); }
+  .r-card.pink .r-btn:hover { border-color: var(--pink); color: var(--pink); box-shadow: 0 0 0 4px rgba(247, 118, 142,0.08); }
+
+  .nav-foot { margin-top: 80px; padding-top: 32px;
+    border-top: 1px solid var(--line);
+    display: flex; justify-content: space-between; align-items: center;
+    font-family: var(--mono); font-size: 11.5px;
+    letter-spacing: 0.1em; text-transform: uppercase;
+    color: var(--text-mute); }
+  .nav-foot a { color: var(--teal); text-decoration: none; }
+
+  @media (max-width: 980px) {
+    .layout { grid-template-columns: 1fr; gap: 0; padding: 40px 24px 80px; }
+    .sidebar { display: none; }
+    .ft-body, .ctx-body { grid-template-columns: 1fr; }
+    .ft-tree, .ctx-code { border-right: none; border-bottom: 1px solid var(--line); }
+    .vs-stats { grid-template-columns: 1fr 1fr; }
+    .topbar-inner { padding: 12px 20px; }
+    .track-progress { display: none; }
+  }
+  /* ===== M0 indigo / serif theme overlay ===== */
+  :root { --serif: 'Source Serif 4', Georgia, serif; }
+  h1.module-title { font-family: var(--serif); font-weight: 400; letter-spacing: -0.022em; }
+  h1.module-title .accent { font-style: italic; font-weight: 300; }
+  .lede { font-family: var(--serif); font-weight: 300; }
+  h2 { font-family: var(--serif); font-weight: 400; letter-spacing: -0.01em; }
+  p { font-family: var(--serif); font-weight: 300; }
+  ul.tight li { font-family: var(--serif); font-weight: 300; }
+  p em { font-style: italic; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-inner">
+    <div class="brand"><span class="dot"></span><span>MCP / Masterclass</span></div>
+    <div class="track-progress">
+      <div class="tp-item done">Track 0 · Foundations</div>
+      <div class="tp-item done">Track 1 · Protocol</div>
+      <div class="tp-item current">Track 2 · Servers</div>
+      <div class="tp-item">Track 3 · Clients</div>
+      <div class="tp-item">Track 4 · Security</div>
+      <div class="tp-item">Track 5 · Production</div>
+      <div class="tp-item">Track 6 · Capstone</div>
+    </div>
+    <div class="progress-bar">
+      <span id="progressLabel">0%</span>
+      <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+    </div>
+  </div>
+</div>
+
+<div class="layout">
+
+  <aside class="sidebar">
+    <div class="sb-label">Module 2.0 · Contents</div>
+    <ul class="sb-list" id="sbList">
+      <li><a href="#s1" data-target="s1"><span class="num">01</span><span>The SDK landscape</span></a></li>
+      <li><a href="#s2" data-target="s2"><span class="num">02</span><span>FastMCP vs low-level</span></a></li>
+      <li><a href="#s3" data-target="s3"><span class="num">03</span><span>Project structure</span></a></li>
+      <li><a href="#s4" data-target="s4"><span class="num">04</span><span>Lifespan</span></a></li>
+      <li><a href="#s5" data-target="s5"><span class="num">05</span><span>The Context object</span></a></li>
+      <li><a href="#kc" data-target="kc"><span class="num">✓</span><span>Knowledge check</span></a></li>
+      <li><a href="#res" data-target="res"><span class="num">⌘</span><span>Resources</span></a></li>
+    </ul>
+  </aside>
+
+  <div class="content">
+
+    <div class="crumb">
+      <span class="bar"></span>
+      <span>Track 02 — Building Servers</span>
+      <span class="sep">/</span>
+      <span class="dim">Module 2.0</span>
+    </div>
+
+    <h1 class="module-title">Server <span class="accent">architecture</span> &amp; SDKs.</h1>
+    <p class="lede">
+      Track 1 was about reading the wire. Track 2 is about writing the code that produces it.
+      This first module is the orientation — which SDK to pick, what production projects actually
+      look like, how shared resources survive across requests, and the <code>Context</code> object
+      that every tool function quietly depends on.
+    </p>
+
+    <div class="hero-meta">
+      <div class="m"><span class="m-label">Time</span><span class="m-val">46 min</span></div>
+      <div class="m"><span class="m-label">Format</span><span class="m-val">5 interactive widgets</span></div>
+      <div class="m"><span class="m-label">Opens</span><span class="m-val">Track 2</span></div>
+      <div class="m"><span class="m-label">Stack</span><span class="m-val">Python · FastMCP</span></div>
+    </div>
+
+    <div class="objectives">
+      <div class="obj-header">
+        <div class="obj-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>
+          </svg>
+        </div>
+        <div class="obj-title">What you'll master</div>
+      </div>
+      <ul class="obj-list" id="objList">
+        <li><div class="check" data-i="0">01</div><span>Choose between the official SDKs across 8 languages, knowing what's first-party and what's community.</span></li>
+        <li><div class="check" data-i="1">02</div><span>Decide between FastMCP (decorator-driven) and the low-level SDK by knowing exactly what each one does for you — and what it doesn't.</span></li>
+        <li><div class="check" data-i="2">03</div><span>Lay out a production-shaped MCP project: where lifespan, tools, settings, and tests live.</span></li>
+        <li><div class="check" data-i="3">04</div><span>Wire a lifespan correctly so that DB pools and HTTP clients outlive single requests.</span></li>
+        <li><div class="check" data-i="4">05</div><span>Use the <code>Context</code> object inside tools to log, report progress, sample, elicit, and reach shared resources.</span></li>
+      </ul>
+    </div>
+
+    <!-- ============ SECTION 1 ============ -->
+    <section class="block" id="s1">
+      <div class="section-label"><span class="sn">01</span> &nbsp;The SDK landscape</div>
+      <h2>Eight official languages, three community ones, one set of patterns.</h2>
+
+      <p>
+        MCP's reach is its SDK story. The protocol is an open spec, but most teams reach for a
+        first-party SDK rather than wire it from scratch — and the surface area of those SDKs is
+        what defines the developer experience on each platform. Click any card to see its package
+        name, status, and install line:
+      </p>
+
+      <span class="exercise-tag"><span class="pulse"></span>Explore · click an SDK</span>
+
+      <div class="sdk-w">
+        <div class="sdk-head">
+          <span class="title">SDK Landscape · Official + Community</span>
+        </div>
+        <div class="sdk-grid" id="sdkGrid">
+          <div class="sdk-card active" data-i="py">
+            <div class="lang">Python</div>
+            <div class="pkg">mcp · fastmcp</div>
+            <div class="meta">
+              <span>1st party</span>
+              <span class="status">stable</span>
+            </div>
+          </div>
+          <div class="sdk-card" data-i="ts">
+            <div class="lang">TypeScript</div>
+            <div class="pkg">@modelcontextprotocol/sdk</div>
+            <div class="meta">
+              <span>1st party</span>
+              <span class="status">stable</span>
+            </div>
+          </div>
+          <div class="sdk-card" data-i="go">
+            <div class="lang">Go</div>
+            <div class="pkg">github.com/.../mcp-go</div>
+            <div class="meta">
+              <span>1st party</span>
+              <span class="status">stable</span>
+            </div>
+          </div>
+          <div class="sdk-card" data-i="rust">
+            <div class="lang">Rust</div>
+            <div class="pkg">rmcp</div>
+            <div class="meta">
+              <span>1st party</span>
+              <span class="status">stable</span>
+            </div>
+          </div>
+          <div class="sdk-card" data-i="java">
+            <div class="lang">Java</div>
+            <div class="pkg">io.modelcontextprotocol:sdk</div>
+            <div class="meta">
+              <span>1st party</span>
+              <span class="status">stable</span>
+            </div>
+          </div>
+          <div class="sdk-card" data-i="cs">
+            <div class="lang">C# / .NET</div>
+            <div class="pkg">ModelContextProtocol</div>
+            <div class="meta">
+              <span>1st party</span>
+              <span class="status">stable</span>
+            </div>
+          </div>
+          <div class="sdk-card" data-i="kt">
+            <div class="lang">Kotlin</div>
+            <div class="pkg">mcp-kotlin-sdk</div>
+            <div class="meta">
+              <span>1st party</span>
+              <span class="status beta">beta</span>
+            </div>
+          </div>
+          <div class="sdk-card" data-i="swift">
+            <div class="lang">Swift</div>
+            <div class="pkg">mcp-swift-sdk</div>
+            <div class="meta">
+              <span>1st party</span>
+              <span class="status beta">beta</span>
+            </div>
+          </div>
+          <div class="sdk-card" data-i="ruby">
+            <div class="lang">Ruby</div>
+            <div class="pkg">mcp (gem)</div>
+            <div class="meta">
+              <span>Community</span>
+              <span class="status community">community</span>
+            </div>
+          </div>
+          <div class="sdk-card" data-i="elixir">
+            <div class="lang">Elixir</div>
+            <div class="pkg">hermes_mcp</div>
+            <div class="meta">
+              <span>Community</span>
+              <span class="status community">community</span>
+            </div>
+          </div>
+        </div>
+        <div class="sdk-detail" id="sdkDetail"></div>
+      </div>
+
+      <div class="callout">
+        <div class="tag">What "1st party" actually means</div>
+        <p>
+          First-party SDKs are maintained by Anthropic and the MCP working groups, tracked against
+          the latest spec revision, and ship within days of each revision. Community SDKs are
+          excellent but lag behind on new features; check their changelog before betting a
+          production server on a freshly-spec'd capability.
+        </p>
+      </div>
+    </section>
+
+    <!-- ============ SECTION 2 ============ -->
+    <section class="block" id="s2">
+      <div class="section-label"><span class="sn">02</span> &nbsp;FastMCP vs the low-level SDK</div>
+      <h2>The same server, two different conversations with the protocol.</h2>
+
+      <p>
+        Python ships two layers in the same SDK family. The <strong>low-level SDK</strong>
+        (<code>mcp.server</code>) is an imperative protocol library — you register handlers for
+        each method, build Tool objects by hand, manage content serialization yourself.
+        <strong>FastMCP</strong> sits on top of it and does almost all of that work via
+        introspection of your function signatures and docstrings. Toggle between the two
+        implementations of the same tool to see what FastMCP is buying you:
+      </p>
+
+      <span class="exercise-tag"><span class="pulse"></span>Compare · toggle the layer</span>
+
+      <div class="vs-w mode-fast" id="vsW">
+        <div class="vs-head">
+          <span class="title">Same Tool · Two Implementations</span>
+          <div class="vs-toggle">
+            <button class="fast active" data-mode="fast">FastMCP</button>
+            <button class="low" data-mode="low">Low-level SDK</button>
+          </div>
+        </div>
+        <div class="vs-stats" id="vsStats"></div>
+        <div class="vs-body">
+          <pre class="vs-pre" id="vsPre"></pre>
+        </div>
+        <div class="vs-explain" id="vsExplain"></div>
+      </div>
+
+      <h3 class="sub"><span class="num">›</span> When to drop down to the low-level SDK</h3>
+      <p>
+        FastMCP is the right default. There are a few real cases for going lower:
+      </p>
+
+      <ul class="tight">
+        <li><strong>Dynamic tools.</strong> Tool list computed at runtime from a database. FastMCP's decorator model assumes tools are known at import time; the low-level <code>list_tools</code> handler can return anything you want.</li>
+        <li><strong>Non-Python schemas.</strong> If your tool's input shape doesn't fit cleanly into Python type hints (deeply nested unions, custom JSON Schema constructs FastMCP doesn't generate), you can ship the schema by hand at the low level.</li>
+        <li><strong>Embedding MCP into a larger app.</strong> When you're not running an MCP server as the main process — you're hosting it as one feature of a bigger application — the low-level SDK gives you the integration surface to plug into your existing event loop.</li>
+      </ul>
+
+      <div class="callout purple">
+        <div class="tag">Mixed-mode is legal</div>
+        <p>You can take a FastMCP app and reach into its underlying low-level server when you need to. <code>mcp._mcp_server</code> exposes the raw <code>Server</code> from <code>mcp.server</code>, and you can register additional low-level handlers next to the decorator-generated ones. Use this sparingly — it's a clear signal in code that something exotic is happening.</p>
+      </div>
+    </section>
+
+    <!-- ============ SECTION 3 ============ -->
+    <section class="block" id="s3">
+      <div class="section-label"><span class="sn">03</span> &nbsp;Project structure</div>
+      <h2>What a production MCP server looks like on disk.</h2>
+
+      <p>
+        The single-file <code>server.py</code> from Module 0.2 is fine for a hello-world. Anything
+        you're going to deploy needs a real layout. Click any file or directory in the tree to see
+        what it's for, what it contains, and how it interacts with the rest:
+      </p>
+
+      <span class="exercise-tag"><span class="pulse"></span>Explore · navigate the tree</span>
+
+      <div class="ft-w">
+        <div class="ft-head">
+          <span class="title">Reference Project Layout · src/</span>
+        </div>
+        <div class="ft-body">
+          <div class="ft-tree" id="ftTree">
+            <div class="ft-node dir depth-1" data-id="root"><span class="ico">▸</span>my-mcp-server/</div>
+            <div class="ft-node file depth-2" data-id="pyproject"><span class="ico">⚙</span>pyproject.toml</div>
+            <div class="ft-node file depth-2" data-id="env"><span class="ico">○</span>.env.example</div>
+            <div class="ft-node file depth-2" data-id="readme"><span class="ico">⬚</span>README.md</div>
+            <div class="ft-node dir depth-2" data-id="src"><span class="ico">▸</span>src/</div>
+            <div class="ft-node dir depth-3" data-id="pkg"><span class="ico">▸</span>my_server/</div>
+            <div class="ft-node file depth-4 active" data-id="serverpy"><span class="ico">▤</span>server.py</div>
+            <div class="ft-node file depth-4" data-id="settings"><span class="ico">▤</span>settings.py</div>
+            <div class="ft-node file depth-4" data-id="lifespan"><span class="ico">▤</span>lifespan.py</div>
+            <div class="ft-node dir depth-4" data-id="tools"><span class="ico">▸</span>tools/</div>
+            <div class="ft-node file depth-4" data-id="search"><span class="ico">▤</span>tools/search.py</div>
+            <div class="ft-node file depth-4" data-id="fetch"><span class="ico">▤</span>tools/fetch.py</div>
+            <div class="ft-node dir depth-4" data-id="resources"><span class="ico">▸</span>resources/</div>
+            <div class="ft-node file depth-4" data-id="docs"><span class="ico">▤</span>resources/docs.py</div>
+            <div class="ft-node dir depth-2" data-id="tests"><span class="ico">▸</span>tests/</div>
+            <div class="ft-node file depth-3" data-id="testtools"><span class="ico">▤</span>test_tools.py</div>
+            <div class="ft-node file depth-3" data-id="conftest"><span class="ico">▤</span>conftest.py</div>
+            <div class="ft-node dir depth-2" data-id="deploy"><span class="ico">▸</span>deployments/</div>
+            <div class="ft-node file depth-3" data-id="dockerfile"><span class="ico">⚙</span>Dockerfile</div>
+            <div class="ft-node file depth-3" data-id="dtcfg"><span class="ico">⚙</span>claude-desktop.json</div>
+          </div>
+          <div class="ft-detail" id="ftDetail"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ SECTION 4 ============ -->
+    <section class="block" id="s4">
+      <div class="section-label"><span class="sn">04</span> &nbsp;Lifespan</div>
+      <h2>How shared resources survive across requests.</h2>
+
+      <p>
+        Every tool call doesn't get a fresh DB connection — that would be catastrophic at any
+        meaningful traffic. Heavy resources (database pools, HTTP clients, model caches) get
+        created <strong>once</strong> at server startup, kept alive across the server's entire
+        lifetime, and torn down cleanly at shutdown. That's what lifespan is. Press play to watch
+        a server's lifespan unfold:
+      </p>
+
+      <span class="exercise-tag"><span class="pulse"></span>Watch · play the lifecycle</span>
+
+      <div class="lf-w" id="lfW">
+        <div class="lf-head">
+          <span class="title">Server Lifecycle · Resources Across Time</span>
+          <div class="lf-controls">
+            <button class="lf-btn" id="lfReset">↺ Reset</button>
+            <button class="lf-btn primary" id="lfPlay">▶ Play</button>
+          </div>
+        </div>
+        <div class="lf-stage-bar">
+          <div class="lf-stages" id="lfStages">
+            <div class="lf-stage startup" data-i="0">Startup</div>
+            <div class="lf-stage req" data-i="1">Request 1</div>
+            <div class="lf-stage req" data-i="2">Request 2</div>
+            <div class="lf-stage req" data-i="3">Request 3</div>
+            <div class="lf-stage shut" data-i="4">Shutdown</div>
+          </div>
+        </div>
+        <div class="lf-body">
+          <div class="lf-resources">
+            <div class="lf-res-h">Shared resources</div>
+            <div class="lf-res-grid">
+              <div class="lf-res" id="lfDB">
+                <div class="name">db_pool</div>
+                <div class="desc">PostgreSQL connection pool</div>
+              </div>
+              <div class="lf-res" id="lfHttp">
+                <div class="name">http_client</div>
+                <div class="desc">Async httpx.AsyncClient</div>
+              </div>
+              <div class="lf-res" id="lfCache">
+                <div class="name">cache</div>
+                <div class="desc">In-process LRU cache</div>
+              </div>
+              <div class="lf-res" id="lfMetrics">
+                <div class="name">metrics</div>
+                <div class="desc">OTel meter + counters</div>
+              </div>
+            </div>
+          </div>
+          <div class="lf-narration" id="lfNarr">
+            <div class="lbl">Stage</div>
+            <h4>Ready to start</h4>
+            <p>Press play to watch the lifespan progress through startup, three requests, and shutdown. The shared resources above will come alive at startup, persist through every request, and tear down only at shutdown.</p>
+          </div>
+        </div>
+      </div>
+
+      <h3 class="sub"><span class="num">›</span> The actual FastMCP shape</h3>
+
+<pre class="vs-pre" style="border-left-color: var(--teal);"><span class="k">from</span> contextlib <span class="k">import</span> asynccontextmanager
+<span class="k">from</span> fastmcp <span class="k">import</span> FastMCP
+<span class="k">import</span> httpx, asyncpg
+
+<span class="d">@asynccontextmanager</span>
+<span class="k">async def</span> <span class="f">app_lifespan</span>(server):
+    <span class="c"># Startup: build expensive shared things</span>
+    db = <span class="k">await</span> asyncpg.<span class="f">create_pool</span>(dsn=settings.DB_URL)
+    http = httpx.<span class="f">AsyncClient</span>(timeout=<span class="n">30</span>)
+    <span class="k">try</span>:
+        <span class="k">yield</span> {<span class="s">"db"</span>: db, <span class="s">"http"</span>: http}
+    <span class="k">finally</span>:
+        <span class="c"># Shutdown: drain and close, in reverse order</span>
+        <span class="k">await</span> http.<span class="f">aclose</span>()
+        <span class="k">await</span> db.<span class="f">close</span>()
+
+mcp = <span class="f">FastMCP</span>(<span class="s">"my-server"</span>, lifespan=app_lifespan)</pre>
+
+      <div class="callout amber">
+        <div class="tag">The reverse-order shutdown rule</div>
+        <p>
+          Tear down resources in reverse of the order you set them up. If your HTTP client makes
+          calls during its <code>aclose()</code> that need the DB pool, closing the DB pool first
+          leaves the HTTP client mid-call against a dead connection. <code>try/finally</code> with
+          ordered <code>await</code>s in reverse is the entire pattern. Async context-managers do
+          this automatically; manual lifespans need the discipline.
+        </p>
+      </div>
+    </section>
+
+    <!-- ============ SECTION 5 ============ -->
+    <section class="block" id="s5">
+      <div class="section-label"><span class="sn">05</span> &nbsp;The Context object</div>
+      <h2>The handle every tool function quietly gets.</h2>
+
+      <p>
+        FastMCP inspects your tool function's signature. If it sees a parameter typed as
+        <code>Context</code>, it skips that parameter in the JSON Schema (the LLM doesn't know
+        about it) and injects the live Context at call time. The Context is your interface back
+        into the running server — logging, progress reporting, sampling, elicitation, and access
+        to lifespan resources all flow through it. Click any highlighted call to see what it does:
+      </p>
+
+      <span class="exercise-tag"><span class="pulse"></span>Explore · click a ctx call</span>
+
+      <div class="ctx-w">
+        <div class="ctx-head">
+          <span class="title">Context Inspector</span>
+          <span class="hint">Tap a highlighted call →</span>
+        </div>
+        <div class="ctx-body">
+          <pre class="ctx-code" id="ctxCode"><span class="k">from</span> fastmcp <span class="k">import</span> FastMCP, Context
+
+mcp = <span class="f">FastMCP</span>(<span class="s">"research-server"</span>)
+
+<span class="d">@mcp.tool</span>
+<span class="k">async def</span> <span class="f">deep_research</span>(
+    query: <span class="k">str</span>,
+    ctx: Context,
+) -> <span class="k">str</span>:
+    <span class="s">"""Run a multi-source research pipeline."""</span>
+
+    <span class="c"># 1) Log to the host's debug panel</span>
+    <span class="k">await</span> <span class="ctx-hit" data-id="info">ctx.info(<span class="s">f"Starting research: {query}"</span>)</span>
+
+    <span class="c"># 2) Reach into the lifespan-shared HTTP client</span>
+    http = <span class="ctx-hit" data-id="lifespan">ctx.request_context.lifespan_context</span>[<span class="s">"http"</span>]
+    docs = <span class="k">await</span> http.<span class="f">get</span>(...)
+
+    <span class="c"># 3) Stream progress updates as we work</span>
+    <span class="k">for</span> i, doc <span class="k">in</span> <span class="f">enumerate</span>(docs):
+        <span class="k">await</span> <span class="ctx-hit" data-id="progress">ctx.report_progress(i, total=<span class="f">len</span>(docs))</span>
+
+    <span class="c"># 4) Ask the LLM (via the client) to summarise</span>
+    summary = <span class="k">await</span> <span class="ctx-hit" data-id="sample">ctx.sample(messages=[...], max_tokens=<span class="n">500</span>)</span>
+
+    <span class="c"># 5) Ask the user for confirmation before writing</span>
+    confirm = <span class="k">await</span> <span class="ctx-hit" data-id="elicit">ctx.elicit(<span class="s">"Save these findings?"</span>, schema=...)</span>
+
+    <span class="c"># 6) The id of this very request — useful for tracing</span>
+    log.<span class="f">info</span>(<span class="s">f"Done · req={<span class="ctx-hit" data-id="reqid">ctx.request_id</span>}"</span>)
+
+    <span class="k">return</span> summary.text</pre>
+          <div class="ctx-side" id="ctxSide">
+            <div class="placeholder">Each of the highlighted calls is a different facet of the <code>ctx</code> object. Click any one to see exactly what it does on the wire, what host features it depends on, and the capability flag (if any) the client must have advertised.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="callout">
+        <div class="tag">Type-hint, not parameter name</div>
+        <p>
+          FastMCP injects based on <em>type</em>, not parameter name. <code>ctx: Context</code>,
+          <code>c: Context</code>, <code>my_context: Context</code> — all work. The convention is
+          <code>ctx</code>, but the framework doesn't care. What it <em>does</em> care about: the
+          <code>Context</code> parameter does <em>not</em> appear in the tool's JSON Schema, so
+          the LLM never knows it exists. Caller LLM passes only the "real" arguments; FastMCP
+          fills in the Context automatically.
+        </p>
+      </div>
+    </section>
+
+    <!-- ============ KNOWLEDGE CHECK ============ -->
+    <section class="kc" id="kc">
+      <div class="kc-head">
+        <div class="kc-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
+          </svg>
+        </div>
+        <div>
+          <div class="kc-label">Knowledge Check · End of Module 2.0</div>
+          <div class="kc-title">Five quick checks before Module 2.1.</div>
+        </div>
+      </div>
+
+      <div class="kc-q">
+        <div class="kc-prompt"><span class="qn">Q1.</span>You need to expose 200 tools whose definitions are computed from a SQL query at server startup. Which approach fits best?</div>
+        <div class="kc-opts" data-q="0" data-correct="2">
+          <button class="kc-opt"><span class="marker">A</span><span>Write 200 <code>@mcp.tool</code> decorated functions by hand</span></button>
+          <button class="kc-opt"><span class="marker">B</span><span>Generate Python source code at build time</span></button>
+          <button class="kc-opt"><span class="marker">C</span><span>Drop to the low-level SDK and implement <code>list_tools</code> / <code>call_tool</code> handlers that read from the DB</span></button>
+          <button class="kc-opt"><span class="marker">D</span><span>You can't — MCP requires tools to be statically defined</span></button>
+        </div>
+        <div class="kc-feedback"><strong>Correct.</strong> FastMCP's decorator model assumes tools are known at import time. When that doesn't hold, the low-level SDK's <code>list_tools</code> handler can return any computed list at runtime.</div>
+      </div>
+
+      <div class="kc-q">
+        <div class="kc-prompt"><span class="qn">Q2.</span>Why is the lifespan context manager strictly preferred over creating a DB pool inside each tool function?</div>
+        <div class="kc-opts" data-q="1" data-correct="1">
+          <button class="kc-opt"><span class="marker">A</span><span>It isn't — there's no difference</span></button>
+          <button class="kc-opt"><span class="marker">B</span><span>Per-call pool creation exhausts connections, blows out latency, and breaks down under any real concurrency</span></button>
+          <button class="kc-opt"><span class="marker">C</span><span>Lifespan is required by the MCP spec</span></button>
+          <button class="kc-opt"><span class="marker">D</span><span>FastMCP refuses to start without one</span></button>
+        </div>
+        <div class="kc-feedback"><strong>Right.</strong> Creating a connection pool inside each tool call defeats the purpose of pooling. Lifespan creates expensive things once, shares them across the server's lifetime, and tears them down cleanly.</div>
+      </div>
+
+      <div class="kc-q">
+        <div class="kc-prompt"><span class="qn">Q3.</span>A tool function has signature <code>def fetch(url: str, ctx: Context) -> str</code>. What does the LLM see in the input schema?</div>
+        <div class="kc-opts" data-q="2" data-correct="0">
+          <button class="kc-opt"><span class="marker">A</span><span>Only <code>url</code> — Context parameters are filtered out of the schema</span></button>
+          <button class="kc-opt"><span class="marker">B</span><span>Both <code>url</code> and <code>ctx</code>, with ctx typed as an object</span></button>
+          <button class="kc-opt"><span class="marker">C</span><span>Only <code>ctx</code></span></button>
+          <button class="kc-opt"><span class="marker">D</span><span>Neither — FastMCP refuses to introspect mixed signatures</span></button>
+        </div>
+        <div class="kc-feedback"><strong>Yes.</strong> FastMCP detects the <code>Context</code> type, removes that parameter from the published schema, and injects the live Context at call time. The LLM never knows it exists.</div>
+      </div>
+
+      <div class="kc-q">
+        <div class="kc-prompt"><span class="qn">Q4.</span>Your tool calls <code>await ctx.sample(messages=…)</code>. The host responds with an error <code>"sampling not supported by client"</code>. Most likely cause?</div>
+        <div class="kc-opts" data-q="3" data-correct="2">
+          <button class="kc-opt"><span class="marker">A</span><span>You need to upgrade FastMCP</span></button>
+          <button class="kc-opt"><span class="marker">B</span><span>The server didn't advertise the <code>sampling</code> capability</span></button>
+          <button class="kc-opt"><span class="marker">C</span><span>The <em>client</em> didn't advertise the <code>sampling</code> capability during initialize — sampling is a server→client request and the client must opt in</span></button>
+          <button class="kc-opt"><span class="marker">D</span><span>Your tool is missing the <code>async</code> keyword</span></button>
+        </div>
+        <div class="kc-feedback"><strong>Exactly.</strong> Sampling is bidirectional with the request going server→client. The client gates it via its own capabilities at handshake. If the host (Claude Desktop, Cursor) hasn't declared <code>sampling</code>, your <code>ctx.sample()</code> will fail no matter what your server says.</div>
+      </div>
+
+      <div class="kc-q">
+        <div class="kc-prompt"><span class="qn">Q5.</span>In a lifespan that creates a DB pool then an HTTP client, what's the correct shutdown order?</div>
+        <div class="kc-opts" data-q="4" data-correct="1">
+          <button class="kc-opt"><span class="marker">A</span><span>Close DB first, then HTTP — same order as setup</span></button>
+          <button class="kc-opt"><span class="marker">B</span><span>Close HTTP first, then DB — reverse order of setup, so dependencies stay alive while their dependents are still draining</span></button>
+          <button class="kc-opt"><span class="marker">C</span><span>Close them in parallel — fastest shutdown</span></button>
+          <button class="kc-opt"><span class="marker">D</span><span>Order doesn't matter</span></button>
+        </div>
+        <div class="kc-feedback"><strong>Right.</strong> Reverse-order shutdown ensures that anything still using the DB pool (like an HTTP client mid-call) can finish cleanly before its dependencies disappear underneath it.</div>
+      </div>
+    </section>
+
+    <!-- ============ RESOURCES ============ -->
+    <section class="resources" id="res">
+      <div class="resources-header">
+        <div class="label">Learn &amp; Practice</div>
+        <h2 class="r-h">Resources for going <span class="accent">deeper</span></h2>
+        <p class="r-sub">
+          The two SDKs this module compares, and the spec's SDK landing page where every official
+          language's repo is linked from one place.
+        </p>
+      </div>
+
+      <div class="r-card teal">
+        <div class="r-top">
+          <div class="r-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+            </svg>
+          </div>
+          <div class="r-titles">
+            <div class="kind">FastMCP — full docs</div>
+            <div class="tagline">The framework you'll use daily</div>
+          </div>
+        </div>
+        <h3 class="r-title">gofastmcp.com</h3>
+        <p class="r-desc">
+          The full FastMCP documentation site. Goes deep on decorators, lifespan, context,
+          composition (mounting servers inside other servers), and the OpenAPI provider for
+          wrapping existing REST APIs. Treat the <em>Server</em> and <em>Context</em> pages as
+          companions to Modules 2.0–2.5.
+        </p>
+        <a class="r-btn" href="https://gofastmcp.com" target="_blank" rel="noopener">
+          <span class="arr">↗</span> Open docs
+        </a>
+      </div>
+
+      <div class="r-card purple">
+        <div class="r-top">
+          <div class="r-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M16 18l6-6-6-6"/><path d="M8 6l-6 6 6 6"/>
+            </svg>
+          </div>
+          <div class="r-titles">
+            <div class="kind">Official Python SDK</div>
+            <div class="tagline">The low-level layer underneath</div>
+          </div>
+        </div>
+        <h3 class="r-title">modelcontextprotocol/python-sdk</h3>
+        <p class="r-desc">
+          The repo for the official <code>mcp</code> Python package — including
+          <code>mcp.server</code>, the low-level interface FastMCP builds on. Read the
+          <em>examples/</em> directory for hand-written servers and the <em>server.py</em> source
+          to see what FastMCP's decorators dispatch into.
+        </p>
+        <a class="r-btn" href="https://github.com/modelcontextprotocol/python-sdk" target="_blank" rel="noopener">
+          <span class="arr">↗</span> Explore repo
+        </a>
+      </div>
+
+      <div class="r-card pink">
+        <div class="r-top">
+          <div class="r-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#f7768e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+            </svg>
+          </div>
+          <div class="r-titles">
+            <div class="kind">All official SDKs</div>
+            <div class="tagline">One page · every language</div>
+          </div>
+        </div>
+        <h3 class="r-title">MCP SDK Index</h3>
+        <p class="r-desc">
+          The canonical list of official SDKs maintained by the MCP project. Each entry links to
+          the relevant repo, package registry page, and quickstart. The one place to confirm
+          whether a language has first-party support before you commit a project to it.
+        </p>
+        <a class="r-btn" href="https://modelcontextprotocol.io/docs/sdks" target="_blank" rel="noopener">
+          <span class="arr">↗</span> See SDKs
+        </a>
+      </div>
+    </section>
+
+    <div class="nav-foot">
+      <span>← <a href="#">1.3 Capabilities &amp; Evolution</a></span>
+      <span>Next → <a href="#">2.1 Tools — the workhorse primitive</a></span>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// ============ SDK LANDSCAPE ============
+const sdkData = {
+  py: {
+    name: 'Python',
+    pkg: 'mcp · fastmcp',
+    desc: 'The canonical SDK. Ships the low-level <code>mcp.server</code> module and the higher-level <code>fastmcp</code> framework. Pydantic-based schema generation, async-first, mature ecosystem of community examples.',
+    install: 'uv add fastmcp'
+  },
+  ts: {
+    name: 'TypeScript / Node',
+    pkg: '@modelcontextprotocol/sdk',
+    desc: 'The browser- and Node-friendly SDK. Strong types via TypeScript, Zod for runtime validation, ships with both client and server APIs. The de-facto choice for browser-based hosts.',
+    install: 'npm install @modelcontextprotocol/sdk'
+  },
+  go: {
+    name: 'Go',
+    pkg: 'github.com/modelcontextprotocol/go-sdk',
+    desc: 'Idiomatic Go API with goroutine-based concurrency for the server side. Strong fit for sidecar-style deployments and infra tools that already live in the Go ecosystem.',
+    install: 'go get github.com/modelcontextprotocol/go-sdk'
+  },
+  rust: {
+    name: 'Rust',
+    pkg: 'rmcp',
+    desc: 'Native async Rust via Tokio. Zero-cost abstractions over the protocol. Common choice for performance-sensitive servers where the runtime overhead of Python or Node would dominate.',
+    install: 'cargo add rmcp'
+  },
+  java: {
+    name: 'Java',
+    pkg: 'io.modelcontextprotocol:sdk',
+    desc: 'Maven Central artifact. Works with Spring Boot via a dedicated starter. Common for embedding MCP into enterprise Java applications where Python isn\'t on the table.',
+    install: 'implementation "io.modelcontextprotocol:sdk:0.x"'
+  },
+  cs: {
+    name: 'C# / .NET',
+    pkg: 'ModelContextProtocol',
+    desc: 'First-party .NET SDK, NuGet-distributed. Integrates with Microsoft\'s Semantic Kernel and the broader .NET AI stack. Async/await throughout.',
+    install: 'dotnet add package ModelContextProtocol'
+  },
+  kt: {
+    name: 'Kotlin',
+    pkg: 'mcp-kotlin-sdk',
+    desc: 'Coroutine-based. Currently beta. Strong fit for Android-side hosts and JVM services where Kotlin\'s safer null-handling and DSL features pay off over plain Java.',
+    install: 'implementation("io.modelcontextprotocol:kotlin-sdk:0.x")'
+  },
+  swift: {
+    name: 'Swift',
+    pkg: 'mcp-swift-sdk',
+    desc: 'Swift Concurrency-based. Currently beta. Targets macOS/iOS hosts and any Swift-on-the-server workload. The path for native Apple-platform MCP hosts.',
+    install: '.package(url: "https://github.com/.../mcp-swift-sdk")'
+  },
+  ruby: {
+    name: 'Ruby',
+    pkg: 'mcp (gem)',
+    desc: 'Community-maintained gem. Solid for Rails-backed servers. Track its changelog against the spec — community SDKs lag a few weeks behind first-party for new revisions.',
+    install: 'gem install mcp'
+  },
+  elixir: {
+    name: 'Elixir',
+    pkg: 'hermes_mcp',
+    desc: 'Community library leveraging Elixir\'s actor model for natural per-session isolation. Less common but a clean fit for the language.',
+    install: 'mix.exs: {:hermes_mcp, "~> 0.x"}'
+  }
+};
+
+const sdkGrid = document.getElementById('sdkGrid');
+const sdkDetail = document.getElementById('sdkDetail');
+function renderSdk(id) {
+  sdkGrid.querySelectorAll('.sdk-card').forEach(c => c.classList.toggle('active', c.dataset.i === id));
+  const d = sdkData[id];
+  sdkDetail.innerHTML = `
+    <div class="pk">${d.name}</div>
+    <h4>${d.pkg}</h4>
+    <p>${d.desc}</p>
+    <div class="sdk-install"><span class="prompt">$</span>${d.install}</div>
+  `;
+}
+sdkGrid.querySelectorAll('.sdk-card').forEach(c => {
+  c.onclick = () => renderSdk(c.dataset.i);
+});
+renderSdk('py');
+
+// ============ FASTMCP VS LOW-LEVEL ============
+const vsCode = {
+  fast: {
+    code: `<span class="k">from</span> fastmcp <span class="k">import</span> FastMCP
+
+mcp = <span class="f">FastMCP</span>(<span class="s">"hello"</span>)
+
+<span class="d">@mcp.tool</span>
+<span class="k">def</span> <span class="f">say_hello</span>(name: <span class="k">str</span>, excited: <span class="k">bool</span> = <span class="n">False</span>) -> <span class="k">str</span>:
+    <span class="s">"""Greet someone by name."""</span>
+    suffix = <span class="s">"!"</span> <span class="k">if</span> excited <span class="k">else</span> <span class="s">"."</span>
+    <span class="k">return</span> <span class="s">f"Hello, {name}{suffix}"</span>
+
+<span class="k">if</span> __name__ == <span class="s">"__main__"</span>:
+    mcp.<span class="f">run</span>()`,
+    explain: '<strong>FastMCP does five things for you here:</strong> introspects the signature to build a Pydantic model; derives the JSON Schema from that model; parses the docstring into the tool description; registers a dispatch handler under <code>say_hello</code>; wraps the return value in <code>[{"type": "text", "text": …}]</code>. The result on the wire is identical to the low-level version — but you wrote one decorator and a function.',
+    stats: [
+      { v: '12', k: 'lines' },
+      { v: '0', k: 'boilerplate' },
+      { v: 'auto', k: 'schema gen' },
+      { v: 'auto', k: 'serialization' }
+    ]
+  },
+  low: {
+    code: `<span class="k">from</span> mcp.server <span class="k">import</span> Server
+<span class="k">from</span> mcp.server.stdio <span class="k">import</span> stdio_server
+<span class="k">import</span> mcp.types <span class="k">as</span> types
+<span class="k">import</span> asyncio
+
+server = <span class="f">Server</span>(<span class="s">"hello"</span>)
+
+<span class="d">@server.list_tools</span>()
+<span class="k">async def</span> <span class="f">handle_list_tools</span>() -> <span class="k">list</span>[types.Tool]:
+    <span class="k">return</span> [types.<span class="f">Tool</span>(
+        name=<span class="s">"say_hello"</span>,
+        description=<span class="s">"Greet someone by name."</span>,
+        inputSchema={
+            <span class="s">"type"</span>: <span class="s">"object"</span>,
+            <span class="s">"properties"</span>: {
+                <span class="s">"name"</span>: {<span class="s">"type"</span>: <span class="s">"string"</span>},
+                <span class="s">"excited"</span>: {<span class="s">"type"</span>: <span class="s">"boolean"</span>, <span class="s">"default"</span>: <span class="k">False</span>},
+            },
+            <span class="s">"required"</span>: [<span class="s">"name"</span>],
+        },
+    )]
+
+<span class="d">@server.call_tool</span>()
+<span class="k">async def</span> <span class="f">handle_call_tool</span>(name: <span class="k">str</span>, args: <span class="k">dict</span>) -> <span class="k">list</span>[types.TextContent]:
+    <span class="k">if</span> name == <span class="s">"say_hello"</span>:
+        n, ex = args[<span class="s">"name"</span>], args.<span class="f">get</span>(<span class="s">"excited"</span>, <span class="k">False</span>)
+        suffix = <span class="s">"!"</span> <span class="k">if</span> ex <span class="k">else</span> <span class="s">"."</span>
+        <span class="k">return</span> [types.<span class="f">TextContent</span>(type=<span class="s">"text"</span>, text=<span class="s">f"Hello, {n}{suffix}"</span>)]
+    <span class="k">raise</span> <span class="f">ValueError</span>(<span class="s">f"Unknown tool: {name}"</span>)
+
+<span class="k">async def</span> <span class="f">main</span>():
+    <span class="k">async with</span> <span class="f">stdio_server</span>() <span class="k">as</span> (read, write):
+        <span class="k">await</span> server.<span class="f">run</span>(read, write, server.<span class="f">create_initialization_options</span>())
+
+asyncio.<span class="f">run</span>(<span class="f">main</span>())`,
+    explain: '<strong>Every single thing FastMCP did is now your job:</strong> declare the Tool object by hand (including the literal JSON Schema), implement the dispatch with <code>if name == "..."</code>, construct the TextContent wrapper manually, wire up stdio_server, drive the event loop. It works identically, but you carry the entire surface — and you have to keep it in sync when you add a new tool.',
+    stats: [
+      { v: '32', k: 'lines' },
+      { v: '~70%', k: 'boilerplate' },
+      { v: 'manual', k: 'schema gen' },
+      { v: 'manual', k: 'serialization' }
+    ]
+  }
+};
+
+const vsW = document.getElementById('vsW');
+const vsPre = document.getElementById('vsPre');
+const vsExplain = document.getElementById('vsExplain');
+const vsStats = document.getElementById('vsStats');
+
+function renderVs(mode) {
+  vsW.classList.remove('mode-fast', 'mode-low');
+  vsW.classList.add('mode-' + mode);
+  document.querySelectorAll('.vs-toggle button').forEach(b => {
+    b.classList.toggle('active', b.dataset.mode === mode);
+  });
+  const d = vsCode[mode];
+  vsPre.innerHTML = d.code;
+  vsExplain.innerHTML = d.explain;
+  vsStats.innerHTML = d.stats.map(s => `<div class="vs-stat"><div class="v">${s.v}</div><div class="k">${s.k}</div></div>`).join('');
+}
+document.querySelectorAll('.vs-toggle button').forEach(b => b.onclick = () => renderVs(b.dataset.mode));
+renderVs('fast');
+
+// ============ FILE TREE ============
+const ftData = {
+  root: {
+    path: 'my-mcp-server/',
+    role: 'project root',
+    h: 'Project root',
+    p: 'Top-level directory. Holds the Python project metadata, the source package, tests, and any deployment artifacts. Everything else nests under this one folder.'
+  },
+  pyproject: {
+    path: 'my-mcp-server/pyproject.toml',
+    role: 'project metadata',
+    h: 'pyproject.toml',
+    p: 'PEP 621 project metadata: package name, version, dependencies, scripts. Where you declare <code>fastmcp</code> as a dependency and configure tools like ruff and pytest.',
+    code: `<span class="k">[project]</span>
+name = <span class="s">"my-mcp-server"</span>
+version = <span class="s">"0.1.0"</span>
+requires-python = <span class="s">">=3.10"</span>
+dependencies = [
+  <span class="s">"fastmcp>=2.0"</span>,
+  <span class="s">"httpx"</span>,
+  <span class="s">"asyncpg"</span>,
+  <span class="s">"pydantic-settings"</span>,
+]
+
+<span class="k">[project.scripts]</span>
+my-server = <span class="s">"my_server.server:main"</span>`
+  },
+  env: {
+    path: 'my-mcp-server/.env.example',
+    role: 'env template',
+    h: '.env.example',
+    p: 'Template for environment variables. Committed to git. Each developer copies it to <code>.env</code> locally and fills in real values. <code>.env</code> itself goes in <code>.gitignore</code> — never commit secrets.',
+    code: `DB_URL=postgresql://localhost/myapp
+API_KEY=
+LOG_LEVEL=info`
+  },
+  readme: {
+    path: 'my-mcp-server/README.md',
+    role: 'documentation',
+    h: 'README.md',
+    p: 'The first thing anyone reads. At minimum: what the server does, install line, run line, and the host config snippet (Claude Desktop / Cursor / VS Code JSON).'
+  },
+  src: {
+    path: 'my-mcp-server/src/',
+    role: 'src layout',
+    h: 'src/',
+    p: 'Standard Python "src layout" — the importable package lives one level down rather than at the repo root. Forces you to install the package to test it, which catches packaging bugs early.'
+  },
+  pkg: {
+    path: 'src/my_server/',
+    role: 'main package',
+    h: 'my_server/',
+    p: 'The importable Python package. All your server code lives under here. Sub-modules organise by concern: <code>server.py</code> is the FastMCP entry, <code>tools/</code> and <code>resources/</code> hold the primitives.'
+  },
+  serverpy: {
+    path: 'src/my_server/server.py',
+    role: 'entry point',
+    h: 'server.py',
+    p: 'The <code>FastMCP</code> instance lives here, plus the <code>main()</code> function the host invokes. Imports tool/resource modules to register them. Should stay small — this file is plumbing, not logic.',
+    code: `<span class="k">from</span> fastmcp <span class="k">import</span> FastMCP
+<span class="k">from</span> .lifespan <span class="k">import</span> app_lifespan
+<span class="k">from</span> .tools <span class="k">import</span> search, fetch
+<span class="k">from</span> .resources <span class="k">import</span> docs
+
+mcp = <span class="f">FastMCP</span>(<span class="s">"my-server"</span>, lifespan=app_lifespan)
+
+<span class="c"># Each module registers its own tools/resources on import</span>
+search.<span class="f">register</span>(mcp)
+fetch.<span class="f">register</span>(mcp)
+docs.<span class="f">register</span>(mcp)
+
+<span class="k">def</span> <span class="f">main</span>():
+    mcp.<span class="f">run</span>()  <span class="c"># stdio by default</span>`
+  },
+  settings: {
+    path: 'src/my_server/settings.py',
+    role: 'configuration',
+    h: 'settings.py',
+    p: 'Pydantic-Settings model that reads from environment + <code>.env</code> file. Typed, validated, importable. Replaces ad-hoc <code>os.getenv()</code> calls scattered through your code.',
+    code: `<span class="k">from</span> pydantic_settings <span class="k">import</span> BaseSettings
+
+<span class="k">class</span> <span class="f">Settings</span>(BaseSettings):
+    db_url: <span class="k">str</span>
+    api_key: <span class="k">str</span>
+    log_level: <span class="k">str</span> = <span class="s">"info"</span>
+
+    <span class="k">class</span> <span class="f">Config</span>:
+        env_file = <span class="s">".env"</span>
+
+settings = <span class="f">Settings</span>()`
+  },
+  lifespan: {
+    path: 'src/my_server/lifespan.py',
+    role: 'startup / shutdown',
+    h: 'lifespan.py',
+    p: 'The asynccontextmanager covered in Section 4 of this module. Creates shared resources at startup, tears them down at shutdown, yields a dict the Context can reach via <code>ctx.request_context.lifespan_context</code>.',
+    code: `<span class="k">from</span> contextlib <span class="k">import</span> asynccontextmanager
+<span class="k">from</span> .settings <span class="k">import</span> settings
+<span class="k">import</span> httpx, asyncpg
+
+<span class="d">@asynccontextmanager</span>
+<span class="k">async def</span> <span class="f">app_lifespan</span>(server):
+    db = <span class="k">await</span> asyncpg.<span class="f">create_pool</span>(settings.db_url)
+    http = httpx.<span class="f">AsyncClient</span>()
+    <span class="k">try</span>:
+        <span class="k">yield</span> {<span class="s">"db"</span>: db, <span class="s">"http"</span>: http}
+    <span class="k">finally</span>:
+        <span class="k">await</span> http.<span class="f">aclose</span>()
+        <span class="k">await</span> db.<span class="f">close</span>()`
+  },
+  tools: {
+    path: 'src/my_server/tools/',
+    role: 'tools dir',
+    h: 'tools/',
+    p: 'One file per tool — or one file per related cluster of tools. Each module exposes a <code>register(mcp)</code> function that adds its <code>@mcp.tool</code>-decorated functions to the FastMCP instance. Keeps server.py thin.'
+  },
+  search: {
+    path: 'src/my_server/tools/search.py',
+    role: 'tool · search',
+    h: 'tools/search.py',
+    p: 'One concrete tool. Pure function logic plus the <code>@mcp.tool</code> decorator. Easy to unit-test in isolation — no MCP fixtures required if you don\'t use Context.',
+    code: `<span class="k">from</span> fastmcp <span class="k">import</span> Context
+
+<span class="k">def</span> <span class="f">register</span>(mcp):
+    <span class="d">@mcp.tool</span>
+    <span class="k">async def</span> <span class="f">search_docs</span>(query: <span class="k">str</span>, ctx: Context) -> <span class="k">str</span>:
+        <span class="s">"""Search the docs index for relevant pages."""</span>
+        db = ctx.request_context.lifespan_context[<span class="s">"db"</span>]
+        rows = <span class="k">await</span> db.<span class="f">fetch</span>(<span class="s">"SELECT ... WHERE ..."</span>, query)
+        <span class="k">return</span> <span class="s">"\\n"</span>.<span class="f">join</span>(r[<span class="s">"title"</span>] <span class="k">for</span> r <span class="k">in</span> rows)`
+  },
+  fetch: {
+    path: 'src/my_server/tools/fetch.py',
+    role: 'tool · fetch',
+    h: 'tools/fetch.py',
+    p: 'Sister to <code>search.py</code> — another concrete tool. The pattern scales: as you add more tools, each gets its own file, each calls <code>mcp.tool</code> on its functions in a <code>register</code>.'
+  },
+  resources: {
+    path: 'src/my_server/resources/',
+    role: 'resources dir',
+    h: 'resources/',
+    p: 'Mirror structure to <code>tools/</code>, but for the resource primitive (Module 2.2). Each module exposes <code>@mcp.resource</code> handlers and a <code>register(mcp)</code> entry point.'
+  },
+  docs: {
+    path: 'src/my_server/resources/docs.py',
+    role: 'resource · docs',
+    h: 'resources/docs.py',
+    p: 'A resource handler exposing documentation pages by URI. Returns content the host can show or feed back as context.'
+  },
+  tests: {
+    path: 'my-mcp-server/tests/',
+    role: 'tests',
+    h: 'tests/',
+    p: 'pytest-based test suite. Lives outside <code>src/</code> by convention. Uses FastMCP\'s test client to exercise tools without spinning up a real transport.'
+  },
+  testtools: {
+    path: 'tests/test_tools.py',
+    role: 'test',
+    h: 'test_tools.py',
+    p: 'Tests for the tool functions. Can call them directly (pure Python) or via FastMCP\'s <code>Client</code> in-memory test client (covered in Track 3).'
+  },
+  conftest: {
+    path: 'tests/conftest.py',
+    role: 'pytest fixtures',
+    h: 'conftest.py',
+    p: 'Shared pytest fixtures — a test FastMCP instance, mock lifespan resources, factory functions for test data. The discovery boundary for pytest.'
+  },
+  deploy: {
+    path: 'my-mcp-server/deployments/',
+    role: 'deployment artifacts',
+    h: 'deployments/',
+    p: 'Where the Dockerfile, Kubernetes manifests, and host config snippets live. Separate from <code>src/</code> so they don\'t end up in the Python package.'
+  },
+  dockerfile: {
+    path: 'deployments/Dockerfile',
+    role: 'container image',
+    h: 'Dockerfile',
+    p: 'Multi-stage build: build the wheel in a builder stage, copy to a slim runtime image, expose the Streamable HTTP port. Production deployment artifact (covered in Module 5.0).'
+  },
+  dtcfg: {
+    path: 'deployments/claude-desktop.json',
+    role: 'host config',
+    h: 'claude-desktop.json',
+    p: 'The JSON snippet users paste into their Claude Desktop config to wire your server in. Shipped in the repo so installers can grab it. Same shape covered in Module 0.2.'
+  }
+};
+
+const ftTree = document.getElementById('ftTree');
+const ftDetail = document.getElementById('ftDetail');
+function renderFt(id) {
+  ftTree.querySelectorAll('.ft-node').forEach(n => n.classList.toggle('active', n.dataset.id === id));
+  const d = ftData[id];
+  ftDetail.innerHTML = `
+    <div class="breadcrumb-path">${d.path}</div>
+    <h4>${d.h}</h4>
+    <div class="role">${d.role}</div>
+    <p>${d.p}</p>
+    ${d.code ? `<div class="ft-content">${d.code}</div>` : ''}
+  `;
+}
+ftTree.querySelectorAll('.ft-node').forEach(n => {
+  n.onclick = () => renderFt(n.dataset.id);
+});
+renderFt('serverpy');
+
+// ============ LIFESPAN ============
+const lfStages = [
+  {
+    name: 'Startup',
+    cls: 'startup',
+    title: 'Lifespan __aenter__',
+    desc: 'The asynccontextmanager runs its setup block. Each <code>await</code> in there does a real piece of work — DB pool connects, HTTP client warms up, metrics register. Slow, but it happens exactly once.',
+    resources: { db: false, http: false, cache: false, metrics: false },
+    after: { db: true, http: true, cache: true, metrics: true }
+  },
+  {
+    name: 'Operating',
+    cls: 'operating',
+    title: 'First request lands',
+    desc: '<code>tools/call</code> arrives. FastMCP routes to your tool function. Inside the function, <code>ctx.request_context.lifespan_context["db"]</code> returns the same pool that startup created. No new connection is made.',
+    resources: { db: true, http: true, cache: true, metrics: true }
+  },
+  {
+    name: 'Operating',
+    cls: 'operating',
+    title: 'Concurrent request',
+    desc: 'A second tool call lands while the first is still in flight. Both functions reach the <em>same</em> shared resources from the lifespan context. The pool hands out two different connections; the HTTP client multiplexes.',
+    resources: { db: true, http: true, cache: true, metrics: true }
+  },
+  {
+    name: 'Operating',
+    cls: 'operating',
+    title: 'Third request',
+    desc: 'Same pattern. Across hours, days, thousands of requests — the lifespan resources stay alive. This is what makes <em>any</em> real load possible.',
+    resources: { db: true, http: true, cache: true, metrics: true }
+  },
+  {
+    name: 'Shutdown',
+    cls: 'shutting',
+    title: 'Lifespan __aexit__',
+    desc: 'Transport closes (Module 1.2). The asynccontextmanager\'s <code>finally</code> block runs. Resources tear down in reverse order — HTTP first (so DB stays alive while HTTP drains), then DB, then anything else.',
+    resources: { db: false, http: false, cache: false, metrics: false }
+  }
+];
+
+const lfStagesEl = document.getElementById('lfStages');
+const lfNarr = document.getElementById('lfNarr');
+const lfDB = document.getElementById('lfDB');
+const lfHttp = document.getElementById('lfHttp');
+const lfCache = document.getElementById('lfCache');
+const lfMetrics = document.getElementById('lfMetrics');
+const lfPlay = document.getElementById('lfPlay');
+const lfReset = document.getElementById('lfReset');
+let lfIdx = -1, lfTimer = null;
+
+function renderLf() {
+  document.querySelectorAll('.lf-stage').forEach((s, i) => {
+    s.classList.remove('active', 'done');
+    if (i === lfIdx) s.classList.add('active');
+    else if (i < lfIdx) s.classList.add('done');
+  });
+  if (lfIdx < 0) {
+    lfNarr.className = 'lf-narration';
+    lfNarr.innerHTML = `
+      <div class="lbl">Stage</div>
+      <h4>Ready to start</h4>
+      <p>Press play to watch the lifespan progress through startup, three requests, and shutdown. The shared resources above will come alive at startup, persist through every request, and tear down only at shutdown.</p>
+    `;
+    [lfDB, lfHttp, lfCache, lfMetrics].forEach(r => r.classList.remove('alive'));
+    return;
+  }
+  const s = lfStages[lfIdx];
+  lfNarr.className = 'lf-narration ' + s.cls;
+  lfNarr.innerHTML = `
+    <div class="lbl">${s.name}</div>
+    <h4>${s.title}</h4>
+    <p>${s.desc}</p>
+  `;
+  // resources
+  const r = lfIdx === 0 ? s.after : s.resources;
+  lfDB.classList.toggle('alive', r.db);
+  lfHttp.classList.toggle('alive', r.http);
+  lfCache.classList.toggle('alive', r.cache);
+  lfMetrics.classList.toggle('alive', r.metrics);
+}
+
+function lfAdvance() {
+  if (lfIdx < lfStages.length - 1) { lfIdx++; renderLf(); }
+  else { clearInterval(lfTimer); lfTimer = null; lfPlay.textContent = '▶ Play'; }
+}
+lfPlay.onclick = () => {
+  if (lfTimer) { clearInterval(lfTimer); lfTimer = null; lfPlay.textContent = '▶ Play'; return; }
+  if (lfIdx >= lfStages.length - 1) { lfIdx = -1; renderLf(); }
+  lfPlay.textContent = '⏸ Pause';
+  lfTimer = setInterval(lfAdvance, 1700);
+  lfAdvance();
+};
+lfReset.onclick = () => {
+  if (lfTimer) { clearInterval(lfTimer); lfTimer = null; lfPlay.textContent = '▶ Play'; }
+  lfIdx = -1; renderLf();
+};
+document.querySelectorAll('.lf-stage').forEach(s => {
+  s.onclick = () => { lfIdx = parseInt(s.dataset.i); renderLf(); };
+});
+renderLf();
+
+// ============ CONTEXT INSPECTOR ============
+const ctxData = {
+  info: {
+    name: 'ctx.info(msg)',
+    desc: 'Sends a log notification to the host at <code>info</code> level. Hosts typically render these in a debug panel keyed to the current tool call. Also available: <code>ctx.debug</code>, <code>ctx.warning</code>, <code>ctx.error</code>.',
+    req: 'requires server "logging" capability',
+    emits: `{
+  <span class="k">"method"</span>: <span class="v">"notifications/message"</span>,
+  <span class="k">"params"</span>: {
+    <span class="k">"level"</span>: <span class="v">"info"</span>,
+    <span class="k">"data"</span>: <span class="v">"Starting research..."</span>
+  }
+}`
+  },
+  lifespan: {
+    name: 'ctx.request_context.lifespan_context',
+    desc: 'The dict yielded by your lifespan context manager — the same one for every request. This is how tools reach DB pools, HTTP clients, anything you set up at startup. Pure dict; key in to whatever you put there.',
+    req: 'requires a lifespan to be configured',
+    emits: `<span class="c"># Reaching in (just dict access)</span>
+http = ctx.request_context.lifespan_context[<span class="v">"http"</span>]`
+  },
+  progress: {
+    name: 'ctx.report_progress(progress, total)',
+    desc: 'Fires a progress notification to the host. Lets the host render a progress bar or indicator in the UI without your tool having to return. The host pairs it with the current request id automatically.',
+    req: 'fires unconditionally — host renders if it wishes',
+    emits: `{
+  <span class="k">"method"</span>: <span class="v">"notifications/progress"</span>,
+  <span class="k">"params"</span>: {
+    <span class="k">"progressToken"</span>: <span class="n">"req_42"</span>,
+    <span class="k">"progress"</span>: <span class="n">3</span>,
+    <span class="k">"total"</span>: <span class="n">10</span>
+  }
+}`
+  },
+  sample: {
+    name: 'ctx.sample(messages, ...)',
+    desc: 'Asks the host (which owns the LLM) to run a completion on the server\'s behalf. Useful when the server needs to reason but doesn\'t want to bring its own model. The host gets to decide which model to use and may surface a consent UI.',
+    req: 'requires client "sampling" capability',
+    emits: `<span class="c"># server → client request</span>
+{
+  <span class="k">"method"</span>: <span class="v">"sampling/createMessage"</span>,
+  <span class="k">"params"</span>: {
+    <span class="k">"messages"</span>: [...],
+    <span class="k">"maxTokens"</span>: <span class="n">500</span>
+  }
+}`
+  },
+  elicit: {
+    name: 'ctx.elicit(message, schema)',
+    desc: 'Mid-call, asks the user (via the host) for input matching the schema. Tool pauses; the host renders a dialog or form; user answers; ctx.elicit() returns. Newer addition — added in spec 2025-06-18.',
+    req: 'requires client "elicitation" capability · 2025-06-18+',
+    emits: `<span class="c"># server → client request</span>
+{
+  <span class="k">"method"</span>: <span class="v">"elicitation/create"</span>,
+  <span class="k">"params"</span>: {
+    <span class="k">"message"</span>: <span class="v">"Save these findings?"</span>,
+    <span class="k">"requestedSchema"</span>: {...}
+  }
+}`
+  },
+  reqid: {
+    name: 'ctx.request_id',
+    desc: 'The JSON-RPC id of the inbound request that triggered this tool call. Useful for logging, distributed tracing, and correlating with progress notifications. Stays stable for the duration of one tool execution.',
+    req: 'always available',
+    emits: `<span class="c"># Just a string/number — log it</span>
+log.<span class="f">info</span>(<span class="v">f"trace req={ctx.request_id}"</span>)`
+  }
+};
+
+const ctxCode = document.getElementById('ctxCode');
+const ctxSide = document.getElementById('ctxSide');
+ctxCode.querySelectorAll('.ctx-hit').forEach(el => {
+  el.onclick = () => {
+    ctxCode.querySelectorAll('.ctx-hit').forEach(e => e.classList.remove('active'));
+    el.classList.add('active');
+    const d = ctxData[el.dataset.id];
+    ctxSide.innerHTML = `
+      <div class="pk">Context surface</div>
+      <h4>${d.name}</h4>
+      <p>${d.desc}</p>
+      <span class="req">${d.req}</span>
+      <div class="label">On the wire</div>
+      <pre class="emit">${d.emits}</pre>
+    `;
+  };
+});
+
+// ============ KC + OBJECTIVES + SCROLL SPY ============
+document.querySelectorAll('.kc-opts').forEach(group => {
+  const correct = parseInt(group.dataset.correct);
+  const feedback = group.parentElement.querySelector('.kc-feedback');
+  Array.from(group.children).forEach((opt, i) => {
+    opt.onclick = () => {
+      Array.from(group.children).forEach(o => o.classList.remove('correct', 'wrong'));
+      if (i === correct) opt.classList.add('correct');
+      else { opt.classList.add('wrong'); group.children[correct].classList.add('correct'); }
+      feedback.classList.add('show');
+    };
+  });
+});
+document.querySelectorAll('#objList .check').forEach(c => {
+  c.onclick = () => c.classList.toggle('done');
+});
+const sections = ['s1','s2','s3','s4','s5','kc','res'].map(id => document.getElementById(id));
+const sbLinks = document.querySelectorAll('#sbList a');
+const progFill = document.getElementById('progressFill');
+const progLbl = document.getElementById('progressLabel');
+function onScroll() {
+  const docH = document.body.scrollHeight - window.innerHeight;
+  const pct = Math.min(100, Math.max(0, (window.scrollY / docH) * 100));
+  progFill.style.width = pct + '%';
+  progLbl.textContent = Math.round(pct) + '%';
+  const triggerY = window.scrollY + 140;
+  let activeId = null;
+  for (const s of sections) { if (s && s.offsetTop <= triggerY) activeId = s.id; }
+  sbLinks.forEach(a => a.classList.toggle('active', a.dataset.target === activeId));
+}
+window.addEventListener('scroll', onScroll, { passive: true });
+onScroll();
+</script>
+</body>
+</html>

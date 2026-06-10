@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Remove Subtree Queries & Report Height - Visualization</title>
+    <style>
+        :root {
+            --bg-page: #000000;
+            --bg-surface: #161b22;
+            --bg-input: #000000;
+            --border-main: #30363d;
+            --btn-bg: #21262d;
+            --btn-hover: #2d333b;
+            --text-main: #c9d1d9;
+            --text-dim: #8b949e;
+            --accent-orange: #e3b341;
+            --accent-blue: #58a6ff;
+            --accent-green: #3fb950;
+            --accent-red: #f85149;
+            --accent-purple: #a371f7;
+        }
+
+        * { box-sizing: border-box; }
+        body {
+            background-color: var(--bg-page);
+            color: var(--text-main);
+            font-family: system-ui, -apple-system, sans-serif;
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            padding-bottom: 40px;
+        }
+
+        .input-bar {
+            width: 100%; background: var(--bg-surface); padding: 12px 16px;
+            display: flex; justify-content: center; align-items: center; gap: 12px;
+            border-bottom: 1px solid var(--border-main); flex-wrap: wrap;
+        }
+        input[type="text"] {
+            background: var(--bg-input); border: 1px solid var(--border-main);
+            color: var(--text-main); height: 32px; border-radius: 6px;
+            padding: 0 10px; width: 280px; font-size: 13px;
+        }
+        button {
+            height: 32px; padding: 0 14px; background: var(--btn-bg);
+            border: 1px solid var(--border-main); color: var(--text-main);
+            border-radius: 6px; cursor: pointer; font-size: 13px;
+        }
+        button:hover { background: var(--btn-hover); }
+
+        .visual-container {
+            margin-top: 30px; display: flex; gap: 50px; flex-wrap: wrap;
+            justify-content: center; max-width: 1200px; width: 100%;
+        }
+
+        .tree-container {
+            background: var(--bg-surface); border: 1px solid var(--border-main);
+            border-radius: 8px; padding: 20px; min-height: 380px; width: 520px;
+        }
+        .tree-svg { width: 100%; height: 340px; }
+
+        .stack-area {
+            display: flex; flex-direction: column; align-items: center; gap: 10px;
+        }
+        .stack-container {
+            display: flex; flex-direction: column-reverse; gap: 6px;
+            width: 200px; height: 320px; border: 2px dashed var(--border-main);
+            padding: 10px; background: rgba(22,27,34,0.5); overflow-y: auto;
+            border-radius: 6px;
+        }
+        .stack-frame {
+            width: 100%; padding: 8px 12px; background: var(--btn-bg);
+            border: 1px solid var(--border-main); border-radius: 4px;
+            font-family: monospace; font-size: 13px; text-align: center;
+        }
+        .stack-frame.active {
+            background: #0d2244; border-color: var(--accent-blue);
+            color: var(--accent-blue); transform: scale(1.05);
+        }
+
+        .info-panel {
+            background: var(--bg-surface); border: 1px solid var(--border-main);
+            border-radius: 8px; padding: 16px; width: 260px;
+        }
+
+        .action-panel {
+            margin-top: 20px; background: var(--bg-surface); border: 1px solid var(--border-main);
+            border-radius: 6px; padding: 16px 24px; width: 900px; min-height: 120px;
+            font-family: monospace; font-size: 15px; line-height: 1.5;
+        }
+
+        .controls { margin-top: 24px; display: flex; align-items: center; gap: 12px; }
+        .log-panel {
+            margin-top: 15px; background: var(--bg-page); border: 1px solid var(--border-main);
+            border-radius: 6px; padding: 12px 16px; width: 900px; max-width: 90%;
+            height: 150px; overflow-y: auto; font-family: 'Courier New', monospace; font-size: 13px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="input-bar">
+        <label class="ui-label">Edges:</label>
+        <input type="text" id="edges-input" value="[[1,2],[1,3],[2,4],[2,5]]" style="width:300px">
+        <label class="ui-label">Queries:</label>
+        <input type="text" id="queries-input" value="[2,3]">
+        <button onclick="loadCustom()">Load</button>
+        <button onclick="loadExample(0)">Ex 1 (JSON)</button>
+        <button onclick="loadExample(1)">Ex 2 (JSON)</button>
+    </div>
+
+    <div class="visual-container">
+        <div>
+            <div class="ui-label" style="font-weight:bold;color:var(--accent-green)">Binary Tree (Root=1)</div>
+            <div class="tree-container" id="tree-container">
+                <svg id="tree-svg" class="tree-svg" viewBox="0 0 520 340"></svg>
+            </div>
+        </div>
+
+        <div class="stack-area">
+            <div class="ui-label" style="font-weight:bold;color:var(--accent-blue)">Recursion / Update Stack</div>
+            <div class="stack-container" id="stack-container"></div>
+        </div>
+
+        <div class="info-panel">
+            <div><strong>Current Height:</strong> <span id="curr-height" style="color:var(--accent-purple);font-size:26px">—</span></div>
+            <div><strong>Query:</strong> <span id="curr-query" style="color:var(--accent-orange)">—</span></div>
+            <div><strong>Removed:</strong> <span id="removed-list" style="color:var(--accent-red)">—</span></div>
+            <div style="margin-top:12px"><strong>Height After Query:</strong> <span id="after-height" style="color:var(--accent-green)">—</span></div>
+        </div>
+    </div>
+
+    <div class="action-panel" id="main-panel">Precompute heights → Remove subtree → Propagate height updates to ancestors</div>
+
+    <div class="controls">
+        <button onclick="reset()">↺ Reset</button>
+        <button onclick="back()">← Back</button>
+        <button onclick="togglePlay()" id="play-btn">Play</button>
+        <button onclick="next()">Next →</button>
+        <span class="ui-label">Speed</span>
+        <input type="range" id="speed-slider" min="0" max="2" value="1">
+    </div>
+
+    <div class="log-panel" id="log"></div>
+
+    <script>
+        let treeAdj = {}, parentMap = {}, heights = {}, removed = {}, root = 1;
+        let steps = [], stepIndex = 0, timer = null;
+        const delays = [1400, 700, 350];
+
+        function parseEdges(edgesStr) {
+            try {
+                const edges = JSON.parse(edgesStr);
+                treeAdj = {}; parentMap = {};
+                edges.forEach(([u,v]) => {
+                    if (!treeAdj[u]) treeAdj[u] = [];
+                    if (!treeAdj[v]) treeAdj[v] = [];
+                    treeAdj[u].push(v);
+                    treeAdj[v].push(u);
+                });
+                // Make directed
+                function dfs(node, par) {
+                    parentMap[node] = par;
+                    treeAdj[node] = treeAdj[node].filter(c => c !== par);
+                    treeAdj[node].forEach(child => dfs(child, node));
+                }
+                dfs(root, -1);
+                return true;
+            } catch(e) { return false; }
+        }
+
+        function computeHeights() {
+            heights = {};
+            function dfs(node) {
+                if (!treeAdj[node] || treeAdj[node].length === 0) {
+                    heights[node] = 1;
+                    return 1;
+                }
+                let maxC = 0;
+                treeAdj[node].forEach(child => {
+                    maxC = Math.max(maxC, dfs(child));
+                });
+                heights[node] = 1 + maxC;
+                return heights[node];
+            }
+            dfs(root);
+        }
+
+        function buildTreeSVG() {
+            const svg = document.getElementById('tree-svg');
+            svg.innerHTML = '';
+            const positions = {};
+            function assign(node, x, y, dx) {
+                if (!node) return;
+                positions[node] = {x, y};
+                if (treeAdj[node]) {
+                    treeAdj[node].forEach((child, i) => {
+                        assign(child, x + (i - 0.5) * dx * 0.8, y + 80, dx * 0.7);
+                    });
+                }
+            }
+            assign(root, 260, 40, 110);
+
+            function drawEdges(node) {
+                if (!node || !treeAdj[node]) return;
+                const p = positions[node];
+                treeAdj[node].forEach(child => {
+                    const cp = positions[child];
+                    const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+                    line.setAttribute("x1", p.x); line.setAttribute("y1", p.y+21);
+                    line.setAttribute("x2", cp.x); line.setAttribute("y2", cp.y);
+                    line.setAttribute("stroke", removed[node] || removed[child] ? "#f85149" : "#555");
+                    line.setAttribute("stroke-width", "3");
+                    svg.appendChild(line);
+                    drawEdges(child);
+                });
+            }
+            drawEdges(root);
+
+            function drawNodes(node) {
+                if (!node) return;
+                const p = positions[node];
+                const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
+                const c = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+                c.setAttribute("cx", p.x); c.setAttribute("cy", p.y+20); c.setAttribute("r", "22");
+                c.setAttribute("fill", removed[node] ? "#3a1f1f" : "#21262d");
+                c.setAttribute("stroke", removed[node] ? "#f85149" : "#555");
+                c.setAttribute("stroke-width", "4"); c.setAttribute("id", 'n'+node);
+                g.appendChild(c);
+
+                const t = document.createElementNS("http://www.w3.org/2000/svg", "text");
+                t.setAttribute("x", p.x); t.setAttribute("y", p.y+26);
+                t.setAttribute("text-anchor", "middle"); t.setAttribute("fill", removed[node] ? "#f85149" : "#c9d1d9");
+                t.setAttribute("font-size", "15"); t.setAttribute("font-weight", "bold");
+                t.textContent = node;
+                g.appendChild(t);
+                svg.appendChild(g);
+                if (treeAdj[node]) treeAdj[node].forEach(drawNodes);
+            }
+            drawNodes(root);
+        }
+
+        function generateSteps(queries) {
+            steps = [];
+            removed = {};
+            computeHeights();
+
+            function addStep(type, panel, status, log, color, extra={}) {
+                steps.push({type, panel, statusText:status, log, logColor:color, ...extra});
+            }
+
+            addStep('init', `Tree built with root 1. Initial height = <b>${heights[1]}</b>`, 'Initialization', 'Precompute heights', 'var(--accent-green)', {height: heights[1]});
+
+            queries.forEach((q, qi) => {
+                addStep('query', `Query ${qi+1}: Remove subtree rooted at <b>${q}</b>`, `Processing query ${q}`, `Remove subtree ${q}`, 'var(--accent-orange)', {query: q});
+
+                // Mark subtree
+                function mark(n) {
+                    removed[n] = true;
+                    if (treeAdj[n]) treeAdj[n].forEach(mark);
+                }
+                mark(q);
+
+                // Propagate updates
+                let node = parentMap[q];
+                let updated = [];
+                while (node !== undefined && node !== -1) {
+                    let oldH = heights[node];
+                    let maxC = 0;
+                    if (treeAdj[node]) {
+                        treeAdj[node].forEach(c => {
+                            if (!removed[c]) maxC = Math.max(maxC, heights[c]);
+                        });
+                    }
+                    let newH = 1 + maxC;
+                    heights[node] = newH;
+                    updated.push(node);
+
+                    addStep('update', `Update ancestor ${node}: ${oldH} → ${newH}`, `Height update`, `height[${node}]=${newH}`, newH < oldH ? 'var(--accent-red)' : 'var(--accent-green)', {height: newH});
+
+                    if (newH === oldH) break;
+                    node = parentMap[node];
+                }
+
+                addStep('result', `After removing subtree at ${q}, height = <b>${heights[1]}</b>`, `Query complete`, `Height = ${heights[1]}`, 'var(--accent-purple)', {height: heights[1]});
+            });
+
+            addStep('final', `<span style="color:var(--accent-green)">All queries processed. Final height = ${heights[1]}</span>`, 'Done', 'Complete', 'var(--accent-green)', {complete: true});
+        }
+
+        function renderStep(idx) {
+            const s = steps[idx];
+            if (!s) return;
+
+            buildTreeSVG();
+            document.getElementById('curr-height').textContent = s.height !== undefined ? s.height : '—';
+            document.getElementById('curr-query').textContent = s.query !== undefined ? s.query : '—';
+            document.getElementById('after-height').textContent = s.height !== undefined ? s.height : '—';
+            document.getElementById('main-panel').innerHTML = s.panel;
+
+            const logPanel = document.getElementById('log');
+            logPanel.innerHTML = '';
+            for (let i = 0; i <= idx; i++) {
+                if (steps[i].log) {
+                    const line = document.createElement('div');
+                    line.style.color = steps[i].logColor || 'var(--text-main)';
+                    line.textContent = steps[i].log;
+                    logPanel.appendChild(line);
+                }
+            }
+            logPanel.scrollTop = logPanel.scrollHeight;
+        }
+
+        function next() { if (stepIndex < steps.length-1) { stepIndex++; renderStep(stepIndex); } else pause(); }
+        function back() { if (stepIndex > 0) { stepIndex--; renderStep(stepIndex); } }
+        function reset() { pause(); stepIndex = 0; renderStep(0); }
+
+        function togglePlay() {
+            const btn = document.getElementById('play-btn');
+            if (timer) pause();
+            else {
+                btn.textContent = 'Pause';
+                if (stepIndex >= steps.length-1) stepIndex = 0;
+                timer = setInterval(next, delays[parseInt(document.getElementById('speed-slider').value)]);
+            }
+        }
+        function pause() {
+            clearInterval(timer); timer = null;
+            document.getElementById('play-btn').textContent = 'Play';
+        }
+
+        function loadExample(n) {
+            if (n === 0) {
+                document.getElementById('edges-input').value = "[[1,2],[1,3],[2,4],[2,5]]";
+                document.getElementById('queries-input').value = "[2,3]";
+            } else {
+                document.getElementById('edges-input').value = "[[1,2],[1,3],[2,4],[3,5]]";
+                document.getElementById('queries-input').value = "[3,2]";
+            }
+            loadCustom();
+        }
+
+        function loadCustom() {
+            const edgesStr = document.getElementById('edges-input').value;
+            const queriesStr = document.getElementById('queries-input').value;
+            if (!parseEdges(edgesStr)) {
+                alert("Invalid edges");
+                return;
+            }
+            try {
+                const queries = JSON.parse(queriesStr);
+                generateSteps(queries);
+                reset();
+            } catch(e) {
+                alert("Invalid queries");
+            }
+        }
+
+        window.onload = () => { const params = new URLSearchParams(window.location.search); const exIdx = parseInt(params.get('example') || '0'); loadExample(exIdx); };
+    </script>
+</body>
+</html>

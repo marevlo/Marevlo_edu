@@ -1,0 +1,651 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Count Paths in DAG (DFS + Memo) - Visualization</title>
+    <style>
+        :root {
+            --bg-page: #000000;
+            --bg-surface: #161b22;
+            --bg-input: #000000;
+            --border-main: #30363d;
+            --btn-bg: #21262d;
+            --btn-hover: #2d333b;
+            --text-main: #c9d1d9;
+            --text-dim: #8b949e;
+            --text-log: #58a6ff;
+            --accent-orange: #e3b341;
+            --accent-blue: #388bfd;
+            --accent-green: #3fb950;
+            --accent-red: #f85149;
+            --accent-purple: #a371f7;
+        }
+
+        * { box-sizing: border-box; }
+        body {
+            background-color: var(--bg-page);
+            color: var(--text-main);
+            font-family: system-ui, -apple-system, sans-serif;
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            padding-bottom: 40px;
+        }
+
+        /* ROW 1: INPUT BAR */
+        .input-bar {
+            width: 100%;
+            background-color: var(--bg-surface);
+            padding: 12px 16px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 8px;
+            border-bottom: 1px solid var(--border-main);
+            flex-wrap: wrap;
+        }
+        label.ui-label { font-family: 'Courier New', monospace; font-size: 13px; color: var(--text-dim); }
+        input[type="text"] {
+            background: var(--bg-input);
+            border: 1px solid var(--border-main);
+            color: var(--text-main);
+            height: 32px;
+            border-radius: 6px;
+            padding: 0 10px;
+            font-size: 13px;
+        }
+        .med-input { width: 250px; font-family: monospace;}
+        .small-input { width: 50px; text-align: center; }
+
+        button {
+            height: 32px; border-radius: 6px; padding: 0 14px; background: var(--btn-bg);
+            border: 1px solid var(--border-main); color: var(--text-main); font-size: 13px; cursor: pointer;
+            transition: background 0.2s ease;
+        }
+        button:hover { background: var(--btn-hover); }
+
+        /* ROW 2: GRAPH AREA & ARRAYS */
+        .visual-container { margin-top: 20px; display: flex; align-items: flex-start; gap: 30px; width: 100%; justify-content: center; flex-wrap: wrap; }
+        
+        .graph-area {
+            position: relative;
+            width: 450px;
+            height: 350px;
+            background: var(--bg-surface);
+            border: 1px solid var(--border-main);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        #edges-svg {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none; z-index: 0;
+        }
+
+        .nodes-container {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            z-index: 1;
+        }
+
+        .node {
+            position: absolute;
+            width: 44px; height: 44px; border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            background: #21262d; border: 2px solid var(--border-main);
+            color: var(--text-main); font-weight: bold; font-size: 15px;
+            font-family: 'Courier New', monospace;
+            transform: translate(-50%, -50%);
+            transition: all 0.3s ease;
+        }
+        
+        .node.source { border-color: var(--accent-blue); color: var(--accent-blue); box-shadow: 0 0 10px rgba(56,139,253,0.3); }
+        .node.target { border-color: var(--accent-red); color: var(--accent-red); box-shadow: 0 0 10px rgba(248,81,73,0.3); background: #3a0d0d;}
+        .node.active-u { transform: translate(-50%, -50%) scale(1.2); box-shadow: 0 0 15px var(--accent-orange); border-color: var(--accent-orange); z-index: 3; color: var(--accent-orange); }
+        .node.active-v { transform: translate(-50%, -50%) scale(1.15); box-shadow: 0 0 10px var(--accent-purple); border-color: var(--accent-purple); z-index: 2; color: var(--accent-purple); }
+        .node.in-path { background: #332200; border-color: var(--accent-orange); }
+
+        .arrays-col { display: flex; flex-direction: column; gap: 16px; min-width: 250px; max-width: 320px; }
+        .array-section { display: flex; flex-direction: column; gap: 8px; background: var(--bg-surface); padding: 12px; border-radius: 8px; border: 1px solid var(--border-main); min-height: 80px;}
+        .tiles-wrapper { display: flex; gap: 8px; flex-wrap: wrap; align-content: flex-start;}
+        
+        .tile-container { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+        .tile-index { font-size: 11px; color: var(--text-dim); font-family: monospace; }
+        
+        .tile {
+            min-width: 44px; height: 44px; display: flex; align-items: center; justify-content: center;
+            border-radius: 6px; font-size: 15px; font-weight: bold; font-family: 'Courier New', monospace;
+            transition: all 0.3s ease; background: #21262d; border: 1px solid var(--border-main);
+            color: var(--text-main);
+        }
+        
+        .tile.memo-tile { background: #0d213f; border-color: var(--accent-blue); color: var(--accent-blue); }
+        .tile.memo-filled { background: #0f2a1a; border-color: var(--accent-green); color: var(--accent-green); }
+        .tile.highlight { animation: highlightFlash 0.5s ease; }
+
+        @keyframes highlightFlash { 0% { transform: scale(1); filter: brightness(1); } 50% { transform: scale(1.2); filter: brightness(1.5); box-shadow: 0 0 10px var(--accent-green); } 100% { transform: scale(1); filter: brightness(1); } }
+
+        /* ROW 3: PANEL */
+        .action-panel {
+            margin-top: 14px; background: var(--bg-surface); border: 1px solid var(--border-main);
+            border-radius: 6px; padding: 12px 20px; width: 730px; text-align: center; font-family: monospace; min-height: 80px;
+            display: flex; flex-direction: column; justify-content: center; font-size: 14px; line-height: 1.5;
+        }
+
+        /* ROW 4: INFO PANEL */
+        .info-panel { margin-top: 10px; display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; width: 730px;}
+        .info-cell {
+            background: var(--bg-surface); border: 1px solid var(--border-main); border-radius: 6px;
+            padding: 8px 14px; display: flex; flex-direction: column; align-items: center; min-width: 120px; gap: 4px; flex: 1;
+        }
+        .info-label { font-size: 11px; color: var(--text-dim); }
+        .info-value { font-family: monospace; font-size: 14px; font-weight: 700; text-align: center; word-break: break-all;}
+
+        /* ROW 5: RESULT DISPLAY */
+        .result-display { margin-top: 10px; display: flex; flex-direction: column; align-items: center; }
+        #res-val { font-size: 26px; color: var(--text-dim); font-family: monospace; transition: all 0.3s; font-weight: bold; margin-top: 4px; }
+        .pop { animation: popAnim 400ms ease; color: var(--accent-green) !important; text-shadow: 0 0 15px var(--accent-green); transform: scale(1.1); }
+
+        @keyframes popAnim { 0%{transform:scale(1)} 50%{transform:scale(1.2)} 100%{transform:scale(1.1)} }
+
+        /* ROW 6: STATUS BAR */
+        .status-bar { margin-top: 8px; font-size: 13px; color: var(--text-dim); height: 1.2em; text-align: center; width: 600px;}
+
+        /* ROW 7: CONTROLS */
+        .controls { margin-top: 24px; display: flex; align-items: center; gap: 8px; }
+        input[type="range"] { accent-color: var(--accent-blue); width: 100px; cursor: pointer; }
+
+        /* ROW 8: LEGEND */
+        .legend { margin-top: 12px; display: flex; gap: 16px; flex-wrap: wrap; justify-content: center; max-width: 800px; }
+        .legend-item { display: flex; align-items: center; font-size: 12px; color: var(--text-dim); }
+        .dot { width: 12px; height: 12px; border-radius: 2px; margin-right: 6px; display: inline-block; border: 1px solid var(--border-main);}
+
+        /* ROW 9: LOG PANEL */
+        .log-panel {
+            margin-top: 12px; background: var(--bg-page); border: 1px solid var(--border-main);
+            border-radius: 6px; padding: 12px 16px; width: 730px; max-width: 90%; height: 130px;
+            overflow-y: auto; font-family: 'Courier New', monospace; font-size: 13px;
+        }
+
+        .line-anim { stroke-dasharray: 6; animation: dash 1s linear infinite; }
+        @keyframes dash { to { stroke-dashoffset: -12; } }
+    </style>
+</head>
+<body>
+
+    <div class="input-bar">
+        <label class="ui-label">graph =</label>
+        <input type="text" id="g-input" class="med-input" placeholder="[[1,2],[3],[3],[]]">
+        <label class="ui-label">source =</label>
+        <input type="text" id="s-input" class="small-input" placeholder="0">
+        <label class="ui-label">target =</label>
+        <input type="text" id="t-input" class="small-input" placeholder="3">
+        <button onclick="loadCustom()">Load</button>
+        <button onclick="loadExample('[[1,2],[3],[3],[]]', '0', '3')">Ex 1</button>
+        <button onclick="loadExample('[[1],[2],[3],[4],[5],[]]', '0', '5')">Ex 2</button>
+    </div>
+
+    <div class="visual-container">
+        <div class="graph-area" id="graph-area">
+            <svg id="edges-svg">
+                <defs>
+                    <marker id="arrow-normal" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                        <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--border-main)" />
+                    </marker>
+                    <marker id="arrow-active" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                        <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--accent-purple)" />
+                    </marker>
+                    <marker id="arrow-path" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                        <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--accent-orange)" />
+                    </marker>
+                </defs>
+            </svg>
+            <div class="nodes-container" id="nodes-container"></div>
+        </div>
+        <div class="arrays-col">
+            <div class="array-section">
+                <div class="ui-label" style="color: var(--accent-blue);">Memoization Array:</div>
+                <div class="tiles-wrapper" id="memo-tiles"></div>
+                <div style="font-size: 11px; color: var(--text-dim); margin-top: 8px;">Stores the number of paths from node [i] to Target.</div>
+            </div>
+            
+            <div class="result-display">
+                <span class="ui-label">Total Paths Found =</span>
+                <span id="res-val">0</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="action-panel" id="main-panel">—</div>
+
+    <div class="info-panel">
+        <div class="info-cell">
+            <span class="info-label">Current DFS Path</span>
+            <span class="info-value" id="val-path" style="color: var(--accent-orange);">—</span>
+        </div>
+        <div class="info-cell">
+            <span class="info-label">Active Node (u)</span>
+            <span class="info-value" id="val-u" style="color: var(--accent-orange);">—</span>
+        </div>
+        <div class="info-cell">
+            <span class="info-label">Evaluating Neighbor (v)</span>
+            <span class="info-value" id="val-v" style="color: var(--accent-purple);">—</span>
+        </div>
+    </div>
+
+    <div class="status-bar" id="status-text"></div>
+
+    <div class="controls">
+        <button onclick="reset()">↺ Reset</button>
+        <button onclick="back()">← Back</button>
+        <button onclick="togglePlay()" id="play-btn">Play</button>
+        <button onclick="next()">Next →</button>
+        <div class="controls" style="margin-top:0">
+            <span class="ui-label" style="margin-right:4px; font-size:11px">Speed</span>
+            <input type="range" id="speed-slider" min="0" max="2" value="1">
+        </div>
+    </div>
+
+    <div class="legend">
+        <div class="legend-item"><span class="dot" style="background:transparent; border-color:var(--accent-blue); border-width:2px;"></span> Source</div>
+        <div class="legend-item"><span class="dot" style="background:#3a0d0d; border-color:var(--accent-red); border-width:2px;"></span> Target</div>
+        <div class="legend-item"><span class="dot" style="background:transparent; border-color:var(--accent-orange); border-width:2px;"></span> Active Node (DFS)</div>
+        <div class="legend-item"><span class="dot" style="background:transparent; border-color:var(--accent-purple); border-width:2px;"></span> Neighbor Check</div>
+    </div>
+
+    <div class="log-panel" id="log"></div>
+
+    <script>
+        let graph = [[1,2],[3],[3],[]];
+        let sourceNode = 0;
+        let targetNode = 3;
+        let N = 4;
+        let nodeCoords = {};
+        
+        let steps = [];
+        let stepIndex = 0;
+        let timer = null;
+        const delays = [2400, 1200, 600];
+
+        function init() { 
+            loadExample('[[1,2],[3],[3],[]]', '0', '3'); 
+        }
+
+        function loadExample(gStr, srcStr, tgtStr) {
+            document.getElementById('g-input').value = gStr;
+            document.getElementById('s-input').value = srcStr;
+            document.getElementById('t-input').value = tgtStr;
+            parseAndGenerate();
+        }
+
+        function loadCustom() {
+            parseAndGenerate();
+        }
+
+        function parseAndGenerate() {
+            try {
+                graph = JSON.parse(document.getElementById('g-input').value);
+                sourceNode = parseInt(document.getElementById('s-input').value);
+                targetNode = parseInt(document.getElementById('t-input').value);
+                
+                if (!Array.isArray(graph)) throw "Must be array";
+                N = graph.length;
+                
+                setupGraph();
+                generateSteps();
+                reset();
+            } catch(e) {
+                alert("Invalid format. Ensure graph is a valid 2D JSON array and source/target are integers.");
+            }
+        }
+
+        function setupGraph() {
+            const container = document.getElementById('nodes-container');
+            container.innerHTML = '';
+            nodeCoords = {};
+
+            // Simple DAG hierarchical layout (Topological layering)
+            let inDegree = new Array(N).fill(0);
+            for (let u = 0; u < N; u++) {
+                for (let v of graph[u]) {
+                    inDegree[v]++;
+                }
+            }
+
+            let levels = new Array(N).fill(0);
+            let q = [];
+            for (let i = 0; i < N; i++) {
+                if (inDegree[i] === 0) q.push(i);
+            }
+
+            let maxLevel = 0;
+            while(q.length > 0) {
+                let u = q.shift();
+                maxLevel = Math.max(maxLevel, levels[u]);
+                for (let v of graph[u]) {
+                    levels[v] = Math.max(levels[v], levels[u] + 1);
+                    inDegree[v]--;
+                    if (inDegree[v] === 0) q.push(v);
+                }
+            }
+
+            // Group by levels
+            let levelGroups = {};
+            for (let i = 0; i < N; i++) {
+                let lvl = levels[i];
+                if (!levelGroups[lvl]) levelGroups[lvl] = [];
+                levelGroups[lvl].push(i);
+            }
+
+            let width = 450;
+            let height = 350;
+            let xSpacing = width / (maxLevel + 2);
+
+            for (let lvl in levelGroups) {
+                let nodesInLvl = levelGroups[lvl];
+                let ySpacing = height / (nodesInLvl.length + 1);
+                
+                nodesInLvl.forEach((nId, idx) => {
+                    let x = xSpacing * (parseInt(lvl) + 1);
+                    let y = ySpacing * (idx + 1);
+                    nodeCoords[nId] = {x, y};
+
+                    const node = document.createElement('div');
+                    node.className = 'node';
+                    node.id = `node-${nId}`;
+                    node.style.left = `${x}px`;
+                    node.style.top = `${y}px`;
+                    node.innerText = nId;
+                    container.appendChild(node);
+                });
+            }
+        }
+
+        function generateSteps() {
+            steps = [];
+            
+            let memo = new Array(N).fill(-1);
+            let path = [];
+
+            steps.push({
+                type: 'init',
+                memo: [...memo], path: [...path], activeU: null, activeV: null,
+                panel: `Initialize <b>DFS with Memoization</b>.<br>Start at Source <b>${sourceNode}</b>. Target is <b>${targetNode}</b>. Memo array stores paths from <code>i</code> to Target.`,
+                statusText: `Ready to start DFS.`,
+                log: `Starting DFS from ${sourceNode} to ${targetNode}.`
+            });
+
+            function dfs(u, depth) {
+                let pad = "  ".repeat(depth);
+                path.push(u);
+
+                steps.push({
+                    type: 'visit',
+                    memo: [...memo], path: [...path], activeU: u, activeV: null,
+                    panel: `<code>dfs(${u})</code>: Added Node <b>${u}</b> to current path stack.`,
+                    statusText: `Exploring Node ${u}...`,
+                    log: `${pad}dfs(${u}) started.`
+                });
+
+                if (u === targetNode) {
+                    steps.push({
+                        type: 'target_reached',
+                        memo: [...memo], path: [...path], activeU: u, activeV: null,
+                        panel: `Node <b>${u}</b> is the Target! <br><b style="color:var(--accent-green)">Path Found:</b> [${path.join(' ➔ ')}]. Return 1.`,
+                        statusText: `Target Reached!`,
+                        log: `${pad}  -> Reached Target! Return 1.`,
+                        logColor: 'var(--accent-green)'
+                    });
+                    path.pop();
+                    return 1;
+                }
+
+                if (memo[u] !== -1) {
+                    steps.push({
+                        type: 'memo_hit',
+                        memo: [...memo], path: [...path], activeU: u, activeV: null,
+                        panel: `Node <b>${u}</b> has been visited before.<br><b>Memoization Hit:</b> There are already known to be <b>${memo[u]}</b> paths from ${u} to Target. Return ${memo[u]}.`,
+                        statusText: `Memoization hit for Node ${u}.`,
+                        log: `${pad}  -> Memo hit for ${u}. Return ${memo[u]}.`,
+                        logColor: 'var(--accent-blue)'
+                    });
+                    path.pop();
+                    return memo[u];
+                }
+
+                let totalPaths = 0;
+                let neighbors = graph[u] || [];
+
+                if (neighbors.length === 0) {
+                    steps.push({
+                        type: 'dead_end',
+                        memo: [...memo], path: [...path], activeU: u, activeV: null,
+                        panel: `Node <b>${u}</b> has no outgoing edges and is not the target. Dead end.`,
+                        statusText: `Dead end at Node ${u}.`,
+                        log: `${pad}  -> Dead end. Return 0.`
+                    });
+                }
+
+                for (let v of neighbors) {
+                    steps.push({
+                        type: 'check_neighbor',
+                        memo: [...memo], path: [...path], activeU: u, activeV: v,
+                        panel: `Checking neighbor <b>${v}</b> of active node <b>${u}</b>.<br>Traversing edge and calling <code>dfs(${v})</code>.`,
+                        statusText: `Traversing edge ${u} ➔ ${v}...`,
+                        log: `${pad}  Checking neighbor ${v}...`
+                    });
+
+                    totalPaths += dfs(v, depth + 1);
+                }
+
+                memo[u] = totalPaths;
+
+                steps.push({
+                    type: 'memo_update',
+                    memo: [...memo], path: [...path], activeU: u, activeV: null, updatedIdx: u,
+                    panel: `Finished exploring all neighbors of <b>${u}</b>.<br>Total paths from ${u} to target is <b>${totalPaths}</b>. Storing in Memo array and returning.`,
+                    statusText: `Memoized Node ${u}. Backtracking.`,
+                    log: `${pad}Finished dfs(${u}). Memo[${u}] = ${totalPaths}. Backtracking.`
+                });
+
+                path.pop();
+                return totalPaths;
+            }
+
+            let ans = dfs(sourceNode, 0);
+
+            steps.push({
+                type: 'final',
+                memo: [...memo], path: [], activeU: null, activeV: null,
+                panel: `<b>Algorithm Complete!</b><br>DFS finished traversing all possible branches.<br>Total paths from ${sourceNode} to ${targetNode}: <b style="color:var(--accent-green); font-size:18px;">${ans}</b>.`,
+                complete: true, result: ans,
+                statusText: `Algorithm Complete.`,
+                log: `\nDFS Traversal Finished.\nTotal Paths Found: ${ans}`,
+                logColor: 'var(--accent-green)'
+            });
+        }
+
+        function drawEdges(step) {
+            const svg = document.getElementById('edges-svg');
+            svg.innerHTML = '';
+            const nodeRadius = 22;
+
+            for (let u = 0; u < N; u++) {
+                for (let v of graph[u]) {
+                    const p1 = nodeCoords[u];
+                    const p2 = nodeCoords[v];
+                    if(!p1 || !p2) continue;
+
+                    let isActive = step.activeU === u && step.activeV === v;
+                    
+                    // Check if edge is in current path
+                    let inPath = false;
+                    for (let i = 0; i < step.path.length - 1; i++) {
+                        if (step.path[i] === u && step.path[i+1] === v) {
+                            inPath = true; break;
+                        }
+                    }
+                    if (step.type === 'check_neighbor' && isActive) inPath = true;
+
+                    const dx = p2.x - p1.x;
+                    const dy = p2.y - p1.y;
+                    const len = Math.hypot(dx, dy);
+                    
+                    const shrinkTarget = nodeRadius + 5; 
+                    const shrinkSource = nodeRadius + 2;
+                    
+                    const x1 = p1.x + (dx/len) * shrinkSource;
+                    const y1 = p1.y + (dy/len) * shrinkSource;
+                    const x2 = p2.x - (dx/len) * shrinkTarget;
+                    const y2 = p2.y - (dy/len) * shrinkTarget;
+
+                    const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                    line.setAttribute('x1', x1); line.setAttribute('y1', y1);
+                    line.setAttribute('x2', x2); line.setAttribute('y2', y2);
+
+                    if (isActive) {
+                        line.setAttribute('stroke', 'var(--accent-purple)');
+                        line.setAttribute('stroke-width', '4');
+                        line.setAttribute('marker-end', 'url(#arrow-active)');
+                        line.classList.add('line-anim');
+                        setTimeout(() => svg.appendChild(line), 0);
+                    } else if (inPath) {
+                        line.setAttribute('stroke', 'var(--accent-orange)');
+                        line.setAttribute('stroke-width', '3');
+                        line.setAttribute('marker-end', 'url(#arrow-path)');
+                        svg.appendChild(line);
+                    } else {
+                        line.setAttribute('stroke', 'var(--border-main)');
+                        line.setAttribute('stroke-width', '2');
+                        line.setAttribute('marker-end', 'url(#arrow-normal)');
+                        svg.appendChild(line);
+                    }
+                }
+            }
+        }
+
+        function renderArray(step) {
+            const container = document.getElementById('memo-tiles');
+            container.innerHTML = '';
+            
+            step.memo.forEach((val, i) => {
+                const wrapper = document.createElement('div');
+                wrapper.className = 'tile-container';
+                
+                const tile = document.createElement('div');
+                tile.className = 'tile memo-tile';
+                if (val !== -1) tile.classList.add('memo-filled');
+                if (step.updatedIdx === i) tile.classList.add('highlight');
+                
+                tile.innerText = val;
+                
+                const idxLabel = document.createElement('div');
+                idxLabel.className = 'tile-index';
+                idxLabel.innerText = `[${i}]`;
+
+                wrapper.appendChild(tile);
+                wrapper.appendChild(idxLabel);
+                container.appendChild(wrapper);
+            });
+        }
+
+        function renderStep(idx) {
+            const step = steps[idx];
+            if (!step) return;
+
+            // Render Nodes
+            for(let i=0; i<N; i++) {
+                const node = document.getElementById(`node-${i}`);
+                if(!node) continue;
+                
+                node.className = 'node';
+                if (i === sourceNode) node.classList.add('source');
+                if (i === targetNode) node.classList.add('target');
+                
+                if (step.path.includes(i)) node.classList.add('in-path');
+                if (step.activeU === i) node.classList.add('active-u');
+                if (step.activeV === i) node.classList.add('active-v');
+            }
+
+            drawEdges(step);
+            renderArray(step);
+
+            // Update Info Panel
+            document.getElementById('main-panel').innerHTML = step.panel;
+            
+            document.getElementById('val-path').innerText = step.path.length > 0 ? `[${step.path.join(' ➔ ')}]` : '[ ]';
+            document.getElementById('val-u').innerText = step.activeU !== null ? step.activeU : '—';
+            document.getElementById('val-v').innerText = step.activeV !== null ? step.activeV : '—';
+
+            const resVal = document.getElementById('res-val');
+            // Show real-time result path count if complete
+            resVal.innerText = step.complete ? step.result : (step.memo[sourceNode] !== -1 ? step.memo[sourceNode] : '0');
+            
+            if (step.complete) {
+                resVal.classList.add('pop');
+            } else {
+                resVal.classList.remove('pop');
+            }
+
+            document.getElementById('status-text').innerText = step.statusText;
+
+            // Update Log
+            const logPanel = document.getElementById('log');
+            logPanel.innerHTML = '';
+            for (let k = 0; k <= idx; k++) {
+                if (steps[k].log) {
+                    const line = document.createElement('div');
+                    line.style.marginBottom = '2px';
+                    line.style.whiteSpace = 'pre-wrap';
+                    if (steps[k].logColor) line.style.color = steps[k].logColor;
+                    line.innerText = steps[k].log;
+                    logPanel.appendChild(line);
+                }
+            }
+            logPanel.scrollTop = logPanel.scrollHeight;
+        }
+
+        function next() {
+            if (stepIndex < steps.length - 1) {
+                stepIndex++;
+                renderStep(stepIndex);
+            } else pause();
+        }
+
+        function back() {
+            if (stepIndex > 0) {
+                stepIndex--;
+                renderStep(stepIndex);
+            }
+        }
+
+        function reset() {
+            pause();
+            stepIndex = 0;
+            renderStep(0);
+        }
+
+        function togglePlay() {
+            const btn = document.getElementById('play-btn');
+            if (timer) pause();
+            else {
+                btn.innerText = 'Pause';
+                if (stepIndex >= steps.length - 1) stepIndex = 0;
+                timer = setInterval(next, delays[document.getElementById('speed-slider').value]);
+            }
+        }
+
+        function pause() {
+            clearInterval(timer);
+            timer = null;
+            document.getElementById('play-btn').innerText = 'Play';
+        }
+
+        window.onload = () => { setTimeout(init, 100); };
+    </script>
+</body>
+</html>

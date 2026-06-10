@@ -1,0 +1,641 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Count All Routes - Visualization</title>
+    <style>
+        :root {
+            --bg-page: #070b14;
+            --bg-surface: rgba(255, 255, 255, 0.045);
+            --bg-input: rgba(255, 255, 255, 0.04);
+            --border-main: rgba(255, 255, 255, 0.10);
+            --btn-bg: rgba(255, 255, 255, 0.05);
+            --btn-hover: rgba(255, 255, 255, 0.10);
+            --text-main: #e8eefb;
+            --text-dim: #8b98b3;
+            --accent-orange: #f5a524;   /* current city                   */
+            --accent-blue:   #06b6d4;    /* chrome / fuel / recursion       */
+            --accent-green:  #22c55e;    /* finish reached / route count    */
+            --accent-red:    #f43f5e;    /* fuel exhausted / dead branch    */
+            --accent-purple: #a855f7;    /* candidate move / memo           */
+            --mono: ui-monospace, 'SF Mono', 'Cascadia Code', 'Courier New', monospace;
+            --sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+            --shell: 900px;
+        }
+
+        * { box-sizing: border-box; }
+        html, body { overflow-x: hidden; }
+        body {
+            background:
+                radial-gradient(1100px 600px at 15% -10%, rgba(168, 85, 247, 0.10), transparent 60%),
+                radial-gradient(900px 600px at 100% 10%, rgba(6, 182, 212, 0.10), transparent 55%),
+                linear-gradient(160deg, #070b14 0%, #0b1120 55%, #0a0f1c 100%);
+            background-attachment: fixed;
+            color: var(--text-main); font-family: var(--sans); margin: 0;
+            display: flex; flex-direction: column; align-items: center; min-height: 100vh;
+            padding-bottom: 48px; -webkit-font-smoothing: antialiased;
+        }
+        body::before, body::after { content: ''; position: fixed; border-radius: 50%; filter: blur(70px); pointer-events: none; z-index: 0; opacity: 0.45; }
+        body::before { width: 380px; height: 380px; top: 8%; left: -120px; background: radial-gradient(circle, rgba(168,85,247,0.30), transparent 70%); }
+        body::after  { width: 420px; height: 420px; bottom: 4%; right: -140px; background: radial-gradient(circle, rgba(6,182,212,0.22), transparent 70%); }
+        body > * { position: relative; z-index: 1; }
+
+        .input-bar {
+            width: 100%; background: rgba(10, 15, 28, 0.55);
+            backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+            padding: 14px 16px; display: flex; justify-content: center; align-items: center; gap: 10px;
+            border-bottom: 1px solid var(--border-main); flex-wrap: wrap; position: sticky; top: 0; z-index: 50;
+        }
+        label.ui-label, .ui-label { font-family: var(--mono); font-size: 13px; color: var(--text-dim); letter-spacing: 0.2px; }
+        input[type="text"], input[type="number"] {
+            background: var(--bg-input); border: 1px solid var(--border-main); color: var(--text-main);
+            height: 34px; border-radius: 9px; padding: 0 12px; font-size: 13px; font-family: var(--mono);
+            transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+        }
+        .loc-input { width: 200px; } .val-input { width: 70px; }
+        input:focus { outline: none; border-color: var(--accent-purple); box-shadow: 0 0 0 3px rgba(168, 85, 247, 0.18); background: rgba(168, 85, 247, 0.06); }
+
+        button {
+            height: 34px; border-radius: 9px; padding: 0 14px; background: var(--btn-bg);
+            border: 1px solid var(--border-main); color: var(--text-main); font-size: 13px; font-weight: 600; cursor: pointer;
+            transition: transform 0.15s ease, background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+        }
+        button:hover { background: var(--btn-hover); border-color: rgba(6, 182, 212, 0.5); box-shadow: 0 0 18px rgba(6, 182, 212, 0.18); transform: translateY(-1px); }
+        button:active { transform: translateY(0); }
+        #play-btn { background: linear-gradient(135deg, rgba(6,182,212,0.22), rgba(6,182,212,0.10)); border-color: rgba(6, 182, 212, 0.45); color: #a5f3fc; min-width: 80px; }
+
+        .shell { width: var(--shell); max-width: 95%; margin: 24px auto 0; display: flex; flex-direction: column; gap: 16px; }
+
+        .title-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+        .title-row h1 { font-size: 18px; font-weight: 800; margin: 0; letter-spacing: 0.2px; }
+        .title-row .sub { color: var(--text-dim); font-weight: 500; font-size: 13px; }
+        .step-badge { font-family: var(--mono); font-size: 12px; font-weight: 700; color: #a5f3fc; background: rgba(6,182,212,0.12); border: 1px solid rgba(6,182,212,0.3); padding: 4px 10px; border-radius: 999px; white-space: nowrap; }
+        .progress-track { height: 4px; width: 100%; background: rgba(255,255,255,0.07); border-radius: 999px; overflow: hidden; margin-top: -6px; }
+        .progress-fill { height: 100%; width: 0%; border-radius: 999px; background: linear-gradient(90deg, var(--accent-blue), var(--accent-purple)); box-shadow: 0 0 12px rgba(6,182,212,0.5); transition: width 0.45s cubic-bezier(0.34,1.1,0.64,1); }
+
+        .narration { background: var(--bg-surface); border: 1px solid rgba(6,182,212,0.22); border-radius: 12px; padding: 12px 18px; font-family: var(--mono); font-size: 14px; line-height: 1.5; color: #cfe9f5; min-height: 48px; display: flex; align-items: center; gap: 10px; transition: border-color 0.3s, background 0.3s; }
+        .narration::before { content: '\25B8'; color: var(--accent-blue); font-size: 13px; }
+        .narration.done { border-color: rgba(34,197,94,0.4); background: rgba(34,197,94,0.06); }
+        .narration.done::before { content: '\2713'; color: var(--accent-green); }
+        .narration.fail { border-color: rgba(244,63,94,0.4); background: rgba(244,63,94,0.06); }
+        .narration.fail::before { content: '\2717'; color: var(--accent-red); }
+        .narration code { background: rgba(6,182,212,0.14); color: #7dd3fc; padding: 1px 6px; border-radius: 5px; font-size: 12.5px; }
+        .narration b { color: #fff; }
+
+        .stage-card { background: var(--bg-surface); border: 1px solid var(--border-main); border-radius: 18px; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); box-shadow: 0 12px 38px rgba(0,0,0,0.4); overflow: hidden; }
+        .stage-screen { position: relative; margin: 14px; border-radius: 14px; background: radial-gradient(700px 300px at 50% -10%, rgba(6,182,212,0.08), transparent 70%), #090d18; border: 1px solid rgba(255,255,255,0.06); padding: 22px; display: flex; flex-direction: column; gap: 18px; }
+
+        /* ---- city row (the "grid" of locations) ---- */
+        .grid-stage { position: relative; width: 100%; overflow-x: auto; scrollbar-width: thin; display: flex; justify-content: center; }
+        .grid-stage::-webkit-scrollbar { height: 8px; }
+        .grid-stage::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 8px; }
+        .city-row { display: flex; gap: 14px; padding: 6px 2px; }
+        .city {
+            position: relative;
+            display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+            border-radius: 12px; font-family: var(--mono);
+            border: 2px solid var(--border-main); background: rgba(255,255,255,0.04); color: var(--text-main);
+            width: 64px; height: 64px; will-change: transform;
+            transition: background 0.35s, border-color 0.35s, color 0.35s, box-shadow 0.35s, transform 0.3s, opacity 0.35s;
+        }
+        .city .cidx { font-size: 10px; font-weight: 700; color: var(--text-dim); letter-spacing: 0.5px; }
+        .city .cval { font-size: 19px; font-weight: 800; }
+        .city.finish { border-color: var(--accent-green); }
+        .city.finish .cidx { color: var(--accent-green); }
+        .city.current { border-color: var(--accent-orange); background: rgba(245,165,36,0.16); color: #ffd591; box-shadow: 0 0 22px rgba(245,165,36,0.55), inset 0 0 12px rgba(245,165,36,0.12); transform: scale(1.08); z-index: 2; }
+        .city.candidate { border-color: var(--accent-purple); background: rgba(168,85,247,0.16); color: #e9d5ff; box-shadow: 0 0 18px rgba(168,85,247,0.5); }
+        .city.atfinish { border-color: var(--accent-green); background: linear-gradient(180deg, rgba(47,224,143,0.85), rgba(33,194,117,0.85)); color: #06251a; box-shadow: 0 0 20px rgba(34,197,94,0.55); transform: scale(1.08); z-index: 2; }
+        .city.dead { opacity: 0.32; border-color: rgba(244,63,94,0.3); background: rgba(244,63,94,0.05); color: #b3697d; }
+        .city .flag { position: absolute; top: -12px; right: -8px; font-size: 13px; font-weight: 900; color: #fff; text-shadow: 0 0 6px rgba(0,0,0,0.7); pointer-events: none; }
+        .city .flag.fin { color: var(--accent-green); }
+
+        /* ---- recursion stack + tallies ---- */
+        .stage-lower { display: flex; gap: 18px; flex-wrap: wrap; }
+        .stack-area { flex: 1 1 300px; min-width: 260px; }
+        .area-label { font-family: var(--mono); font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--text-dim); margin-bottom: 8px; display: flex; align-items: center; gap: 7px; }
+        .area-label .pip { width: 7px; height: 7px; border-radius: 50%; background: var(--accent-blue); box-shadow: 0 0 8px var(--accent-blue); }
+        .stack-col { display: flex; flex-direction: column-reverse; gap: 6px; min-height: 120px; padding: 8px; border-radius: 12px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-main); }
+        .stack-col .empty { color: var(--text-dim); font-family: var(--mono); font-size: 12px; text-align: center; padding: 14px 0; opacity: 0.6; }
+        .frame {
+            display: flex; align-items: center; justify-content: space-between; gap: 8px;
+            padding: 8px 12px; border-radius: 9px; font-family: var(--mono); font-size: 13px;
+            background: rgba(255,255,255,0.04); border: 1px solid var(--border-main); color: var(--text-main);
+            will-change: transform; transition: background 0.3s, border-color 0.3s, box-shadow 0.3s, color 0.3s;
+        }
+        .frame .call b.city { color: var(--accent-orange); }
+        .frame .call b.fuel { color: var(--accent-blue); }
+        .frame .tally { color: var(--accent-green); font-weight: 800; }
+        .frame.top { border-color: var(--accent-blue); background: rgba(6,182,212,0.12); box-shadow: 0 0 16px rgba(6,182,212,0.28); }
+        .frame.ret { border-color: var(--accent-green); background: rgba(34,197,94,0.10); }
+        .frame.dead { border-color: rgba(244,63,94,0.4); background: rgba(244,63,94,0.08); }
+        .frame.memo { border-color: var(--accent-purple); background: rgba(168,85,247,0.10); }
+
+        .count-area { flex: 0 1 220px; min-width: 180px; display: flex; flex-direction: column; }
+        .count-box { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; padding: 16px; border-radius: 12px; background: rgba(34,197,94,0.06); border: 1px solid rgba(34,197,94,0.28); }
+        .count-box .lbl { font-family: var(--mono); font-size: 11px; color: var(--text-dim); letter-spacing: 0.5px; text-align: center; }
+        .count-box .big { font-family: var(--mono); font-size: 40px; font-weight: 800; color: var(--accent-green); line-height: 1; transition: transform 0.3s; }
+        .count-box .small { font-family: var(--mono); font-size: 12px; color: var(--text-dim); }
+
+        #confetti { position: absolute; inset: 0; overflow: visible; pointer-events: none; z-index: 5; }
+        .confetti-piece { position: absolute; top: 0; left: 50%; width: 8px; height: 13px; border-radius: 2px; opacity: 0; animation: confettiFall ease-out forwards; }
+
+        .controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: center; }
+        .controls .kbd-hint { font-size: 11px; color: var(--text-dim); font-family: var(--mono); margin-left: 4px; }
+        .kbd { background: rgba(255,255,255,0.07); border: 1px solid var(--border-main); border-radius: 5px; padding: 1px 6px; font-size: 10px; }
+        input[type="range"] { accent-color: var(--accent-blue); width: 110px; cursor: pointer; }
+
+        .details-toggle { align-self: center; height: 32px; padding: 0 16px; border-radius: 999px; cursor: pointer; background: rgba(255,255,255,0.04); border: 1px solid var(--border-main); color: var(--text-dim); font-family: var(--mono); font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; gap: 8px; transition: color 0.2s, border-color 0.2s, background 0.2s; }
+        .details-toggle:hover { color: var(--text-main); border-color: rgba(6,182,212,0.4); background: rgba(6,182,212,0.06); }
+        .details-toggle .chev { transition: transform 0.3s ease; }
+        .details-wrap.open .details-toggle .chev { transform: rotate(180deg); }
+        .details-body { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.4s ease; }
+        .details-wrap.open .details-body { grid-template-rows: 1fr; }
+        .details-inner { overflow: hidden; min-height: 0; }
+        .details-grid { display: flex; flex-direction: column; gap: 14px; padding-top: 14px; }
+
+        .panel-card { background: var(--bg-surface); border: 1px solid var(--border-main); border-radius: 16px; backdrop-filter: blur(10px); box-shadow: 0 8px 30px rgba(0,0,0,0.35); }
+        .panel-head { display: flex; align-items: center; gap: 8px; padding: 11px 16px; border-bottom: 1px solid var(--border-main); font-size: 11px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; color: var(--text-dim); }
+        .panel-head .pip { width: 7px; height: 7px; border-radius: 50%; background: var(--accent-blue); box-shadow: 0 0 8px var(--accent-blue); }
+        .code-body { padding: 12px 6px 14px; font-family: var(--mono); font-size: 12.5px; line-height: 1.7; }
+        .code-line { display: flex; gap: 12px; padding: 1px 16px; border-left: 2px solid transparent; transition: background 0.3s, border-color 0.3s; white-space: pre; }
+        .code-line .lno { color: #4b5772; width: 16px; text-align: right; user-select: none; }
+        .code-line .src { color: #c4cee0; }
+        .code-line .kw { color: #c792ea; }
+        .code-line .fn { color: #82aaff; }
+        .code-line .cm { color: #5b6b86; font-style: italic; }
+        .code-line.active { background: rgba(6,182,212,0.12); border-left-color: var(--accent-blue); }
+        .code-line.active .src, .code-line.active .lno { color: #e8eefb; }
+
+        .state-strip { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 0 2px; }
+        .pill { display: inline-flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 12px; color: var(--text-dim); background: rgba(255,255,255,0.04); border: 1px solid var(--border-main); border-radius: 999px; padding: 4px 11px; }
+        .pill b { color: var(--text-main); font-weight: 800; }
+        .pill.c b { color: var(--accent-orange); } .pill.f b { color: var(--accent-blue); } .pill.g b { color: var(--accent-green); } .pill.d b { color: var(--accent-purple); }
+
+        .log-panel { border-radius: 14px; padding: 12px 16px; height: 130px; overflow-y: auto; font-family: var(--mono); font-size: 12.5px; line-height: 1.5; background: var(--bg-surface); border: 1px solid var(--border-main); }
+        .log-panel::-webkit-scrollbar { width: 8px; }
+        .log-panel::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 8px; }
+
+        @keyframes confettiFall { 0%{ opacity:1; transform: translate(-50%, 0) rotate(0deg); } 100%{ opacity:0; transform: translate(calc(-50% + var(--x)), 220px) rotate(var(--rot)); } }
+        @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; } }
+    </style>
+</head>
+<body>
+
+    <div class="input-bar">
+        <label class="ui-label">locations =</label>
+        <input type="text" id="loc-input" class="loc-input" placeholder="2,3,6,8,4">
+        <label class="ui-label">start =</label>
+        <input type="number" id="start-input" class="val-input" min="0" placeholder="1">
+        <label class="ui-label">finish =</label>
+        <input type="number" id="finish-input" class="val-input" min="0" placeholder="3">
+        <label class="ui-label">fuel =</label>
+        <input type="number" id="fuel-input" class="val-input" min="0" placeholder="5">
+        <button onclick="loadCustom()">Load</button>
+        <span class="ui-label" style="opacity:.5">|</span>
+        <button onclick="loadExample(0)">Ex 1</button>
+        <button onclick="loadExample(1)">Ex 2</button>
+    </div>
+
+    <div class="shell">
+        <div class="title-row">
+            <h1>Count All Routes <span class="sub">&middot; recursion + memo &middot; move city&#8594;city &middot; cost = |loc[i] &minus; loc[j]| &middot; +1 each time at finish</span></h1>
+            <span class="step-badge" id="step-badge">Step 1 / 1</span>
+        </div>
+        <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+
+        <div class="narration" id="main-panel">&mdash;</div>
+
+        <div class="stage-card">
+            <div class="stage-screen">
+                <div id="confetti"></div>
+                <div class="grid-stage">
+                    <div class="city-row" id="city-row"></div>
+                </div>
+                <div class="stage-lower">
+                    <div class="stack-area">
+                        <div class="area-label"><span class="pip"></span> Recursion stack &middot; dp(city, fuel)</div>
+                        <div class="stack-col" id="stack-col"></div>
+                    </div>
+                    <div class="count-area">
+                        <div class="area-label"><span class="pip" style="background:var(--accent-green);box-shadow:0 0 8px var(--accent-green)"></span> Routes counted</div>
+                        <div class="count-box">
+                            <div class="lbl">total routes start &#8594; finish</div>
+                            <div class="big" id="count-big">&mdash;</div>
+                            <div class="small" id="count-small">&nbsp;</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="controls">
+            <button onclick="resetSim()">&#8634; Reset</button>
+            <button onclick="prevStep()">&#8592; Back</button>
+            <button onclick="togglePlay()" id="play-btn">Play</button>
+            <button onclick="nextStep()">Next &#8594;</button>
+            <span class="ui-label" style="margin-left:6px; font-size:11px">Speed</span>
+            <input type="range" id="speed" min="0" max="2" value="1">
+            <span class="kbd-hint"><span class="kbd">&#8592;</span> <span class="kbd">&#8594;</span> step &middot; <span class="kbd">space</span> play</span>
+        </div>
+
+        <div class="details-wrap" id="details-wrap">
+            <button class="details-toggle" onclick="toggleDetails()" aria-expanded="false">
+                <span id="details-label">Show code, state &amp; log</span> <span class="chev">&#9662;</span>
+            </button>
+            <div class="details-body">
+                <div class="details-inner">
+                    <div class="details-grid">
+                        <div class="state-strip">
+                            <span class="pill c">city <b id="st-city">&mdash;</b></span>
+                            <span class="pill f">fuel <b id="st-fuel">&mdash;</b></span>
+                            <span class="pill d">finish <b id="st-fin">&mdash;</b></span>
+                            <span class="pill g">routes <b id="st-res">&mdash;</b></span>
+                        </div>
+                        <div class="panel-card">
+                            <div class="panel-head"><span class="pip"></span> Algorithm</div>
+                            <div class="code-body" id="code-panel"></div>
+                        </div>
+                        <div class="log-panel" id="log"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        'use strict';
+
+        // --------- Motion engine (spring pop, zero deps) ---------
+        const REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        const FRAME = 1000 / 60;
+        function sampleSpring(stiffness, damping, mass) {
+            const dt = 1 / 60; let x = 1, v = 0; const out = [];
+            for (let i = 0; i < 240; i++) { const a = (-stiffness * x - damping * v) / mass; v += a * dt; x += v * dt; out.push(1 - x); if (Math.abs(x) < 0.0015 && Math.abs(v) < 0.0015) break; }
+            out.push(1); return out;
+        }
+        const SPRING_POP = sampleSpring(520, 17, 1);
+        const durOf = (a) => a.length * FRAME;
+        const Motion = {
+            pop(el) {
+                if (REDUCED) return;
+                const kf = SPRING_POP.map(p => ({ transform: `scale(${(0.7 + 0.4 * p).toFixed(3)})` }));
+                el.animate(kf, { duration: durOf(SPRING_POP), easing: 'linear' });
+            },
+            enter(el) {
+                if (REDUCED) return;
+                const kf = SPRING_POP.map(p => ({ opacity: String(Math.min(1, p * 1.4)), transform: `translateY(${((1 - p) * -10).toFixed(2)}px) scale(${(0.85 + 0.15 * p).toFixed(3)})` }));
+                el.animate(kf, { duration: durOf(SPRING_POP), easing: 'linear' });
+            },
+        };
+
+        // --------- State ---------
+        let LOCATIONS = [2, 3, 6, 8, 4];
+        let START = 1;
+        let FINISH = 3;
+        let FUEL = 5;
+        let steps = [];
+        let stepIdx = 0;
+        let timer = null;
+        let confettiArmed = true;
+        const delays = [1450, 720, 330];
+        const cityEls = {};    // 'idx' -> element
+        const frameEls = {};   // frame id -> element
+
+        // --------- Algorithm source (synced code panel) ---------
+        const CODE = [
+            [['kw','def '],['fn','countRoutes'],['src','(loc, start, finish, fuel):']],
+            [['kw','  def '],['fn','dp'],['src','(city, fuel):']],
+            [['kw','    if '],['src','(city, fuel) in memo: '],['kw','return '],['src','memo[...]']],
+            [['kw','    if '],['src','fuel < 0: '],['kw','return '],['src','0']],
+            [['src','    total = 1 '],['kw','if '],['src','city == finish '],['kw','else '],['src','0']],
+            [['kw','    for '],['src','nxt '],['kw','in '],['src','range(len(loc)):']],
+            [['kw','      if '],['src','nxt == city: '],['kw','continue']],
+            [['src','      d = abs(loc[city] - loc[nxt])']],
+            [['kw','      if '],['src','fuel >= d:']],
+            [['src','        total += dp(nxt, fuel - d)']],
+            [['src','    memo[(city, fuel)] = total']],
+            [['kw','    return '],['src','total']],
+            [['kw','  return '],['src','dp(start, fuel)']],
+        ];
+        function buildCodePanel() {
+            const panel = document.getElementById('code-panel'); panel.innerHTML = '';
+            CODE.forEach((tokens, i) => {
+                const line = document.createElement('div'); line.className = 'code-line'; line.dataset.line = i;
+                const lno = document.createElement('span'); lno.className = 'lno'; lno.textContent = i + 1; line.appendChild(lno);
+                const src = document.createElement('span');
+                tokens.forEach(([cls, txt]) => { const s = document.createElement('span'); s.className = cls; s.textContent = txt; src.appendChild(s); });
+                line.appendChild(src); panel.appendChild(line);
+            });
+        }
+        function highlightCode(arr) { document.querySelectorAll('.code-line').forEach(el => el.classList.toggle('active', arr && arr.includes(+el.dataset.line))); }
+        function toggleDetails() {
+            const wrap = document.getElementById('details-wrap'); const open = wrap.classList.toggle('open');
+            wrap.querySelector('.details-toggle').setAttribute('aria-expanded', open ? 'true' : 'false');
+            document.getElementById('details-label').textContent = open ? 'Hide code, state & log' : 'Show code, state & log';
+        }
+
+        // --------- step generation (genuine recursion trace) ---------
+        // Each stack frame: { id, city, fuel, total }  (total accumulates live as children return)
+        function generateSteps() {
+            steps = [];
+            const loc = LOCATIONS, n = loc.length, finish = FINISH;
+            const memo = {};
+            let frameSeq = 0;
+
+            const snap = (stack, extra) => Object.assign({
+                loc, n, finish, start: START, fuel: FUEL,
+                city: null, remFuel: null, candidate: null, dead: false, atFinish: false,
+                result: null, complete: false,
+                // deep copy of stack so each snapshot is immutable
+                stack: stack.map(f => ({ id: f.id, city: f.city, fuel: f.fuel, total: f.total }))
+            }, extra);
+
+            steps.push(snap([], {
+                code: [0, 12],
+                panel: `<b>Count All Routes.</b> <code>locations = [${loc.join(', ')}]</code>, start <code>${START}</code>, finish <code>${FINISH}</code>, fuel <code>${FUEL}</code>. Moving city &#8594; city costs <code>|loc[i] &minus; loc[j]|</code> fuel; every time we sit on the finish we score <b>+1</b> route. Call <code>dp(${START}, ${FUEL})</code>.`,
+                log: `countRoutes  start=${START}, finish=${FINISH}, fuel=${FUEL}`
+            }));
+
+            function dp(city, remFuel, stack) {
+                const key = city + ',' + remFuel;
+
+                // ---- memo lookup ----
+                if (key in memo) {
+                    steps.push(snap(stack, {
+                        code: [2], city, remFuel, candidate: city,
+                        panel: `<b>Memo hit.</b> <code>dp(${city}, ${remFuel})</code> was already solved &#8594; reuse cached value <b>${memo[key]}</b> instead of recursing again.`,
+                        log: `memo  dp(${city}, ${remFuel}) = ${memo[key]}`
+                    }));
+                    return memo[key];
+                }
+
+                const frame = { id: ++frameSeq, city, fuel: remFuel, total: 0 };
+                stack.push(frame);
+
+                // ---- call / push ----
+                steps.push(snap(stack, {
+                    code: [1], city, remFuel,
+                    panel: `<b>Enter</b> <code>dp(${city}, ${remFuel})</code> &#8594; at city <code>${city}</code> (loc ${loc[city]}) with <code>${remFuel}</code> fuel. Push a stack frame; its running total starts at 0.`,
+                    log: `call  dp(${city}, ${remFuel})`
+                }));
+
+                // ---- base: fuel < 0 ----
+                if (remFuel < 0) {
+                    memo[key] = 0;
+                    steps.push(snap(stack, {
+                        code: [3], city, remFuel, dead: true,
+                        panel: `<b>Dead branch.</b> Fuel <code>${remFuel} &lt; 0</code> &#8594; this path overshot. Return <b>0</b> and pop the frame.`,
+                        log: `base  dp(${city}, ${remFuel}) fuel<0 -> 0`
+                    }));
+                    stack.pop();
+                    return 0;
+                }
+
+                // ---- seed: +1 if standing on finish ----
+                const atFin = (city === finish);
+                frame.total = atFin ? 1 : 0;
+                steps.push(snap(stack, {
+                    code: [4], city, remFuel, atFinish: atFin,
+                    panel: atFin
+                        ? `City <code>${city}</code> <b>is the finish</b> &#8594; staying here is itself one valid route. Seed this frame's total to <b>1</b>, then keep exploring (we may still drive on and come back).`
+                        : `City <code>${city}</code> is not the finish &#8594; seed this frame's total to <b>0</b>. Look for onward moves.`,
+                    log: `seed  total = ${frame.total}${atFin ? '  (on finish)' : ''}`
+                }));
+
+                // ---- explore neighbours in index order ----
+                for (let nxt = 0; nxt < n; nxt++) {
+                    if (nxt === city) continue;
+                    const d = Math.abs(loc[city] - loc[nxt]);
+
+                    if (remFuel >= d) {
+                        steps.push(snap(stack, {
+                            code: [5, 7, 8, 9], city, remFuel, candidate: nxt,
+                            panel: `Consider moving to city <code>${nxt}</code> (loc ${loc[nxt]}). Cost <code>|${loc[city]} &minus; ${loc[nxt]}| = ${d}</code>, and <code>${remFuel} &#8805; ${d}</code> &#8594; affordable. Recurse into <code>dp(${nxt}, ${remFuel - d})</code>.`,
+                            log: `move  ${city}->${nxt}  cost ${d}  -> dp(${nxt}, ${remFuel - d})`
+                        }));
+                        const ways = dp(nxt, remFuel - d, stack);
+                        frame.total += ways;
+                        steps.push(snap(stack, {
+                            code: [9], city, remFuel, candidate: nxt,
+                            panel: `Back at city <code>${city}</code>. <code>dp(${nxt}, ${remFuel - d})</code> returned <b>${ways}</b>; add it &#8594; running total is now <b>${frame.total}</b>.`,
+                            log: `add   +${ways}  total(${city},${remFuel}) = ${frame.total}`
+                        }));
+                    } else {
+                        steps.push(snap(stack, {
+                            code: [5, 7, 8], city, remFuel, candidate: nxt,
+                            panel: `City <code>${nxt}</code> (loc ${loc[nxt]}) costs <code>${d}</code> fuel but only <code>${remFuel}</code> remains &#8594; <b>can't afford</b> it. Skip.`,
+                            log: `skip  ${city}->${nxt}  cost ${d} > fuel ${remFuel}`
+                        }));
+                    }
+                }
+
+                // ---- return / pop ----
+                memo[key] = frame.total;
+                const total = frame.total;
+                steps.push(snap(stack, {
+                    code: [10, 11], city, remFuel,
+                    panel: `Finished exploring from <code>dp(${city}, ${remFuel})</code> &#8594; it yields <b>${total}</b> route${total === 1 ? '' : 's'}. Cache it and return up the stack.`,
+                    log: `ret   dp(${city}, ${remFuel}) = ${total}`
+                }));
+                stack.pop();
+                return total;
+            }
+
+            const answer = dp(START, FUEL, []);
+
+            steps.push(snap([], {
+                code: [12], complete: true, result: answer,
+                panel: `Done. From start <code>${START}</code> with <code>${FUEL}</code> fuel there are exactly <b>${answer}</b> distinct route${answer === 1 ? '' : 's'} that finish at city <code>${FINISH}</code> (counting every visit to the finish, fuel permitting).`,
+                log: `DONE  total routes = ${answer}`
+            }));
+        }
+
+        // --------- render (persistent DOM reconciliation) ---------
+        function renderStep(idx) {
+            stepIdx = idx; const step = steps[idx]; if (!step) return;
+
+            // ----- city row -----
+            const row = document.getElementById('city-row');
+            const usedCities = new Set();
+            for (let j = 0; j < step.n; j++) {
+                const key = String(j); usedCities.add(key);
+                let el = cityEls[key];
+                const fresh = !el;
+                if (fresh) {
+                    el = document.createElement('div');
+                    el.innerHTML = `<span class="cidx"></span><span class="cval"></span><span class="flag"></span>`;
+                    cityEls[key] = el;
+                }
+                let cls = 'city';
+                let flag = '';
+                if (j === step.finish) { cls += ' finish'; flag = '&#9873;'; }
+                if (step.complete) {
+                    // neutral final board, finish highlighted
+                } else if (step.city === j) {
+                    cls += step.atFinish ? ' atfinish' : (step.dead ? ' dead' : ' current');
+                } else if (step.candidate === j) {
+                    cls += ' candidate';
+                }
+                el.className = cls;
+                el.querySelector('.cidx').textContent = 'city ' + j;
+                el.querySelector('.cval').textContent = step.loc[j];
+                const flagEl = el.querySelector('.flag');
+                flagEl.innerHTML = flag;
+                flagEl.className = 'flag' + (j === step.finish ? ' fin' : '');
+                row.appendChild(el);
+                if (fresh) Motion.pop(el);
+            }
+            Object.keys(cityEls).forEach(k => { if (!usedCities.has(k)) { cityEls[k].remove(); delete cityEls[k]; } });
+
+            // ----- recursion stack -----
+            const col = document.getElementById('stack-col');
+            const stack = step.stack || [];
+            const usedFrames = new Set();
+            if (stack.length === 0) {
+                Object.keys(frameEls).forEach(k => { frameEls[k].remove(); delete frameEls[k]; });
+                if (!col.querySelector('.empty')) {
+                    col.innerHTML = '<div class="empty">stack empty</div>';
+                }
+            } else {
+                const emp = col.querySelector('.empty'); if (emp) emp.remove();
+                stack.forEach((f, k) => {
+                    const key = String(f.id); usedFrames.add(key);
+                    let el = frameEls[key];
+                    const fresh = !el;
+                    if (fresh) {
+                        el = document.createElement('div');
+                        el.innerHTML = `<span class="call"></span><span class="tally"></span>`;
+                        frameEls[key] = el;
+                    }
+                    const isTop = k === stack.length - 1;
+                    let cls = 'frame';
+                    if (isTop) {
+                        if (step.dead && !step.complete) cls += ' dead';
+                        else if (step.code && (step.code.includes(10) || step.code.includes(11))) cls += ' ret';
+                        else cls += ' top';
+                    }
+                    el.className = cls;
+                    el.querySelector('.call').innerHTML = `dp(<b class="city">${f.city}</b>, <b class="fuel">${f.fuel}</b>)`;
+                    el.querySelector('.tally').textContent = '= ' + f.total;
+                    col.appendChild(el);
+                    if (fresh) Motion.enter(el);
+                });
+                Object.keys(frameEls).forEach(k => { if (!usedFrames.has(k)) { frameEls[k].remove(); delete frameEls[k]; } });
+            }
+
+            // ----- count box -----
+            const big = document.getElementById('count-big');
+            const small = document.getElementById('count-small');
+            if (step.complete) {
+                big.textContent = step.result;
+                small.innerHTML = `start ${step.start} &#8594; finish ${step.finish}`;
+                Motion.pop(big);
+            } else if (stack.length > 0) {
+                const top = stack[stack.length - 1];
+                big.textContent = top.total;
+                small.innerHTML = `running &middot; dp(${top.city}, ${top.fuel})`;
+            } else {
+                big.textContent = '0';
+                small.innerHTML = '&nbsp;';
+            }
+
+            // ----- narration / code / state -----
+            const mp = document.getElementById('main-panel');
+            mp.innerHTML = step.panel || '&mdash;';
+            mp.classList.toggle('done', !!step.complete);
+            mp.classList.remove('fail');
+            highlightCode(step.code);
+
+            if (step.complete && step.result > 0) { if (confettiArmed) { fireConfetti(); confettiArmed = false; } } else if (!step.complete) confettiArmed = true;
+
+            document.getElementById('st-city').textContent = step.city != null ? step.city : '—';
+            document.getElementById('st-fuel').textContent = step.remFuel != null ? step.remFuel : '—';
+            document.getElementById('st-fin').textContent = step.finish;
+            document.getElementById('st-res').textContent = step.complete ? step.result : '…';
+
+            document.getElementById('step-badge').textContent = `Step ${idx + 1} / ${steps.length}`;
+            document.getElementById('progress-fill').style.width = `${(idx / Math.max(1, steps.length - 1)) * 100}%`;
+
+            const logEl = document.getElementById('log');
+            logEl.innerHTML = steps.slice(0, idx + 1).map(s => `<div style="margin:3px 0;white-space:pre-wrap;">${s.log}</div>`).join('');
+            logEl.scrollTop = logEl.scrollHeight;
+        }
+
+        function fireConfetti() {
+            const host = document.getElementById('confetti'); if (!host || REDUCED) return;
+            const colors = ['#22c55e', '#06b6d4', '#a855f7', '#f5a524', '#f43f5e'];
+            for (let i = 0; i < 38; i++) {
+                const p = document.createElement('div'); p.className = 'confetti-piece';
+                p.style.setProperty('--x', ((Math.random() * 2 - 1) * 220) + 'px');
+                p.style.setProperty('--rot', ((Math.random() * 720 - 360)) + 'deg');
+                p.style.background = colors[i % colors.length];
+                p.style.animationDuration = (0.9 + Math.random() * 0.8) + 's';
+                p.style.animationDelay = (Math.random() * 0.15) + 's';
+                host.appendChild(p); setTimeout(() => p.remove(), 1900);
+            }
+        }
+
+        // --------- controls ---------
+        function nextStep() { if (stepIdx < steps.length - 1) renderStep(stepIdx + 1); else pause(); }
+        function prevStep() { if (stepIdx > 0) renderStep(stepIdx - 1); }
+        function resetSim() { pause(); renderStep(0); }
+        function togglePlay() {
+            const btn = document.getElementById('play-btn');
+            if (timer) { pause(); return; }
+            btn.textContent = 'Pause';
+            if (stepIdx >= steps.length - 1) renderStep(0);
+            timer = setInterval(() => { if (stepIdx < steps.length - 1) nextStep(); else pause(); }, delays[document.getElementById('speed').value]);
+        }
+        function pause() { clearInterval(timer); timer = null; document.getElementById('play-btn').textContent = 'Play'; }
+
+        function clearDom() {
+            Object.keys(cityEls).forEach(k => { cityEls[k].remove(); delete cityEls[k]; });
+            Object.keys(frameEls).forEach(k => { frameEls[k].remove(); delete frameEls[k]; });
+            document.getElementById('stack-col').innerHTML = '';
+            confettiArmed = true;
+        }
+        function loadData(loc, start, finish, fuel) {
+            pause(); LOCATIONS = loc; START = start; FINISH = finish; FUEL = fuel;
+            clearDom(); generateSteps(); renderStep(0);
+        }
+
+        function loadCustom() {
+            const locStr = (document.getElementById('loc-input').value || '').trim();
+            const s = parseInt(document.getElementById('start-input').value, 10);
+            const f = parseInt(document.getElementById('finish-input').value, 10);
+            const fu = parseInt(document.getElementById('fuel-input').value, 10);
+            if (!locStr) return;
+            const loc = locStr.split(',').map(x => parseInt(x.trim(), 10)).filter(x => !isNaN(x));
+            if (!loc.length || isNaN(s) || isNaN(f) || isNaN(fu)) return;
+            if (s < 0 || s >= loc.length || f < 0 || f >= loc.length || fu < 0) return;
+            loadData(loc, s, f, fu);
+        }
+
+        const EXAMPLES = [
+            { loc: [2, 3, 6, 8, 4], start: 1, finish: 3, fuel: 5 },
+            { loc: [4, 3, 1],       start: 1, finish: 0, fuel: 6 },
+        ];
+        function loadExample(n) {
+            const ex = EXAMPLES[n];
+            document.getElementById('loc-input').value = ex.loc.join(',');
+            document.getElementById('start-input').value = ex.start;
+            document.getElementById('finish-input').value = ex.finish;
+            document.getElementById('fuel-input').value = ex.fuel;
+            loadData(ex.loc, ex.start, ex.finish, ex.fuel);
+        }
+
+        document.addEventListener('keydown', (e) => {
+            const tag = (e.target.tagName || '').toLowerCase(); if (tag === 'input' || tag === 'textarea') return;
+            if (e.key === 'ArrowRight') { e.preventDefault(); pause(); nextStep(); }
+            else if (e.key === 'ArrowLeft') { e.preventDefault(); pause(); prevStep(); }
+            else if (e.key === ' ') { e.preventDefault(); togglePlay(); }
+        });
+        ['loc-input', 'start-input', 'finish-input', 'fuel-input'].forEach(id => document.getElementById(id).addEventListener('keydown', (e) => { if (e.key === 'Enter') loadCustom(); }));
+        window.addEventListener('resize', () => { if (steps.length) renderStep(stepIdx); });
+
+        buildCodePanel();
+        window.onload = () => loadExample(0);
+    </script>
+</body>
+</html>

@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Prime Partitions - Visualization</title>
+    <style>
+        :root {
+            --bg-page: #070b14;
+            --bg-surface: rgba(255, 255, 255, 0.045);
+            --bg-input: rgba(255, 255, 255, 0.04);
+            --border-main: rgba(255, 255, 255, 0.10);
+            --btn-bg: rgba(255, 255, 255, 0.05);
+            --btn-hover: rgba(255, 255, 255, 0.10);
+            --text-main: #e8eefb;
+            --text-dim: #8b98b3;
+            --accent-orange: #f5a524;   /* final answer / dp[n]            */
+            --accent-blue:   #06b6d4;    /* dependency cells / chrome       */
+            --accent-green:  #22c55e;    /* contributes a way (+)           */
+            --accent-red:    #f43f5e;    /* skipped / out of reach          */
+            --accent-purple: #a855f7;    /* current cell being filled       */
+            --mono: ui-monospace, 'SF Mono', 'Cascadia Code', 'Courier New', monospace;
+            --sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+            --shell: 900px;
+        }
+
+        * { box-sizing: border-box; }
+        html, body { overflow-x: hidden; }
+        body {
+            background:
+                radial-gradient(1100px 600px at 15% -10%, rgba(168, 85, 247, 0.10), transparent 60%),
+                radial-gradient(900px 600px at 100% 10%, rgba(6, 182, 212, 0.10), transparent 55%),
+                linear-gradient(160deg, #070b14 0%, #0b1120 55%, #0a0f1c 100%);
+            background-attachment: fixed;
+            color: var(--text-main); font-family: var(--sans); margin: 0;
+            display: flex; flex-direction: column; align-items: center; min-height: 100vh;
+            padding-bottom: 48px; -webkit-font-smoothing: antialiased;
+        }
+        body::before, body::after { content: ''; position: fixed; border-radius: 50%; filter: blur(70px); pointer-events: none; z-index: 0; opacity: 0.45; }
+        body::before { width: 380px; height: 380px; top: 8%; left: -120px; background: radial-gradient(circle, rgba(168,85,247,0.30), transparent 70%); }
+        body::after  { width: 420px; height: 420px; bottom: 4%; right: -140px; background: radial-gradient(circle, rgba(6,182,212,0.22), transparent 70%); }
+        body > * { position: relative; z-index: 1; }
+
+        .input-bar {
+            width: 100%; background: rgba(10, 15, 28, 0.55);
+            backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+            padding: 14px 16px; display: flex; justify-content: center; align-items: center; gap: 10px;
+            border-bottom: 1px solid var(--border-main); flex-wrap: wrap; position: sticky; top: 0; z-index: 50;
+        }
+        label.ui-label, .ui-label { font-family: var(--mono); font-size: 13px; color: var(--text-dim); letter-spacing: 0.2px; }
+        input[type="number"] {
+            background: var(--bg-input); border: 1px solid var(--border-main); color: var(--text-main);
+            height: 34px; border-radius: 9px; padding: 0 12px; font-size: 13px; font-family: var(--mono); width: 90px;
+            transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+        }
+        input[type="number"]:focus { outline: none; border-color: var(--accent-purple); box-shadow: 0 0 0 3px rgba(168, 85, 247, 0.18); background: rgba(168, 85, 247, 0.06); }
+
+        button {
+            height: 34px; border-radius: 9px; padding: 0 14px; background: var(--btn-bg);
+            border: 1px solid var(--border-main); color: var(--text-main); font-size: 13px; font-weight: 600; cursor: pointer;
+            transition: transform 0.15s ease, background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+        }
+        button:hover { background: var(--btn-hover); border-color: rgba(6, 182, 212, 0.5); box-shadow: 0 0 18px rgba(6, 182, 212, 0.18); transform: translateY(-1px); }
+        button:active { transform: translateY(0); }
+        #play-btn { background: linear-gradient(135deg, rgba(6,182,212,0.22), rgba(6,182,212,0.10)); border-color: rgba(6, 182, 212, 0.45); color: #a5f3fc; min-width: 80px; }
+
+        .shell { width: var(--shell); max-width: 95%; margin: 24px auto 0; display: flex; flex-direction: column; gap: 16px; }
+
+        .title-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+        .title-row h1 { font-size: 18px; font-weight: 800; margin: 0; letter-spacing: 0.2px; }
+        .title-row .sub { color: var(--text-dim); font-weight: 500; font-size: 13px; }
+        .step-badge { font-family: var(--mono); font-size: 12px; font-weight: 700; color: #a5f3fc; background: rgba(6,182,212,0.12); border: 1px solid rgba(6,182,212,0.3); padding: 4px 10px; border-radius: 999px; white-space: nowrap; }
+        .progress-track { height: 4px; width: 100%; background: rgba(255,255,255,0.07); border-radius: 999px; overflow: hidden; margin-top: -6px; }
+        .progress-fill { height: 100%; width: 0%; border-radius: 999px; background: linear-gradient(90deg, var(--accent-blue), var(--accent-purple)); box-shadow: 0 0 12px rgba(6,182,212,0.5); transition: width 0.45s cubic-bezier(0.34,1.1,0.64,1); }
+
+        .narration { background: var(--bg-surface); border: 1px solid rgba(6,182,212,0.22); border-radius: 12px; padding: 12px 18px; font-family: var(--mono); font-size: 14px; line-height: 1.5; color: #cfe9f5; min-height: 48px; display: flex; align-items: center; gap: 10px; transition: border-color 0.3s, background 0.3s; }
+        .narration::before { content: '\25B8'; color: var(--accent-blue); font-size: 13px; }
+        .narration.done { border-color: rgba(34,197,94,0.4); background: rgba(34,197,94,0.06); }
+        .narration.done::before { content: '\2713'; color: var(--accent-green); }
+        .narration code { background: rgba(6,182,212,0.14); color: #7dd3fc; padding: 1px 6px; border-radius: 5px; font-size: 12.5px; }
+        .narration b { color: #fff; }
+
+        .stage-card { background: var(--bg-surface); border: 1px solid var(--border-main); border-radius: 18px; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); box-shadow: 0 12px 38px rgba(0,0,0,0.4); overflow: hidden; }
+        .stage-screen { position: relative; margin: 14px; border-radius: 14px; background: radial-gradient(700px 300px at 50% -10%, rgba(6,182,212,0.08), transparent 70%), #090d18; border: 1px solid rgba(255,255,255,0.06); }
+        .grid-stage { position: relative; width: 100%; overflow: auto; scrollbar-width: thin; padding: 22px; display: flex; justify-content: center; }
+        .grid-stage::-webkit-scrollbar { height: 8px; width: 8px; }
+        .grid-stage::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 8px; }
+
+        .dp-grid { display: grid; gap: 5px; }
+        .cell {
+            display: flex; align-items: center; justify-content: center;
+            border-radius: 9px; font-family: var(--mono); font-weight: 800; font-size: 16px;
+            border: 2px solid var(--border-main); background: rgba(255,255,255,0.04); color: var(--text-main);
+            width: 42px; height: 42px; will-change: transform;
+            transition: background 0.35s, border-color 0.35s, color 0.35s, box-shadow 0.35s, transform 0.3s;
+        }
+        .cell.head { border: none; background: transparent; color: var(--text-dim); font-size: 16px; font-weight: 800; box-shadow: none; }
+        .cell.head.ch { color: #cbd5e8; }
+        .cell.corner { background: transparent; border: none; box-shadow: none; font-size: 12px; color: var(--text-dim); }
+        .cell.zero { color: var(--text-dim); background: rgba(255,255,255,0.02); }
+        .cell.filled { color: #e8eefb; }
+        .cell.dep { border-color: var(--accent-blue); background: rgba(6,182,212,0.12); color: #a5f3fc; box-shadow: 0 0 12px rgba(6,182,212,0.3); }
+        .cell.current { border-color: var(--accent-purple); background: rgba(168,85,247,0.16); color: #e9d5ff; box-shadow: 0 0 20px rgba(168,85,247,0.55), inset 0 0 12px rgba(168,85,247,0.12); transform: scale(1.06); z-index: 2; }
+        .cell.add { border-color: var(--accent-green); background: linear-gradient(180deg, rgba(47,224,143,0.85), rgba(33,194,117,0.85)); color: #06251a; box-shadow: 0 0 16px rgba(34,197,94,0.45); }
+        .cell.best { border-color: var(--accent-orange); background: rgba(245,165,36,0.20); color: #ffd591; box-shadow: 0 0 18px rgba(245,165,36,0.5); }
+        .cell.head.lit { color: var(--accent-purple); }
+        .cell.head.lit2 { color: var(--accent-blue); }
+
+        .action-stage { position: relative; min-height: 92px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; }
+        .answer-track { display: flex; gap: 6px; align-items: center; min-height: 40px; }
+        .ans-tile { min-width: 34px; padding: 0 6px; height: 40px; border-radius: 9px; display: flex; align-items: center; justify-content: center; font-family: var(--mono); font-size: 18px; font-weight: 800; border: 2px solid var(--accent-orange); background: rgba(245,165,36,0.16); color: #ffd591; box-shadow: 0 0 12px rgba(245,165,36,0.35); }
+        .action-word { font-family: var(--mono); font-weight: 800; font-size: 18px; letter-spacing: 0.4px; min-height: 22px; text-align: center; transition: color 0.3s; }
+        #confetti { position: absolute; inset: 0; overflow: visible; pointer-events: none; }
+        .confetti-piece { position: absolute; top: 0; left: 50%; width: 8px; height: 13px; border-radius: 2px; opacity: 0; animation: confettiFall ease-out forwards; }
+
+        .controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: center; }
+        .controls .kbd-hint { font-size: 11px; color: var(--text-dim); font-family: var(--mono); margin-left: 4px; }
+        .kbd { background: rgba(255,255,255,0.07); border: 1px solid var(--border-main); border-radius: 5px; padding: 1px 6px; font-size: 10px; }
+        input[type="range"] { accent-color: var(--accent-blue); width: 110px; cursor: pointer; }
+
+        .details-toggle { align-self: center; height: 32px; padding: 0 16px; border-radius: 999px; cursor: pointer; background: rgba(255,255,255,0.04); border: 1px solid var(--border-main); color: var(--text-dim); font-family: var(--mono); font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; gap: 8px; transition: color 0.2s, border-color 0.2s, background 0.2s; }
+        .details-toggle:hover { color: var(--text-main); border-color: rgba(6,182,212,0.4); background: rgba(6,182,212,0.06); }
+        .details-toggle .chev { transition: transform 0.3s ease; }
+        .details-wrap.open .details-toggle .chev { transform: rotate(180deg); }
+        .details-body { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.4s ease; }
+        .details-wrap.open .details-body { grid-template-rows: 1fr; }
+        .details-inner { overflow: hidden; min-height: 0; }
+        .details-grid { display: flex; flex-direction: column; gap: 14px; padding-top: 14px; }
+
+        .panel-card { background: var(--bg-surface); border: 1px solid var(--border-main); border-radius: 16px; backdrop-filter: blur(10px); box-shadow: 0 8px 30px rgba(0,0,0,0.35); }
+        .panel-head { display: flex; align-items: center; gap: 8px; padding: 11px 16px; border-bottom: 1px solid var(--border-main); font-size: 11px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; color: var(--text-dim); }
+        .panel-head .pip { width: 7px; height: 7px; border-radius: 50%; background: var(--accent-blue); box-shadow: 0 0 8px var(--accent-blue); }
+        .code-body { padding: 12px 6px 14px; font-family: var(--mono); font-size: 12.5px; line-height: 1.7; }
+        .code-line { display: flex; gap: 12px; padding: 1px 16px; border-left: 2px solid transparent; transition: background 0.3s, border-color 0.3s; white-space: pre; }
+        .code-line .lno { color: #4b5772; width: 16px; text-align: right; user-select: none; }
+        .code-line .src { color: #c4cee0; }
+        .code-line .kw { color: #c792ea; }
+        .code-line .fn { color: #82aaff; }
+        .code-line.active { background: rgba(6,182,212,0.12); border-left-color: var(--accent-blue); }
+        .code-line.active .src, .code-line.active .lno { color: #e8eefb; }
+
+        .state-strip { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 0 2px; }
+        .pill { display: inline-flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 12px; color: var(--text-dim); background: rgba(255,255,255,0.04); border: 1px solid var(--border-main); border-radius: 999px; padding: 4px 11px; }
+        .pill b { color: var(--text-main); font-weight: 800; }
+        .pill.c b { color: var(--accent-purple); } .pill.b b { color: var(--accent-orange); } .pill.g b { color: var(--accent-green); }
+
+        .log-panel { border-radius: 14px; padding: 12px 16px; height: 110px; overflow-y: auto; font-family: var(--mono); font-size: 12.5px; line-height: 1.5; background: var(--bg-surface); border: 1px solid var(--border-main); }
+        .log-panel::-webkit-scrollbar { width: 8px; }
+        .log-panel::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 8px; }
+
+        @keyframes confettiFall { 0%{ opacity:1; transform: translate(-50%, 0) rotate(0deg); } 100%{ opacity:0; transform: translate(calc(-50% + var(--x)), 220px) rotate(var(--rot)); } }
+        @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; } }
+    </style>
+</head>
+<body>
+
+    <div class="input-bar">
+        <label class="ui-label">n =</label>
+        <input type="number" id="n-input" value="5" min="2" max="20">
+        <button onclick="loadCustom()">Load</button>
+        <span class="ui-label" style="opacity:.5">|</span>
+        <button onclick="loadExample(0)">n = 5</button>
+        <button onclick="loadExample(1)">n = 10</button>
+    </div>
+
+    <div class="shell">
+        <div class="title-row">
+            <h1>Prime Partitions <span class="sub">&middot; coin-change DP over primes &middot; dp[s] &#43;= dp[s&minus;p] &middot; O(&pi;(n)&middot;n)</span></h1>
+            <span class="step-badge" id="step-badge">Step 1 / 1</span>
+        </div>
+        <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+
+        <div class="narration" id="main-panel">&mdash;</div>
+
+        <div class="stage-card">
+            <div class="stage-screen">
+                <div class="grid-stage" id="grid-stage">
+                    <div class="dp-grid" id="dp-grid"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="action-stage">
+            <div id="confetti"></div>
+            <div class="answer-track" id="answer-track"></div>
+            <div class="action-word" id="action-word"></div>
+        </div>
+
+        <div class="controls">
+            <button onclick="resetSim()">&#8634; Reset</button>
+            <button onclick="prevStep()">&#8592; Back</button>
+            <button onclick="togglePlay()" id="play-btn">Play</button>
+            <button onclick="nextStep()">Next &#8594;</button>
+            <span class="ui-label" style="margin-left:6px; font-size:11px">Speed</span>
+            <input type="range" id="speed" min="0" max="2" value="1">
+            <span class="kbd-hint"><span class="kbd">&#8592;</span> <span class="kbd">&#8594;</span> step &middot; <span class="kbd">space</span> play</span>
+        </div>
+
+        <div class="details-wrap" id="details-wrap">
+            <button class="details-toggle" onclick="toggleDetails()" aria-expanded="false">
+                <span id="details-label">Show code, state &amp; log</span> <span class="chev">&#9662;</span>
+            </button>
+            <div class="details-body">
+                <div class="details-inner">
+                    <div class="details-grid">
+                        <div class="state-strip">
+                            <span class="pill c">coin p <b id="st-prime">&mdash;</b></span>
+                            <span class="pill">sum s <b id="st-sum">&mdash;</b></span>
+                            <span class="pill g">dp[s] <b id="st-val">&mdash;</b></span>
+                            <span class="pill b">partitions of n <b id="st-ans">&mdash;</b></span>
+                        </div>
+                        <div class="panel-card">
+                            <div class="panel-head"><span class="pip"></span> Algorithm</div>
+                            <div class="code-body" id="code-panel"></div>
+                        </div>
+                        <div class="log-panel" id="log"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        'use strict';
+
+        // ───────── Motion engine (spring pop, zero deps) ─────────
+        const REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        const FRAME = 1000 / 60;
+        function sampleSpring(stiffness, damping, mass) {
+            const dt = 1 / 60; let x = 1, v = 0; const out = [];
+            for (let i = 0; i < 240; i++) { const a = (-stiffness * x - damping * v) / mass; v += a * dt; x += v * dt; out.push(1 - x); if (Math.abs(x) < 0.0015 && Math.abs(v) < 0.0015) break; }
+            out.push(1); return out;
+        }
+        const SPRING_POP = sampleSpring(520, 17, 1);
+        const durOf = (a) => a.length * FRAME;
+        const Motion = {
+            pop(el) {
+                if (REDUCED) return;
+                const kf = SPRING_POP.map(p => ({ transform: `scale(${(0.4 + 0.66 * p).toFixed(3)})` }));
+                el.animate(kf, { duration: durOf(SPRING_POP), easing: 'linear' });
+            },
+        };
+
+        // ───────── State ─────────
+        let N = 5;
+        let steps = [];
+        let stepIdx = 0;
+        let timer = null;
+        let confettiArmed = true;
+        const delays = [1450, 720, 330];
+        const cellEls = {};   // 'gr,gc' -> element
+
+        const CODE = [
+            [['kw','def '],['fn','primePartitions'],['src','(n):']],
+            [['src','  primes = sieve(n)        # [2,3,5,...]']],
+            [['src','  dp = [0]*(n+1); dp[0] = 1']],
+            [['kw','  for '],['src','p in primes:           # each prime coin']],
+            [['kw','    for '],['src','s in p..n:            # unbounded knapsack']],
+            [['src','      dp[s] += dp[s - p]']],
+            [['kw','  return '],['src','dp[n]']],
+        ];
+        function buildCodePanel() {
+            const panel = document.getElementById('code-panel'); panel.innerHTML = '';
+            CODE.forEach((tokens, i) => {
+                const line = document.createElement('div'); line.className = 'code-line'; line.dataset.line = i;
+                const lno = document.createElement('span'); lno.className = 'lno'; lno.textContent = i + 1; line.appendChild(lno);
+                const src = document.createElement('span');
+                tokens.forEach(([cls, txt]) => { const s = document.createElement('span'); s.className = cls; s.textContent = txt; src.appendChild(s); });
+                line.appendChild(src); panel.appendChild(line);
+            });
+        }
+        function highlightCode(arr) { document.querySelectorAll('.code-line').forEach(el => el.classList.toggle('active', arr && arr.includes(+el.dataset.line))); }
+        function toggleDetails() {
+            const wrap = document.getElementById('details-wrap'); const open = wrap.classList.toggle('open');
+            wrap.querySelector('.details-toggle').setAttribute('aria-expanded', open ? 'true' : 'false');
+            document.getElementById('details-label').textContent = open ? 'Hide code, state & log' : 'Show code, state & log';
+        }
+
+        // ───────── primes ─────────
+        function generatePrimes(n) {
+            if (n < 2) return [];
+            const isPrime = new Array(n + 1).fill(true);
+            isPrime[0] = isPrime[1] = false;
+            for (let i = 2; i * i <= n; i++) { if (isPrime[i]) { for (let j = i * i; j <= n; j += i) isPrime[j] = false; } }
+            const out = []; for (let i = 2; i <= n; i++) if (isPrime[i]) out.push(i); return out;
+        }
+
+        // ───────── step generation ─────────
+        // Grid model: row 0 = base dp (dp[0]=1, rest 0). Row r (1..k) = table after coin primes[r-1].
+        // Each row r is computed in-place from a copy of row r-1, scanning s = p..n with dp[s] += dp[s-p]
+        // (unbounded knapsack — reads the *current* row at s-p). table[r][s] is the snapshot value.
+        function deepCopy(g) { return g.map(row => row.slice()); }
+        function generateSteps() {
+            steps = [];
+            const n = N;
+            const primes = generatePrimes(n);
+            const rowsCount = primes.length + 1;                 // base + one per prime
+            // table[r] holds the committed values of row r once it is fully built.
+            const table = Array.from({ length: rowsCount }, () => Array(n + 1).fill(0));
+            table[0][0] = 1;                                     // empty sum: exactly one way
+
+            const snap = (extra) => Object.assign({
+                table: deepCopy(table), n, primes, rowsCount,
+                fillRow: 0, fillCol: 0,                          // how far the current working row is filled
+                workRow: 0,                                      // which row is being built (the live row)
+                current: null, deps: [], addCell: null, bestCell: null
+            }, extra);
+
+            // intro
+            steps.push(snap({
+                code: [0, 1, 2], action: 'BUILD DP', actionColor: 'var(--accent-blue)',
+                workRow: 0, fillRow: 0, fillCol: n,
+                panel: `Count partitions of <code>n=${n}</code> into <b>primes</b> <code>${primes.length ? '{' + primes.join(', ') + '}'  : '{}'}</code> &mdash; unordered sums. Treat each prime as a coin and run coin-change DP. <code>dp[s]</code> = ways to total <code>s</code>; seed <code>dp[0]=1</code>.`,
+                log: `init  n=${n}  primes=[${primes.join(',')}]  dp[0]=1`
+            }));
+
+            // build each prime row
+            for (let r = 1; r < rowsCount; r++) {
+                const p = primes[r - 1];
+                // working row starts as a copy of the previous (committed) row
+                for (let s = 0; s <= n; s++) table[r][s] = table[r - 1][s];
+
+                // announce this coin: cells s < p are simply carried down unchanged
+                steps.push(snap({
+                    table: deepCopy(table), workRow: r, fillRow: r, fillCol: p - 1,
+                    code: [3, 4], action: `COIN p = ${p}`, actionColor: 'var(--accent-purple)',
+                    bestCell: null,
+                    panel: `Add coin <code>p=${p}</code>. Copy the row above, then update sums <code>s = ${p}&hellip;${n}</code>. Sums below <code>${p}</code> are unreachable by this coin, so they carry down unchanged.`,
+                    log: `coin p=${p}  copy row, scan s=${p}..${n}`
+                }));
+
+                for (let s = p; s <= n; s++) {
+                    const before = table[r][s];
+                    const contrib = table[r][s - p];             // in-row value (unbounded coin)
+                    const after = before + contrib;
+                    // PRE: show current cell + dependencies (carried value here, and dp[s-p] in this row)
+                    steps.push(snap({
+                        table: deepCopy(table), workRow: r, fillRow: r, fillCol: s - 1,
+                        current: [r, s], deps: [[r, s - p]],
+                        code: [4, 5], action: `dp[${s}] += dp[${s - p}]`, actionColor: 'var(--accent-blue)',
+                        panel: `At sum <code>s=${s}</code>: a partition using coin <code>${p}</code> leaves <code>s&minus;p=${s - p}</code>, which has <code>dp[${s - p}]=${contrib}</code> way${contrib === 1 ? '' : 's'}. Add them on top of the current <code>dp[${s}]=${before}</code>.`,
+                        log: `  s=${s}: dp[${s}]=${before} + dp[${s - p}]=${contrib}`
+                    }));
+                    // commit
+                    table[r][s] = after;
+                    const added = contrib > 0;
+                    steps.push(snap({
+                        table: deepCopy(table), workRow: r, fillRow: r, fillCol: s,
+                        current: [r, s], addCell: added ? [r, s] : null,
+                        code: [5], action: added ? `dp[${s}] = ${after}` : `dp[${s}] = ${after} (no change)`,
+                        actionColor: added ? 'var(--accent-green)' : 'var(--accent-red)',
+                        panel: added
+                            ? `<code>dp[${s}] = ${before} &#43; ${contrib} = ${after}</code>. Coin <code>${p}</code> opens ${contrib} new way${contrib === 1 ? '' : 's'} to reach <b>${s}</b>.`
+                            : `<code>dp[${s}] = ${after}</code> unchanged &mdash; <code>${s - p}</code> has no prime partition yet, so coin <code>${p}</code> adds nothing here.`,
+                        log: added ? `  dp[${s}] = ${after}` : `  dp[${s}] = ${after} (+0)`
+                    }));
+                }
+            }
+
+            // final answer = last committed row at column n
+            const answer = table[rowsCount - 1][n];
+            steps.push(snap({
+                table: deepCopy(table), complete: true, confetti: true,
+                workRow: rowsCount - 1, fillRow: rowsCount - 1, fillCol: n,
+                code: [6], action: `✓ ${answer} partition${answer === 1 ? '' : 's'}`, actionColor: 'var(--accent-green)',
+                bestCell: [rowsCount - 1, n], answer,
+                panel: `Done. After every prime coin, <code>dp[${n}] = <b>${answer}</b></code> &mdash; the number of ways to write <b>${n}</b> as an unordered sum of primes.`,
+                log: `done  prime partitions of ${n} = ${answer}`
+            }));
+        }
+
+        // ───────── render (persistent DOM) ─────────
+        // A dp cell (row r, col c) is "filled" (has a committed value to show) when its row is at or
+        // before the working row, and within the working row only up to fillCol.
+        function isFilled(step, r, c) {
+            if (r < step.workRow) return true;
+            if (r === step.workRow) return c <= step.fillCol;
+            return false;
+        }
+        function renderStep(idx) {
+            stepIdx = idx; const step = steps[idx]; if (!step) return;
+            const grid = document.getElementById('dp-grid');
+            const rows = step.rowsCount + 1;                      // +1 header row (sum labels)
+            const cols = step.n + 2;                              // +1 header col (coin labels), +1 because sums 0..n
+            grid.style.gridTemplateColumns = `repeat(${cols}, 42px)`;
+
+            const depSet = new Set((step.deps || []).map(d => d[0] + ',' + d[1]));
+            const curKey = step.current ? step.current[0] + ',' + step.current[1] : null;
+            const bestKey = step.bestCell ? step.bestCell[0] + ',' + step.bestCell[1] : null;
+            const addKey = step.addCell ? step.addCell[0] + ',' + step.addCell[1] : null;
+            const used = new Set();
+
+            for (let gr = 0; gr < rows; gr++) {
+                for (let gc = 0; gc < cols; gc++) {
+                    const key = gr + ',' + gc; used.add(key);
+                    let el = cellEls[key];
+                    if (!el) { el = document.createElement('div'); el.className = 'cell'; cellEls[key] = el; }
+                    let cls = 'cell', txt = '', isDpCell = false;
+
+                    if (gr === 0 && gc === 0) { cls += ' corner'; txt = 'dp'; }
+                    else if (gr === 0) {                          // top header: sum labels 0..n
+                        cls += ' head';
+                        const sumLabel = gc - 1;
+                        txt = String(sumLabel); cls += ' ch';
+                        if (step.current && step.current[1] === sumLabel) cls += ' lit2';
+                    } else if (gc === 0) {                        // left header: coin labels
+                        cls += ' head';
+                        const r = gr - 1;                         // dp row index
+                        if (r === 0) { txt = '∅'; }          // base row (no coin)
+                        else { txt = '+' + step.primes[r - 1]; cls += ' ch'; if (step.current && step.current[0] === r) cls += ' lit'; }
+                    } else {                                       // a dp cell
+                        isDpCell = true;
+                        const r = gr - 1, c = gc - 1, dpKey = r + ',' + c;
+                        const filled = isFilled(step, r, c);
+                        const val = step.table[r][c];
+                        if (filled) { cls += val === 0 ? ' zero' : ' filled'; txt = String(val); }
+                        else { txt = ''; }
+                        if (depSet.has(dpKey)) cls += ' dep';
+                        if (bestKey === dpKey) cls += ' best';
+                        if (addKey === dpKey) cls += ' add';
+                        if (curKey === dpKey) cls += ' current';
+                    }
+
+                    const prev = el.textContent;
+                    el.className = cls; el.textContent = txt;
+                    if (isDpCell && txt !== '' && txt !== prev && (curKey === (gr - 1) + ',' + (gc - 1) || addKey === (gr - 1) + ',' + (gc - 1))) Motion.pop(el);
+                    grid.appendChild(el);
+                }
+            }
+            Object.keys(cellEls).forEach(k => { if (!used.has(k)) { cellEls[k].remove(); delete cellEls[k]; } });
+
+            const at = document.getElementById('answer-track'); at.innerHTML = '';
+            if (step.complete && step.answer != null) {
+                const t = document.createElement('div'); t.className = 'ans-tile'; t.textContent = step.answer; at.appendChild(t);
+            }
+
+            const mp = document.getElementById('main-panel');
+            mp.innerHTML = step.panel || '&mdash;';
+            mp.classList.toggle('done', !!step.complete);
+            const aw = document.getElementById('action-word'); aw.textContent = step.action || ''; aw.style.color = step.actionColor || 'var(--text-dim)';
+            highlightCode(step.code);
+
+            if (step.confetti) { if (confettiArmed) { fireConfetti(); confettiArmed = false; } } else confettiArmed = true;
+
+            const curRowIdx = step.current ? step.current[0] : step.workRow;
+            const coinTxt = step.current ? (step.current[0] >= 1 ? step.primes[step.current[0] - 1] : '∅') : (step.workRow >= 1 ? step.primes[step.workRow - 1] : '∅');
+            document.getElementById('st-prime').textContent = (step.complete ? '—' : coinTxt) ?? '—';
+            document.getElementById('st-sum').textContent = step.current ? step.current[1] : '—';
+            document.getElementById('st-val').textContent = step.current ? step.table[step.current[0]][step.current[1]] : '—';
+            document.getElementById('st-ans').textContent = step.complete && step.answer != null ? step.answer : '…';
+
+            document.getElementById('step-badge').textContent = `Step ${idx + 1} / ${steps.length}`;
+            document.getElementById('progress-fill').style.width = `${(idx / Math.max(1, steps.length - 1)) * 100}%`;
+
+            const logEl = document.getElementById('log');
+            logEl.innerHTML = steps.slice(0, idx + 1).map(s => `<div style="margin:3px 0;white-space:pre-wrap;">${s.log}</div>`).join('');
+            logEl.scrollTop = logEl.scrollHeight;
+        }
+
+        function fireConfetti() {
+            const host = document.getElementById('confetti'); if (!host || REDUCED) return;
+            const colors = ['#22c55e', '#06b6d4', '#a855f7', '#f5a524', '#f43f5e'];
+            for (let i = 0; i < 38; i++) {
+                const p = document.createElement('div'); p.className = 'confetti-piece';
+                p.style.setProperty('--x', ((Math.random() * 2 - 1) * 220) + 'px');
+                p.style.setProperty('--rot', ((Math.random() * 720 - 360)) + 'deg');
+                p.style.background = colors[i % colors.length];
+                p.style.animationDuration = (0.9 + Math.random() * 0.8) + 's';
+                p.style.animationDelay = (Math.random() * 0.15) + 's';
+                host.appendChild(p); setTimeout(() => p.remove(), 1900);
+            }
+        }
+
+        // ───────── controls ─────────
+        function nextStep() { if (stepIdx < steps.length - 1) renderStep(stepIdx + 1); else pause(); }
+        function prevStep() { if (stepIdx > 0) renderStep(stepIdx - 1); }
+        function resetSim() { pause(); renderStep(0); }
+        function togglePlay() {
+            const btn = document.getElementById('play-btn');
+            if (timer) { pause(); return; }
+            btn.textContent = 'Pause';
+            if (stepIdx >= steps.length - 1) renderStep(0);
+            timer = setInterval(() => { if (stepIdx < steps.length - 1) nextStep(); else pause(); }, delays[document.getElementById('speed').value]);
+        }
+        function pause() { clearInterval(timer); timer = null; document.getElementById('play-btn').textContent = 'Play'; }
+
+        function clearDom() { Object.keys(cellEls).forEach(k => { cellEls[k].remove(); delete cellEls[k]; }); confettiArmed = true; }
+        function loadN(n) { pause(); N = n; clearDom(); generateSteps(); renderStep(0); }
+        function loadCustom() {
+            let n = parseInt(document.getElementById('n-input').value, 10);
+            if (isNaN(n)) return;
+            n = Math.max(2, Math.min(20, n));
+            document.getElementById('n-input').value = n;
+            loadN(n);
+        }
+        function loadExample(k) {
+            const ex = [5, 10][k];
+            document.getElementById('n-input').value = ex;
+            loadN(ex);
+        }
+
+        document.addEventListener('keydown', (e) => {
+            const tag = (e.target.tagName || '').toLowerCase(); if (tag === 'input' || tag === 'textarea') return;
+            if (e.key === 'ArrowRight') { e.preventDefault(); pause(); nextStep(); }
+            else if (e.key === 'ArrowLeft') { e.preventDefault(); pause(); prevStep(); }
+            else if (e.key === ' ') { e.preventDefault(); togglePlay(); }
+        });
+        document.getElementById('n-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') loadCustom(); });
+        window.addEventListener('resize', () => renderStep(stepIdx));
+
+        buildCodePanel();
+        window.onload = () => loadExample(0);
+    </script>
+</body>
+</html>

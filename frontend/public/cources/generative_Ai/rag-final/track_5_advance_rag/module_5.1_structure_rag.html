@@ -1,0 +1,2174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>RAG Academy • Module 5.1 — Structured RAG (SQL)</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  if (typeof console !== 'undefined') {
+    const origWarn = console.warn;
+    console.warn = function(...args) {
+      if (args[0] && typeof args[0] === 'string' && args[0].includes('cdn.tailwindcss.com')) return;
+      origWarn.apply(console, args);
+    };
+  }
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700;800;900&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+<style>
+  :root {
+    --bg-deep: #02030a;
+    --bg-mid: #060818;
+    --bg-card: rgba(12, 16, 38, 0.6);
+    --neon-cyan: #00f0ff;
+    --neon-blue: #4d8eff;
+    --neon-purple: #b86bff;
+    --neon-pink: #ff4dcf;
+    --neon-amber: #ffb84d;
+    --neon-green: #4dffb8;
+    --text-primary: #e8efff;
+    --text-secondary: #8a96b8;
+    --border-glow: rgba(0, 240, 255, 0.25);
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    font-family: 'Inter', sans-serif;
+    background: var(--bg-deep);
+    color: var(--text-primary);
+    overflow-x: hidden;
+    min-height: 100vh;
+  }
+
+  .font-display { font-family: 'Orbitron', sans-serif; letter-spacing: 0.02em; }
+  .font-mono { font-family: 'JetBrains Mono', monospace; }
+
+  /* ===== STARFIELD BACKGROUND ===== */
+  #starfield {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+  }
+
+  .nebula {
+    position: fixed;
+    border-radius: 50%;
+    filter: blur(120px);
+    opacity: 0.35;
+    pointer-events: none;
+    z-index: 0;
+  }
+  .nebula-1 { top: -10%; left: -5%; width: 50vw; height: 50vw; background: radial-gradient(circle, #4d8eff, transparent 70%); animation: drift1 22s ease-in-out infinite; }
+  .nebula-2 { top: 30%; right: -10%; width: 45vw; height: 45vw; background: radial-gradient(circle, #b86bff, transparent 70%); animation: drift2 28s ease-in-out infinite; }
+  .nebula-3 { bottom: -10%; left: 20%; width: 40vw; height: 40vw; background: radial-gradient(circle, #00f0ff, transparent 70%); animation: drift3 25s ease-in-out infinite; opacity: 0.22; }
+
+  @keyframes drift1 { 0%,100% { transform: translate(0,0); } 50% { transform: translate(40px, 60px); } }
+  @keyframes drift2 { 0%,100% { transform: translate(0,0); } 50% { transform: translate(-50px, 40px); } }
+  @keyframes drift3 { 0%,100% { transform: translate(0,0); } 50% { transform: translate(30px, -50px); } }
+
+  /* ===== NAV ===== */
+  .top-nav {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    z-index: 50;
+    backdrop-filter: blur(20px);
+    background: rgba(2, 3, 10, 0.7);
+    border-bottom: 1px solid rgba(0, 240, 255, 0.15);
+  }
+
+  .nav-logo {
+    background: linear-gradient(135deg, var(--neon-cyan), var(--neon-purple));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  /* ===== HOLOGRAPHIC CARDS ===== */
+  .holo-card {
+    background: linear-gradient(135deg, rgba(12, 16, 38, 0.7), rgba(20, 12, 50, 0.5));
+    border: 1px solid rgba(0, 240, 255, 0.18);
+    border-radius: 18px;
+    backdrop-filter: blur(14px);
+    position: relative;
+    overflow: hidden;
+    transition: all 0.4s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  .holo-card::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, transparent 40%, rgba(0, 240, 255, 0.08) 50%, transparent 60%);
+    transform: translateX(-100%);
+    transition: transform 0.8s ease;
+    pointer-events: none;
+  }
+  .holo-card:hover::before { transform: translateX(100%); }
+  .holo-card:hover {
+    border-color: rgba(0, 240, 255, 0.5);
+    box-shadow: 0 0 40px rgba(0, 240, 255, 0.15), inset 0 0 30px rgba(77, 142, 255, 0.05);
+    transform: translateY(-4px);
+  }
+
+  /* ===== GRADIENT TEXT ===== */
+  .gradient-cyan { background: linear-gradient(135deg, #00f0ff, #4d8eff); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .gradient-purple { background: linear-gradient(135deg, #b86bff, #ff4dcf); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .gradient-amber { background: linear-gradient(135deg, #ffb84d, #ff4dcf); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .gradient-multi { background: linear-gradient(135deg, #00f0ff 0%, #4d8eff 35%, #b86bff 70%, #ff4dcf 100%); -webkit-background-clip: text; background-clip: text; color: transparent; }
+
+  /* ===== GLOW BUTTONS ===== */
+  .btn-primary {
+    background: linear-gradient(135deg, #00f0ff, #4d8eff);
+    color: #02030a;
+    font-weight: 700;
+    padding: 14px 28px;
+    border-radius: 12px;
+    border: none;
+    position: relative;
+    overflow: hidden;
+    transition: all 0.3s ease;
+    cursor: pointer;
+    box-shadow: 0 0 30px rgba(0, 240, 255, 0.35);
+  }
+  .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 0 50px rgba(0, 240, 255, 0.6); }
+
+  .btn-ghost {
+    background: rgba(12, 16, 38, 0.5);
+    border: 1px solid rgba(0, 240, 255, 0.3);
+    color: var(--text-primary);
+    font-weight: 600;
+    padding: 14px 28px;
+    border-radius: 12px;
+    transition: all 0.3s ease;
+    cursor: pointer;
+  }
+  .btn-ghost:hover { border-color: var(--neon-cyan); background: rgba(0, 240, 255, 0.08); }
+
+  /* ===== HERO ===== */
+  .hero-title {
+    font-size: clamp(2.5rem, 7vw, 6rem);
+    line-height: 0.95;
+    font-weight: 900;
+  }
+
+  .scan-line {
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--neon-cyan), transparent);
+    animation: scan 4s linear infinite;
+  }
+  @keyframes scan { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }
+
+  /* ===== ORBIT-LIKE VISUAL ===== */
+  .orbit-container {
+    position: relative;
+    width: 100%;
+    max-width: 520px;
+    aspect-ratio: 1;
+    margin: 0 auto;
+  }
+  .orbit-core {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 110px; height: 110px;
+    border-radius: 50%;
+    background: radial-gradient(circle, #00f0ff 0%, #4d8eff 40%, #b86bff 100%);
+    box-shadow: 0 0 60px rgba(0, 240, 255, 0.7), 0 0 120px rgba(77, 142, 255, 0.4);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'Orbitron', sans-serif;
+    font-weight: 900;
+    color: #02030a;
+    font-size: 1.2rem;
+    z-index: 5;
+    animation: pulse-core 3s ease-in-out infinite;
+  }
+  @keyframes pulse-core {
+    0%,100% { box-shadow: 0 0 60px rgba(0, 240, 255, 0.7), 0 0 120px rgba(77, 142, 255, 0.4); }
+    50% { box-shadow: 0 0 80px rgba(0, 240, 255, 1), 0 0 160px rgba(184, 107, 255, 0.6); }
+  }
+
+  .orbit-ring {
+    position: absolute;
+    top: 50%; left: 50%;
+    border-radius: 50%;
+    border: 1px dashed rgba(0, 240, 255, 0.25);
+    transform: translate(-50%, -50%);
+  }
+  .ring-1 { width: 50%; height: 50%; animation: spin 20s linear infinite; }
+  .ring-2 { width: 75%; height: 75%; animation: spin 35s linear infinite reverse; }
+  .ring-3 { width: 100%; height: 100%; animation: spin 50s linear infinite; }
+  @keyframes spin { from { transform: translate(-50%, -50%) rotate(0deg); } to { transform: translate(-50%, -50%) rotate(360deg); } }
+
+  .orbit-planet {
+    position: absolute;
+    width: 44px; height: 44px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.2rem;
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(255,255,255,0.2);
+  }
+  .orbit-planet i { width: 20px; height: 20px; }
+
+  /* ===== STAT GRID ===== */
+  .stat-num {
+    font-family: 'Orbitron', sans-serif;
+    font-weight: 800;
+    font-size: 2.4rem;
+    background: linear-gradient(135deg, #00f0ff, #b86bff);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  /* ===== TAG / PILL ===== */
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 14px;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    border: 1px solid rgba(0, 240, 255, 0.3);
+    background: rgba(0, 240, 255, 0.06);
+    color: var(--neon-cyan);
+  }
+
+  /* ===== ROADMAP / STAGE NODES ===== */
+  .roadmap-node {
+    transition: all 0.3s ease;
+    cursor: pointer;
+  }
+  .roadmap-node:hover {
+    transform: scale(1.05);
+  }
+  .roadmap-node.active .node-circle {
+    background: linear-gradient(135deg, var(--neon-cyan), var(--neon-purple));
+    box-shadow: 0 0 30px rgba(0, 240, 255, 0.6);
+  }
+
+  .node-circle {
+    width: 60px; height: 60px;
+    border-radius: 50%;
+    background: rgba(12, 16, 38, 0.8);
+    border: 2px solid rgba(0, 240, 255, 0.3);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'Orbitron', sans-serif;
+    font-weight: 700;
+    color: var(--neon-cyan);
+    transition: all 0.3s ease;
+  }
+
+  /* ===== CODE BLOCK ===== */
+  .code-block {
+    background: rgba(2, 3, 10, 0.8);
+    border: 1px solid rgba(0, 240, 255, 0.2);
+    border-radius: 14px;
+    padding: 24px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.85rem;
+    line-height: 1.7;
+    overflow-x: auto;
+    position: relative;
+  }
+  .code-block::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--neon-cyan), transparent);
+  }
+  .tok-keyword { color: #ff4dcf; }
+  .tok-string { color: #4dffb8; }
+  .tok-fn { color: #00f0ff; }
+  .tok-comment { color: #5a6788; font-style: italic; }
+  .tok-num { color: #ffb84d; }
+  .tok-var { color: #e8efff; }
+
+  /* ===== FLOATING ANIMATION ===== */
+  .float-y { animation: floaty 6s ease-in-out infinite; }
+  @keyframes floaty { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-12px); } }
+
+  /* ===== SECTION ENTRANCE ===== */
+  .reveal { transition: opacity 1s cubic-bezier(0.2, 0.8, 0.2, 1), transform 1s cubic-bezier(0.2, 0.8, 0.2, 1); }
+  .js-reveal .reveal { opacity: 0; transform: translateY(40px); }
+  .js-reveal .reveal.in { opacity: 1; transform: translateY(0); }
+
+  /* ===== USE CASE / FEATURE CARDS ===== */
+  .use-case-icon {
+    width: 56px; height: 56px;
+    border-radius: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 16px;
+  }
+
+  /* ===== PROGRESS BAR ===== */
+  .progress-bar {
+    height: 6px;
+    background: rgba(0, 240, 255, 0.1);
+    border-radius: 999px;
+    overflow: hidden;
+    position: relative;
+  }
+  .progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--neon-cyan), var(--neon-purple), var(--neon-pink));
+    border-radius: 999px;
+    transition: width 1.5s cubic-bezier(0.2, 0.8, 0.2, 1);
+    position: relative;
+  }
+  .progress-fill::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
+    animation: shimmer 2s linear infinite;
+  }
+  @keyframes shimmer { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }
+
+  /* ===== CHECKPOINT ===== */
+  .checkpoint-glow {
+    background: radial-gradient(circle at center, rgba(0, 240, 255, 0.12), transparent 70%);
+    border: 1px solid rgba(0, 240, 255, 0.3);
+  }
+
+  /* ===== SIDE NAV DOTS ===== */
+  .side-dots {
+    position: fixed;
+    right: 24px;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 40;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  @media (max-width: 1024px) { .side-dots { display: none; } }
+  .dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    background: rgba(0, 240, 255, 0.2);
+    border: 1px solid rgba(0, 240, 255, 0.4);
+    transition: all 0.3s ease;
+    cursor: pointer;
+  }
+  .dot.active { background: var(--neon-cyan); box-shadow: 0 0 15px var(--neon-cyan); transform: scale(1.3); }
+
+  /* ===== SCROLLBAR ===== */
+  ::-webkit-scrollbar { width: 10px; }
+  ::-webkit-scrollbar-track { background: var(--bg-deep); }
+  ::-webkit-scrollbar-thumb { background: linear-gradient(180deg, var(--neon-cyan), var(--neon-purple)); border-radius: 10px; }
+
+  /* ===== HOLO BORDER ANIMATION ===== */
+  .holo-border {
+    position: relative;
+  }
+  .holo-border::after {
+    content: '';
+    position: absolute;
+    inset: -1px;
+    border-radius: inherit;
+    padding: 1px;
+    background: linear-gradient(135deg, var(--neon-cyan), transparent 40%, transparent 60%, var(--neon-purple));
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    pointer-events: none;
+    opacity: 0.6;
+  }
+
+  /* ===== HOLOGRAPHIC GRID FLOOR ===== */
+  .grid-floor {
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    height: 30vh;
+    background-image:
+      linear-gradient(rgba(0, 240, 255, 0.15) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0, 240, 255, 0.15) 1px, transparent 1px);
+    background-size: 50px 50px;
+    transform: perspective(500px) rotateX(60deg);
+    transform-origin: bottom;
+    opacity: 0.4;
+    mask-image: linear-gradient(180deg, transparent, black 50%);
+    -webkit-mask-image: linear-gradient(180deg, transparent, black 50%);
+  }
+
+  /* ===== TOOLTIP / CALLOUT ===== */
+  .callout {
+    background: linear-gradient(135deg, rgba(255, 184, 77, 0.08), rgba(255, 77, 207, 0.04));
+    border-left: 3px solid var(--neon-amber);
+    border-radius: 8px;
+    padding: 16px 20px;
+  }
+  .callout-cyan {
+    background: linear-gradient(135deg, rgba(0, 240, 255, 0.08), rgba(77, 142, 255, 0.04));
+    border-left: 3px solid var(--neon-cyan);
+    border-radius: 8px;
+    padding: 16px 20px;
+  }
+  .callout-pink {
+    background: linear-gradient(135deg, rgba(255, 77, 207, 0.08), rgba(184, 107, 255, 0.04));
+    border-left: 3px solid var(--neon-pink);
+    border-radius: 8px;
+    padding: 16px 20px;
+  }
+
+  /* ===== TABLE STYLES ===== */
+  .data-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.82rem;
+  }
+  .data-table th {
+    background: rgba(0, 240, 255, 0.08);
+    color: var(--neon-cyan);
+    text-align: left;
+    padding: 10px 14px;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    border-bottom: 1px solid rgba(0, 240, 255, 0.25);
+  }
+  .data-table td {
+    padding: 10px 14px;
+    color: var(--text-primary);
+    border-bottom: 1px solid rgba(0, 240, 255, 0.08);
+  }
+  .data-table tr:hover td { background: rgba(0, 240, 255, 0.03); }
+
+  /* ===== SQL ROUTE BUTTON ===== */
+  .route-btn {
+    background: rgba(12, 16, 38, 0.6);
+    border: 1px solid rgba(0, 240, 255, 0.2);
+    border-radius: 12px;
+    padding: 14px 16px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    text-align: left;
+    width: 100%;
+    color: var(--text-primary);
+    font-family: 'Inter', sans-serif;
+  }
+  .route-btn:hover {
+    border-color: rgba(0, 240, 255, 0.5);
+    background: rgba(0, 240, 255, 0.04);
+    transform: translateY(-2px);
+  }
+  .route-btn.selected {
+    border-color: var(--neon-cyan);
+    background: rgba(0, 240, 255, 0.06);
+    box-shadow: 0 0 20px rgba(0, 240, 255, 0.15);
+  }
+
+  /* ===== QUIZ ===== */
+  .quiz-option {
+    background: rgba(12, 16, 38, 0.6);
+    border: 1px solid rgba(0, 240, 255, 0.2);
+    border-radius: 12px;
+    padding: 14px 18px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    text-align: left;
+    width: 100%;
+    color: var(--text-primary);
+    font-family: 'Inter', sans-serif;
+  }
+  .quiz-option:hover { border-color: rgba(0, 240, 255, 0.5); background: rgba(0, 240, 255, 0.04); }
+  .quiz-option.correct { border-color: var(--neon-green); background: rgba(77, 255, 184, 0.08); color: #d4ffe8; }
+  .quiz-option.wrong { border-color: var(--neon-pink); background: rgba(255, 77, 207, 0.08); color: #ffd0ec; }
+  .quiz-option.disabled { cursor: not-allowed; pointer-events: none; }
+
+  /* ===== PIPELINE FLOW ===== */
+  .flow-step {
+    position: relative;
+    background: rgba(12, 16, 38, 0.6);
+    border: 1px solid rgba(0, 240, 255, 0.2);
+    border-radius: 14px;
+    padding: 18px;
+    transition: all 0.3s ease;
+    cursor: pointer;
+  }
+  .flow-step:hover {
+    border-color: rgba(0, 240, 255, 0.6);
+    transform: translateY(-3px);
+    box-shadow: 0 8px 30px rgba(0, 240, 255, 0.15);
+  }
+  .flow-step.active {
+    border-color: var(--neon-cyan);
+    box-shadow: 0 0 30px rgba(0, 240, 255, 0.4);
+    background: rgba(0, 240, 255, 0.06);
+  }
+  .flow-num {
+    position: absolute; top: -10px; left: 14px;
+    background: var(--bg-deep);
+    padding: 2px 10px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.7rem; color: var(--neon-cyan);
+    border: 1px solid rgba(0,240,255,0.3);
+    border-radius: 999px;
+  }
+
+  /* ===== MOBILE ===== */
+  @media (max-width: 768px) {
+    .orbit-container { max-width: 340px; }
+    .code-block { font-size: 0.72rem; padding: 16px; }
+    .data-table { font-size: 0.72rem; }
+  }
+
+
+  /* ===== LEARN & PRACTICE CARDS ===== */
+  .resource-stack {
+    max-width: 860px;
+    margin: 0 auto;
+    display: grid;
+    gap: 14px;
+  }
+  .resource-card {
+    background: linear-gradient(135deg, rgba(6, 8, 24, 0.92), rgba(10, 12, 34, 0.86));
+    border: 1px solid rgba(0, 240, 255, 0.32);
+    border-radius: 16px;
+    padding: 20px;
+    box-shadow: 0 0 28px rgba(0, 240, 255, 0.08);
+  }
+  .resource-card.repo {
+    border-color: rgba(255, 77, 207, 0.35);
+    box-shadow: 0 0 28px rgba(255, 77, 207, 0.08);
+  }
+  .resource-icon {
+    width: 34px;
+    height: 34px;
+    border-radius: 10px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid rgba(0, 240, 255, 0.4);
+    background: rgba(0, 240, 255, 0.08);
+    color: var(--neon-cyan);
+    flex-shrink: 0;
+  }
+  .resource-card.repo .resource-icon {
+    border-color: rgba(255, 77, 207, 0.45);
+    background: rgba(255, 77, 207, 0.1);
+    color: var(--neon-pink);
+  }
+  .resource-cta {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 12px;
+    padding: 10px 18px;
+    border-radius: 10px;
+    border: 1px solid rgba(0, 240, 255, 0.55);
+    color: var(--neon-cyan);
+    font-family: 'Orbitron', sans-serif;
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    background: rgba(0, 240, 255, 0.06);
+    transition: all 0.25s ease;
+  }
+  .resource-cta:hover {
+    background: rgba(0, 240, 255, 0.12);
+    box-shadow: 0 0 20px rgba(0, 240, 255, 0.22);
+  }
+  .resource-card.repo .resource-cta {
+    border-color: rgba(255, 77, 207, 0.55);
+    color: var(--neon-pink);
+    background: rgba(255, 77, 207, 0.08);
+  }
+  .resource-card.repo .resource-cta:hover {
+    background: rgba(255, 77, 207, 0.15);
+    box-shadow: 0 0 20px rgba(255, 77, 207, 0.24);
+  }
+
+</style>
+</head>
+
+<body>
+
+<!-- Nebula backgrounds -->
+<div class="nebula nebula-1"></div>
+<div class="nebula nebula-2"></div>
+<div class="nebula nebula-3"></div>
+
+<!-- Starfield Canvas -->
+<canvas id="starfield"></canvas>
+
+<!-- TOP NAVIGATION -->
+<nav class="top-nav">
+  <div class="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
+    <div class="flex items-center gap-3">
+      <div class="w-10 h-10 rounded-xl flex items-center justify-center" style="background: linear-gradient(135deg, #00f0ff, #b86bff); box-shadow: 0 0 20px rgba(0,240,255,0.5);">
+        <i data-lucide="orbit" class="w-5 h-5 text-black"></i>
+      </div>
+      <div>
+        <div class="font-display font-bold text-lg nav-logo">RAG ACADEMY</div>
+        <div class="text-[10px] text-gray-400 tracking-widest -mt-1">TRACK 05 · MODULE 5.1</div>
+      </div>
+    </div>
+
+    <div class="hidden md:flex items-center gap-8 text-sm">
+      <a href="#hero" class="text-cyan-300 font-medium">Overview</a>
+      <a href="#why" class="text-gray-300 hover:text-cyan-300 transition">Why SQL</a>
+      <a href="#pipeline" class="text-gray-300 hover:text-cyan-300 transition">Pipeline</a>
+      <a href="#schema" class="text-gray-300 hover:text-cyan-300 transition">Schema</a>
+      <a href="#nl2sql" class="text-gray-300 hover:text-cyan-300 transition">NL→SQL</a>
+      <a href="#tables" class="text-gray-300 hover:text-cyan-300 transition">Table QA</a>
+      <a href="#hybrid" class="text-gray-300 hover:text-cyan-300 transition">Hybrid</a>
+      <a href="#graph-rag" class="text-gray-300 hover:text-cyan-300 transition">Graph RAG</a>
+      <a href="#build" class="text-gray-300 hover:text-cyan-300 transition">Build</a>
+      <a href="#checkpoint" class="text-gray-300 hover:text-cyan-300 transition">Checkpoint</a>
+    </div>
+
+    <div class="flex items-center gap-3">
+      <div class="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full" style="background: rgba(0,240,255,0.08); border: 1px solid rgba(0,240,255,0.25);">
+        <div class="w-2 h-2 rounded-full" style="background: #4dffb8; box-shadow: 0 0 8px #4dffb8;"></div>
+        <span class="text-xs font-mono text-cyan-200">CADET ONLINE</span>
+      </div>
+      <button class="btn-ghost text-sm py-2 px-4">Save Progress</button>
+    </div>
+  </div>
+  <div class="scan-line"></div>
+</nav>
+
+<!-- SIDE NAV DOTS -->
+<div class="side-dots" id="sideDots">
+  <div class="dot active" data-target="hero"></div>
+  <div class="dot" data-target="why"></div>
+  <div class="dot" data-target="pipeline"></div>
+  <div class="dot" data-target="schema"></div>
+  <div class="dot" data-target="nl2sql"></div>
+  <div class="dot" data-target="tables"></div>
+  <div class="dot" data-target="hybrid"></div>
+  <div class="dot" data-target="graph-rag"></div>
+  <div class="dot" data-target="build"></div>
+  <div class="dot" data-target="pitfalls"></div>
+  <div class="dot" data-target="checkpoint"></div>
+</div>
+
+<!-- ========== HERO SECTION ========== -->
+<section id="hero" class="relative min-h-screen flex items-center pt-32 pb-24 px-6">
+  <div class="grid-floor"></div>
+
+  <div class="max-w-7xl mx-auto w-full grid lg:grid-cols-2 gap-16 items-center relative z-10">
+    <!-- LEFT -->
+    <div class="reveal">
+      <div class="flex items-center gap-3 mb-6">
+        <span class="pill"><i data-lucide="database" class="w-3 h-3"></i> Track 5 · Module 5.1</span>
+        <span class="text-xs text-gray-400 font-mono">EST. 40 MIN</span>
+      </div>
+
+      <h1 class="hero-title font-display mb-6">
+        <span class="block text-white">Structured RAG</span>
+        <span class="block gradient-multi">over SQL</span>
+      </h1>
+
+      <p class="text-lg md:text-xl text-gray-300 leading-relaxed mb-8 max-w-xl">
+        Not every question lives in a paragraph. Some answers are <span class="text-cyan-300 font-semibold">exact numbers</span>,
+        <span class="text-purple-300 font-semibold">filtered rows</span>, or <span class="text-pink-300 font-semibold">aggregated metrics</span>.
+        This is how RAG talks to your database — turning natural language into SQL, safely.
+      </p>
+
+      <div class="flex flex-wrap gap-4 mb-12">
+        <button class="btn-primary flex items-center gap-2" onclick="document.getElementById('why').scrollIntoView({behavior:'smooth'})">
+          <i data-lucide="play" class="w-4 h-4"></i> Begin Module
+        </button>
+        <button class="btn-ghost flex items-center gap-2" onclick="document.getElementById('build').scrollIntoView({behavior:'smooth'})">
+          <i data-lucide="terminal" class="w-4 h-4"></i> Jump to Code
+        </button>
+      </div>
+
+      <!-- HERO STATS -->
+      <div class="grid grid-cols-3 gap-4">
+        <div class="holo-card p-4">
+          <div class="stat-num" data-count="5">0</div>
+          <div class="text-xs text-gray-400 uppercase tracking-wider mt-1">Pipeline Steps</div>
+        </div>
+        <div class="holo-card p-4">
+          <div class="stat-num" data-count="4">0</div>
+          <div class="text-xs text-gray-400 uppercase tracking-wider mt-1">Safety Layers</div>
+        </div>
+        <div class="holo-card p-4">
+          <div class="stat-num"><span data-count="3">0</span></div>
+          <div class="text-xs text-gray-400 uppercase tracking-wider mt-1">Patterns</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT — ORBIT VISUAL -->
+    <div class="reveal flex flex-col items-center">
+      <div class="orbit-container float-y">
+        <div class="orbit-ring ring-3"></div>
+        <div class="orbit-ring ring-2"></div>
+        <div class="orbit-ring ring-1"></div>
+        <div class="orbit-core">SQL</div>
+
+        <!-- Planets — DB concepts -->
+        <div class="orbit-planet" style="top: 5%; left: 50%; transform: translate(-50%,-50%); background: rgba(77, 142, 255, 0.25); color: #4d8eff;">
+          <i data-lucide="table-2"></i>
+        </div>
+        <div class="orbit-planet" style="top: 50%; right: 0%; transform: translate(50%,-50%); background: rgba(184, 107, 255, 0.25); color: #b86bff;">
+          <i data-lucide="filter"></i>
+        </div>
+        <div class="orbit-planet" style="bottom: 5%; left: 50%; transform: translate(-50%,50%); background: rgba(255, 77, 207, 0.25); color: #ff4dcf;">
+          <i data-lucide="sigma"></i>
+        </div>
+        <div class="orbit-planet" style="top: 50%; left: 0%; transform: translate(-50%,-50%); background: rgba(0, 240, 255, 0.25); color: #00f0ff;">
+          <i data-lucide="key-round"></i>
+        </div>
+        <div class="orbit-planet" style="top: 15%; right: 15%; background: rgba(255, 184, 77, 0.25); color: #ffb84d;">
+          <i data-lucide="shield-check"></i>
+        </div>
+        <div class="orbit-planet" style="bottom: 15%; left: 15%; background: rgba(77, 255, 184, 0.25); color: #4dffb8;">
+          <i data-lucide="check-circle-2"></i>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========== WHY SQL ========== -->
+<section id="why" class="relative py-24 px-6 z-10">
+  <div class="max-w-7xl mx-auto">
+    <div class="text-center mb-16 reveal">
+      <span class="pill mb-4"><i data-lucide="git-compare" class="w-3 h-3"></i> Two Worlds</span>
+      <h2 class="font-display text-4xl md:text-5xl font-bold mt-4">
+        Some Answers <span class="gradient-cyan">Don't Live in Text</span>
+      </h2>
+      <p class="text-gray-400 mt-4 max-w-3xl mx-auto">
+        Vector search returns paragraphs. But "how many users signed up last week?" needs an exact number — computed, not retrieved.
+      </p>
+    </div>
+
+    <!-- Comparison: Vector vs SQL -->
+    <div class="grid md:grid-cols-2 gap-6 mb-16">
+      <!-- Vector -->
+      <div class="holo-card p-8 reveal">
+        <div class="flex items-center gap-3 mb-6">
+          <div class="w-12 h-12 rounded-xl flex items-center justify-center" style="background: rgba(184, 107, 255, 0.15);">
+            <i data-lucide="file-text" class="w-6 h-6" style="color: #b86bff;"></i>
+          </div>
+          <div>
+            <div class="text-xs uppercase tracking-wider" style="color:#b86bff;">Unstructured</div>
+            <h4 class="font-display font-bold text-xl">Vector RAG</h4>
+          </div>
+        </div>
+        <p class="text-sm text-gray-400 mb-4">Returns <span class="text-purple-300 font-semibold">passages</span> from documents. Great for "how", "why", "explain".</p>
+        <ul class="space-y-2 text-sm">
+          <li class="flex items-start gap-2 text-gray-300"><i data-lucide="check-circle-2" class="w-4 h-4 text-purple-400 mt-0.5 flex-shrink-0"></i> Policy & documentation lookups</li>
+          <li class="flex items-start gap-2 text-gray-300"><i data-lucide="check-circle-2" class="w-4 h-4 text-purple-400 mt-0.5 flex-shrink-0"></i> Conceptual / explanatory answers</li>
+          <li class="flex items-start gap-2 text-gray-300"><i data-lucide="x-circle" class="w-4 h-4 text-pink-400 mt-0.5 flex-shrink-0"></i> Cannot do exact aggregates</li>
+          <li class="flex items-start gap-2 text-gray-300"><i data-lucide="x-circle" class="w-4 h-4 text-pink-400 mt-0.5 flex-shrink-0"></i> Hallucinates numbers if asked</li>
+        </ul>
+      </div>
+
+      <!-- SQL -->
+      <div class="holo-card p-8 holo-border reveal" style="border-color: rgba(0, 240, 255, 0.4);">
+        <div class="flex items-center gap-3 mb-6">
+          <div class="w-12 h-12 rounded-xl flex items-center justify-center" style="background: rgba(0, 240, 255, 0.15);">
+            <i data-lucide="database" class="w-6 h-6" style="color: #00f0ff;"></i>
+          </div>
+          <div>
+            <div class="text-xs text-cyan-300 uppercase tracking-wider">Structured</div>
+            <h4 class="font-display font-bold text-xl">SQL RAG</h4>
+          </div>
+        </div>
+        <p class="text-sm text-gray-400 mb-4">Returns <span class="text-cyan-300 font-semibold">computed values</span> from tables. Great for "how many", "what's the total", "list all".</p>
+        <ul class="space-y-2 text-sm">
+          <li class="flex items-start gap-2 text-gray-300"><i data-lucide="check-circle-2" class="w-4 h-4 text-cyan-400 mt-0.5 flex-shrink-0"></i> Exact counts, sums, averages</li>
+          <li class="flex items-start gap-2 text-gray-300"><i data-lucide="check-circle-2" class="w-4 h-4 text-cyan-400 mt-0.5 flex-shrink-0"></i> Filters by date / user / status</li>
+          <li class="flex items-start gap-2 text-gray-300"><i data-lucide="check-circle-2" class="w-4 h-4 text-cyan-400 mt-0.5 flex-shrink-0"></i> Joins across tables</li>
+          <li class="flex items-start gap-2 text-gray-300"><i data-lucide="check-circle-2" class="w-4 h-4 text-cyan-400 mt-0.5 flex-shrink-0"></i> Deterministic & verifiable</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- WHICH ONE? Routing examples -->
+    <div class="reveal">
+      <div class="flex items-center gap-3 mb-6">
+        <i data-lucide="route" class="w-5 h-5 text-cyan-400"></i>
+        <h3 class="font-display font-bold text-xl">Which Route — Try It</h3>
+        <span class="pill ml-auto"><i data-lucide="mouse-pointer-click" class="w-3 h-3"></i> Click to reveal</span>
+      </div>
+      <p class="text-sm text-gray-400 mb-6">For each question, decide: does this need <span class="text-purple-300 font-mono">vector</span> or <span class="text-cyan-300 font-mono">sql</span>?</p>
+
+      <div class="grid md:grid-cols-2 gap-4" id="routeGrid">
+        <!-- injected -->
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========== PIPELINE ========== -->
+<section id="pipeline" class="relative py-24 px-6 z-10">
+  <div class="max-w-7xl mx-auto">
+    <div class="text-center mb-16 reveal">
+      <span class="pill mb-4"><i data-lucide="git-branch" class="w-3 h-3"></i> The Architecture</span>
+      <h2 class="font-display text-4xl md:text-5xl font-bold mt-4">
+        The <span class="gradient-cyan">5-Stage</span> Text-to-SQL Pipeline
+      </h2>
+      <p class="text-gray-400 mt-4 max-w-3xl mx-auto">
+        Every text-to-SQL system — whether Vanna, LlamaIndex SQLQueryEngine, or your own — follows these five stages. Click each to explore.
+      </p>
+    </div>
+
+    <!-- INTERACTIVE STAGES -->
+    <div class="reveal">
+      <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 mb-8" id="stageGrid">
+        <!-- injected -->
+      </div>
+      <div class="holo-card p-8" id="stageDetail">
+        <!-- filled -->
+      </div>
+    </div>
+
+    <!-- DEMO QUESTION -->
+    <div class="mt-16 reveal">
+      <div class="flex items-center gap-3 mb-6">
+        <i data-lucide="sparkles" class="w-5 h-5 text-cyan-400"></i>
+        <h3 class="font-display font-bold text-xl">End-to-End Example</h3>
+        <span class="pill ml-auto"><i data-lucide="zap" class="w-3 h-3"></i> Trace</span>
+      </div>
+
+      <div class="grid md:grid-cols-2 gap-6">
+        <!-- User Question -->
+        <div class="holo-card p-6">
+          <div class="font-mono text-xs text-cyan-300 tracking-widest mb-3">USER QUESTION</div>
+          <div class="text-gray-200 italic">"How many premium customers signed up last month?"</div>
+        </div>
+        <!-- Generated SQL -->
+        <div class="holo-card p-6">
+          <div class="font-mono text-xs text-purple-300 tracking-widest mb-3">GENERATED SQL</div>
+          <div class="code-block" style="padding: 14px; font-size: 0.78rem;">
+<pre><span class="tok-keyword">SELECT</span> <span class="tok-fn">COUNT</span>(*)
+<span class="tok-keyword">FROM</span> <span class="tok-var">customers</span>
+<span class="tok-keyword">WHERE</span> <span class="tok-var">plan</span> <span class="tok-keyword">=</span> <span class="tok-string">'premium'</span>
+  <span class="tok-keyword">AND</span> <span class="tok-var">signup_date</span> <span class="tok-keyword">&gt;=</span> <span class="tok-string">'2026-04-01'</span>
+  <span class="tok-keyword">AND</span> <span class="tok-var">signup_date</span> <span class="tok-keyword">&lt;</span> <span class="tok-string">'2026-05-01'</span>;</pre>
+          </div>
+        </div>
+        <!-- DB Result -->
+        <div class="holo-card p-6">
+          <div class="font-mono text-xs text-amber-300 tracking-widest mb-3">DATABASE RESULT</div>
+          <table class="data-table">
+            <thead><tr><th>count</th></tr></thead>
+            <tbody><tr><td>1,247</td></tr></tbody>
+          </table>
+        </div>
+        <!-- Final Answer -->
+        <div class="holo-card p-6 holo-border" style="border-color: rgba(0,240,255,0.4);">
+          <div class="font-mono text-xs text-cyan-300 tracking-widest mb-3">FINAL ANSWER</div>
+          <div class="text-gray-200">
+            <span class="text-cyan-300 font-semibold">1,247 premium customers</span> signed up in April 2026.
+          </div>
+          <div class="text-xs text-gray-500 font-mono mt-3">source: customers table · query verified</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========== SCHEMA AS CONTEXT ========== -->
+<section id="schema" class="relative py-24 px-6 z-10">
+  <div class="max-w-7xl mx-auto">
+    <div class="text-center mb-16 reveal">
+      <span class="pill mb-4"><i data-lucide="layers" class="w-3 h-3"></i> The Secret Sauce</span>
+      <h2 class="font-display text-4xl md:text-5xl font-bold mt-4">
+        Your <span class="gradient-purple">Schema</span> Is The Context
+      </h2>
+      <p class="text-gray-400 mt-4 max-w-3xl mx-auto">
+        The LLM doesn't know your tables. Schema retrieval IS the RAG step — pull only the relevant tables, columns, and example rows.
+      </p>
+    </div>
+
+    <!-- Schema Card Example -->
+    <div class="grid lg:grid-cols-2 gap-6 mb-12">
+      <!-- BAD context -->
+      <div class="holo-card p-8 reveal">
+        <div class="flex items-center gap-3 mb-4">
+          <div class="w-12 h-12 rounded-xl flex items-center justify-center" style="background: rgba(255, 77, 207, 0.15);">
+            <i data-lucide="x-circle" class="w-6 h-6" style="color: #ff4dcf;"></i>
+          </div>
+          <div>
+            <div class="text-xs uppercase tracking-wider" style="color:#ff4dcf;">Anti-pattern</div>
+            <h4 class="font-display font-bold text-xl">Raw DDL Dump</h4>
+          </div>
+        </div>
+        <p class="text-sm text-gray-400 mb-4">Pasting 200 tables of raw CREATE TABLE statements. LLM gets lost. Schema bleeds tokens.</p>
+        <div class="code-block" style="font-size: 0.72rem;">
+<pre><span class="tok-comment">-- 200 of these...</span>
+<span class="tok-keyword">CREATE TABLE</span> <span class="tok-var">tbl_cust_v3</span> (
+  <span class="tok-var">c_id</span> <span class="tok-keyword">INT</span>,
+  <span class="tok-var">c_typ</span> <span class="tok-keyword">VARCHAR</span>,
+  <span class="tok-var">c_dt</span> <span class="tok-keyword">TIMESTAMP</span>
+);
+<span class="tok-comment">-- no comments, cryptic names, irrelevant tables</span></pre>
+        </div>
+      </div>
+
+      <!-- GOOD context -->
+      <div class="holo-card p-8 holo-border reveal" style="border-color: rgba(0,240,255,0.4);">
+        <div class="flex items-center gap-3 mb-4">
+          <div class="w-12 h-12 rounded-xl flex items-center justify-center" style="background: rgba(0, 240, 255, 0.15);">
+            <i data-lucide="check-circle-2" class="w-6 h-6" style="color: #00f0ff;"></i>
+          </div>
+          <div>
+            <div class="text-xs text-cyan-300 uppercase tracking-wider">Best practice</div>
+            <h4 class="font-display font-bold text-xl">Curated Schema Card</h4>
+          </div>
+        </div>
+        <p class="text-sm text-gray-400 mb-4">Description + columns with comments + 2-3 sample rows. The LLM gets exactly what it needs.</p>
+        <div class="code-block" style="font-size: 0.72rem;">
+<pre><span class="tok-comment">-- customers: signup &amp; subscription tier</span>
+<span class="tok-keyword">CREATE TABLE</span> <span class="tok-var">customers</span> (
+  <span class="tok-var">id</span> <span class="tok-keyword">INT</span> <span class="tok-keyword">PRIMARY KEY</span>,
+  <span class="tok-var">plan</span> <span class="tok-keyword">VARCHAR</span>,    <span class="tok-comment">-- 'free'|'pro'|'premium'</span>
+  <span class="tok-var">signup_date</span> <span class="tok-keyword">DATE</span>,
+  <span class="tok-var">region</span> <span class="tok-keyword">VARCHAR</span>     <span class="tok-comment">-- ISO country code</span>
+);
+<span class="tok-comment">-- sample: (1, 'premium', '2026-04-12', 'US')</span></pre>
+        </div>
+      </div>
+    </div>
+
+    <!-- Schema retrieval flow -->
+    <div class="reveal">
+      <h3 class="font-display font-bold text-xl mb-6 text-center">
+        How Schema Retrieval Works
+      </h3>
+      <div class="grid md:grid-cols-4 gap-4">
+        <div class="holo-card p-5 text-center">
+          <div class="use-case-icon mx-auto" style="background: linear-gradient(135deg, rgba(0,240,255,0.15), rgba(77,142,255,0.05)); color: #00f0ff;">
+            <i data-lucide="search" class="w-7 h-7"></i>
+          </div>
+          <div class="font-mono text-[10px] text-gray-500 tracking-widest">STEP 01</div>
+          <h4 class="font-display font-bold text-sm mt-1" style="color: #00f0ff;">Embed Question</h4>
+          <p class="text-xs text-gray-400 mt-2">"how many premium signups" → vector</p>
+        </div>
+        <div class="holo-card p-5 text-center">
+          <div class="use-case-icon mx-auto" style="background: linear-gradient(135deg, rgba(77,142,255,0.15), rgba(184,107,255,0.05)); color: #4d8eff;">
+            <i data-lucide="layers-2" class="w-7 h-7"></i>
+          </div>
+          <div class="font-mono text-[10px] text-gray-500 tracking-widest">STEP 02</div>
+          <h4 class="font-display font-bold text-sm mt-1" style="color: #4d8eff;">Match Tables</h4>
+          <p class="text-xs text-gray-400 mt-2">Find top-k schema cards</p>
+        </div>
+        <div class="holo-card p-5 text-center">
+          <div class="use-case-icon mx-auto" style="background: linear-gradient(135deg, rgba(184,107,255,0.15), rgba(255,77,207,0.05)); color: #b86bff;">
+            <i data-lucide="file-stack" class="w-7 h-7"></i>
+          </div>
+          <div class="font-mono text-[10px] text-gray-500 tracking-widest">STEP 03</div>
+          <h4 class="font-display font-bold text-sm mt-1" style="color: #b86bff;">Inject Context</h4>
+          <p class="text-xs text-gray-400 mt-2">Schema + samples → prompt</p>
+        </div>
+        <div class="holo-card p-5 text-center">
+          <div class="use-case-icon mx-auto" style="background: linear-gradient(135deg, rgba(255,77,207,0.15), rgba(255,184,77,0.05)); color: #ff4dcf;">
+            <i data-lucide="code-2" class="w-7 h-7"></i>
+          </div>
+          <div class="font-mono text-[10px] text-gray-500 tracking-widest">STEP 04</div>
+          <h4 class="font-display font-bold text-sm mt-1" style="color: #ff4dcf;">Generate SQL</h4>
+          <p class="text-xs text-gray-400 mt-2">LLM writes the query</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="callout-cyan mt-12 text-sm text-gray-300 max-w-4xl mx-auto reveal">
+      <strong class="text-cyan-300">🎯 The big idea:</strong> Don't paste your whole schema. Vector-search your <em>table descriptions</em> just like you'd retrieve documents — only the relevant tables make it into the prompt. This is RAG, all the way down.
+    </div>
+  </div>
+</section>
+
+<!-- ========== NL-TO-SQL STEP-BY-STEP ========== -->
+<section id="nl2sql" class="relative py-24 px-6 z-10">
+  <div class="max-w-7xl mx-auto">
+    <div class="text-center mb-16 reveal">
+      <span class="pill mb-4"><i data-lucide="terminal-square" class="w-3 h-3"></i> Step-by-Step</span>
+      <h2 class="font-display text-4xl md:text-5xl font-bold mt-4">
+        <span class="gradient-cyan">NL → SQL</span> — Derived End to End
+      </h2>
+      <p class="text-gray-400 mt-4 max-w-3xl mx-auto">Watch a single English question become a typed query, executed, then narrated back to the user. Five steps, every intermediate artifact shown.</p>
+    </div>
+
+    <div class="space-y-6 reveal max-w-5xl mx-auto mb-10">
+
+      <div class="step-card">
+        <div class="step-num">STEP 01 · USER QUESTION</div>
+        <div class="mt-3 p-4 rounded-lg bg-black/30 border border-cyan-500/20 font-mono text-sm text-gray-300">
+          "<span class="text-cyan-300">Which customers spent more than $5,000 in Q1 2026 across our enterprise plan?</span>"
+        </div>
+        <p class="text-xs text-gray-500 mt-3">Free-form, mixes a filter (spend &gt; 5000), a time window (Q1 2026), and a categorical filter (plan=enterprise). A vector store can't answer this.</p>
+      </div>
+
+      <div class="step-card">
+        <div class="step-num">STEP 02 · RETRIEVE RELEVANT TABLES (RAG OVER SCHEMA)</div>
+        <p class="text-sm text-gray-300 mt-3 mb-3">Embed the question. Retrieve top-K table description cards from a vector index of <em>schema docs</em>.</p>
+        <div class="grid md:grid-cols-2 gap-3 mt-3">
+          <div class="font-mono text-xs bg-black/30 p-3 rounded border border-cyan-500/20 text-gray-300">
+            <div class="text-cyan-300 mb-1">customers</div>
+            <div>id (int PK)</div>
+            <div>name (text)</div>
+            <div>plan (enum: free, pro, enterprise)</div>
+          </div>
+          <div class="font-mono text-xs bg-black/30 p-3 rounded border border-cyan-500/20 text-gray-300">
+            <div class="text-cyan-300 mb-1">invoices</div>
+            <div>id (int PK)</div>
+            <div>customer_id (int FK → customers)</div>
+            <div>amount_usd (numeric)</div>
+            <div>issued_at (timestamptz)</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="step-card">
+        <div class="step-num">STEP 03 · BUILD THE PROMPT</div>
+        <p class="text-sm text-gray-300 mt-3 mb-3">Include only the retrieved tables, current date, dialect hint, and few-shot examples that match this question's <em>shape</em>.</p>
+        <pre class="font-mono text-xs bg-black/30 p-4 rounded border border-purple-500/20 overflow-x-auto text-gray-300">You are a PostgreSQL expert. Today is 2026-05-21.
+Use ONLY the tables below. Return JSON: {"sql": "...", "rationale": "..."}.
+
+<span class="text-cyan-300">### Schema</span>
+CREATE TABLE customers (id INT PRIMARY KEY, name TEXT, plan TEXT);
+CREATE TABLE invoices (id INT PRIMARY KEY, customer_id INT REFERENCES customers(id),
+                       amount_usd NUMERIC, issued_at TIMESTAMPTZ);
+
+<span class="text-cyan-300">### Example</span>
+Q: "Top 10 customers by revenue last month"
+SQL: SELECT c.name, SUM(i.amount_usd) AS rev
+     FROM invoices i JOIN customers c ON c.id = i.customer_id
+     WHERE i.issued_at &gt;= date_trunc('month', now()) - INTERVAL '1 month'
+       AND i.issued_at &lt;  date_trunc('month', now())
+     GROUP BY c.name ORDER BY rev DESC LIMIT 10;
+
+<span class="text-cyan-300">### Question</span>
+Which customers spent more than $5,000 in Q1 2026 across our enterprise plan?</pre>
+      </div>
+
+      <div class="step-card">
+        <div class="step-num">STEP 04 · LLM EMITS TYPED SQL</div>
+        <pre class="font-mono text-xs bg-black/30 p-4 rounded border border-green-500/20 overflow-x-auto text-gray-300 mt-3">{
+  "sql": "SELECT c.name, SUM(i.amount_usd) AS spend
+          FROM invoices i
+          JOIN customers c ON c.id = i.customer_id
+          WHERE i.issued_at &gt;= '2026-01-01' AND i.issued_at &lt; '2026-04-01'
+            AND c.plan = 'enterprise'
+          GROUP BY c.name
+          HAVING SUM(i.amount_usd) &gt; 5000
+          ORDER BY spend DESC;",
+  "rationale": "Joined invoices with customers, scoped by date range and plan,
+                summed spend per customer, filtered &gt;5000."
+}</pre>
+        <p class="text-xs text-gray-500 mt-3"><strong class="text-amber-300">Hardening between Step 4 and 5:</strong> parse the JSON, validate the SQL with <code class="font-mono">sqlglot</code>, reject DDL/DML, EXPLAIN to estimate cost, attach <code class="font-mono">LIMIT 1000</code> if missing.</p>
+      </div>
+
+      <div class="step-card">
+        <div class="step-num">STEP 05 · EXECUTE + NARRATE</div>
+        <div class="grid md:grid-cols-2 gap-4 mt-3">
+          <div>
+            <div class="font-mono text-xs text-cyan-300 mb-2">SQL RESULT</div>
+            <pre class="font-mono text-xs bg-black/30 p-3 rounded border border-cyan-500/20 text-gray-300">name           | spend
+---------------|---------
+Acme Corp      | 18,420
+Globex Ltd     | 11,275
+Initech Inc    |  7,840
+Soylent Co     |  5,260</pre>
+          </div>
+          <div>
+            <div class="font-mono text-xs text-purple-300 mb-2">LLM-FORMATTED ANSWER</div>
+            <div class="p-3 rounded bg-black/30 border border-purple-500/20 text-sm text-gray-300 leading-relaxed">
+              <strong class="text-white">Four enterprise customers</strong> spent over $5,000 in Q1 2026: Acme Corp ($18.4k), Globex Ltd ($11.3k), Initech ($7.8k), and Soylent Co ($5.3k). Citations: <code class="font-mono text-xs text-cyan-300">SQL → invoices, customers (executed 2026-05-21)</code>.
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="callout-cyan reveal text-sm text-gray-300">
+      <strong class="text-cyan-300">⚡ The discipline that separates working NL-to-SQL from a science project:</strong> always (1) retrieve schema instead of dumping it, (2) require typed JSON output, (3) validate with a parser before executing, (4) enforce read-only DB roles, (5) cap rows. Skip any one and you have a stochastic exploit.
+    </div>
+  </div>
+</section>
+
+<!-- ========== TABLE QA (PANDAS) ========== -->
+<section id="tables" class="relative py-24 px-6 z-10">
+  <div class="max-w-7xl mx-auto">
+    <div class="text-center mb-16 reveal">
+      <span class="pill mb-4"><i data-lucide="table-2" class="w-3 h-3"></i> Tables Without a Database</span>
+      <h2 class="font-display text-4xl md:text-5xl font-bold mt-4">
+        <span class="gradient-purple">Table QA</span> — Pandas as the Backend
+      </h2>
+      <p class="text-gray-400 mt-4 max-w-3xl mx-auto">Not every tabular question deserves Postgres. CSVs, Excel sheets, in-memory DataFrames — pandas is the right answer when the data is fluid, exploratory, or attached to a single user session.</p>
+    </div>
+
+    <div class="grid lg:grid-cols-2 gap-8 reveal mb-10">
+      <div class="holo-card p-6">
+        <h3 class="font-display font-bold text-lg mb-3 text-white flex items-center gap-2">
+          <i data-lucide="git-branch" class="w-5 h-5 text-purple-400"></i>
+          Two prompting patterns
+        </h3>
+        <p class="text-sm text-gray-300 leading-relaxed mb-4"><strong class="text-cyan-300">Pattern A — code generation:</strong> LLM emits Python that operates on <code class="font-mono text-xs">df</code>. You execute in a sandbox. Most flexible, hardest to secure.</p>
+        <p class="text-sm text-gray-300 leading-relaxed"><strong class="text-purple-300">Pattern B — typed query DSL:</strong> LLM emits a constrained JSON (operation, columns, filter, agg). You compile to pandas calls. Slower to build, much safer.</p>
+      </div>
+
+      <div class="holo-card p-6">
+        <h3 class="font-display font-bold text-lg mb-3 text-white flex items-center gap-2">
+          <i data-lucide="info" class="w-5 h-5 text-cyan-400"></i>
+          What the LLM needs to see
+        </h3>
+        <ul class="space-y-2 text-sm text-gray-300">
+          <li class="flex gap-2"><i data-lucide="check" class="w-4 h-4 text-green-400 mt-0.5 flex-shrink-0"></i> <code class="font-mono text-xs">df.head(3)</code> — sample rows reveal real values</li>
+          <li class="flex gap-2"><i data-lucide="check" class="w-4 h-4 text-green-400 mt-0.5 flex-shrink-0"></i> <code class="font-mono text-xs">df.dtypes</code> — distinguish "2026" the string from 2026 the int</li>
+          <li class="flex gap-2"><i data-lucide="check" class="w-4 h-4 text-green-400 mt-0.5 flex-shrink-0"></i> Column descriptions — "<em>amount in cents</em>" matters</li>
+          <li class="flex gap-2"><i data-lucide="check" class="w-4 h-4 text-green-400 mt-0.5 flex-shrink-0"></i> Row count + memory footprint — to size the prompt</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="grid lg:grid-cols-2 gap-6 reveal mb-8">
+      <div>
+        <div class="text-xs text-cyan-300 uppercase tracking-wider mb-3">Code-Gen Pattern · LangChain pandas agent</div>
+        <div class="code-block relative">
+<pre><span class="tok-keyword">import</span> <span class="tok-var">pandas</span> <span class="tok-keyword">as</span> <span class="tok-var">pd</span>
+<span class="tok-keyword">from</span> <span class="tok-var">langchain_experimental.agents</span> <span class="tok-keyword">import</span> <span class="tok-fn">create_pandas_dataframe_agent</span>
+
+<span class="tok-var">df</span> = <span class="tok-var">pd</span>.<span class="tok-fn">read_csv</span>(<span class="tok-string">"sales_2026.csv"</span>)
+
+<span class="tok-comment"># IMPORTANT: allow_dangerous_code=True runs LLM-emitted Python.</span>
+<span class="tok-comment"># Use ONLY behind a sandbox (firejail, gVisor, restricted-python).</span>
+<span class="tok-var">agent</span> = <span class="tok-fn">create_pandas_dataframe_agent</span>(
+  <span class="tok-var">llm</span>, <span class="tok-var">df</span>,
+  <span class="tok-var">allow_dangerous_code</span>=<span class="tok-bool">True</span>,
+  <span class="tok-var">number_of_head_rows</span>=<span class="tok-num">3</span>,
+)
+
+<span class="tok-var">answer</span> = <span class="tok-var">agent</span>.<span class="tok-fn">invoke</span>(
+  <span class="tok-string">"Which region had the largest YoY revenue drop?"</span>
+)
+<span class="tok-comment"># Behind the scenes: LLM writes pandas, executor runs it,
+# LLM reads the result, formats the answer.</span></pre>
+        </div>
+      </div>
+
+      <div>
+        <div class="text-xs text-purple-300 uppercase tracking-wider mb-3">Typed-DSL Pattern · safer, slower to build</div>
+        <div class="code-block relative">
+<pre><span class="tok-keyword">from</span> <span class="tok-var">pydantic</span> <span class="tok-keyword">import</span> <span class="tok-type">BaseModel</span>
+<span class="tok-keyword">from</span> <span class="tok-var">typing</span> <span class="tok-keyword">import</span> <span class="tok-type">Literal</span>
+
+<span class="tok-keyword">class</span> <span class="tok-type">TableQuery</span>(<span class="tok-type">BaseModel</span>):
+    <span class="tok-var">op</span>: <span class="tok-type">Literal</span>[<span class="tok-string">"groupby_agg"</span>, <span class="tok-string">"filter"</span>, <span class="tok-string">"topk"</span>]
+    <span class="tok-var">groupby</span>: <span class="tok-type">list</span>[<span class="tok-type">str</span>] = []
+    <span class="tok-var">agg</span>: <span class="tok-type">dict</span>[<span class="tok-type">str</span>, <span class="tok-type">str</span>] = {}
+    <span class="tok-var">where</span>: <span class="tok-type">str</span> | <span class="tok-bool">None</span> = <span class="tok-bool">None</span>
+    <span class="tok-var">limit</span>: <span class="tok-type">int</span> = <span class="tok-num">10</span>
+
+<span class="tok-var">q</span> = <span class="tok-var">llm</span>.<span class="tok-fn">with_structured_output</span>(<span class="tok-type">TableQuery</span>).<span class="tok-fn">invoke</span>(question)
+
+<span class="tok-comment"># Compile to pandas — no exec(), no eval()</span>
+<span class="tok-var">res</span> = <span class="tok-var">df</span>.<span class="tok-fn">query</span>(<span class="tok-var">q</span>.<span class="tok-var">where</span> <span class="tok-keyword">or</span> <span class="tok-string">"index == index"</span>) \
+        .<span class="tok-fn">groupby</span>(<span class="tok-var">q</span>.<span class="tok-var">groupby</span>) \
+        .<span class="tok-fn">agg</span>(<span class="tok-var">q</span>.<span class="tok-var">agg</span>) \
+        .<span class="tok-fn">head</span>(<span class="tok-var">q</span>.<span class="tok-var">limit</span>)</pre>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid md:grid-cols-3 gap-6 reveal">
+      <div class="holo-card p-6">
+        <h4 class="font-display font-bold text-base text-white mb-2">When to use Table QA</h4>
+        <ul class="text-xs text-gray-300 space-y-1 leading-relaxed">
+          <li>• User-uploaded CSVs / Excel</li>
+          <li>• Notebook-style ad-hoc analytics</li>
+          <li>• Data that lives in S3, not Postgres</li>
+          <li>• Anything &lt;1M rows that fits in RAM</li>
+        </ul>
+      </div>
+      <div class="holo-card p-6">
+        <h4 class="font-display font-bold text-base text-white mb-2">When SQL wins</h4>
+        <ul class="text-xs text-gray-300 space-y-1 leading-relaxed">
+          <li>• Multi-table joins, foreign keys</li>
+          <li>• &gt;10M rows, can't fit in memory</li>
+          <li>• Concurrent users, ACID guarantees</li>
+          <li>• Existing analytics warehouse</li>
+        </ul>
+      </div>
+      <div class="holo-card p-6">
+        <h4 class="font-display font-bold text-base text-white mb-2">Security non-negotiables</h4>
+        <ul class="text-xs text-gray-300 space-y-1 leading-relaxed">
+          <li>• Never <code class="font-mono">exec()</code> outside a sandbox</li>
+          <li>• Strip <code class="font-mono">import</code>, <code class="font-mono">open</code>, dunder access</li>
+          <li>• Memory + CPU + wall-clock caps</li>
+          <li>• No filesystem / network from the sandbox</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========== HYBRID PATTERN ========== -->
+<section id="hybrid" class="relative py-24 px-6 z-10">
+  <div class="max-w-7xl mx-auto">
+    <div class="text-center mb-16 reveal">
+      <span class="pill mb-4"><i data-lucide="combine" class="w-3 h-3"></i> Best of Both</span>
+      <h2 class="font-display text-4xl md:text-5xl font-bold mt-4">
+        The <span class="gradient-amber">Hybrid</span> Pattern
+      </h2>
+      <p class="text-gray-400 mt-4 max-w-3xl mx-auto">
+        Real questions often need both: "What does our refund policy say, and what was our actual refund rate last quarter?"
+      </p>
+    </div>
+
+    <!-- 3 patterns -->
+    <div class="grid md:grid-cols-3 gap-6">
+      <div class="holo-card p-6 reveal">
+        <div class="use-case-icon" style="background: linear-gradient(135deg, rgba(0,240,255,0.15), rgba(77,142,255,0.05)); color: #00f0ff;">
+          <i data-lucide="route" class="w-7 h-7"></i>
+        </div>
+        <h3 class="font-display font-bold text-lg mb-2">Router Pattern</h3>
+        <p class="text-sm text-gray-400 leading-relaxed mb-3">A classifier picks <span class="text-cyan-300 font-semibold">vector</span> OR <span class="text-cyan-300 font-semibold">SQL</span> based on question type. Cheap, fast, one query path.</p>
+        <div class="mt-3 flex gap-2"><span class="pill">Cheap</span><span class="pill">1 path</span></div>
+      </div>
+
+      <div class="holo-card p-6 reveal">
+        <div class="use-case-icon" style="background: linear-gradient(135deg, rgba(184,107,255,0.15), rgba(255,77,207,0.05)); color: #b86bff;">
+          <i data-lucide="git-merge" class="w-7 h-7"></i>
+        </div>
+        <h3 class="font-display font-bold text-lg mb-2">Parallel Fusion</h3>
+        <p class="text-sm text-gray-400 leading-relaxed mb-3">Run vector AND SQL in parallel, then synthesize. Great when the question genuinely spans both worlds.</p>
+        <div class="mt-3 flex gap-2"><span class="pill">Rich answer</span><span class="pill">Higher cost</span></div>
+      </div>
+
+      <div class="holo-card p-6 reveal">
+        <div class="use-case-icon" style="background: linear-gradient(135deg, rgba(255,184,77,0.15), rgba(255,77,207,0.05)); color: #ffb84d;">
+          <i data-lucide="layers" class="w-7 h-7"></i>
+        </div>
+        <h3 class="font-display font-bold text-lg mb-2">Sequential Decompose</h3>
+        <p class="text-sm text-gray-400 leading-relaxed mb-3">Break question → sub-questions → route each → combine. The bridge to Agentic RAG (5.2).</p>
+        <div class="mt-3 flex gap-2"><span class="pill">Multi-hop</span><span class="pill">Agentic</span></div>
+      </div>
+    </div>
+
+    <div class="callout mt-12 max-w-4xl mx-auto text-sm text-gray-300 reveal">
+      <strong class="text-amber-300">⚡ Pragmatic default:</strong> Start with <span class="font-mono">Router</span>. Upgrade to <span class="font-mono">Parallel Fusion</span> when evals show mixed questions failing. Reach for <span class="font-mono">Sequential Decompose</span> only when you've got real multi-hop traffic.
+    </div>
+
+    <!-- Hybrid worked example -->
+    <div class="reveal mt-16">
+      <div class="text-center mb-10">
+        <span class="pill mb-4"><i data-lucide="combine" class="w-3 h-3"></i> End-to-End</span>
+        <h3 class="font-display text-3xl font-bold mt-4">
+          Worked Example — <span class="gradient-amber">SQL + Vector RAG</span> on One Query
+        </h3>
+        <p class="text-gray-400 mt-4 max-w-3xl mx-auto">A real product question with one structured half and one unstructured half. Watch both retrieval paths fire, then fuse.</p>
+      </div>
+
+      <div class="holo-card p-6 mb-6">
+        <div class="font-mono text-xs text-cyan-300 tracking-widest mb-3">USER QUESTION</div>
+        <div class="p-4 rounded-lg bg-black/30 border border-cyan-500/20 font-mono text-sm text-gray-300">
+          "<span class="text-cyan-300">Why is our refund rate up this quarter — what changed in the policy AND what do the numbers say?</span>"
+        </div>
+        <p class="text-xs text-gray-500 mt-3">Two halves: <em>"what changed in the policy"</em> is unstructured doc retrieval. <em>"what do the numbers say"</em> is SQL over the warehouse. Neither half alone is a complete answer.</p>
+      </div>
+
+      <div class="grid lg:grid-cols-2 gap-6 mb-6">
+        <div class="holo-card p-6">
+          <div class="font-mono text-xs text-purple-300 tracking-widest mb-3">PATH A — VECTOR RAG (POLICY DOCS)</div>
+          <div class="space-y-2 text-sm text-gray-300">
+            <div>1. Embed "what changed in refund policy"</div>
+            <div>2. ANN search over <code class="font-mono text-xs">policy-docs</code> index, top-5</div>
+            <div>3. Rerank with cross-encoder, top-3</div>
+          </div>
+          <div class="font-mono text-xs bg-black/30 p-3 rounded border border-purple-500/20 mt-3 text-gray-300 space-y-1">
+            <div class="text-purple-300">retrieved chunks:</div>
+            <div>• policy-v3.md#para8: "extended return window to 30 days · 2026-03-15"</div>
+            <div>• policy-v3.md#para12: "added partial refund for digital goods"</div>
+            <div>• changelog.md#L42: "policy v3 launch — broader refund eligibility"</div>
+          </div>
+        </div>
+
+        <div class="holo-card p-6">
+          <div class="font-mono text-xs text-amber-300 tracking-widest mb-3">PATH B — SQL RAG (WAREHOUSE)</div>
+          <div class="space-y-2 text-sm text-gray-300">
+            <div>1. NL→SQL on the numeric half of the question</div>
+            <div>2. LLM emits typed query against <code class="font-mono text-xs">refunds, orders</code></div>
+            <div>3. Execute against read-replica</div>
+          </div>
+          <pre class="font-mono text-xs bg-black/30 p-3 rounded border border-amber-500/20 mt-3 text-gray-300 overflow-x-auto">SELECT
+  date_trunc('quarter', r.issued_at) AS q,
+  COUNT(*) * 100.0 / NULLIF(o.cnt, 0) AS refund_rate_pct
+FROM refunds r
+JOIN (SELECT date_trunc('quarter',ts) q, COUNT(*) cnt
+      FROM orders GROUP BY 1) o
+  ON o.q = date_trunc('quarter', r.issued_at)
+WHERE r.issued_at &gt;= '2025-01-01'
+GROUP BY 1, o.cnt ORDER BY 1;</pre>
+          <div class="font-mono text-xs bg-black/30 p-3 rounded border border-amber-500/20 mt-2 text-gray-300">
+            <div class="text-amber-300">result:</div>
+            <div>Q4 2025: 2.1% · Q1 2026: 2.4% · Q2 2026: <span class="text-pink-300">3.9%</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="holo-card p-6 mb-6" style="border-color: rgba(77,255,184,0.3);">
+        <div class="font-mono text-xs text-green-300 tracking-widest mb-3">FUSION — SYNTHESIZER PROMPT</div>
+        <pre class="font-mono text-xs bg-black/30 p-4 rounded border border-green-500/20 overflow-x-auto text-gray-300">You are a senior analyst. Answer the user's question using BOTH:
+- &lt;policy_evidence&gt; (qualitative, what changed)
+- &lt;sql_evidence&gt;    (quantitative, the numbers)
+Cite policy_evidence with [doc_id]. Cite sql_evidence with [sql].
+
+&lt;policy_evidence&gt;
+  &lt;doc id="policy-v3.md#para8"&gt;Extended return window to 30 days · 2026-03-15&lt;/doc&gt;
+  &lt;doc id="changelog.md#L42"&gt;Policy v3 launch — broader refund eligibility&lt;/doc&gt;
+&lt;/policy_evidence&gt;
+
+&lt;sql_evidence&gt;
+  Refund rate by quarter: Q4-2025 2.1% · Q1-2026 2.4% · Q2-2026 3.9%
+&lt;/sql_evidence&gt;
+
+&lt;query&gt;Why is our refund rate up this quarter — what changed in the policy AND what do the numbers say?&lt;/query&gt;</pre>
+      </div>
+
+      <div class="win-card">
+        <div class="text-xs text-green-300 uppercase tracking-wider mb-2">FINAL ANSWER</div>
+        <p class="text-sm text-gray-300 leading-relaxed">The refund rate climbed from 2.4% in Q1 2026 to <strong>3.9% in Q2 2026 [sql]</strong> — roughly a 60% relative increase. The driver is the v3 policy launch on 2026-03-15, which <strong>extended the return window to 30 days [policy-v3.md#para8]</strong> and broadened eligibility to digital goods <strong>[changelog.md#L42]</strong>. The timing of the rate jump aligns with the policy effective date, so the policy change — not a quality regression — is the likely cause.</p>
+      </div>
+
+      <div class="callout-cyan mt-6 text-sm text-gray-300">
+        <strong class="text-cyan-300">⚡ What "hybrid structured + unstructured" actually requires:</strong> (1) a decomposer or parallel retrieval that fires <em>both</em> paths, (2) cleanly-labeled evidence blocks the LLM can cite separately, (3) a synthesizer prompt that's explicit about which evidence type covers which kind of claim. Skip any of these and the LLM blends them into a single mush of "the data shows" with no traceable citations.
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========== GRAPH RAG ========== -->
+<section id="graph-rag" class="relative py-24 px-6 z-10">
+  <div class="max-w-7xl mx-auto">
+    <div class="text-center mb-16 reveal">
+      <span class="pill mb-4"><i data-lucide="share-2" class="w-3 h-3"></i> Structured · Nodes &amp; Edges</span>
+      <h2 class="font-display text-4xl md:text-5xl font-bold mt-4">
+        <span class="gradient-purple">Graph RAG</span> — Retrieval by Traversal
+      </h2>
+      <p class="text-gray-400 mt-4 max-w-3xl mx-auto">When the answer requires <em>following relationships</em> — not just finding similar text — chunks fail. A knowledge graph lets you walk from "Acme" to "its subsidiaries" to "their CFOs" in one hop, exact match every time.</p>
+    </div>
+
+    <div class="grid lg:grid-cols-2 gap-8 reveal mb-10">
+      <div class="lose-card">
+        <div class="text-xs text-pink-300 uppercase tracking-wider mb-2">Vector RAG fails on</div>
+        <h3 class="font-display font-bold text-xl mb-3 text-white">Multi-hop relationship questions</h3>
+        <p class="text-sm text-gray-300 mb-4">"Who is the CFO of every subsidiary of Acme that's based in Europe?"</p>
+        <ul class="space-y-2 text-sm text-gray-300">
+          <li>✦ Embedding "subsidiary of Acme in Europe" returns paragraphs <em>mentioning</em> those words, not the actual list.</li>
+          <li>✦ Three independent facts (parent→child, child→region, child→officer) live in three different chunks. Vector retrieval can't join them.</li>
+          <li>✦ Recall fails the moment one chunk is missing.</li>
+        </ul>
+      </div>
+      <div class="win-card">
+        <div class="text-xs text-green-300 uppercase tracking-wider mb-2">Graph RAG nails it</div>
+        <h3 class="font-display font-bold text-xl mb-3 text-white">Walk the edges</h3>
+        <div class="font-mono text-xs bg-black/30 p-3 rounded border border-green-500/20 text-gray-300 leading-relaxed">
+          (Acme) -[:OWNS]-&gt; (sub)<br>
+          (sub) -[:BASED_IN]-&gt; (Europe)<br>
+          (sub) -[:HAS_OFFICER {role:'CFO'}]-&gt; (person)
+        </div>
+        <p class="text-sm text-gray-300 mt-3">One Cypher query. Exact, complete, explainable. No similarity threshold to tune.</p>
+      </div>
+    </div>
+
+    <div class="holo-card p-6 reveal mb-8">
+      <h3 class="font-display font-bold text-lg mb-4 text-white flex items-center gap-2">
+        <i data-lucide="route" class="w-5 h-5 text-purple-400"></i>
+        The three Graph-RAG patterns
+      </h3>
+      <div class="grid md:grid-cols-3 gap-4">
+        <div class="step-card">
+          <div class="step-num">PATTERN 01 · NL → CYPHER</div>
+          <p class="text-sm text-gray-300 mt-2 mb-2">Same shape as NL-to-SQL — LLM emits a typed Cypher/SPARQL query from the user's question + graph schema.</p>
+          <p class="text-xs text-gray-500">Used by Neo4j's <code class="font-mono">GraphCypherQAChain</code>, LlamaIndex's <code class="font-mono">KnowledgeGraphQueryEngine</code>.</p>
+        </div>
+        <div class="step-card">
+          <div class="step-num">PATTERN 02 · ENTITY-LINKED EXPANSION</div>
+          <p class="text-sm text-gray-300 mt-2 mb-2">Extract entities from the query, look them up in the graph, expand <em>N hops</em>, return the subgraph as context.</p>
+          <p class="text-xs text-gray-500">Used by Microsoft GraphRAG's "local search" — best for entity-centric questions.</p>
+        </div>
+        <div class="step-card">
+          <div class="step-num">PATTERN 03 · COMMUNITY SUMMARIES</div>
+          <p class="text-sm text-gray-300 mt-2 mb-2">Pre-summarize tightly-connected clusters offline (Leiden / Louvain). At query time, retrieve the relevant summaries, not raw triples.</p>
+          <p class="text-xs text-gray-500">Used by GraphRAG's "global search" — best for "themes across the corpus" questions.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid lg:grid-cols-2 gap-6 reveal mb-8">
+      <div>
+        <div class="text-xs text-cyan-300 uppercase tracking-wider mb-3">NL → Cypher · Neo4j + LangChain</div>
+        <div class="code-block relative">
+<pre><span class="tok-keyword">from</span> <span class="tok-var">langchain_neo4j</span> <span class="tok-keyword">import</span> <span class="tok-type">Neo4jGraph</span>, <span class="tok-type">GraphCypherQAChain</span>
+
+<span class="tok-var">graph</span> = <span class="tok-type">Neo4jGraph</span>(<span class="tok-var">url</span>=<span class="tok-string">"bolt://..."</span>, <span class="tok-var">username</span>=<span class="tok-string">"neo4j"</span>, ...)
+
+<span class="tok-comment"># refresh_schema pulls node labels, rel types, property keys</span>
+<span class="tok-var">graph</span>.<span class="tok-fn">refresh_schema</span>()
+
+<span class="tok-var">chain</span> = <span class="tok-type">GraphCypherQAChain</span>.<span class="tok-fn">from_llm</span>(
+  <span class="tok-var">llm</span>=<span class="tok-var">llm</span>, <span class="tok-var">graph</span>=<span class="tok-var">graph</span>,
+  <span class="tok-var">allow_dangerous_requests</span>=<span class="tok-bool">True</span>,   <span class="tok-comment"># needs read-only DB role</span>
+  <span class="tok-var">verbose</span>=<span class="tok-bool">True</span>,
+)
+
+<span class="tok-var">chain</span>.<span class="tok-fn">invoke</span>({<span class="tok-string">"query"</span>:
+  <span class="tok-string">"Who are the CFOs of every European subsidiary of Acme?"</span>
+})
+
+<span class="tok-comment"># Behind the scenes:
+# 1. LLM reads the schema, emits Cypher
+# 2. Cypher runs against Neo4j
+# 3. LLM narrates the rows back as prose</span></pre>
+        </div>
+      </div>
+
+      <div class="space-y-4">
+        <div class="holo-card p-5">
+          <h4 class="font-display font-bold text-base text-white mb-2">Where Graph RAG earns its complexity</h4>
+          <ul class="space-y-2 text-sm text-gray-300">
+            <li>✦ Compliance / org-chart Q&amp;A — entity relationships matter most</li>
+            <li>✦ Drug interactions, supply chains, citation networks</li>
+            <li>✦ Fraud / KYC — "show me everyone within 2 hops of this account"</li>
+            <li>✦ Codebases — call graphs, import trees</li>
+          </ul>
+        </div>
+        <div class="callout text-xs text-gray-300">
+          <strong class="text-amber-300">⚡ Build cost honesty:</strong> graphs don't materialize from PDFs. You either ingest from a structured source (CRM, ERP) or you run an LLM-driven entity-extraction pipeline — which is itself a multi-week project. Don't reach for Graph RAG until vector RAG has visibly failed on relational questions.
+        </div>
+      </div>
+    </div>
+
+    <div class="callout-cyan reveal text-sm text-gray-300">
+      <strong class="text-cyan-300">⚡ The unified picture of Module 5.1:</strong> Vector RAG retrieves on <em>semantic similarity</em>. SQL RAG retrieves on <em>typed filters &amp; aggregations</em>. Graph RAG retrieves on <em>relationships</em>. Real systems route between all three — the question-shape decides the backend.
+    </div>
+  </div>
+</section>
+
+<!-- ========== BUILD IT ========== -->
+<section id="build" class="relative py-24 px-6 z-10">
+  <div class="max-w-7xl mx-auto">
+    <div class="text-center mb-16 reveal">
+      <span class="pill mb-4"><i data-lucide="hammer" class="w-3 h-3"></i> Real Code</span>
+      <h2 class="font-display text-4xl md:text-5xl font-bold mt-4">
+        Build It In <span class="gradient-cyan">~50 Lines</span>
+      </h2>
+      <p class="text-gray-400 mt-4 max-w-3xl mx-auto">
+        A complete text-to-SQL RAG with schema retrieval, safety guard, and verification. No frameworks. Every line carries weight.
+      </p>
+    </div>
+
+    <div class="reveal">
+      <div class="code-block">
+<pre><span class="tok-keyword">from</span> <span class="tok-var">openai</span> <span class="tok-keyword">import</span> <span class="tok-var">OpenAI</span>
+<span class="tok-keyword">from</span> <span class="tok-var">qdrant_client</span> <span class="tok-keyword">import</span> <span class="tok-var">QdrantClient</span>
+<span class="tok-keyword">import</span> <span class="tok-var">sqlite3</span>, <span class="tok-var">re</span>
+
+<span class="tok-var">llm</span>    <span class="tok-keyword">=</span> <span class="tok-fn">OpenAI</span>()
+<span class="tok-var">qdrant</span> <span class="tok-keyword">=</span> <span class="tok-fn">QdrantClient</span>(<span class="tok-string">"localhost"</span>, <span class="tok-var">port</span><span class="tok-keyword">=</span><span class="tok-num">6333</span>)
+<span class="tok-var">db</span>     <span class="tok-keyword">=</span> <span class="tok-var">sqlite3</span>.<span class="tok-fn">connect</span>(<span class="tok-string">"app.db"</span>)
+
+<span class="tok-comment"># ---------- 1. SCHEMA RETRIEVAL ----------</span>
+<span class="tok-keyword">def</span> <span class="tok-fn">get_schema_context</span>(<span class="tok-var">question</span>, <span class="tok-var">k</span><span class="tok-keyword">=</span><span class="tok-num">3</span>):
+    <span class="tok-var">vec</span> <span class="tok-keyword">=</span> <span class="tok-fn">embed</span>(<span class="tok-var">question</span>)
+    <span class="tok-var">hits</span> <span class="tok-keyword">=</span> <span class="tok-var">qdrant</span>.<span class="tok-fn">search</span>(<span class="tok-string">"schema_cards"</span>, <span class="tok-var">vec</span>, <span class="tok-var">limit</span><span class="tok-keyword">=</span><span class="tok-var">k</span>)
+    <span class="tok-keyword">return</span> <span class="tok-string">"\n\n"</span>.<span class="tok-fn">join</span>(<span class="tok-var">h</span>.<span class="tok-var">payload</span>[<span class="tok-string">"card"</span>] <span class="tok-keyword">for</span> <span class="tok-var">h</span> <span class="tok-keyword">in</span> <span class="tok-var">hits</span>)
+
+<span class="tok-comment"># ---------- 2. SAFETY GUARD ----------</span>
+<span class="tok-var">BLOCKED</span> <span class="tok-keyword">=</span> <span class="tok-fn">re</span>.<span class="tok-fn">compile</span>(<span class="tok-string">r"\b(DROP|DELETE|UPDATE|INSERT|ALTER|TRUNCATE|GRANT)\b"</span>, <span class="tok-fn">re</span>.<span class="tok-var">I</span>)
+
+<span class="tok-keyword">def</span> <span class="tok-fn">is_safe</span>(<span class="tok-var">sql</span>):
+    <span class="tok-keyword">if</span> <span class="tok-var">BLOCKED</span>.<span class="tok-fn">search</span>(<span class="tok-var">sql</span>): <span class="tok-keyword">return</span> <span class="tok-keyword">False</span>
+    <span class="tok-keyword">if</span> <span class="tok-keyword">not</span> <span class="tok-var">sql</span>.<span class="tok-fn">strip</span>().<span class="tok-fn">lower</span>().<span class="tok-fn">startswith</span>(<span class="tok-string">"select"</span>): <span class="tok-keyword">return</span> <span class="tok-keyword">False</span>
+    <span class="tok-keyword">return</span> <span class="tok-keyword">True</span>
+
+<span class="tok-comment"># ---------- 3. SQL GENERATION ----------</span>
+<span class="tok-keyword">def</span> <span class="tok-fn">generate_sql</span>(<span class="tok-var">question</span>, <span class="tok-var">schema</span>):
+    <span class="tok-var">prompt</span> <span class="tok-keyword">=</span> <span class="tok-string">f"""You write SQLite SELECT queries.
+Schema (only these tables exist):
+{schema}
+
+Rules:
+- Output ONLY raw SQL, no markdown, no commentary
+- SELECT only (no writes)
+- Use LIMIT 100 unless asked otherwise
+
+Question: {question}
+SQL:"""</span>
+    <span class="tok-keyword">return</span> <span class="tok-var">llm</span>.<span class="tok-var">chat</span>.<span class="tok-var">completions</span>.<span class="tok-fn">create</span>(
+        <span class="tok-var">model</span><span class="tok-keyword">=</span><span class="tok-string">"gpt-4o-mini"</span>,
+        <span class="tok-var">messages</span><span class="tok-keyword">=</span>[{<span class="tok-string">"role"</span>:<span class="tok-string">"user"</span>, <span class="tok-string">"content"</span>:<span class="tok-var">prompt</span>}],
+        <span class="tok-var">temperature</span><span class="tok-keyword">=</span><span class="tok-num">0</span>
+    ).<span class="tok-var">choices</span>[<span class="tok-num">0</span>].<span class="tok-var">message</span>.<span class="tok-var">content</span>.<span class="tok-fn">strip</span>()
+
+<span class="tok-comment"># ---------- 4. EXECUTE + VERIFY ----------</span>
+<span class="tok-keyword">def</span> <span class="tok-fn">run_sql</span>(<span class="tok-var">sql</span>):
+    <span class="tok-keyword">if</span> <span class="tok-keyword">not</span> <span class="tok-fn">is_safe</span>(<span class="tok-var">sql</span>):
+        <span class="tok-keyword">raise</span> <span class="tok-fn">ValueError</span>(<span class="tok-string">"Unsafe SQL refused"</span>)
+    <span class="tok-keyword">return</span> <span class="tok-var">db</span>.<span class="tok-fn">execute</span>(<span class="tok-var">sql</span>).<span class="tok-fn">fetchall</span>()
+
+<span class="tok-comment"># ---------- 5. ANSWER SYNTHESIS ----------</span>
+<span class="tok-keyword">def</span> <span class="tok-fn">ask_sql</span>(<span class="tok-var">question</span>):
+    <span class="tok-var">schema</span> <span class="tok-keyword">=</span> <span class="tok-fn">get_schema_context</span>(<span class="tok-var">question</span>)
+    <span class="tok-var">sql</span>    <span class="tok-keyword">=</span> <span class="tok-fn">generate_sql</span>(<span class="tok-var">question</span>, <span class="tok-var">schema</span>)
+    <span class="tok-var">rows</span>   <span class="tok-keyword">=</span> <span class="tok-fn">run_sql</span>(<span class="tok-var">sql</span>)
+    <span class="tok-var">prompt</span> <span class="tok-keyword">=</span> <span class="tok-string">f"Q: {question}\nSQL: {sql}\nResult: {rows}\nAnswer plainly with citation."</span>
+    <span class="tok-keyword">return</span> <span class="tok-var">llm</span>.<span class="tok-var">chat</span>.<span class="tok-var">completions</span>.<span class="tok-fn">create</span>(
+        <span class="tok-var">model</span><span class="tok-keyword">=</span><span class="tok-string">"gpt-4o-mini"</span>,
+        <span class="tok-var">messages</span><span class="tok-keyword">=</span>[{<span class="tok-string">"role"</span>:<span class="tok-string">"user"</span>, <span class="tok-string">"content"</span>:<span class="tok-var">prompt</span>}]
+    ).<span class="tok-var">choices</span>[<span class="tok-num">0</span>].<span class="tok-var">message</span>.<span class="tok-var">content</span>
+
+<span class="tok-fn">print</span>(<span class="tok-fn">ask_sql</span>(<span class="tok-string">"How many premium customers signed up last month?"</span>))</pre>
+      </div>
+
+      <div class="callout mt-6 text-sm text-gray-300">
+        <strong class="text-amber-300">📦 What this gives you, line by line:</strong>
+        <ul class="mt-2 space-y-1 text-gray-300">
+          <li>• Schema retrieval as RAG (only relevant tables in prompt)</li>
+          <li>• Regex guard + SELECT-only check (defense in depth)</li>
+          <li>• Temperature 0 for deterministic SQL</li>
+          <li>• Explicit LIMIT instruction prevents runaway queries</li>
+          <li>• Result + question + SQL all fed to synthesis step</li>
+          <li>• Read-only DB user adds another safety layer (not shown — use one!)</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========== PITFALLS ========== -->
+<section id="pitfalls" class="relative py-24 px-6 z-10">
+  <div class="max-w-7xl mx-auto">
+    <div class="text-center mb-16 reveal">
+      <span class="pill mb-4"><i data-lucide="skull" class="w-3 h-3"></i> Failure Modes</span>
+      <h2 class="font-display text-4xl md:text-5xl font-bold mt-4">
+        Where SQL RAG <span class="gradient-purple">Breaks</span>
+      </h2>
+      <p class="text-gray-400 mt-4 max-w-3xl mx-auto">
+        Six ways production text-to-SQL systems fail — and the fix for each.
+      </p>
+    </div>
+
+    <div class="grid md:grid-cols-2 gap-6">
+      <div class="holo-card p-6 reveal">
+        <div class="flex items-center gap-3 mb-3">
+          <div class="w-10 h-10 rounded-lg flex items-center justify-center" style="background: rgba(255,77,207,0.15);">
+            <i data-lucide="shield-alert" class="w-5 h-5" style="color:#ff4dcf;"></i>
+          </div>
+          <h3 class="font-display font-bold text-lg">SQL Injection / Writes</h3>
+        </div>
+        <p class="text-sm text-gray-400 mb-3">LLM happily generates DELETE or DROP if asked. Or a retrieved doc says "run this query".</p>
+        <div class="font-mono text-xs p-3 rounded-lg" style="background: rgba(2,3,10,0.6); color: #aaffd6;">
+          ✓ Fix: read-only DB role + regex allow-list + parameterized templates where possible
+        </div>
+      </div>
+
+      <div class="holo-card p-6 reveal">
+        <div class="flex items-center gap-3 mb-3">
+          <div class="w-10 h-10 rounded-lg flex items-center justify-center" style="background: rgba(255,184,77,0.15);">
+            <i data-lucide="flame" class="w-5 h-5" style="color:#ffb84d;"></i>
+          </div>
+          <h3 class="font-display font-bold text-lg">Runaway Queries</h3>
+        </div>
+        <p class="text-sm text-gray-400 mb-3">Cross-join returning 10B rows. Full-table scan. Database melts.</p>
+        <div class="font-mono text-xs p-3 rounded-lg" style="background: rgba(2,3,10,0.6); color: #aaffd6;">
+          ✓ Fix: query timeout + mandatory LIMIT + EXPLAIN before execute on large tables
+        </div>
+      </div>
+
+      <div class="holo-card p-6 reveal">
+        <div class="flex items-center gap-3 mb-3">
+          <div class="w-10 h-10 rounded-lg flex items-center justify-center" style="background: rgba(184,107,255,0.15);">
+            <i data-lucide="ghost" class="w-5 h-5" style="color:#b86bff;"></i>
+          </div>
+          <h3 class="font-display font-bold text-lg">Hallucinated Columns</h3>
+        </div>
+        <p class="text-sm text-gray-400 mb-3">LLM invents <span class="font-mono">user.full_name</span> when actually it's <span class="font-mono">first_name + last_name</span>.</p>
+        <div class="font-mono text-xs p-3 rounded-lg" style="background: rgba(2,3,10,0.6); color: #aaffd6;">
+          ✓ Fix: retry on SQL error with error message + schema in retry prompt
+        </div>
+      </div>
+
+      <div class="holo-card p-6 reveal">
+        <div class="flex items-center gap-3 mb-3">
+          <div class="w-10 h-10 rounded-lg flex items-center justify-center" style="background: rgba(0,240,255,0.15);">
+            <i data-lucide="key-round" class="w-5 h-5" style="color:#00f0ff;"></i>
+          </div>
+          <h3 class="font-display font-bold text-lg">PII / Row Leakage</h3>
+        </div>
+        <p class="text-sm text-gray-400 mb-3">User asks for "all customer emails" — and the LLM gives them all customer emails.</p>
+        <div class="font-mono text-xs p-3 rounded-lg" style="background: rgba(2,3,10,0.6); color: #aaffd6;">
+          ✓ Fix: row-level security in DB + tenant_id auto-injection in every query
+        </div>
+      </div>
+
+      <div class="holo-card p-6 reveal">
+        <div class="flex items-center gap-3 mb-3">
+          <div class="w-10 h-10 rounded-lg flex items-center justify-center" style="background: rgba(77,255,184,0.15);">
+            <i data-lucide="calendar-x" class="w-5 h-5" style="color:#4dffb8;"></i>
+          </div>
+          <h3 class="font-display font-bold text-lg">Date / Timezone Bugs</h3>
+        </div>
+        <p class="text-sm text-gray-400 mb-3">"Last month" — by user's TZ? UTC? Calendar month? Rolling 30 days? LLM picks. User cries.</p>
+        <div class="font-mono text-xs p-3 rounded-lg" style="background: rgba(2,3,10,0.6); color: #aaffd6;">
+          ✓ Fix: inject current date + TZ in system prompt; define "last month" in schema docs
+        </div>
+      </div>
+
+      <div class="holo-card p-6 reveal">
+        <div class="flex items-center gap-3 mb-3">
+          <div class="w-10 h-10 rounded-lg flex items-center justify-center" style="background: rgba(77,142,255,0.15);">
+            <i data-lucide="eye-off" class="w-5 h-5" style="color:#4d8eff;"></i>
+          </div>
+          <h3 class="font-display font-bold text-lg">Silent Wrong Numbers</h3>
+        </div>
+        <p class="text-sm text-gray-400 mb-3">Query runs fine — but joins wrong table. User trusts the number. Bad decision.</p>
+        <div class="font-mono text-xs p-3 rounded-lg" style="background: rgba(2,3,10,0.6); color: #aaffd6;">
+          ✓ Fix: show the SQL to power users + golden-question eval set + LLM-as-judge for correctness
+        </div>
+      </div>
+    </div>
+
+    <div class="callout-pink mt-12 max-w-4xl mx-auto text-sm text-gray-300 reveal">
+      <strong class="text-pink-300">🚨 The structured RAG tax:</strong>
+      A wrong number looks right. There's no "I don't know" surface area like in vector RAG. Always show the generated SQL, always have an eval set, always read-only.
+    </div>
+  </div>
+</section>
+
+<!-- ========== QUIZ ========== -->
+<section id="quiz" class="relative py-24 px-6 z-10">
+  <div class="max-w-4xl mx-auto">
+    <div class="text-center mb-12 reveal">
+      <span class="pill mb-4"><i data-lucide="brain" class="w-3 h-3"></i> Lock It In</span>
+      <h2 class="font-display text-4xl md:text-5xl font-bold mt-4">
+        Quick <span class="gradient-amber">Check</span>
+      </h2>
+    </div>
+
+    <div class="holo-card p-8 reveal" id="quizCard">
+      <div class="flex items-center justify-between mb-4">
+        <div class="font-mono text-xs text-cyan-300 tracking-widest">QUESTION <span id="qNum">1</span> / 3</div>
+        <div class="font-mono text-xs text-gray-400">SCORE <span id="qScore" class="text-cyan-300">0</span></div>
+      </div>
+      <h3 class="font-display font-bold text-xl mb-6" id="qText">Loading...</h3>
+      <div class="space-y-3" id="qOptions"></div>
+      <div id="qFeedback" class="mt-6 hidden text-sm"></div>
+      <div class="mt-6 flex justify-end">
+        <button class="btn-primary text-sm py-2 px-5 hidden" id="qNext" onclick="nextQuestion()">
+          Next <i data-lucide="arrow-right" class="w-4 h-4 inline ml-1"></i>
+        </button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========== CHECKPOINT ========== -->
+
+<!-- RESOURCE SECTION -->
+<section class="relative py-16 px-6 z-10">
+  <div class="max-w-7xl mx-auto">
+    <div class="text-center mb-12 reveal">
+      <span class="pill mb-4"><i data-lucide="book" class="w-3 h-3"></i> Continue Learning</span>
+      <h3 class="font-display text-4xl md:text-5xl font-bold mt-4">Learn &amp; <span class="gradient-purple">Practice</span></h3>
+      <p class="text-gray-400 mt-2">Explore curated resources and practice with real code</p>
+    </div>
+
+    <div class="resource-stack mb-12">
+      <article class="resource-card">
+        <div class="flex items-start gap-3">
+          <div class="resource-icon">
+            <i data-lucide="lightbulb" class="w-4 h-4"></i>
+          </div>
+          <div class="min-w-0 flex-1">
+            <h4 class="font-display text-2xl font-bold leading-none">Progressive Article</h4>
+            <p class="text-xs text-gray-400 mt-1">Stuck? Start here - beginner-friendly explanation</p>
+            <p class="text-lg font-semibold mt-4 text-cyan-300">Building a SQL RAG System</p>
+            <a href="https://infraflowai.substack.com/p/building-a-sql-rag-system-turning" target="_blank" rel="noopener noreferrer" class="resource-cta" title="Building a SQL RAG System">
+              <i data-lucide="external-link" class="w-4 h-4"></i> Read Article
+            </a>
+          </div>
+        </div>
+      </article>
+      <article class="resource-card">
+        <div class="flex items-start gap-3">
+          <div class="resource-icon">
+            <i data-lucide="file-text" class="w-4 h-4"></i>
+          </div>
+          <div class="min-w-0 flex-1">
+            <h4 class="font-display text-2xl font-bold leading-none">Canonical Article</h4>
+            <p class="text-xs text-gray-400 mt-1">Authoritative source - official docs or research</p>
+            <p class="text-lg font-semibold mt-4 text-cyan-300">AWS text-to-SQL architecture</p>
+            <a href="https://aws.amazon.com/blogs/machine-learning/build-a-robust-text-to-sql-solution-generating-complex-queries-self-correcting-and-querying-diverse-data-sources/" target="_blank" rel="noopener noreferrer" class="resource-cta" title="AWS text-to-SQL architecture">
+              <i data-lucide="external-link" class="w-4 h-4"></i> Read Canonical
+            </a>
+          </div>
+        </div>
+      </article>
+      <article class="resource-card repo">
+        <div class="flex items-start gap-3">
+          <div class="resource-icon">
+            <i data-lucide="github" class="w-4 h-4"></i>
+          </div>
+          <div class="min-w-0 flex-1">
+            <h4 class="font-display text-2xl font-bold leading-none">GitHub Repository</h4>
+            <p class="text-xs text-gray-400 mt-1">Hands-on - reference implementation & examples</p>
+            <p class="text-lg font-semibold mt-4 text-pink-400">Vanna AI</p>
+            <a href="https://github.com/vanna-ai/vanna" target="_blank" rel="noopener noreferrer" class="resource-cta" title="Vanna AI">
+              <i data-lucide="external-link" class="w-4 h-4"></i> Explore Repo
+            </a>
+          </div>
+        </div>
+      </article>
+      <article class="resource-card repo">
+        <div class="flex items-start gap-3">
+          <div class="resource-icon">
+            <i data-lucide="github" class="w-4 h-4"></i>
+          </div>
+          <div class="min-w-0 flex-1">
+            <h4 class="font-display text-2xl font-bold leading-none">GitHub Repository</h4>
+            <p class="text-xs text-gray-400 mt-1">Hands-on - reference implementation & examples</p>
+            <p class="text-lg font-semibold mt-4 text-pink-400">LangChain SQL toolkit</p>
+            <a href="https://github.com/langchain-ai/langchain" target="_blank" rel="noopener noreferrer" class="resource-cta" title="LangChain SQL toolkit">
+              <i data-lucide="external-link" class="w-4 h-4"></i> Explore Repo
+            </a>
+          </div>
+        </div>
+      </article>
+    </div>
+  </div>
+</section>
+
+<section id="checkpoint" class="relative py-24 px-6 z-10">
+  <div class="max-w-5xl mx-auto">
+    <div class="checkpoint-glow holo-card p-10 md:p-16 reveal text-center">
+      <div class="inline-flex items-center justify-center w-20 h-20 rounded-full mb-6" style="background: linear-gradient(135deg, #00f0ff, #b86bff); box-shadow: 0 0 60px rgba(0,240,255,0.5);">
+        <i data-lucide="flag" class="w-9 h-9 text-black"></i>
+      </div>
+
+      <span class="pill mb-4"><i data-lucide="check-circle" class="w-3 h-3"></i> Module 5.1 · Checkpoint</span>
+      <h2 class="font-display text-3xl md:text-5xl font-bold mt-4 mb-4">
+        <span class="gradient-multi">Mission 5.1 Complete</span>
+      </h2>
+      <p class="text-gray-300 max-w-2xl mx-auto mb-8">
+        You can now route between vector and SQL, build a safe text-to-SQL pipeline, and explain why schema retrieval is itself a RAG step.
+      </p>
+
+      <!-- Self-check questions -->
+      <div class="grid md:grid-cols-3 gap-4 text-left mb-10">
+        <div class="holo-card p-5">
+          <div class="font-mono text-xs text-cyan-300 mb-2">CHECK 01</div>
+          <p class="text-sm text-gray-300">Can you decide between <span class="text-cyan-300 font-semibold">vector</span> and <span class="text-cyan-300 font-semibold">SQL</span> for any given question?</p>
+        </div>
+        <div class="holo-card p-5">
+          <div class="font-mono text-xs text-purple-300 mb-2">CHECK 02</div>
+          <p class="text-sm text-gray-300">Can you name the <span class="text-purple-300 font-semibold">5 stages</span> of the text-to-SQL pipeline?</p>
+        </div>
+        <div class="holo-card p-5">
+          <div class="font-mono text-xs text-pink-300 mb-2">CHECK 03</div>
+          <p class="text-sm text-gray-300">Can you list <span class="text-pink-300 font-semibold">4 safety layers</span> for SQL RAG and why each matters?</p>
+        </div>
+      </div>
+
+      <div class="flex flex-wrap gap-4 justify-center mb-8">
+        <button class="btn-primary flex items-center gap-2" onclick="completeModule()">
+          <i data-lucide="check" class="w-4 h-4"></i> Mark Module Complete
+        </button>
+        <button class="btn-ghost flex items-center gap-2">
+          <i data-lucide="arrow-right" class="w-4 h-4"></i> Module 5.2 · Agentic RAG (Light)
+        </button>
+      </div>
+
+      <!-- Progress -->
+      <div class="max-w-md mx-auto">
+        <div class="flex justify-between text-xs text-gray-400 mb-2 font-mono">
+          <span>TRACK 5 PROGRESS</span>
+          <span id="progressText">2 / 3 modules</span>
+        </div>
+        <div class="progress-bar"><div class="progress-fill" id="courseProgress" style="width: 33%;"></div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer class="relative py-12 px-6 z-10 border-t border-cyan-500/10">
+  <div class="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4 text-sm text-gray-500">
+    <div class="flex items-center gap-3">
+      <i data-lucide="orbit" class="w-4 h-4 text-cyan-400"></i>
+      <span class="font-display tracking-wider">RAG ACADEMY · GENAI GALAXY</span>
+    </div>
+    <div class="font-mono text-xs">v1.0.0 · Module 5.1 · Stardate 2026.05</div>
+  </div>
+</footer>
+
+<!-- ============== SCRIPTS ============== -->
+<script>
+  function safeCreateIcons() {
+    try { if (typeof lucide !== 'undefined' && lucide.createIcons) lucide.createIcons(); } catch(e) {}
+  }
+  safeCreateIcons();
+
+  // ===== STARFIELD =====
+  const canvas = document.getElementById('starfield');
+  const ctx = canvas.getContext('2d');
+  let stars = [];
+
+  function resizeCanvas() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    initStars();
+  }
+  function initStars() {
+    stars = [];
+    const count = Math.floor((canvas.width * canvas.height) / 8000);
+    for (let i = 0; i < count; i++) {
+      stars.push({
+        x: Math.random() * canvas.width,
+        y: Math.random() * canvas.height,
+        z: Math.random() * 1.5 + 0.3,
+        size: Math.random() * 1.5,
+        twinkle: Math.random() * Math.PI * 2
+      });
+    }
+  }
+  function drawStars() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const now = Date.now() * 0.001;
+    stars.forEach(s => {
+      const alpha = 0.4 + 0.6 * Math.abs(Math.sin(s.twinkle + now * s.z));
+      ctx.beginPath();
+      ctx.fillStyle = `rgba(${180 + s.z*30}, ${220 + s.z*20}, 255, ${alpha})`;
+      ctx.arc(s.x, s.y, s.size * s.z, 0, Math.PI * 2);
+      ctx.fill();
+      s.y += s.z * 0.08;
+      if (s.y > canvas.height) { s.y = 0; s.x = Math.random() * canvas.width; }
+    });
+    requestAnimationFrame(drawStars);
+  }
+  window.addEventListener('resize', resizeCanvas);
+  resizeCanvas(); drawStars();
+
+  // ===== REVEAL =====
+  document.documentElement.classList.add('js-reveal');
+  const revealEls = document.querySelectorAll('.reveal');
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('in');
+        observer.unobserve(entry.target);
+      }
+    });
+  }, { threshold: 0.05, rootMargin: '0px 0px -50px 0px' });
+  revealEls.forEach(el => observer.observe(el));
+
+  function revealVisibleNow() {
+    revealEls.forEach(el => {
+      const rect = el.getBoundingClientRect();
+      if (rect.top < window.innerHeight && rect.bottom > 0) el.classList.add('in');
+    });
+  }
+  revealVisibleNow();
+  setTimeout(revealVisibleNow, 100);
+  setTimeout(revealVisibleNow, 500);
+  setTimeout(() => revealEls.forEach(el => el.classList.add('in')), 2000);
+
+  // ===== COUNTERS =====
+  function animateCounters() {
+    document.querySelectorAll('[data-count]').forEach(el => {
+      const target = parseInt(el.dataset.count);
+      let current = 0;
+      const step = Math.max(1, Math.ceil(target / 40));
+      const timer = setInterval(() => {
+        current += step;
+        if (current >= target) { current = target; clearInterval(timer); }
+        el.textContent = current;
+      }, 40);
+    });
+  }
+  setTimeout(animateCounters, 600);
+
+  // ===== ROUTING QUIZ =====
+  const routeQuestions = [
+    { q: "What's our policy on refunds after 30 days?", a: "vector", exp: "Policy text lives in docs — pure semantic retrieval." },
+    { q: "How many orders did customer #4421 place this year?", a: "sql", exp: "Exact count from a transactional table — SQL aggregate." },
+    { q: "Explain how our pricing tiers work.", a: "vector", exp: "Explanation lives in marketing/docs — paragraphs, not rows." },
+    { q: "List the top 5 products by revenue last quarter.", a: "sql", exp: "Ranking + filtering + aggregation = SQL GROUP BY + ORDER BY." }
+  ];
+  const rg = document.getElementById('routeGrid');
+  routeQuestions.forEach((rq, i) => {
+    const wrap = document.createElement('div');
+    wrap.className = 'route-btn';
+    wrap.innerHTML = `
+      <div class="text-xs text-gray-500 font-mono mb-2">QUESTION ${i + 1}</div>
+      <div class="text-gray-200 text-sm mb-3">"${rq.q}"</div>
+      <div class="flex gap-2">
+        <button class="px-3 py-1.5 rounded-lg text-xs font-mono border transition" data-pick="vector" style="border-color: rgba(184,107,255,0.4); color: #b86bff;">vector</button>
+        <button class="px-3 py-1.5 rounded-lg text-xs font-mono border transition" data-pick="sql" style="border-color: rgba(0,240,255,0.4); color: #00f0ff;">sql</button>
+      </div>
+      <div class="mt-3 text-xs text-gray-400 hidden" data-feedback></div>`;
+    rg.appendChild(wrap);
+
+    wrap.querySelectorAll('button').forEach(b => {
+      b.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const pick = b.dataset.pick;
+        const fb = wrap.querySelector('[data-feedback]');
+        wrap.querySelectorAll('button').forEach(x => { x.style.opacity = '0.5'; x.style.pointerEvents = 'none'; });
+        b.style.opacity = '1';
+        if (pick === rq.a) {
+          b.style.background = 'rgba(77,255,184,0.15)';
+          b.style.borderColor = '#4dffb8';
+          b.style.color = '#4dffb8';
+          fb.innerHTML = `<span style="color:#4dffb8">✓ Correct.</span> ${rq.exp}`;
+        } else {
+          b.style.background = 'rgba(255,77,207,0.15)';
+          b.style.borderColor = '#ff4dcf';
+          b.style.color = '#ff4dcf';
+          fb.innerHTML = `<span style="color:#ff4dcf">✗ Actually <span class="font-mono">${rq.a}</span>.</span> ${rq.exp}`;
+        }
+        fb.classList.remove('hidden');
+      });
+    });
+  });
+
+  // ===== PIPELINE STAGES =====
+  const stages = [
+    { num:'01', name:'Question', icon:'message-circle-question', color:'#00f0ff',
+      desc:'The user asks a natural-language question. Preserve it as-is — no rewriting yet. We need the original intent for the final synthesis step.',
+      tip:'"How many premium customers signed up last month?"' },
+    { num:'02', name:'Schema Retrieval', icon:'layers-2', color:'#4d8eff',
+      desc:'Embed the question and search a vector index of table descriptions. Pull only the top-3 most relevant tables — not the whole DB. This IS the RAG step for SQL.',
+      tip:'matches customers, subscriptions, plans' },
+    { num:'03', name:'SQL Generation', icon:'code-2', color:'#b86bff',
+      desc:'Prompt the LLM with: schema cards + 2-3 sample rows + rules + the question. Temperature 0 for deterministic output. Output is raw SQL, no markdown.',
+      tip:'SELECT COUNT(*) FROM customers WHERE plan = \'premium\'...' },
+    { num:'04', name:'Safety + Execute', icon:'shield-check', color:'#ff4dcf',
+      desc:'Reject anything that isn\'t a SELECT. Block DROP/DELETE/UPDATE regex. Add LIMIT if missing. Run on a read-only DB role with a query timeout.',
+      tip:'is_safe(sql) → True → db.execute(sql)' },
+    { num:'05', name:'Synthesize Answer', icon:'sparkles', color:'#ffb84d',
+      desc:'Feed (question, SQL, result rows) back to the LLM. It produces a plain-English answer that cites the SQL. For power users, show the generated SQL too.',
+      tip:'"1,247 premium customers signed up in April 2026."' }
+  ];
+
+  const sg = document.getElementById('stageGrid');
+  const sd = document.getElementById('stageDetail');
+
+  stages.forEach((s, i) => {
+    const node = document.createElement('div');
+    node.className = 'roadmap-node text-center';
+    node.dataset.idx = i;
+    node.innerHTML = `
+      <div class="node-circle mx-auto mb-2" style="border-color: ${s.color}33;">
+        <i data-lucide="${s.icon}" style="color: ${s.color}; width: 22px; height: 22px;"></i>
+      </div>
+      <div class="font-mono text-[10px] text-gray-500 tracking-widest">${s.num}</div>
+      <div class="font-display text-xs font-bold mt-1" style="color: ${s.color};">${s.name}</div>`;
+    node.addEventListener('click', () => setStage(i));
+    sg.appendChild(node);
+  });
+
+  function setStage(i) {
+    const s = stages[i];
+    document.querySelectorAll('.roadmap-node').forEach(n => n.classList.remove('active'));
+    document.querySelector(`.roadmap-node[data-idx="${i}"]`).classList.add('active');
+    sd.innerHTML = `
+      <div class="grid md:grid-cols-3 gap-8 items-center">
+        <div class="md:col-span-1 text-center">
+          <div class="inline-flex items-center justify-center w-24 h-24 rounded-2xl mb-4" style="background: ${s.color}15; border: 1px solid ${s.color}40;">
+            <i data-lucide="${s.icon}" style="color: ${s.color}; width: 44px; height: 44px;"></i>
+          </div>
+          <div class="font-mono text-xs text-gray-500 tracking-widest">STAGE ${s.num}</div>
+          <h3 class="font-display font-bold text-2xl mt-1" style="color: ${s.color};">${s.name}</h3>
+        </div>
+        <div class="md:col-span-2">
+          <p class="text-gray-300 leading-relaxed text-base mb-4">${s.desc}</p>
+          <div class="font-mono text-sm p-3 rounded-lg" style="background: rgba(2,3,10,0.6); border-left: 3px solid ${s.color}; color: ${s.color};">
+            ▸ ${s.tip}
+          </div>
+        </div>
+      </div>`;
+    safeCreateIcons();
+  }
+  setStage(0);
+
+  // ===== QUIZ =====
+  const quizQs = [
+    {
+      q: 'Which question should be routed to SQL rather than vector search?',
+      opts: [
+        'What does our cancellation policy say?',
+        'Explain how our pricing tiers work',
+        'What was the total revenue from US customers last quarter?',
+        'How do I reset my password?'
+      ],
+      ans: 2,
+      exp: 'Aggregations on filtered rows belong to SQL. The other three are explanatory / policy lookups — pure vector territory.'
+    },
+    {
+      q: 'Why retrieve schema via vector search instead of pasting the whole DB schema?',
+      opts: [
+        'Vector search is more secure',
+        'The LLM gets lost in 200 tables — token cost + accuracy both suffer',
+        'It\'s required by SQL syntax',
+        'Vector search generates SQL automatically'
+      ],
+      ans: 1,
+      exp: 'Long schemas pollute the prompt. Only the relevant tables should land in context — this is RAG applied to schemas.'
+    },
+    {
+      q: 'Which is NOT a recommended safety layer for SQL RAG?',
+      opts: [
+        'Read-only DB role',
+        'Regex block on DROP/DELETE/UPDATE',
+        'Temperature 1.0 for SQL generation to add creativity',
+        'Query timeout + mandatory LIMIT'
+      ],
+      ans: 2,
+      exp: 'SQL generation should use temperature 0 — deterministic. Creativity in SQL = bugs and security holes.'
+    }
+  ];
+
+  let qIdx = 0, qScore = 0;
+
+  function renderQ() {
+    const q = quizQs[qIdx];
+    document.getElementById('qNum').textContent = qIdx + 1;
+    document.getElementById('qScore').textContent = qScore;
+    document.getElementById('qText').textContent = q.q;
+    document.getElementById('qFeedback').classList.add('hidden');
+    document.getElementById('qNext').classList.add('hidden');
+
+    const opts = document.getElementById('qOptions');
+    opts.innerHTML = '';
+    q.opts.forEach((o, i) => {
+      const btn = document.createElement('button');
+      btn.className = 'quiz-option';
+      btn.textContent = o;
+      btn.onclick = () => answerQ(i);
+      opts.appendChild(btn);
+    });
+  }
+
+  function answerQ(picked) {
+    const q = quizQs[qIdx];
+    const opts = document.querySelectorAll('#qOptions .quiz-option');
+    opts.forEach((o, i) => {
+      o.classList.add('disabled');
+      if (i === q.ans) o.classList.add('correct');
+      if (i === picked && picked !== q.ans) o.classList.add('wrong');
+    });
+
+    const fb = document.getElementById('qFeedback');
+    fb.classList.remove('hidden');
+    if (picked === q.ans) {
+      qScore++;
+      fb.innerHTML = `<div class="callout-cyan"><strong class="text-cyan-300">✓ Correct.</strong> <span class="text-gray-300">${q.exp}</span></div>`;
+    } else {
+      fb.innerHTML = `<div class="callout-pink"><strong class="text-pink-300">✗ Not quite.</strong> <span class="text-gray-300">${q.exp}</span></div>`;
+    }
+    document.getElementById('qScore').textContent = qScore;
+    document.getElementById('qNext').classList.remove('hidden');
+    if (qIdx >= quizQs.length - 1) {
+      document.getElementById('qNext').innerHTML = 'Finish <i data-lucide="check" class="w-4 h-4 inline ml-1"></i>';
+      safeCreateIcons();
+    }
+  }
+
+  function nextQuestion() {
+    if (qIdx >= quizQs.length - 1) {
+      document.getElementById('quizCard').innerHTML = `
+        <div class="text-center py-6">
+          <div class="inline-flex items-center justify-center w-16 h-16 rounded-full mb-4" style="background: linear-gradient(135deg, #4dffb8, #00f0ff); box-shadow: 0 0 40px rgba(77,255,184,0.4);">
+            <i data-lucide="award" class="w-8 h-8 text-black"></i>
+          </div>
+          <h3 class="font-display font-bold text-2xl gradient-cyan mb-2">Quiz Complete</h3>
+          <p class="text-gray-400">You scored <span class="text-cyan-300 font-bold">${qScore} / ${quizQs.length}</span></p>
+          <p class="text-sm text-gray-500 mt-2">${qScore === quizQs.length ? 'Perfect run. On to Module 5.2.' : 'Review the pipeline and pitfalls sections, then retry.'}</p>
+        </div>`;
+      safeCreateIcons();
+      return;
+    }
+    qIdx++;
+    renderQ();
+  }
+  renderQ();
+
+  // ===== SIDE NAV =====
+  const sections = ['hero','why','pipeline','schema','hybrid','build','pitfalls','checkpoint'];
+  const dots = document.querySelectorAll('.dot');
+  dots.forEach(dot => {
+    dot.addEventListener('click', () => {
+      document.getElementById(dot.dataset.target).scrollIntoView({ behavior: 'smooth' });
+    });
+  });
+  window.addEventListener('scroll', () => {
+    const scrollPos = window.scrollY + window.innerHeight / 2;
+    sections.forEach((id, i) => {
+      const el = document.getElementById(id);
+      if (el && el.offsetTop <= scrollPos && el.offsetTop + el.offsetHeight > scrollPos) {
+        dots.forEach(d => d.classList.remove('active'));
+        dots[i]?.classList.add('active');
+      }
+    });
+  });
+
+  // ===== COMPLETION =====
+  function completeModule() {
+    document.getElementById('courseProgress').style.width = '66%';
+    document.getElementById('progressText').textContent = '2 / 3 modules ✓';
+
+    try {
+      const saved = JSON.parse(localStorage.getItem('rag_academy_progress') || '{}');
+      saved.completed = saved.completed || [];
+      if (!saved.completed.includes('5.1')) saved.completed.push('5.1');
+      saved.lastModule = '5.1';
+      localStorage.setItem('rag_academy_progress', JSON.stringify(saved));
+    } catch(e) {}
+
+    const burst = document.createElement('div');
+    burst.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);font-family:Orbitron,sans-serif;font-size:2rem;font-weight:900;color:#00f0ff;text-shadow:0 0 30px #00f0ff;z-index:9999;pointer-events:none;opacity:0;transition:all 0.8s ease;';
+    burst.textContent = '✦ MISSION COMPLETE ✦';
+    document.body.appendChild(burst);
+    requestAnimationFrame(() => {
+      burst.style.opacity = '1';
+      burst.style.transform = 'translate(-50%, -50%) scale(1.2)';
+    });
+    setTimeout(() => { burst.style.opacity = '0'; setTimeout(() => burst.remove(), 800); }, 1800);
+  }
+  window.completeModule = completeModule;
+
+  // Load saved
+  try {
+    const saved = JSON.parse(localStorage.getItem('rag_academy_progress') || '{}');
+    if (saved.completed && saved.completed.includes('5.1')) {
+      document.getElementById('courseProgress').style.width = '66%';
+      document.getElementById('progressText').textContent = '2 / 3 modules ✓';
+    }
+  } catch(e) {}
+</script>
+
+</body>
+</html>

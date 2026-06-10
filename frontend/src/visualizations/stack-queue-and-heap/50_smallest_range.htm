@@ -1,0 +1,711 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smallest Range Covering K Lists</title>
+    <style>
+        :root {
+            --bg-page: #070b14;
+            --bg-surface: rgba(255, 255, 255, 0.045);
+            --bg-input: rgba(255, 255, 255, 0.04);
+            --border-main: rgba(255, 255, 255, 0.10);
+            --btn-bg: rgba(255, 255, 255, 0.05);
+            --btn-hover: rgba(255, 255, 255, 0.10);
+            --text-main: #e8eefb;
+            --text-dim: #8b98b3;
+            --accent-orange: #f5a524;   /* value in motion / sift path  */
+            --accent-blue:   #06b6d4;    /* child / edges / chrome        */
+            --accent-green:  #22c55e;    /* settled / best range          */
+            --accent-red:    #f43f5e;    /* curMax / removed              */
+            --accent-purple: #a855f7;    /* current node / root / heapMin */
+            --mono: ui-monospace, 'SF Mono', 'Cascadia Code', 'Courier New', monospace;
+            --sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+            --shell: 940px;
+        }
+
+        * { box-sizing: border-box; }
+        html, body { overflow-x: hidden; }
+        body {
+            background:
+                radial-gradient(1100px 600px at 15% -10%, rgba(168, 85, 247, 0.12), transparent 60%),
+                radial-gradient(900px 600px at 100% 10%, rgba(6, 182, 212, 0.10), transparent 55%),
+                linear-gradient(160deg, #070b14 0%, #0b1120 55%, #0a0f1c 100%);
+            background-attachment: fixed;
+            color: var(--text-main); font-family: var(--sans); margin: 0;
+            display: flex; flex-direction: column; align-items: center; min-height: 100vh;
+            padding-bottom: 48px; -webkit-font-smoothing: antialiased;
+        }
+        body::before, body::after { content: ''; position: fixed; border-radius: 50%; filter: blur(70px); pointer-events: none; z-index: 0; opacity: 0.45; }
+        body::before { width: 380px; height: 380px; top: 8%; left: -120px; background: radial-gradient(circle, rgba(168,85,247,0.30), transparent 70%); }
+        body::after  { width: 420px; height: 420px; bottom: 4%; right: -140px; background: radial-gradient(circle, rgba(6,182,212,0.22), transparent 70%); }
+        body > * { position: relative; z-index: 1; }
+
+        .input-bar {
+            width: 100%; background: rgba(10, 15, 28, 0.55);
+            backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+            padding: 14px 16px; display: flex; justify-content: center; align-items: center; gap: 10px;
+            border-bottom: 1px solid var(--border-main); flex-wrap: wrap; position: sticky; top: 0; z-index: 50;
+        }
+        label.ui-label, .ui-label { font-family: var(--mono); font-size: 13px; color: var(--text-dim); letter-spacing: 0.2px; }
+        input[type="text"] {
+            background: var(--bg-input); border: 1px solid var(--border-main); color: var(--text-main);
+            height: 34px; border-radius: 9px; padding: 0 12px; font-size: 13px; font-family: var(--mono); width: 300px; max-width: 60vw;
+            transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+        }
+        input:focus { outline: none; border-color: var(--accent-purple); box-shadow: 0 0 0 3px rgba(168,85,247,0.18); background: rgba(168,85,247,0.06); }
+
+        button {
+            height: 34px; border-radius: 9px; padding: 0 14px; background: var(--btn-bg);
+            border: 1px solid var(--border-main); color: var(--text-main); font-size: 13px; font-weight: 600; cursor: pointer;
+            transition: transform 0.15s ease, background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+        }
+        button:hover { background: var(--btn-hover); border-color: rgba(168, 85, 247, 0.5); box-shadow: 0 0 18px rgba(168, 85, 247, 0.18); transform: translateY(-1px); }
+        button:active { transform: translateY(0); }
+        #load-btn { background: linear-gradient(135deg, rgba(245,165,36,0.22), rgba(245,165,36,0.10)); border-color: rgba(245,165,36,0.45); color: #ffe2b0; font-family: var(--mono); }
+
+        .shell { width: var(--shell); max-width: 95%; margin: 24px auto 0; display: flex; flex-direction: column; gap: 16px; }
+
+        .title-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+        .title-row h1 { font-size: 18px; font-weight: 800; margin: 0; letter-spacing: 0.2px; }
+        .title-row .sub { color: var(--text-dim); font-weight: 500; font-size: 13px; }
+        .step-badge { font-family: var(--mono); font-size: 12px; font-weight: 700; color: #e9d5ff; background: rgba(168,85,247,0.12); border: 1px solid rgba(168,85,247,0.3); padding: 4px 10px; border-radius: 999px; white-space: nowrap; }
+        .progress-track { height: 4px; width: 100%; background: rgba(255,255,255,0.07); border-radius: 999px; overflow: hidden; margin-top: -6px; }
+        .progress-fill { height: 100%; width: 0%; border-radius: 999px; background: linear-gradient(90deg, var(--accent-purple), var(--accent-blue)); box-shadow: 0 0 12px rgba(168,85,247,0.5); transition: width 0.45s cubic-bezier(0.34,1.1,0.64,1); }
+
+        .op-feed { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+        .op-chip { font-family: var(--mono); font-size: 11px; font-weight: 700; padding: 4px 9px; border-radius: 8px; border: 1px solid var(--border-main); color: var(--text-dim); background: rgba(255,255,255,0.03); transition: all 0.3s; white-space: nowrap; }
+        .op-chip.done { opacity: 0.45; }
+        .op-chip.current { color: #fff; border-color: rgba(168,85,247,0.6); background: rgba(168,85,247,0.16); box-shadow: 0 0 12px rgba(168,85,247,0.3); }
+
+        .narration { background: var(--bg-surface); border: 1px solid rgba(168,85,247,0.22); border-radius: 12px; padding: 12px 18px; font-family: var(--mono); font-size: 14px; line-height: 1.5; color: #ede9fe; min-height: 48px; display: flex; align-items: center; gap: 10px; transition: border-color 0.3s, background 0.3s; }
+        .narration::before { content: '\25B8'; color: var(--accent-purple); font-size: 13px; }
+        .narration.done { border-color: rgba(34,197,94,0.4); background: rgba(34,197,94,0.06); }
+        .narration.done::before { content: '\2713'; color: var(--accent-green); }
+        .narration code { background: rgba(168,85,247,0.14); color: #d8b4fe; padding: 1px 6px; border-radius: 5px; font-size: 12.5px; }
+        .narration b { color: #fff; }
+
+        .stage-card { background: var(--bg-surface); border: 1px solid var(--border-main); border-radius: 18px; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); box-shadow: 0 12px 38px rgba(0,0,0,0.4); overflow: hidden; }
+        .stage-screen { position: relative; margin: 14px; border-radius: 14px; background: radial-gradient(700px 300px at 50% -10%, rgba(168,85,247,0.08), transparent 70%), #090d18; border: 1px solid rgba(255,255,255,0.06); }
+
+        /* ── k-lists rows ── */
+        .lists-zone { padding: 14px 16px 6px; }
+        .lists-label { font-family: var(--mono); font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--text-dim); text-align: center; margin-bottom: 10px; }
+        .lrow { display: flex; align-items: center; gap: 8px; margin: 7px 0; justify-content: center; flex-wrap: wrap; }
+        .ltag { font-family: var(--mono); font-size: 11px; font-weight: 800; width: 58px; text-align: right; flex: 0 0 58px; }
+        .lcell { width: 40px; height: 40px; border-radius: 9px; display: flex; align-items: center; justify-content: center; position: relative;
+            font-family: var(--mono); font-weight: 800; font-size: 14px; border: 2px solid var(--border-main); background: rgba(255,255,255,0.04); color: var(--text-main);
+            transition: background 0.35s, border-color 0.35s, color 0.35s, box-shadow 0.35s, opacity 0.35s, transform 0.25s; }
+        .lcell.consumed { opacity: 0.32; }
+        .lcell.inheap { box-shadow: 0 0 0 2px rgba(168,85,247,0.55); }
+        .lcell.ptr { border-color: var(--accent-orange); background: rgba(245,165,36,0.16); color: #ffd591; box-shadow: 0 0 16px rgba(245,165,36,0.5); transform: translateY(-2px); }
+        .lcell.ismin { border-color: var(--accent-purple); background: rgba(168,85,247,0.20); color: #e9d5ff; box-shadow: 0 0 18px rgba(168,85,247,0.6); }
+        .lcell.ismax { border-color: var(--accent-red); background: rgba(244,63,94,0.18); color: #fecdd3; box-shadow: 0 0 18px rgba(244,63,94,0.55); }
+        .lcell .pcap { position: absolute; top: -9px; left: 50%; transform: translateX(-50%); font-size: 8px; font-weight: 800; color: var(--accent-orange); letter-spacing: 0.5px; white-space: nowrap; }
+
+        /* ── heap tree ── */
+        .tree-stage { position: relative; width: 100%; height: 210px; overflow: auto; scrollbar-width: thin; border-top: 1px solid rgba(255,255,255,0.06); }
+        .tree-stage::-webkit-scrollbar { height: 7px; width: 7px; }
+        .tree-stage::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 8px; }
+        .tree-canvas { position: relative; margin: 0 auto; }
+        #edges { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; z-index: 1; }
+        .edge-ln { stroke: var(--accent-blue); stroke-width: 2.2; fill: none; opacity: 0.45; transition: stroke 0.3s, opacity 0.3s; }
+        .edge-ln.active { stroke: var(--accent-orange); opacity: 1; filter: drop-shadow(0 0 6px rgba(245,165,36,0.6)); }
+
+        .hnode { position: absolute; width: 50px; height: 50px; margin: -25px 0 0 -25px; display: flex; flex-direction: column; align-items: center; justify-content: center;
+            border-radius: 50%; font-family: var(--mono); font-weight: 800; font-size: 16px; line-height: 1;
+            border: 2px solid var(--border-main); background: rgba(255,255,255,0.06); color: var(--text-main);
+            z-index: 2; will-change: transform; transition: background 0.35s, border-color 0.35s, color 0.35s, box-shadow 0.35s; }
+        .hnode .hsub { font-size: 8px; font-weight: 700; color: var(--text-dim); margin-top: 2px; }
+        .hnode.root { border-color: var(--accent-purple); }
+        .hnode.cur { border-color: var(--accent-purple); background: rgba(168,85,247,0.16); color: #e9d5ff; box-shadow: 0 0 20px rgba(168,85,247,0.55); }
+        .hnode.cmp { border-color: var(--accent-blue); background: rgba(6,182,212,0.16); color: #a5f3fc; box-shadow: 0 0 20px rgba(6,182,212,0.5); }
+        .hnode.swap { border-color: var(--accent-orange); background: rgba(245,165,36,0.18); color: #ffd591; box-shadow: 0 0 22px rgba(245,165,36,0.6); }
+        .hnode.new { border-color: var(--accent-orange); background: rgba(245,165,36,0.16); color: #ffd591; box-shadow: 0 0 22px rgba(245,165,36,0.55); }
+        .hnode.maxmark { border-color: var(--accent-red); box-shadow: 0 0 22px rgba(244,63,94,0.55); }
+        .hnode .idx { position: absolute; top: -8px; right: -8px; min-width: 15px; height: 15px; padding: 0 3px; border-radius: 8px; background: rgba(10,15,28,0.85); color: var(--text-dim); font-size: 9px; font-weight: 800; display: flex; align-items: center; justify-content: center; border: 1px solid var(--border-main); }
+
+        .array-zone { padding: 4px 16px 16px; }
+        .array-label { font-family: var(--mono); font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--text-dim); text-align: center; margin-bottom: 8px; }
+        .array-rail { display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; }
+        .acell { width: 50px; height: 44px; border-radius: 10px; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; line-height: 1;
+            font-family: var(--mono); font-weight: 800; font-size: 15px; border: 2px solid var(--border-main); background: rgba(255,255,255,0.04); color: var(--text-main);
+            transition: background 0.35s, border-color 0.35s, color 0.35s, box-shadow 0.35s; }
+        .acell .asub { font-size: 8px; font-weight: 700; color: var(--text-dim); margin-top: 2px; }
+        .acell.cur { border-color: var(--accent-purple); background: rgba(168,85,247,0.16); color: #e9d5ff; box-shadow: 0 0 14px rgba(168,85,247,0.45); }
+        .acell.cmp { border-color: var(--accent-blue); background: rgba(6,182,212,0.14); color: #a5f3fc; }
+        .acell.swap { border-color: var(--accent-orange); background: rgba(245,165,36,0.16); color: #ffd591; }
+        .acell .ai { position: absolute; bottom: -17px; left: 0; right: 0; text-align: center; font-size: 10px; color: var(--text-dim); font-weight: 700; }
+
+        /* ── range readout ── */
+        .action-stage { position: relative; min-height: 96px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; }
+        .range-readout { display: flex; gap: 14px; align-items: stretch; flex-wrap: wrap; justify-content: center; }
+        .range-card { min-width: 150px; border-radius: 12px; padding: 9px 16px; border: 1px solid var(--border-main); background: rgba(255,255,255,0.03); display: flex; flex-direction: column; gap: 3px; align-items: center; transition: border-color 0.3s, box-shadow 0.3s, background 0.3s; }
+        .range-card .rk { font-family: var(--mono); font-size: 10px; font-weight: 800; letter-spacing: 1px; text-transform: uppercase; color: var(--text-dim); }
+        .range-card .rv { font-family: var(--mono); font-size: 18px; font-weight: 800; }
+        .range-card .rw { font-family: var(--mono); font-size: 10px; color: var(--text-dim); }
+        .range-card.curr { border-color: rgba(168,85,247,0.4); background: rgba(168,85,247,0.07); }
+        .range-card.curr .rv { color: #e9d5ff; }
+        .range-card.best { border-color: rgba(34,197,94,0.45); background: rgba(34,197,94,0.07); box-shadow: 0 0 16px rgba(34,197,94,0.18); }
+        .range-card.best .rv { color: #bbf7d0; }
+        .range-card.best.dim { opacity: 0.55; box-shadow: none; }
+        .action-word { font-family: var(--mono); font-weight: 800; font-size: 17px; letter-spacing: 0.4px; min-height: 22px; text-align: center; transition: color 0.3s; }
+        #confetti { position: absolute; inset: 0; overflow: visible; pointer-events: none; }
+        .confetti-piece { position: absolute; top: 0; left: 50%; width: 8px; height: 13px; border-radius: 2px; opacity: 0; animation: confettiFall ease-out forwards; }
+
+        .controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: center; }
+        .controls .kbd-hint { font-size: 11px; color: var(--text-dim); font-family: var(--mono); margin-left: 4px; }
+        .kbd { background: rgba(255,255,255,0.07); border: 1px solid var(--border-main); border-radius: 5px; padding: 1px 6px; font-size: 10px; }
+        #play-btn { background: linear-gradient(135deg, rgba(168,85,247,0.22), rgba(168,85,247,0.10)); border-color: rgba(168, 85, 247, 0.45); color: #e9d5ff; min-width: 80px; }
+        input[type="range"] { accent-color: var(--accent-purple); width: 110px; cursor: pointer; }
+
+        .details-toggle { align-self: center; height: 32px; padding: 0 16px; border-radius: 999px; cursor: pointer; background: rgba(255,255,255,0.04); border: 1px solid var(--border-main); color: var(--text-dim); font-family: var(--mono); font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; gap: 8px; transition: color 0.2s, border-color 0.2s, background 0.2s; }
+        .details-toggle:hover { color: var(--text-main); border-color: rgba(168,85,247,0.4); background: rgba(168,85,247,0.06); }
+        .details-toggle .chev { transition: transform 0.3s ease; }
+        .details-wrap.open .details-toggle .chev { transform: rotate(180deg); }
+        .details-body { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.4s ease; }
+        .details-wrap.open .details-body { grid-template-rows: 1fr; }
+        .details-inner { overflow: hidden; min-height: 0; }
+        .details-grid { display: flex; flex-direction: column; gap: 14px; padding-top: 14px; }
+
+        .panel-card { background: var(--bg-surface); border: 1px solid var(--border-main); border-radius: 16px; backdrop-filter: blur(10px); box-shadow: 0 8px 30px rgba(0,0,0,0.35); }
+        .panel-head { display: flex; align-items: center; gap: 8px; padding: 11px 16px; border-bottom: 1px solid var(--border-main); font-size: 11px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; color: var(--text-dim); }
+        .panel-head .pip { width: 7px; height: 7px; border-radius: 50%; background: var(--accent-purple); box-shadow: 0 0 8px var(--accent-purple); }
+        .code-body { padding: 12px 6px 14px; font-family: var(--mono); font-size: 12.5px; line-height: 1.7; }
+        .code-line { display: flex; gap: 12px; padding: 1px 16px; border-left: 2px solid transparent; transition: background 0.3s, border-color 0.3s; white-space: pre; }
+        .code-line .lno { color: #4b5772; width: 16px; text-align: right; user-select: none; }
+        .code-line .src { color: #c4cee0; }
+        .code-line .kw { color: #c792ea; }
+        .code-line .fn { color: #82aaff; }
+        .code-line.active { background: rgba(168,85,247,0.12); border-left-color: var(--accent-purple); }
+        .code-line.active .src, .code-line.active .lno { color: #e8eefb; }
+
+        .log-panel { border-radius: 14px; padding: 12px 16px; height: 110px; overflow-y: auto; font-family: var(--mono); font-size: 12.5px; line-height: 1.5; background: var(--bg-surface); border: 1px solid var(--border-main); }
+        .log-panel::-webkit-scrollbar { width: 8px; }
+        .log-panel::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 8px; }
+
+        @keyframes confettiFall { 0%{ opacity:1; transform: translate(-50%, 0) rotate(0deg); } 100%{ opacity:0; transform: translate(calc(-50% + var(--x)), 220px) rotate(var(--rot)); } }
+        @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; } }
+    </style>
+</head>
+<body>
+
+    <div class="input-bar">
+        <span class="ui-label">k lists</span>
+        <input type="text" id="lists-input" placeholder="[4,10,15,24,26],[0,9,12,20],[5,18,22,30]">
+        <button id="load-btn" onclick="loadFromInput()">Load</button>
+        <span class="ui-label" style="opacity:.5">|</span>
+        <button onclick="loadExample(0)">Example 1</button>
+        <button onclick="loadExample(1)">Example 2</button>
+        <button onclick="resetSim()">&#8634; Reset</button>
+    </div>
+
+    <div class="shell">
+        <div class="title-row">
+            <h1>Smallest Range &#8804; K Lists <span class="sub">&middot; min-heap holds one value per list &middot; range = [heapMin, curMax] &middot; pop min, push next &middot; O(n log k)</span></h1>
+            <span class="step-badge" id="step-badge">Step 1 / 1</span>
+        </div>
+        <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+
+        <div class="op-feed" id="op-feed"></div>
+
+        <div class="narration" id="main-panel">&mdash;</div>
+
+        <div class="stage-card">
+            <div class="stage-screen">
+                <div class="lists-zone">
+                    <div class="lists-label">k sorted lists &middot; orange = pointer (next push) &middot; ring = currently in heap</div>
+                    <div id="lists-vis"></div>
+                </div>
+                <div class="tree-stage" id="tree-stage">
+                    <div class="tree-canvas" id="tree-canvas">
+                        <svg id="edges"></svg>
+                    </div>
+                </div>
+                <div class="array-zone">
+                    <div class="array-label">min-heap backing array &middot; root = smallest &middot; each node tags its source list</div>
+                    <div class="array-rail" id="array-rail"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="action-stage">
+            <div id="confetti"></div>
+            <div class="range-readout">
+                <div class="range-card curr" id="curr-card">
+                    <span class="rk">current window</span>
+                    <span class="rv" id="curr-rv">[?, ?]</span>
+                    <span class="rw" id="curr-rw">&nbsp;</span>
+                </div>
+                <div class="range-card best dim" id="best-card">
+                    <span class="rk">best range</span>
+                    <span class="rv" id="best-rv">[&#8734;, -&#8734;]</span>
+                    <span class="rw" id="best-rw">&nbsp;</span>
+                </div>
+            </div>
+            <div class="action-word" id="action-word"></div>
+        </div>
+
+        <div class="controls">
+            <button onclick="resetSim()">&#8634; Reset</button>
+            <button onclick="prevStep()">&#8592; Back</button>
+            <button onclick="togglePlay()" id="play-btn">Play</button>
+            <button onclick="nextStep()">Next &#8594;</button>
+            <span class="ui-label" style="margin-left:6px; font-size:11px">Speed</span>
+            <input type="range" id="speed" min="0" max="2" value="1">
+            <span class="kbd-hint"><span class="kbd">&#8592;</span> <span class="kbd">&#8594;</span> step &middot; <span class="kbd">space</span> play</span>
+        </div>
+
+        <div class="details-wrap" id="details-wrap">
+            <button class="details-toggle" onclick="toggleDetails()" aria-expanded="false">
+                <span id="details-label">Show code &amp; log</span> <span class="chev">&#9662;</span>
+            </button>
+            <div class="details-body">
+                <div class="details-inner">
+                    <div class="details-grid">
+                        <div class="panel-card">
+                            <div class="panel-head"><span class="pip"></span> Algorithm</div>
+                            <div class="code-body" id="code-panel"></div>
+                        </div>
+                        <div class="log-panel" id="log"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        'use strict';
+
+        // ───────── Motion engine ─────────
+        const REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        const FRAME = 1000 / 60;
+        function sampleSpring(stiffness, damping, mass) {
+            const dt = 1 / 60; let x = 1, v = 0; const out = [];
+            for (let i = 0; i < 240; i++) { const a = (-stiffness * x - damping * v) / mass; v += a * dt; x += v * dt; out.push(1 - x); if (Math.abs(x) < 0.0015 && Math.abs(v) < 0.0015) break; }
+            out.push(1); return out;
+        }
+        const SPRING_POS = sampleSpring(320, 30, 1);
+        const SPRING_POP = sampleSpring(520, 17, 1);
+        const durOf = (a) => a.length * FRAME;
+        const Motion = {
+            move(el, x, y) {
+                const px = el._x, py = el._y;
+                const commit = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px)`;
+                if (REDUCED || px == null || (Math.abs(x - px) < 0.5 && Math.abs(y - py) < 0.5)) { el._x = x; el._y = y; el.style.transform = commit; return; }
+                const dx = x - px, dy = y - py;
+                const kf = SPRING_POS.map(p => ({ transform: `translate(${(px + dx * p).toFixed(1)}px, ${(py + dy * p).toFixed(1)}px)` }));
+                el.animate(kf, { duration: durOf(SPRING_POS), easing: 'linear' });
+                el._x = x; el._y = y; el.style.transform = commit;
+            },
+            pop(el) {
+                if (REDUCED) { el.style.opacity = '1'; return; }
+                const kf = SPRING_POP.map(p => ({ opacity: Math.min(1, p * 2).toFixed(3), transform: `translate(${el._x.toFixed(1)}px, ${el._y.toFixed(1)}px) scale(${(0.3 + 0.7 * p).toFixed(3)})` }));
+                const a = el.animate(kf, { duration: durOf(SPRING_POP), easing: 'linear' });
+                a.onfinish = () => { el.style.transform = `translate(${el._x.toFixed(1)}px, ${el._y.toFixed(1)}px)`; };
+            },
+        };
+
+        // ───────── State ─────────
+        let lists = [];        // k sorted lists of numbers
+        let steps = [];
+        let stepIdx = 0;
+        let timer = null;
+        let confettiArmed = true;
+        const delays = [1500, 820, 400];
+        const nodeEls = {};
+        const edgeEls = {};
+        const acellEls = {};
+        const LIST_HUE = ['var(--accent-red)', 'var(--accent-blue)', 'var(--accent-green)', 'var(--accent-orange)', 'var(--accent-purple)'];
+
+        const CODE = [
+            [['src','  heap = MinHeap()  # (val, listIdx, elemIdx)']],
+            [['kw','  for '],['src','i in range(k): push (lists[i][0], i, 0)']],
+            [['src','  curMax = max(first of each list)']],
+            [['src','  best = [-inf, +inf]']],
+            [['kw','  while '],['src','True:']],
+            [['src','    val, li, ei = heap.pop()   # heapMin']],
+            [['kw','    if '],['src','curMax - val < best.width:']],
+            [['src','      best = [val, curMax]']],
+            [['kw','    if '],['src','ei+1 == len(lists[li]): break']],
+            [['src','    nxt = lists[li][ei+1]']],
+            [['src','    heap.push((nxt, li, ei+1)); curMax = max(curMax, nxt)']],
+            [['kw','  return '],['src','best']],
+        ];
+        function buildCodePanel() {
+            const panel = document.getElementById('code-panel'); panel.innerHTML = '';
+            CODE.forEach((tokens, i) => {
+                const line = document.createElement('div'); line.className = 'code-line'; line.dataset.line = i;
+                const lno = document.createElement('span'); lno.className = 'lno'; lno.textContent = i + 1; line.appendChild(lno);
+                const src = document.createElement('span');
+                tokens.forEach(([cls, txt]) => { const s = document.createElement('span'); s.className = cls; s.textContent = txt; src.appendChild(s); });
+                line.appendChild(src); panel.appendChild(line);
+            });
+        }
+        function highlightCode(arr) { document.querySelectorAll('.code-line').forEach(el => el.classList.toggle('active', arr && arr.includes(+el.dataset.line))); }
+        function toggleDetails() {
+            const wrap = document.getElementById('details-wrap'); const open = wrap.classList.toggle('open');
+            wrap.querySelector('.details-toggle').setAttribute('aria-expanded', open ? 'true' : 'false');
+            document.getElementById('details-label').textContent = open ? 'Hide code & log' : 'Show code & log';
+        }
+
+        // ───────── min-heap of {val, li, ei} keyed on val ─────────
+        function heapPush(h, item) {
+            h.push(item); let i = h.length - 1;
+            while (i > 0) { const p = (i - 1) >> 1; if (h[i].val < h[p].val) { [h[i], h[p]] = [h[p], h[i]]; i = p; } else break; }
+        }
+        function heapPopMin(h) {
+            const root = h[0]; const last = h.pop();
+            if (h.length > 0) {
+                h[0] = last; let i = 0;
+                while (true) {
+                    const l = 2 * i + 1, r = 2 * i + 2; let s = i;
+                    if (l < h.length && h[l].val < h[s].val) s = l;
+                    if (r < h.length && h[r].val < h[s].val) s = r;
+                    if (s === i) break;
+                    [h[i], h[s]] = [h[s], h[i]]; i = s;
+                }
+            }
+            return root;
+        }
+
+        // ───────── step generation ─────────
+        function generateSteps() {
+            steps = [];
+            const k = lists.length;
+            const h = [];                       // heap items {val, li, ei}
+            const ptr = lists.map(() => 0);     // next-to-push index per list (after seeding)
+            let curMax = -Infinity;
+            let bestL = null, bestR = null;     // best range endpoints
+            let bestW = Infinity;
+            let opNo = 0;                        // pop counter (op feed)
+
+            // snapshot factory: copy heap, pointers, best/curr range, focus marks
+            const snap = (extra) => Object.assign({
+                heap: h.map(x => ({ ...x })),
+                ptr: [...ptr],
+                curMax, bestL, bestR,
+                currL: h.length ? Math.min(...h.map(x => x.val)) : null,
+                cur: -1, cmp: -1, swap: null, newIdx: -1,
+                minLi: null, minEi: null, maxLi: null, maxEi: null,
+                opIdx: null, newBest: false,
+            }, extra);
+
+            steps.push(snap({ code: [], action: 'BUILD HEAP', actionColor: 'var(--accent-purple)',
+                panel: `We want the smallest range <code>[a,b]</code> that contains at least one number from <b>each</b> of the ${k} sorted lists. Keep a <b>min-heap</b> with one element per list; then <code>curMax</code> is the largest value currently in the heap, so the heap covers <code>[heapMin, curMax]</code>.`,
+                log: `init  k = ${k} lists` }));
+
+            // seed: push first of every list
+            for (let i = 0; i < k; i++) {
+                const v = lists[i][0];
+                heapPush(h, { val: v, li: i, ei: 0 });
+                if (v > curMax) curMax = v;
+                ptr[i] = 1;
+                steps.push(snap({ code: [1, 2], action: 'PUSH ' + v, actionColor: 'var(--accent-orange)', newIdx: h.findIndex(x => x.li === i && x.ei === 0),
+                    maxLi: i, maxEi: 0,
+                    panel: `Seed the heap with the first element of list <b>${i}</b>: <code>${v}</code>. Track <code>curMax = ${curMax}</code> &#8594; the biggest value now in the heap.`,
+                    log: `push (${v}, list ${i}) | curMax=${curMax}` }));
+            }
+
+            // main loop
+            while (true) {
+                opNo++;
+                const minItem = h[0];
+                const heapMin = minItem.val;
+                const width = curMax - heapMin;
+                // locate the curMax element (the heap entry with val === curMax, any)
+                const maxItem = h.reduce((a, b) => (b.val > a.val ? b : a), h[0]);
+
+                // (a) examine window
+                steps.push(snap({ opIdx: opNo - 1, code: [4, 5], action: `WINDOW [${heapMin}, ${curMax}]`, actionColor: 'var(--accent-purple)',
+                    cur: 0, minLi: minItem.li, minEi: minItem.ei, maxLi: maxItem.li, maxEi: maxItem.ei,
+                    panel: `The heap covers <code>[${heapMin}, ${curMax}]</code> &#8594; width <b>${width}</b>. The min <code>${heapMin}</code> is from list <b>${minItem.li}</b> (heap root); the max <code>${curMax}</code> is from list <b>${maxItem.li}</b>.`,
+                    log: `window [${heapMin}, ${curMax}] width=${width}` }));
+
+                // (b) compare to best
+                const improves = width < bestW;
+                if (improves) { bestW = width; bestL = heapMin; bestR = curMax; }
+                steps.push(snap({ opIdx: opNo - 1, code: [6, 7], action: improves ? 'NEW BEST!' : 'keep best', actionColor: improves ? 'var(--accent-green)' : 'var(--accent-blue)',
+                    cur: 0, minLi: minItem.li, minEi: minItem.ei, maxLi: maxItem.li, maxEi: maxItem.ei, newBest: improves,
+                    panel: improves
+                        ? `Width <b>${width}</b> beats the previous best &#8594; record <code>best = [${heapMin}, ${curMax}]</code>.`
+                        : `Width <b>${width}</b> does not beat the current best <code>[${bestL}, ${bestR}]</code> (width ${bestW}) &#8594; keep it.`,
+                    log: improves ? `  best <- [${heapMin}, ${curMax}]` : `  keep best [${bestL}, ${bestR}]` }));
+
+                // (c) can we advance? pop the min and try to push next from its list
+                if (ptr[minItem.li] >= lists[minItem.li].length) {
+                    // this list is exhausted -> we can no longer cover it -> stop
+                    steps.push(snap({ opIdx: opNo - 1, code: [8], action: 'LIST EXHAUSTED', actionColor: 'var(--accent-red)',
+                        cur: 0, minLi: minItem.li, minEi: minItem.ei,
+                        panel: `To shrink the window we must drop the min and pull the <b>next</b> value from list <b>${minItem.li}</b> &#8212; but that list has no more elements. We can no longer cover list ${minItem.li}, so we <b>stop</b>.`,
+                        log: `list ${minItem.li} exhausted -> stop` }));
+                    break;
+                }
+
+                // pop the min (sift-down animation)
+                steps.push(snap({ opIdx: opNo - 1, code: [5], action: 'POP MIN ' + heapMin, actionColor: 'var(--accent-purple)',
+                    cur: 0, minLi: minItem.li, minEi: minItem.ei,
+                    panel: `Pop the heap minimum <code>${heapMin}</code> (list <b>${minItem.li}</b>). The last heap element moves to the root and sifts down to restore the heap.`,
+                    log: `pop (${heapMin}, list ${minItem.li})` }));
+                heapPopMin(h);
+
+                // push next from that list
+                const li = minItem.li;
+                const ei = ptr[li];
+                const nv = lists[li][ei];
+                ptr[li] = ei + 1;
+                heapPush(h, { val: nv, li, ei });
+                const wasMax = nv > curMax;
+                if (nv > curMax) curMax = nv;
+                const newPos = h.findIndex(x => x.li === li && x.ei === ei);
+                steps.push(snap({ opIdx: opNo - 1, code: [9, 10], action: 'PUSH ' + nv, actionColor: 'var(--accent-orange)', newIdx: newPos,
+                    minLi: li, minEi: ei,
+                    panel: `Push the next element of list <b>${li}</b>: <code>${nv}</code>, and sift it up. ${wasMax ? `It is the new <code>curMax = ${curMax}</code>.` : `<code>curMax</code> stays <code>${curMax}</code>.`}`,
+                    log: `push (${nv}, list ${li}) | curMax=${curMax}` }));
+            }
+
+            steps.push(snap({ complete: true, confetti: true, code: [11], action: '✓ SMALLEST RANGE', actionColor: 'var(--accent-green)',
+                cur: -1,
+                panel: `Done. The smallest range covering at least one number from every list is <code>[${bestL}, ${bestR}]</code> (width <b>${bestR - bestL}</b>).`,
+                log: `answer = [${bestL}, ${bestR}]` }));
+        }
+
+        // ───────── layout (complete binary tree by heap index) ─────────
+        const ROW = 60, PADY = 28;
+        function layout(n) {
+            if (n === 0) return { pos: [], width: 360, height: 100, maxLevel: 0 };
+            const maxLevel = Math.floor(Math.log2(n));
+            const wide = Math.pow(2, maxLevel);
+            const slot = 70;
+            const width = Math.max(wide * slot, 320);
+            const pos = [];
+            for (let i = 0; i < n; i++) {
+                const L = Math.floor(Math.log2(i + 1));
+                const levelStart = Math.pow(2, L) - 1;
+                const posInLevel = i - levelStart;
+                const countInLevel = Math.pow(2, L);
+                const x = (posInLevel + 0.5) / countInLevel * width;
+                const y = L * ROW + PADY;
+                pos.push({ x, y });
+            }
+            const height = maxLevel * ROW + PADY * 2;
+            return { pos, width, height, maxLevel };
+        }
+        const listColor = (li) => LIST_HUE[li % LIST_HUE.length];
+
+        // ───────── render ─────────
+        function renderStep(idx) {
+            stepIdx = idx; const step = steps[idx]; if (!step) return;
+
+            renderLists(step);
+
+            const n = step.heap.length;
+            const { pos, width, height } = layout(n);
+            const canvas = document.getElementById('tree-canvas');
+            const svg = document.getElementById('edges');
+            canvas.style.width = width + 'px'; canvas.style.height = Math.max(height, 100) + 'px';
+            svg.setAttribute('width', width); svg.setAttribute('height', Math.max(height, 100));
+
+            const swapSet = new Set(step.swap || []);
+            // helper: is heap node i the tracked min / max element?
+            const isMinNode = (i) => step.minLi != null && step.heap[i].li === step.minLi && step.heap[i].ei === step.minEi;
+            const isMaxNode = (i) => step.maxLi != null && step.heap[i].li === step.maxLi && step.heap[i].ei === step.maxEi;
+
+            // nodes
+            const used = new Set();
+            for (let i = 0; i < n; i++) {
+                used.add('n:' + i);
+                let el = nodeEls['n:' + i]; const fresh = !el;
+                if (!el) { el = document.createElement('div'); el.className = 'hnode'; el.innerHTML = `<span class="hv"></span><span class="hsub"></span><span class="idx"></span>`; canvas.appendChild(el); nodeEls['n:' + i] = el; }
+                el.querySelector('.hv').textContent = step.heap[i].val;
+                el.querySelector('.hsub').textContent = 'L' + step.heap[i].li;
+                el.querySelector('.idx').textContent = i;
+                let cls = 'hnode' + (i === 0 ? ' root' : '');
+                if (swapSet.has(i)) cls += ' swap';
+                else if (i === step.cur || isMinNode(i)) cls += ' cur';
+                else if (i === step.cmp) cls += ' cmp';
+                if (isMaxNode(i)) cls += ' maxmark';
+                if (i === step.newIdx) cls += ' new';
+                el.className = cls;
+                if (fresh) { el._x = pos[i].x; el._y = pos[i].y; el.style.transform = `translate(${pos[i].x}px, ${pos[i].y}px)`; el.style.opacity = '0'; Motion.pop(el); }
+                else Motion.move(el, pos[i].x, pos[i].y);
+            }
+            Object.keys(nodeEls).forEach(key => { if (!used.has(key)) { nodeEls[key].remove(); delete nodeEls[key]; } });
+
+            // edges (parent->child)
+            const usedE = new Set();
+            for (let i = 1; i < n; i++) {
+                const p = (i - 1) >> 1; const key = 'e:' + i; usedE.add(key);
+                let ln = edgeEls[key];
+                if (!ln) { ln = document.createElementNS('http://www.w3.org/2000/svg', 'line'); svg.appendChild(ln); edgeEls[key] = ln; }
+                ln.setAttribute('x1', pos[p].x); ln.setAttribute('y1', pos[p].y); ln.setAttribute('x2', pos[i].x); ln.setAttribute('y2', pos[i].y);
+                const onPath = (swapSet.has(i) && swapSet.has(p));
+                ln.setAttribute('class', 'edge-ln' + (onPath ? ' active' : ''));
+            }
+            Object.keys(edgeEls).forEach(key => { if (!usedE.has(key)) { edgeEls[key].remove(); delete edgeEls[key]; } });
+
+            // array view
+            const rail = document.getElementById('array-rail'); const usedA = new Set();
+            if (n > 0) { const note = rail.querySelector('.empty-note'); if (note) note.remove(); }
+            for (let i = 0; i < n; i++) {
+                usedA.add('a:' + i);
+                let el = acellEls['a:' + i];
+                if (!el) { el = document.createElement('div'); el.className = 'acell'; el.innerHTML = `<span class="av"></span><span class="asub"></span><span class="ai"></span>`; rail.appendChild(el); acellEls['a:' + i] = el; }
+                el.querySelector('.av').textContent = step.heap[i].val;
+                el.querySelector('.asub').textContent = 'L' + step.heap[i].li;
+                el.querySelector('.ai').textContent = i;
+                let cls = 'acell';
+                if (swapSet.has(i)) cls += ' swap'; else if (i === step.cur || isMinNode(i)) cls += ' cur'; else if (i === step.cmp) cls += ' cmp';
+                el.className = cls;
+            }
+            Object.keys(acellEls).forEach(key => { if (!usedA.has(key)) { acellEls[key].remove(); delete acellEls[key]; } });
+            if (n === 0) { const r = document.getElementById('array-rail'); if (!r.querySelector('.empty-note')) r.innerHTML = '<span class="empty-note" style="color:var(--text-dim);font-family:var(--mono);font-size:13px">heap is empty</span>'; }
+
+            // range readout
+            const heapMin = step.currL;
+            const currCard = document.getElementById('curr-card');
+            document.getElementById('curr-rv').textContent = (heapMin != null && isFinite(step.curMax)) ? `[${heapMin}, ${step.curMax}]` : '[?, ?]';
+            document.getElementById('curr-rw').innerHTML = (heapMin != null && isFinite(step.curMax)) ? `width ${step.curMax - heapMin}` : '&nbsp;';
+            const bestCard = document.getElementById('best-card');
+            const haveBest = step.bestL != null;
+            document.getElementById('best-rv').innerHTML = haveBest ? `[${step.bestL}, ${step.bestR}]` : '[&#8734;, -&#8734;]';
+            document.getElementById('best-rw').innerHTML = haveBest ? `width ${step.bestR - step.bestL}` : '&nbsp;';
+            bestCard.classList.toggle('dim', !haveBest);
+            bestCard.style.boxShadow = step.newBest ? '0 0 24px rgba(34,197,94,0.5)' : '';
+
+            // narration / chrome
+            const mp = document.getElementById('main-panel');
+            mp.innerHTML = step.panel || '&mdash;';
+            mp.classList.toggle('done', !!step.complete);
+            const aw = document.getElementById('action-word'); aw.textContent = step.action || ''; aw.style.color = step.actionColor || 'var(--text-dim)';
+            highlightCode(step.code);
+
+            if (step.confetti) { if (confettiArmed) { fireConfetti(); confettiArmed = false; } } else confettiArmed = true;
+
+            renderOpFeed(step.opIdx);
+            document.getElementById('step-badge').textContent = `Step ${idx + 1} / ${steps.length}`;
+            document.getElementById('progress-fill').style.width = `${(idx / Math.max(1, steps.length - 1)) * 100}%`;
+
+            const logEl = document.getElementById('log');
+            logEl.innerHTML = steps.slice(0, idx + 1).map(s => `<div style="margin:3px 0;white-space:pre-wrap;">${s.log}</div>`).join('');
+            logEl.scrollTop = logEl.scrollHeight;
+        }
+
+        // k lists rows — rebuilt each step (small + simple, no motion needed)
+        function renderLists(step) {
+            const host = document.getElementById('lists-vis');
+            host.innerHTML = '';
+            // which (li,ei) values are currently held in the heap
+            const inHeap = new Set(step.heap.map(x => x.li + ':' + x.ei));
+            lists.forEach((arr, li) => {
+                const row = document.createElement('div'); row.className = 'lrow';
+                const tag = document.createElement('div'); tag.className = 'ltag';
+                tag.textContent = 'list ' + li; tag.style.color = listColor(li);
+                row.appendChild(tag);
+                arr.forEach((v, ei) => {
+                    const c = document.createElement('div'); c.className = 'lcell list' + li;
+                    c.style.borderColor = 'rgba(255,255,255,0.10)';
+                    c.textContent = v;
+                    const held = inHeap.has(li + ':' + ei);
+                    if (held) { c.classList.add('inheap'); c.style.borderColor = listColor(li); }
+                    else if (ei < step.ptr[li]) c.classList.add('consumed');
+                    // pointer = next element this list will push (ptr[li])
+                    if (ei === step.ptr[li]) {
+                        c.classList.add('ptr');
+                        const cap = document.createElement('span'); cap.className = 'pcap'; cap.textContent = 'next'; c.appendChild(cap);
+                    }
+                    // mark the tracked window min / max sources
+                    if (step.minLi === li && step.minEi === ei) c.classList.add('ismin');
+                    if (step.maxLi === li && step.maxEi === ei) c.classList.add('ismax');
+                    row.appendChild(c);
+                });
+                host.appendChild(row);
+            });
+        }
+
+        function renderOpFeed(currentOpIdx) {
+            const feed = document.getElementById('op-feed'); feed.innerHTML = '';
+            // op feed = one chip per pop iteration; count how many pops the run has
+            const total = steps.reduce((m, s) => (s.opIdx != null ? Math.max(m, s.opIdx + 1) : m), 0);
+            for (let i = 0; i < total; i++) {
+                const chip = document.createElement('div');
+                chip.className = 'op-chip' + (currentOpIdx === i ? ' current' : (currentOpIdx != null && i < currentOpIdx ? ' done' : ''));
+                chip.textContent = 'pop ' + (i + 1); feed.appendChild(chip);
+            }
+        }
+
+        function fireConfetti() {
+            const host = document.getElementById('confetti'); if (!host || REDUCED) return;
+            const colors = ['#22c55e', '#06b6d4', '#a855f7', '#f5a524', '#f43f5e'];
+            for (let i = 0; i < 38; i++) {
+                const p = document.createElement('div'); p.className = 'confetti-piece';
+                p.style.setProperty('--x', ((Math.random() * 2 - 1) * 220) + 'px');
+                p.style.setProperty('--rot', ((Math.random() * 720 - 360)) + 'deg');
+                p.style.background = colors[i % colors.length];
+                p.style.animationDuration = (0.9 + Math.random() * 0.8) + 's';
+                p.style.animationDelay = (Math.random() * 0.15) + 's';
+                host.appendChild(p); setTimeout(() => p.remove(), 1900);
+            }
+        }
+
+        // ───────── controls ─────────
+        function nextStep() { if (stepIdx < steps.length - 1) renderStep(stepIdx + 1); else pause(); }
+        function prevStep() { if (stepIdx > 0) renderStep(stepIdx - 1); }
+        function resetSim() { pause(); renderStep(0); }
+        function togglePlay() {
+            const btn = document.getElementById('play-btn');
+            if (timer) { pause(); return; }
+            btn.textContent = 'Pause';
+            if (stepIdx >= steps.length - 1) renderStep(0);
+            timer = setInterval(() => { if (stepIdx < steps.length - 1) nextStep(); else pause(); }, delays[document.getElementById('speed').value]);
+        }
+        function pause() { clearInterval(timer); timer = null; document.getElementById('play-btn').textContent = 'Play'; }
+
+        function clearDom() {
+            Object.keys(nodeEls).forEach(key => { nodeEls[key].remove(); delete nodeEls[key]; });
+            Object.keys(edgeEls).forEach(key => { edgeEls[key].remove(); delete edgeEls[key]; });
+            Object.keys(acellEls).forEach(key => { acellEls[key].remove(); delete acellEls[key]; });
+            document.getElementById('array-rail').innerHTML = '';
+            confettiArmed = true;
+        }
+        function loadLists(newLists) { pause(); lists = newLists.map(l => [...l]); clearDom(); generateSteps(); renderStep(0); }
+
+        const examples = [
+            [[4, 10, 15, 24, 26], [0, 9, 12, 20], [5, 18, 22, 30]],
+            [[1, 2, 3], [1, 2, 3]],
+        ];
+        function loadExample(n) { loadLists(examples[n]); }
+
+        function loadFromInput() {
+            const raw = document.getElementById('lists-input').value.trim();
+            if (!raw) { return; }
+            // parse "[..],[..],[..]" or "1,2,3 ; 4,5,6"
+            let parsed = null;
+            try {
+                const wrapped = raw.startsWith('[[') ? raw : '[' + raw + ']';
+                parsed = JSON.parse(wrapped);
+            } catch (e) {
+                // fallback: split on ';'
+                parsed = raw.split(';').map(grp => grp.replace(/[\[\]]/g, '').split(',').map(s => parseInt(s.trim(), 10)).filter(x => !isNaN(x)));
+            }
+            if (!Array.isArray(parsed) || !parsed.length || !parsed.every(a => Array.isArray(a) && a.length)) { return; }
+            // keep each list sorted ascending (the algorithm assumes sorted lists)
+            const clean = parsed.map(a => a.map(Number).filter(x => !isNaN(x)).sort((p, q) => p - q)).filter(a => a.length);
+            if (!clean.length) return;
+            loadLists(clean);
+        }
+
+        document.addEventListener('keydown', (e) => {
+            const tag = (e.target.tagName || '').toLowerCase(); if (tag === 'input' || tag === 'textarea') return;
+            if (e.key === 'ArrowRight') { e.preventDefault(); pause(); nextStep(); }
+            else if (e.key === 'ArrowLeft') { e.preventDefault(); pause(); prevStep(); }
+            else if (e.key === ' ') { e.preventDefault(); togglePlay(); }
+        });
+        document.getElementById('lists-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') loadFromInput(); });
+        window.addEventListener('resize', () => renderStep(stepIdx));
+
+        buildCodePanel();
+        window.onload = () => loadExample(0);
+    </script>
+</body>
+</html>

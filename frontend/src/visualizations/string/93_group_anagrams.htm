@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Group Anagrams - Visualization</title>
+    <style>
+        :root {
+            --bg-page: #070b14;
+            --bg-surface: rgba(255, 255, 255, 0.045);
+            --bg-input: rgba(255, 255, 255, 0.04);
+            --border-main: rgba(255, 255, 255, 0.10);
+            --btn-bg: rgba(255, 255, 255, 0.05);
+            --btn-hover: rgba(255, 255, 255, 0.10);
+            --text-main: #e8eefb;
+            --text-dim: #8b98b3;
+            --accent-orange: #f5a524;   /* value in motion / sorted key */
+            --accent-blue:   #06b6d4;   /* key / chrome                */
+            --accent-green:  #22c55e;   /* settled / grouped           */
+            --accent-red:    #f43f5e;   /* mismatch                    */
+            --accent-purple: #a855f7;   /* current word                */
+            --mono: ui-monospace, 'SF Mono', 'Cascadia Code', 'Courier New', monospace;
+            --sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+            --shell: 880px;
+        }
+
+        * { box-sizing: border-box; }
+        html, body { overflow-x: hidden; }
+        body {
+            background:
+                radial-gradient(1100px 600px at 15% -10%, rgba(168, 85, 247, 0.10), transparent 60%),
+                radial-gradient(900px 600px at 100% 10%, rgba(6, 182, 212, 0.10), transparent 55%),
+                linear-gradient(160deg, #070b14 0%, #0b1120 55%, #0a0f1c 100%);
+            background-attachment: fixed;
+            color: var(--text-main); font-family: var(--sans); margin: 0;
+            display: flex; flex-direction: column; align-items: center; min-height: 100vh;
+            padding-bottom: 48px; -webkit-font-smoothing: antialiased;
+        }
+        body::before, body::after { content: ''; position: fixed; border-radius: 50%; filter: blur(70px); pointer-events: none; z-index: 0; opacity: 0.45; }
+        body::before { width: 380px; height: 380px; top: 8%; left: -120px; background: radial-gradient(circle, rgba(168,85,247,0.30), transparent 70%); }
+        body::after  { width: 420px; height: 420px; bottom: 4%; right: -140px; background: radial-gradient(circle, rgba(6,182,212,0.22), transparent 70%); }
+        body > * { position: relative; z-index: 1; }
+
+        .input-bar {
+            width: 100%; background: rgba(10, 15, 28, 0.55);
+            backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+            padding: 14px 16px; display: flex; justify-content: center; align-items: center; gap: 10px;
+            border-bottom: 1px solid var(--border-main); flex-wrap: wrap; position: sticky; top: 0; z-index: 50;
+        }
+        label.ui-label, .ui-label { font-family: var(--mono); font-size: 13px; color: var(--text-dim); letter-spacing: 0.2px; }
+        input[type="text"] {
+            background: var(--bg-input); border: 1px solid var(--border-main); color: var(--text-main);
+            height: 34px; border-radius: 9px; padding: 0 12px; font-size: 13px; font-family: var(--mono); width: 280px;
+            transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+        }
+        input[type="text"]:focus { outline: none; border-color: var(--accent-purple); box-shadow: 0 0 0 3px rgba(168, 85, 247, 0.18); background: rgba(168, 85, 247, 0.06); }
+
+        button {
+            height: 34px; border-radius: 9px; padding: 0 14px; background: var(--btn-bg);
+            border: 1px solid var(--border-main); color: var(--text-main); font-size: 13px; font-weight: 600; cursor: pointer;
+            transition: transform 0.15s ease, background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+        }
+        button:hover { background: var(--btn-hover); border-color: rgba(6, 182, 212, 0.5); box-shadow: 0 0 18px rgba(6, 182, 212, 0.18); transform: translateY(-1px); }
+        button:active { transform: translateY(0); }
+        #play-btn { background: linear-gradient(135deg, rgba(6,182,212,0.22), rgba(6,182,212,0.10)); border-color: rgba(6, 182, 212, 0.45); color: #a5f3fc; min-width: 80px; }
+
+        .shell { width: var(--shell); max-width: 95%; margin: 24px auto 0; display: flex; flex-direction: column; gap: 16px; }
+
+        .title-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+        .title-row h1 { font-size: 18px; font-weight: 800; margin: 0; letter-spacing: 0.2px; }
+        .title-row .sub { color: var(--text-dim); font-weight: 500; font-size: 13px; }
+        .step-badge { font-family: var(--mono); font-size: 12px; font-weight: 700; color: #a5f3fc; background: rgba(6,182,212,0.12); border: 1px solid rgba(6,182,212,0.3); padding: 4px 10px; border-radius: 999px; white-space: nowrap; }
+        .progress-track { height: 4px; width: 100%; background: rgba(255,255,255,0.07); border-radius: 999px; overflow: hidden; margin-top: -6px; }
+        .progress-fill { height: 100%; width: 0%; border-radius: 999px; background: linear-gradient(90deg, var(--accent-blue), var(--accent-purple)); box-shadow: 0 0 12px rgba(6,182,212,0.5); transition: width 0.45s cubic-bezier(0.34,1.1,0.64,1); }
+
+        .narration { background: var(--bg-surface); border: 1px solid rgba(6,182,212,0.22); border-radius: 12px; padding: 12px 18px; font-family: var(--mono); font-size: 14px; line-height: 1.5; color: #cfe9f5; min-height: 48px; display: flex; align-items: center; gap: 10px; transition: border-color 0.3s, background 0.3s; }
+        .narration::before { content: '\25B8'; color: var(--accent-blue); font-size: 13px; }
+        .narration.done { border-color: rgba(34,197,94,0.4); background: rgba(34,197,94,0.06); }
+        .narration.done::before { content: '\2713'; color: var(--accent-green); }
+        .narration.miss { border-color: rgba(244,63,94,0.4); background: rgba(244,63,94,0.06); }
+        .narration.miss::before { content: '\2717'; color: var(--accent-red); }
+        .narration code { background: rgba(6,182,212,0.14); color: #7dd3fc; padding: 1px 6px; border-radius: 5px; font-size: 12.5px; }
+        .narration b { color: #fff; }
+
+        .stage-card { background: var(--bg-surface); border: 1px solid var(--border-main); border-radius: 18px; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); box-shadow: 0 12px 38px rgba(0,0,0,0.4); overflow: hidden; }
+        .stage-screen { position: relative; margin: 14px; border-radius: 14px; background: radial-gradient(700px 300px at 50% -10%, rgba(6,182,212,0.08), transparent 70%), #090d18; border: 1px solid rgba(255,255,255,0.06); }
+        .str-stage { position: relative; width: 100%; min-height: 300px; overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 18px; padding: 30px 18px 36px; }
+        .str-stage::-webkit-scrollbar { height: 7px; }
+        .str-stage::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 8px; }
+
+        .stage-label { font-family: var(--mono); font-size: 10.5px; letter-spacing: 1.2px; text-transform: uppercase; color: var(--text-dim); align-self: flex-start; margin-left: 4px; }
+
+        /* word row: each word is a chip-of-chars unit */
+        .word-rail { position: relative; display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; width: 100%; }
+        .word { display: flex; flex-direction: column; align-items: center; gap: 5px; will-change: transform; transition: opacity 0.4s; }
+        .word .chips { display: flex; gap: 3px; padding: 5px 6px; border-radius: 12px; border: 2px solid var(--border-main); background: rgba(255,255,255,0.03); transition: border-color 0.4s, background 0.4s, box-shadow 0.4s, transform 0.4s cubic-bezier(.34,1.3,.64,1); }
+        .word .wlabel { font-size: 10.5px; color: var(--text-dim); font-family: var(--mono); }
+        .ch {
+            min-width: 26px; height: 34px; padding: 0 4px; display: flex; align-items: center; justify-content: center;
+            border-radius: 8px; font-size: 17px; font-weight: 800; font-family: var(--mono);
+            border: 1px solid rgba(255,255,255,0.10); background: rgba(255,255,255,0.05); color: var(--text-main);
+            transition: background 0.35s, border-color 0.35s, color 0.35s, transform 0.35s cubic-bezier(.34,1.3,.64,1);
+        }
+        .word.current .chips { border-color: var(--accent-purple); background: rgba(168,85,247,0.12); box-shadow: 0 0 22px rgba(168,85,247,0.4), inset 0 0 12px rgba(168,85,247,0.1); }
+        .word.current .ch { border-color: rgba(168,85,247,0.5); color: #e9d5ff; }
+        .word.grouped .chips { border-color: var(--accent-green); background: rgba(34,197,94,0.10); }
+        .word.grouped .ch { border-color: rgba(34,197,94,0.4); color: #bbf7d0; }
+        .word.dim { opacity: 0.34; }
+
+        /* group buckets */
+        .bucket-rail { position: relative; display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; width: 100%; }
+        .bucket {
+            display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border-radius: 14px;
+            border: 1.5px dashed rgba(255,255,255,0.16); background: rgba(255,255,255,0.025); min-width: 92px;
+            transition: border-color 0.4s, background 0.4s, box-shadow 0.4s, transform 0.4s cubic-bezier(.34,1.3,.64,1);
+            will-change: transform;
+        }
+        .bucket .bkey { font-family: var(--mono); font-size: 11px; font-weight: 800; letter-spacing: 0.5px; display: flex; align-items: center; gap: 6px; }
+        .bucket .bkey .ktag { color: var(--text-dim); }
+        .bucket .bkey .kval { color: #7dd3fc; background: rgba(6,182,212,0.14); padding: 1px 6px; border-radius: 5px; }
+        .bucket .bwords { display: flex; flex-wrap: wrap; gap: 6px; }
+        .bword { font-family: var(--mono); font-size: 14px; font-weight: 800; padding: 4px 9px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.10); background: rgba(255,255,255,0.05); color: var(--text-main); transition: background 0.35s, border-color 0.35s; will-change: transform; }
+        .bucket.hot { border-color: var(--accent-green); border-style: solid; background: rgba(34,197,94,0.08); box-shadow: 0 0 26px rgba(34,197,94,0.28); }
+        .bucket.hot .kval { color: #bbf7d0; background: rgba(34,197,94,0.16); }
+        .bword.fresh { border-color: var(--accent-green); background: rgba(34,197,94,0.16); color: #bbf7d0; box-shadow: 0 0 14px rgba(34,197,94,0.4); }
+        .bucket.fresh-bucket { border-color: var(--accent-orange); box-shadow: 0 0 26px rgba(245,165,36,0.3); }
+
+        .action-stage { position: relative; min-height: 96px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; }
+        .float-key { min-width: 56px; height: 48px; padding: 0 14px; border-radius: 13px; display: flex; align-items: center; justify-content: center; font-family: var(--mono); font-size: 20px; font-weight: 800; letter-spacing: 2px; border: 2px solid var(--accent-orange); background: rgba(245,165,36,0.16); color: #ffd591; box-shadow: 0 0 22px rgba(245,165,36,0.5); opacity: 0; transform: scale(.5); transition: opacity .25s, transform .4s cubic-bezier(.34,1.5,.64,1); }
+        .float-key.show { opacity: 1; transform: scale(1); }
+        .action-word { font-family: var(--mono); font-weight: 800; font-size: 18px; letter-spacing: 0.4px; min-height: 22px; text-align: center; transition: color 0.3s; }
+        #confetti { position: absolute; inset: 0; overflow: visible; pointer-events: none; }
+        .confetti-piece { position: absolute; top: 0; left: 50%; width: 8px; height: 13px; border-radius: 2px; opacity: 0; animation: confettiFall ease-out forwards; }
+
+        .controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: center; }
+        .controls .kbd-hint { font-size: 11px; color: var(--text-dim); font-family: var(--mono); margin-left: 4px; }
+        .kbd { background: rgba(255,255,255,0.07); border: 1px solid var(--border-main); border-radius: 5px; padding: 1px 6px; font-size: 10px; }
+        input[type="range"] { accent-color: var(--accent-blue); width: 110px; cursor: pointer; }
+
+        .details-toggle { align-self: center; height: 32px; padding: 0 16px; border-radius: 999px; cursor: pointer; background: rgba(255,255,255,0.04); border: 1px solid var(--border-main); color: var(--text-dim); font-family: var(--mono); font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; gap: 8px; transition: color 0.2s, border-color 0.2s, background 0.2s; }
+        .details-toggle:hover { color: var(--text-main); border-color: rgba(6,182,212,0.4); background: rgba(6,182,212,0.06); }
+        .details-toggle .chev { transition: transform 0.3s ease; }
+        .details-wrap.open .details-toggle .chev { transform: rotate(180deg); }
+        .details-body { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.4s ease; }
+        .details-wrap.open .details-body { grid-template-rows: 1fr; }
+        .details-inner { overflow: hidden; min-height: 0; }
+        .details-grid { display: flex; flex-direction: column; gap: 14px; padding-top: 14px; }
+
+        .panel-card { background: var(--bg-surface); border: 1px solid var(--border-main); border-radius: 16px; backdrop-filter: blur(10px); box-shadow: 0 8px 30px rgba(0,0,0,0.35); }
+        .panel-head { display: flex; align-items: center; gap: 8px; padding: 11px 16px; border-bottom: 1px solid var(--border-main); font-size: 11px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; color: var(--text-dim); }
+        .panel-head .pip { width: 7px; height: 7px; border-radius: 50%; background: var(--accent-blue); box-shadow: 0 0 8px var(--accent-blue); }
+        .code-body { padding: 12px 6px 14px; font-family: var(--mono); font-size: 12.5px; line-height: 1.7; }
+        .code-line { display: flex; gap: 12px; padding: 1px 16px; border-left: 2px solid transparent; transition: background 0.3s, border-color 0.3s; white-space: pre; }
+        .code-line .lno { color: #4b5772; width: 16px; text-align: right; user-select: none; }
+        .code-line .src { color: #c4cee0; }
+        .code-line .kw { color: #c792ea; }
+        .code-line .fn { color: #82aaff; }
+        .code-line.active { background: rgba(6,182,212,0.12); border-left-color: var(--accent-blue); }
+        .code-line.active .src, .code-line.active .lno { color: #e8eefb; }
+
+        .state-strip { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 0 2px; }
+        .pill { display: inline-flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 12px; color: var(--text-dim); background: rgba(255,255,255,0.04); border: 1px solid var(--border-main); border-radius: 999px; padding: 4px 11px; }
+        .pill b { color: var(--text-main); font-weight: 800; }
+        .pill.l b { color: var(--accent-purple); } .pill.r b { color: var(--accent-blue); } .pill.s b { color: var(--accent-green); }
+
+        .log-panel { border-radius: 14px; padding: 12px 16px; height: 110px; overflow-y: auto; font-family: var(--mono); font-size: 12.5px; line-height: 1.5; background: var(--bg-surface); border: 1px solid var(--border-main); }
+        .log-panel::-webkit-scrollbar { width: 8px; }
+        .log-panel::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 8px; }
+
+        @keyframes confettiFall { 0%{ opacity:1; transform: translate(-50%, 0) rotate(0deg); } 100%{ opacity:0; transform: translate(calc(-50% + var(--x)), 220px) rotate(var(--rot)); } }
+        @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; } }
+    </style>
+</head>
+<body>
+
+    <div class="input-bar">
+        <label class="ui-label">strs =</label>
+        <input type="text" id="strs-input" placeholder="eat,tea,tan,ate,nat,bat" maxlength="48">
+        <button onclick="loadCustom()">Load</button>
+        <span class="ui-label" style="opacity:.5">|</span>
+        <button onclick="loadExample(0)">eat,tea,tan,ate,nat,bat</button>
+        <button onclick="loadExample(1)">a</button>
+        <button onclick="loadExample(2)">listen,silent,enlist,google</button>
+    </div>
+
+    <div class="shell">
+        <div class="title-row">
+            <h1>Group Anagrams <span class="sub">&middot; sorted-letters key &rarr; hash buckets &middot; O(n&middot;k log k) time</span></h1>
+            <span class="step-badge" id="step-badge">Step 1 / 1</span>
+        </div>
+        <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+
+        <div class="narration" id="main-panel">&mdash;</div>
+
+        <div class="stage-card">
+            <div class="stage-screen">
+                <div class="str-stage" id="str-stage">
+                    <div class="stage-label">words</div>
+                    <div class="word-rail" id="word-rail"></div>
+                    <div class="stage-label">groups (key = sorted letters)</div>
+                    <div class="bucket-rail" id="bucket-rail"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="action-stage">
+            <div id="confetti"></div>
+            <div class="float-key" id="float-key"></div>
+            <div class="action-word" id="action-word"></div>
+        </div>
+
+        <div class="controls">
+            <button onclick="resetSim()">&#8634; Reset</button>
+            <button onclick="prevStep()">&#8592; Back</button>
+            <button onclick="togglePlay()" id="play-btn">Play</button>
+            <button onclick="nextStep()">Next &#8594;</button>
+            <span class="ui-label" style="margin-left:6px; font-size:11px">Speed</span>
+            <input type="range" id="speed" min="0" max="2" value="1">
+            <span class="kbd-hint"><span class="kbd">&#8592;</span> <span class="kbd">&#8594;</span> step &middot; <span class="kbd">space</span> play</span>
+        </div>
+
+        <div class="details-wrap" id="details-wrap">
+            <button class="details-toggle" onclick="toggleDetails()" aria-expanded="false">
+                <span id="details-label">Show code, state &amp; log</span> <span class="chev">&#9662;</span>
+            </button>
+            <div class="details-body">
+                <div class="details-inner">
+                    <div class="details-grid">
+                        <div class="state-strip">
+                            <span class="pill l">word <b id="st-word">&mdash;</b></span>
+                            <span class="pill r">key <b id="st-key">&mdash;</b></span>
+                            <span class="pill s">groups <b id="st-groups">0</b></span>
+                            <span class="pill">i <b id="st-i">&mdash;</b></span>
+                        </div>
+                        <div class="panel-card">
+                            <div class="panel-head"><span class="pip"></span> Algorithm</div>
+                            <div class="code-body" id="code-panel"></div>
+                        </div>
+                        <div class="log-panel" id="log"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        'use strict';
+
+        // ───────── Motion engine (spring + FLIP, zero deps) ─────────
+        const REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        const FRAME = 1000 / 60;
+        function sampleSpring(stiffness, damping, mass) {
+            const dt = 1 / 60; let x = 1, v = 0; const out = [];
+            for (let i = 0; i < 240; i++) { const a = (-stiffness * x - damping * v) / mass; v += a * dt; x += v * dt; out.push(1 - x); if (Math.abs(x) < 0.0015 && Math.abs(v) < 0.0015) break; }
+            out.push(1); return out;
+        }
+        const SPRING_POS = sampleSpring(320, 30, 1);
+        const SPRING_POP = sampleSpring(520, 17, 1);
+        const durOf = (a) => a.length * FRAME;
+        const Motion = {
+            // FLIP: el is already at its NEW spot; animate FROM (dx,dy) = old - new.
+            flip(el, dx, dy) {
+                if (REDUCED || (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5)) return;
+                const kf = SPRING_POS.map(p => ({ transform: `translate(${(dx * (1 - p)).toFixed(2)}px, ${(dy * (1 - p)).toFixed(2)}px)` }));
+                el.animate(kf, { duration: durOf(SPRING_POS), easing: 'linear' });
+            },
+            pop(el) {
+                if (REDUCED) { el.style.opacity = '1'; el.style.transform = 'scale(1)'; return; }
+                const kf = SPRING_POP.map(p => ({ opacity: Math.min(1, p * 2).toFixed(3), transform: `scale(${(0.5 + 0.5 * p).toFixed(3)})` }));
+                el.animate(kf, { duration: durOf(SPRING_POP), easing: 'linear', fill: 'forwards' });
+            },
+        };
+
+        // ───────── State ─────────
+        let currentStrs = ["eat", "tea", "tan", "ate", "nat", "bat"];
+        let steps = [];
+        let stepIdx = 0;
+        let timer = null;
+        let confettiArmed = true;
+        const delays = [1500, 760, 360];
+        const wordEls = {};    // word index -> .word element
+        const bucketEls = {};  // key -> .bucket element
+
+        const CODE = [
+            [['kw','def '],['fn','groupAnagrams'],['src','(strs):']],
+            [['src','  groups = {}']],
+            [['kw','  for '],['src','word in strs:']],
+            [['src','    key = '],['fn','sorted'],['src','(word)']],
+            [['kw','    if '],['src','key not in groups:']],
+            [['src','      groups[key] = []']],
+            [['src','    groups[key].append(word)']],
+            [['kw','  return '],['src','list(groups.values())']],
+        ];
+        function buildCodePanel() {
+            const panel = document.getElementById('code-panel'); panel.innerHTML = '';
+            CODE.forEach((tokens, i) => {
+                const line = document.createElement('div'); line.className = 'code-line'; line.dataset.line = i;
+                const lno = document.createElement('span'); lno.className = 'lno'; lno.textContent = i + 1; line.appendChild(lno);
+                const src = document.createElement('span');
+                tokens.forEach(([cls, txt]) => { const s = document.createElement('span'); s.className = cls; s.textContent = txt; src.appendChild(s); });
+                line.appendChild(src); panel.appendChild(line);
+            });
+        }
+        function highlightCode(arr) { document.querySelectorAll('.code-line').forEach(el => el.classList.toggle('active', arr && arr.includes(+el.dataset.line))); }
+        function toggleDetails() {
+            const wrap = document.getElementById('details-wrap'); const open = wrap.classList.toggle('open');
+            wrap.querySelector('.details-toggle').setAttribute('aria-expanded', open ? 'true' : 'false');
+            document.getElementById('details-label').textContent = open ? 'Hide code, state & log' : 'Show code, state & log';
+        }
+
+        const sortKey = (w) => w.split('').sort().join('');
+
+        // ───────── step generation ─────────
+        function generateSteps() {
+            steps = [];
+            const strs = currentStrs;
+            const n = strs.length;
+            // groups: ordered map key -> [words]
+            const order = [];        // key insertion order
+            const groups = {};       // key -> array of words
+
+            // immutable snapshot of the current grouping state
+            const snapGroups = () => order.map(k => ({ key: k, words: [...groups[k]] }));
+
+            const base = (extra) => Object.assign({
+                i: null, word: '', key: '', states: strs.map(() => 'idle'),
+                buckets: snapGroups(), hotKey: null, freshWord: null, freshBucket: null,
+            }, extra);
+
+            // INIT
+            steps.push(base({
+                code: [0, 1], action: 'START', actionColor: 'var(--accent-blue)',
+                panel: `Group <code>[${strs.map(s => '"' + s + '"').join(', ')}]</code> by anagram. Key idea: two words are anagrams &hArr; their <b>sorted letters</b> match. Use that sorted string as a hash key.`,
+                log: `init  strs = [${strs.map(s => '"' + s + '"').join(', ')}]  (n=${n})`,
+            }));
+
+            for (let i = 0; i < n; i++) {
+                const word = strs[i];
+                const key = sortKey(word);
+
+                // 1) focus the current word
+                steps.push(base({
+                    i, word, key: '',
+                    code: [2], action: 'word = "' + word + '"', actionColor: 'var(--accent-purple)',
+                    states: strs.map((_, k) => k === i ? 'current' : (k < i ? 'grouped' : 'idle')),
+                    panel: `Take <code>"${word}"</code> (index ${i}). Compute its sorted-letters key next.`,
+                    log: `word[${i}] = "${word}"`,
+                }));
+
+                // 2) compute the sorted key (float the key tile)
+                steps.push(base({
+                    i, word, key,
+                    code: [3], action: 'key = "' + key + '"', actionColor: 'var(--accent-orange)',
+                    states: strs.map((_, k) => k === i ? 'current' : (k < i ? 'grouped' : 'idle')),
+                    floatKey: key,
+                    panel: `Sort the letters of <code>"${word}"</code> &rarr; key <code>"${key}"</code>. Anagrams collapse to the same key.`,
+                    log: `  sorted("${word}") = "${key}"`,
+                }));
+
+                // 3) lookup / create bucket
+                const isNew = !(key in groups);
+                if (isNew) {
+                    groups[key] = []; order.push(key);
+                    steps.push(base({
+                        i, word, key,
+                        code: [4, 5], action: 'new key "' + key + '"', actionColor: 'var(--accent-green)',
+                        states: strs.map((_, k) => k === i ? 'current' : (k < i ? 'grouped' : 'idle')),
+                        hotKey: key, freshBucket: key,
+                        panel: `Key <code>"${key}"</code> not seen before &rarr; create a fresh bucket for it.`,
+                        log: `  new bucket "${key}"`,
+                    }));
+                } else {
+                    steps.push(base({
+                        i, word, key,
+                        code: [4], action: 'key "' + key + '" exists', actionColor: 'var(--accent-blue)',
+                        states: strs.map((_, k) => k === i ? 'current' : (k < i ? 'grouped' : 'idle')),
+                        hotKey: key,
+                        panel: `Key <code>"${key}"</code> already exists &mdash; <code>"${word}"</code> is an anagram of words already in that bucket.`,
+                        log: `  bucket "${key}" exists (size ${groups[key].length})`,
+                    }));
+                }
+
+                // 4) append word into bucket
+                groups[key].push(word);
+                steps.push(base({
+                    i, word, key,
+                    code: [6], action: '"' + word + '" → [' + key + ']', actionColor: 'var(--accent-green)',
+                    states: strs.map((_, k) => k <= i ? 'grouped' : 'idle'),
+                    hotKey: key, freshWord: { key, word },
+                    panel: `Append <code>"${word}"</code> into bucket <code>"${key}"</code>. That group now holds <b>${groups[key].length}</b> word${groups[key].length === 1 ? '' : 's'}.`,
+                    log: `  groups["${key}"].append("${word}")  (size ${groups[key].length})`,
+                }));
+            }
+
+            // FINAL
+            const result = order.map(k => groups[k]);
+            steps.push(base({
+                i: null, word: '', key: '',
+                complete: true, confetti: true,
+                code: [7], action: '✓ ' + result.length + ' GROUP' + (result.length === 1 ? '' : 'S'), actionColor: 'var(--accent-green)',
+                states: strs.map(() => 'grouped'),
+                panel: `All words placed. Return the bucket values: <b>${result.length}</b> anagram group${result.length === 1 ? '' : 's'} &rarr; <code>${result.map(g => '[' + g.map(w => '"' + w + '"').join(',') + ']').join(', ')}</code>.`,
+                log: `done  ${result.length} groups = ${JSON.stringify(result)}`,
+            }));
+        }
+
+        // ───────── render (persistent DOM + FLIP) ─────────
+        function renderStep(idx) {
+            stepIdx = idx; const step = steps[idx]; if (!step) return;
+            const wordRail = document.getElementById('word-rail');
+            const bucketRail = document.getElementById('bucket-rail');
+
+            // FIRST: record bucket positions for FLIP (reflow when a new bucket appears)
+            const firstBucketRects = {};
+            Object.keys(bucketEls).forEach(k => { const el = bucketEls[k]; if (el.isConnected) firstBucketRects[k] = el.getBoundingClientRect(); });
+
+            // ── reconcile word chips (keyed by index) ──
+            const usedW = new Set();
+            currentStrs.forEach((w, i) => {
+                usedW.add(String(i));
+                let el = wordEls[i];
+                if (!el) {
+                    el = document.createElement('div'); el.className = 'word';
+                    const chips = document.createElement('div'); chips.className = 'chips';
+                    w.split('').forEach(c => { const ch = document.createElement('div'); ch.className = 'ch'; ch.textContent = c; chips.appendChild(ch); });
+                    const lab = document.createElement('div'); lab.className = 'wlabel'; lab.textContent = '"' + w + '" [' + i + ']';
+                    el.appendChild(chips); el.appendChild(lab);
+                    wordEls[i] = el;
+                }
+                el.className = 'word ' + (step.states[i] || 'idle');
+                wordRail.appendChild(el);
+            });
+            Object.keys(wordEls).forEach(k => { if (!usedW.has(k)) { wordEls[k].remove(); delete wordEls[k]; } });
+
+            // ── reconcile buckets (keyed by sorted key) ──
+            const usedB = new Set();
+            (step.buckets || []).forEach(b => {
+                usedB.add(b.key);
+                let el = bucketEls[b.key];
+                if (!el) {
+                    el = document.createElement('div'); el.className = 'bucket';
+                    el.innerHTML = `<div class="bkey"><span class="ktag">key</span><span class="kval"></span></div><div class="bwords"></div>`;
+                    bucketEls[b.key] = el;
+                }
+                el.querySelector('.kval').textContent = b.key;
+                // reconcile words inside the bucket
+                const bw = el.querySelector('.bwords');
+                const existing = Array.from(bw.children);
+                b.words.forEach((w, j) => {
+                    let wEl = existing[j];
+                    if (!wEl) { wEl = document.createElement('span'); wEl.className = 'bword'; bw.appendChild(wEl); }
+                    wEl.textContent = w;
+                    const isFresh = step.freshWord && step.freshWord.key === b.key && j === b.words.length - 1;
+                    wEl.className = 'bword' + (isFresh ? ' fresh' : '');
+                    if (isFresh) Motion.pop(wEl);
+                });
+                while (bw.children.length > b.words.length) bw.lastChild.remove();
+                // bucket chrome
+                let cls = 'bucket';
+                if (step.hotKey === b.key) cls += ' hot';
+                if (step.freshBucket === b.key) cls += ' fresh-bucket';
+                el.className = cls;
+                bucketRail.appendChild(el);
+            });
+            Object.keys(bucketEls).forEach(k => { if (!usedB.has(k)) { bucketEls[k].remove(); delete bucketEls[k]; } });
+
+            // LAST + PLAY FLIP for buckets that moved (a new bucket pushes siblings)
+            Object.keys(bucketEls).forEach(k => {
+                const el = bucketEls[k]; const last = el.getBoundingClientRect();
+                if (firstBucketRects[k]) {
+                    const dx = firstBucketRects[k].left - last.left, dy = firstBucketRects[k].top - last.top;
+                    Motion.flip(el, dx, dy);
+                } else if (step.freshBucket === k) {
+                    Motion.pop(el);
+                }
+            });
+
+            // floating key tile (value in motion)
+            const fk = document.getElementById('float-key');
+            if (step.floatKey != null) { fk.textContent = step.floatKey; fk.classList.add('show'); Motion.pop(fk); }
+            else fk.classList.remove('show');
+
+            // narration / action / chrome
+            const mp = document.getElementById('main-panel');
+            mp.innerHTML = step.panel || '&mdash;';
+            mp.classList.toggle('done', !!step.complete);
+            mp.classList.toggle('miss', !!step.miss);
+            const aw = document.getElementById('action-word'); aw.textContent = step.action || ''; aw.style.color = step.actionColor || 'var(--text-dim)';
+            highlightCode(step.code);
+
+            if (step.confetti) { if (confettiArmed) { fireConfetti(); confettiArmed = false; } } else confettiArmed = true;
+
+            document.getElementById('st-word').textContent = step.word ? '"' + step.word + '"' : '—';
+            document.getElementById('st-key').textContent = step.key ? '"' + step.key + '"' : '—';
+            document.getElementById('st-groups').textContent = (step.buckets || []).length;
+            document.getElementById('st-i').textContent = step.i != null ? step.i : '—';
+
+            document.getElementById('step-badge').textContent = `Step ${idx + 1} / ${steps.length}`;
+            document.getElementById('progress-fill').style.width = `${(idx / Math.max(1, steps.length - 1)) * 100}%`;
+
+            const logEl = document.getElementById('log');
+            logEl.innerHTML = steps.slice(0, idx + 1).map(s => `<div style="margin:3px 0;white-space:pre-wrap;">${s.log}</div>`).join('');
+            logEl.scrollTop = logEl.scrollHeight;
+        }
+
+        function fireConfetti() {
+            const host = document.getElementById('confetti'); if (!host || REDUCED) return;
+            const colors = ['#22c55e', '#06b6d4', '#a855f7', '#f5a524', '#f43f5e'];
+            for (let i = 0; i < 38; i++) {
+                const p = document.createElement('div'); p.className = 'confetti-piece';
+                p.style.setProperty('--x', ((Math.random() * 2 - 1) * 220) + 'px');
+                p.style.setProperty('--rot', ((Math.random() * 720 - 360)) + 'deg');
+                p.style.background = colors[i % colors.length];
+                p.style.animationDuration = (0.9 + Math.random() * 0.8) + 's';
+                p.style.animationDelay = (Math.random() * 0.15) + 's';
+                host.appendChild(p); setTimeout(() => p.remove(), 1900);
+            }
+        }
+
+        // ───────── controls ─────────
+        function nextStep() { if (stepIdx < steps.length - 1) renderStep(stepIdx + 1); else pause(); }
+        function prevStep() { if (stepIdx > 0) renderStep(stepIdx - 1); }
+        function resetSim() { pause(); renderStep(0); }
+        function togglePlay() {
+            const btn = document.getElementById('play-btn');
+            if (timer) { pause(); return; }
+            btn.textContent = 'Pause';
+            if (stepIdx >= steps.length - 1) renderStep(0);
+            timer = setInterval(() => { if (stepIdx < steps.length - 1) nextStep(); else pause(); }, delays[document.getElementById('speed').value]);
+        }
+        function pause() { clearInterval(timer); timer = null; document.getElementById('play-btn').textContent = 'Play'; }
+
+        function clearDom() {
+            Object.keys(wordEls).forEach(k => { wordEls[k].remove(); delete wordEls[k]; });
+            Object.keys(bucketEls).forEach(k => { bucketEls[k].remove(); delete bucketEls[k]; });
+            confettiArmed = true;
+        }
+        function loadStrs(arr) {
+            arr = arr.map(s => s.trim()).filter(s => s.length > 0).slice(0, 12);
+            if (!arr.length) return;
+            pause(); currentStrs = arr; clearDom(); generateSteps(); renderStep(0);
+        }
+        function loadCustom() {
+            const v = (document.getElementById('strs-input').value || '').slice(0, 48);
+            const arr = v.split(',');
+            if (arr.length) loadStrs(arr);
+        }
+        function loadExample(n) {
+            const ex = [
+                ['eat', 'tea', 'tan', 'ate', 'nat', 'bat'],
+                ['a'],
+                ['listen', 'silent', 'enlist', 'google'],
+            ][n];
+            document.getElementById('strs-input').value = ex.join(',');
+            loadStrs(ex);
+        }
+
+        document.addEventListener('keydown', (e) => {
+            const tag = (e.target.tagName || '').toLowerCase(); if (tag === 'input' || tag === 'textarea') return;
+            if (e.key === 'ArrowRight') { e.preventDefault(); pause(); nextStep(); }
+            else if (e.key === 'ArrowLeft') { e.preventDefault(); pause(); prevStep(); }
+            else if (e.key === ' ') { e.preventDefault(); togglePlay(); }
+        });
+        document.getElementById('strs-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') loadCustom(); });
+        window.addEventListener('resize', () => renderStep(stepIdx));
+
+        buildCodePanel();
+        window.onload = () => loadExample(0);
+    </script>
+</body>
+</html>

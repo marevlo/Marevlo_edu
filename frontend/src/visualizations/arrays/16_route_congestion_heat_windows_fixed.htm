@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Route Congestion Heat Windows - Visualization</title>
+    <style>
+        :root {
+            --bg-page: #000000;
+            --bg-surface: #161b22;
+            --bg-input: #000000;
+            --border-main: #30363d;
+            --btn-bg: #21262d;
+            --btn-hover: #2d333b;
+            --text-main: #c9d1d9;
+            --text-dim: #8b949e;
+            --text-log: #58a6ff;
+            --accent-orange: #e3b341;
+            --accent-blue: #388bfd;
+            --accent-green: #3fb950;
+            --accent-red: #f85149;
+        }
+
+        * { box-sizing: border-box; }
+        body {
+            background-color: var(--bg-page);
+            color: var(--text-main);
+            font-family: system-ui, -apple-system, sans-serif;
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            padding-bottom: 40px;
+        }
+
+        /* ROW 1: INPUT BAR */
+        .input-bar {
+            width: 100%;
+            background-color: var(--bg-surface);
+            padding: 12px 16px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 8px;
+            border-bottom: 1px solid var(--border-main);
+        }
+        label.ui-label { font-family: 'Courier New', monospace; font-size: 13px; color: var(--text-dim); }
+        input[type="text"], input[type="number"] {
+            background: var(--bg-input);
+            border: 1px solid var(--border-main);
+            color: var(--text-main);
+            height: 32px;
+            border-radius: 6px;
+            padding: 0 10px;
+            font-size: 13px;
+        }
+        .num-input { width: 50px; }
+
+        button {
+            height: 32px; border-radius: 6px; padding: 0 14px; background: var(--btn-bg);
+            border: 1px solid var(--border-main); color: var(--text-main); font-size: 13px; cursor: pointer;
+            transition: background 0.2s ease;
+        }
+        button:hover { background: var(--btn-hover); }
+
+        /* ROW 2: ARRAY TILES */
+        .array-container { margin-top: 20px; display: flex; align-items: center; gap: 12px; }
+        .tiles-wrapper { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; max-width: 800px; }
+        .tile-unit { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+        .tile {
+            min-width: 44px; height: 44px; display: flex; align-items: center; justify-content: center;
+            border-radius: 6px; font-size: 15px; font-weight: 600; font-family: 'Courier New', monospace;
+            transition: all 0.25s ease; background: #21262d; border: 1px solid var(--border-main);
+            color: var(--text-main);
+        }
+        .tile-index { font-size: 9px; color: var(--text-dim); font-family: monospace; }
+        
+        .tile.candidate { background: #2a1600; border: 2px solid var(--accent-orange); color: var(--accent-orange); transform: scale(1.12); z-index: 2; }
+        .tile.comparing { background: #0d2244; border: 2px solid var(--accent-blue); color: var(--accent-blue); transform: scale(1.08); z-index: 2; }
+        .tile.winning { background: #0f2a1a; border: 2px solid var(--accent-green); color: var(--accent-green); transform: scale(1.06); box-shadow: 0 0 8px var(--accent-green); }
+        .tile.defeated { background: #2a0d0d; border: 2px solid var(--accent-red); color: var(--accent-red); transform: scale(1.05); }
+        .tile.past { opacity: 0.3; background: #161b22; color: var(--text-dim); }
+
+        /* ROW 3: PANEL */
+        .comparison-panel {
+            margin-top: 14px; background: var(--bg-surface); border: 1px solid var(--border-main);
+            border-radius: 6px; padding: 10px 18px; width: 550px; text-align: center; font-family: monospace; min-height: 60px;
+            display: flex; flex-direction: column; justify-content: center; font-size: 14px;
+        }
+
+        /* ROW 4: INFO PANEL */
+        .info-panel { margin-top: 10px; display: flex; gap: 10px; }
+        .info-cell {
+            background: var(--bg-surface); border: 1px solid var(--border-main); border-radius: 6px;
+            padding: 8px 14px; display: flex; flex-direction: column; align-items: center; min-width: 110px; gap: 4px;
+        }
+        .info-label { font-size: 11px; color: var(--text-dim); }
+        .info-value { font-family: monospace; font-size: 16px; font-weight: 700; }
+
+        /* ROW 5: RESULT DISPLAY */
+        .result-display { margin-top: 10px; display: flex; flex-direction: column; align-items: center; }
+        #res-val { font-size: 16px; color: var(--text-dim); font-family: monospace; transition: all 0.3s; }
+        #res-val.pop { animation: popAnim 400ms ease; color: var(--accent-green); font-size: 26px; font-weight: 700; text-shadow: 0 0 16px var(--accent-green); }
+
+        @keyframes popAnim { 0%{transform:scale(1)} 50%{transform:scale(1.28)} 100%{transform:scale(1)} }
+
+        /* ROW 6: STATUS BAR */
+        .status-bar { margin-top: 8px; font-size: 13px; color: var(--text-dim); height: 1.2em; text-align: center; width: 600px;}
+
+        /* ROW 7: CONTROLS */
+        .controls { margin-top: 24px; display: flex; align-items: center; gap: 8px; }
+        input[type="range"] { accent-color: var(--accent-blue); width: 100px; cursor: pointer; }
+
+        /* ROW 8: LEGEND */
+        .legend { margin-top: 12px; display: flex; gap: 16px; flex-wrap: wrap; justify-content: center; max-width: 600px; }
+        .legend-item { display: flex; align-items: center; font-size: 12px; color: var(--text-dim); }
+        .dot { width: 8px; height: 8px; border-radius: 50%; margin-right: 4px; display: inline-block; }
+
+        /* ROW 9: LOG PANEL */
+        .log-panel {
+            margin-top: 12px; background: var(--bg-page); border: 1px solid var(--border-main);
+            border-radius: 6px; padding: 12px 16px; width: 650px; max-width: 90%; height: 120px;
+            overflow-y: auto; font-family: 'Courier New', monospace; font-size: 13px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="input-bar">
+        <label class="ui-label">arr =</label>
+        <input type="text" id="arr-input" placeholder="1, 2, 3, 4, 5, 6, 7, 8, 9" style="width: 200px;">
+        <label class="ui-label">k =</label>
+        <input type="number" id="k-input" class="num-input" value="2">
+        <button onclick="loadCustom()">Load</button>
+        <button onclick="loadExample([1,2,3,4,5,6,7,8,9], 2)">Ex 1</button>
+        <button onclick="loadExample([10,20,30,40,50], 1)">Ex 2</button>
+    </div>
+
+    <div class="array-container">
+        <div class="ui-label" style="font-size: 12px; white-space: nowrap;">congestion =</div>
+        <div class="tiles-wrapper" id="tiles-container"></div>
+    </div>
+
+    <div class="comparison-panel" id="main-panel">—</div>
+
+    <div class="info-panel">
+        <div class="info-cell">
+            <span class="info-label">Active Window</span>
+            <span class="info-value" id="val-win" style="color: var(--accent-orange);">—</span>
+        </div>
+        <div class="info-cell">
+            <span class="info-label">Window Score</span>
+            <span class="info-value" id="val-score" style="color: var(--accent-blue);">—</span>
+        </div>
+        <div class="info-cell">
+            <span class="info-label">Selected Count</span>
+            <span class="info-value" id="val-count" style="color: var(--text-main);">0 / 3</span>
+        </div>
+        <div class="info-cell">
+            <span class="info-label">Total Score</span>
+            <span class="info-value" id="val-total" style="color: var(--accent-green);">0</span>
+        </div>
+    </div>
+
+    <div class="result-display">
+        <span class="ui-label" style="margin-bottom: 4px;">max total score =</span>
+        <span id="res-val">—</span>
+    </div>
+
+    <div class="status-bar" id="status-text"></div>
+
+    <div class="controls">
+        <button onclick="reset()">↺ Reset</button>
+        <button onclick="back()">← Back</button>
+        <button onclick="togglePlay()" id="play-btn">Play</button>
+        <button onclick="next()">Next →</button>
+        <div class="controls" style="margin-top:0">
+            <span class="ui-label" style="margin-right:4px; font-size:11px">Speed</span>
+            <input type="range" id="speed-slider" min="0" max="2" value="1">
+        </div>
+    </div>
+
+    <div class="legend">
+        <div class="legend-item"><span class="dot" style="background:var(--accent-blue)"></span> Calculating Score</div>
+        <div class="legend-item"><span class="dot" style="background:var(--accent-orange)"></span> Evaluating Window</div>
+        <div class="legend-item"><span class="dot" style="background:var(--accent-green)"></span> Selected (Non-Overlapping)</div>
+        <div class="legend-item"><span class="dot" style="background:var(--accent-red)"></span> Rejected (Overlap)</div>
+        <div class="legend-item"><span class="dot" style="background:var(--text-dim); opacity:0.3"></span> Ignored / Past</div>
+    </div>
+
+    <div class="log-panel" id="log"></div>
+
+    <script>
+        let arr = [1, 2, 3, 4, 5, 6, 7, 8, 9];
+        let kFactor = 2;
+        let steps = [];
+        let stepIndex = 0;
+        let timer = null;
+        const delays = [1800, 900, 450];
+
+        function init() { loadExample([1, 2, 3, 4, 5, 6, 7, 8, 9], 2); }
+
+        function loadExample(newArr, newK) {
+            arr = [...newArr];
+            kFactor = parseInt(newK);
+            document.getElementById('arr-input').value = arr.join(',');
+            document.getElementById('k-input').value = kFactor;
+            generateSteps();
+            reset();
+        }
+
+        function loadCustom() {
+            const valArr = document.getElementById('arr-input').value;
+            const parsedArr = valArr.split(',').map(x => parseInt(x.trim())).filter(x => !isNaN(x));
+            const parsedK = parseInt(document.getElementById('k-input').value);
+            if (parsedArr.length > 0 && !isNaN(parsedK) && parsedK > 0) {
+                loadExample(parsedArr, parsedK);
+            }
+        }
+
+        function generateSteps() {
+            steps = [];
+            const n = arr.length;
+            const k = kFactor;
+
+            steps.push({
+                type: 'init', win: '—', score: '—', count: 0, total: 0,
+                tiles: arr.map(v => ({val: v, state: ''})),
+                panel: '—',
+                statusText: `arr=[${arr.join(',')}] k=${k}. Click Play to begin.`,
+                log: `n=${n}, k=${k}. Starting heap-based three pass selection algorithm.`,
+                logColor: 'var(--text-dim)'
+            });
+
+            // PHASE 1: Precompute Window Scores
+            let windows = [];
+            for (let i = 0; i <= n - k; i++) {
+                let end = i + k - 1;
+                let score = 0;
+                for (let j = i; j <= end; j++) {
+                    score += arr[j];
+                }
+                windows.push({ score, start: i, end });
+
+                steps.push({
+                    type: 'calc', win: `[${i}, ${end}]`, score: score, count: 0, total: 0,
+                    tiles: arr.map((v, idx) => ({
+                        val: v,
+                        state: (idx >= i && idx <= end) ? 'comparing' : 'past'
+                    })),
+                    panel: `Phase 1: Calculating window [${i}, ${end}] score`,
+                    statusText: `Summing elements from index ${i} to ${end}`,
+                    log: `Window (${i}, ${end}): score = ${score}`,
+                    logColor: 'var(--accent-blue)'
+                });
+            }
+
+            // PHASE 2: Sort Windows
+            windows.sort((a, b) => b.score - a.score);
+            let sortedStr = windows.map(w => `${w.score}`).join(', ');
+            
+            steps.push({
+                type: 'sort', win: '—', score: '—', count: 0, total: 0,
+                tiles: arr.map(v => ({val: v, state: 'past'})),
+                panel: `Phase 2: Sorted windows by score descending`,
+                statusText: `Scores: ${sortedStr}`,
+                log: `Generated ${windows.length} windows. Sorted scores: ${sortedStr}`,
+                logColor: 'var(--accent-orange)'
+            });
+
+            // PHASE 3: Greedy Selection
+            let selectedWindows = [];
+            let unavailable = new Set();
+            let totalScore = 0;
+
+            for (let w of windows) {
+                if (selectedWindows.length === 3) break;
+
+                // Mark current selected ones to preserve them in visualization
+                let getBaseTileStates = () => {
+                    return arr.map((v, idx) => {
+                        if (unavailable.has(idx)) return 'winning'; // Previously selected
+                        return 'past';
+                    });
+                };
+
+                // Step A: Evaluate Candidate
+                let tempTiles = getBaseTileStates();
+                for (let j = w.start; j <= w.end; j++) {
+                    if (tempTiles[j] !== 'winning') tempTiles[j] = 'candidate';
+                    else tempTiles[j] = 'defeated'; // Highlighting potential overlap spot
+                }
+
+                steps.push({
+                    type: 'eval', win: `[${w.start}, ${w.end}]`, score: w.score, count: selectedWindows.length, total: totalScore,
+                    tiles: tempTiles.map(state => ({val: 0, state})), // Values mapped later
+                    panel: `Phase 3: Evaluating window [${w.start}, ${w.end}] with score ${w.score}`,
+                    statusText: `Checking overlap for window [${w.start}, ${w.end}]`,
+                    log: `Evaluating window (${w.start}, ${w.end}), score=${w.score}`,
+                    logColor: 'var(--text-main)'
+                });
+
+                // Step B: Check Overlap
+                let overlap = false;
+                let overlapIdx = -1;
+                for (let j = w.start; j <= w.end; j++) {
+                    if (unavailable.has(j)) {
+                        overlap = true;
+                        overlapIdx = j;
+                        break;
+                    }
+                }
+
+                if (overlap) {
+                    // Rejected
+                    let rejTiles = getBaseTileStates();
+                    for (let j = w.start; j <= w.end; j++) {
+                        if (rejTiles[j] !== 'winning') rejTiles[j] = 'defeated';
+                        else rejTiles[j] = 'defeated';
+                    }
+                    
+                    steps.push({
+                        type: 'reject', win: `[${w.start}, ${w.end}]`, score: w.score, count: selectedWindows.length, total: totalScore,
+                        tiles: rejTiles.map(state => ({val: 0, state})),
+                        panel: `<span style="color:var(--accent-red)">✗ Overlap detected at index ${overlapIdx}, invalid</span>`,
+                        statusText: `Window [${w.start}, ${w.end}] overlaps with existing selection.`,
+                        log: `Rejected (${w.start}, ${w.end}): Overlaps at index ${overlapIdx} ✗`,
+                        logColor: 'var(--accent-red)'
+                    });
+                } else {
+                    // Accepted
+                    for (let j = w.start; j <= w.end; j++) unavailable.add(j);
+                    selectedWindows.push(w);
+                    totalScore += w.score;
+
+                    let accTiles = getBaseTileStates(); // Now includes the newly added ones as winning
+
+                    steps.push({
+                        type: 'accept', win: `[${w.start}, ${w.end}]`, score: w.score, count: selectedWindows.length, total: totalScore,
+                        tiles: accTiles.map(state => ({val: 0, state})),
+                        panel: `<span style="color:var(--accent-green)">✓ No overlap. Added ${w.score} to total.</span>`,
+                        statusText: `Selected window [${w.start}, ${w.end}]`,
+                        log: `Selected (${w.start}, ${w.end}): No overlap, total = ${totalScore} ✓`,
+                        logColor: 'var(--accent-green)'
+                    });
+                }
+            }
+
+            // Map actual array values back into tile state objects
+            steps.forEach(step => {
+                if (step.tiles.length > 0 && typeof step.tiles[0].val === 'number' && step.tiles[0].val === 0 && arr[0] !== 0) {
+                    step.tiles = step.tiles.map((t, idx) => ({ val: arr[idx], state: t.state }));
+                }
+            });
+
+            // FINAL STEP
+            let finalTiles = arr.map((v, idx) => ({
+                val: v,
+                state: unavailable.has(idx) ? 'winning' : 'past'
+            }));
+
+            steps.push({
+                type: 'final', win: '—', score: '—', count: selectedWindows.length, total: totalScore,
+                tiles: finalTiles,
+                panel: 'Top 3 Non-Overlapping Windows Found',
+                complete: true,
+                statusText: `Done. Maximum score found: ${totalScore}`,
+                log: `Final result: Maximum total score = ${totalScore}`,
+                logColor: 'var(--accent-blue)', bold: true
+            });
+        }
+
+        function renderStep(idx) {
+            const step = steps[idx];
+            if (!step) return;
+
+            const container = document.getElementById('tiles-container');
+            container.innerHTML = '';
+            step.tiles.forEach((t, i) => {
+                const wrapper = document.createElement('div');
+                wrapper.className = 'tile-unit';
+                const tile = document.createElement('div');
+                tile.className = `tile ${t.state}`;
+                tile.innerText = t.val;
+                const idxLabel = document.createElement('div');
+                idxLabel.className = 'tile-index';
+                idxLabel.innerText = `[${i}]`;
+                wrapper.append(tile, idxLabel);
+                container.appendChild(wrapper);
+            });
+
+            document.getElementById('main-panel').innerHTML = step.panel;
+            document.getElementById('val-win').innerText = step.win;
+            document.getElementById('val-score').innerText = step.score;
+            document.getElementById('val-count').innerText = `${step.count} / 3`;
+            document.getElementById('val-total').innerText = step.total;
+
+            const resVal = document.getElementById('res-val');
+            resVal.innerText = step.total > 0 || step.complete ? step.total : '—';
+            resVal.className = step.complete ? 'pop' : '';
+
+            document.getElementById('status-text').innerText = step.statusText;
+
+            const logPanel = document.getElementById('log');
+            logPanel.innerHTML = '';
+            for (let k = 0; k <= idx; k++) {
+                if (steps[k].log) {
+                    const line = document.createElement('div');
+                    line.style.marginBottom = '2px';
+                    if (steps[k].logColor) line.style.color = `var(${steps[k].logColor}, ${steps[k].logColor})`;
+                    if (steps[k].bold) line.style.fontWeight = 'bold';
+                    line.innerText = steps[k].log;
+                    logPanel.appendChild(line);
+                }
+            }
+            logPanel.scrollTop = logPanel.scrollHeight;
+        }
+
+        function next() {
+            if (stepIndex < steps.length - 1) {
+                stepIndex++;
+                renderStep(stepIndex);
+            } else pause();
+        }
+
+        function back() {
+            if (stepIndex > 0) {
+                stepIndex--;
+                renderStep(stepIndex);
+            }
+        }
+
+        function reset() {
+            pause();
+            stepIndex = 0;
+            renderStep(0);
+        }
+
+        function togglePlay() {
+            const btn = document.getElementById('play-btn');
+            if (timer) pause();
+            else {
+                btn.innerText = 'Pause';
+                if (stepIndex >= steps.length - 1) stepIndex = 0;
+                timer = setInterval(next, delays[document.getElementById('speed-slider').value]);
+            }
+        }
+
+        function pause() {
+            clearInterval(timer);
+            timer = null;
+            document.getElementById('play-btn').innerText = 'Play';
+        }
+
+        window.onload = init;
+    </script>
+</body>
+</html>

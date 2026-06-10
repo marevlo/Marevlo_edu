@@ -1,0 +1,600 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wildcard Pattern Matching - Visualization</title>
+    <style>
+        :root {
+            --bg-page: #070b14;
+            --bg-surface: rgba(255, 255, 255, 0.045);
+            --bg-input: rgba(255, 255, 255, 0.04);
+            --border-main: rgba(255, 255, 255, 0.10);
+            --btn-bg: rgba(255, 255, 255, 0.05);
+            --btn-hover: rgba(255, 255, 255, 0.10);
+            --text-main: #e8eefb;
+            --text-dim: #8b98b3;
+            --accent-orange: #f5a524;   /* answer / final true            */
+            --accent-blue:   #06b6d4;    /* dependency cells / chrome      */
+            --accent-green:  #22c55e;    /* true (match)                   */
+            --accent-red:    #f43f5e;    /* false (no match)               */
+            --accent-purple: #a855f7;    /* current cell being filled      */
+            --mono: ui-monospace, 'SF Mono', 'Cascadia Code', 'Courier New', monospace;
+            --sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+            --shell: 900px;
+        }
+
+        * { box-sizing: border-box; }
+        html, body { overflow-x: hidden; }
+        body {
+            background:
+                radial-gradient(1100px 600px at 15% -10%, rgba(168, 85, 247, 0.10), transparent 60%),
+                radial-gradient(900px 600px at 100% 10%, rgba(6, 182, 212, 0.10), transparent 55%),
+                linear-gradient(160deg, #070b14 0%, #0b1120 55%, #0a0f1c 100%);
+            background-attachment: fixed;
+            color: var(--text-main); font-family: var(--sans); margin: 0;
+            display: flex; flex-direction: column; align-items: center; min-height: 100vh;
+            padding-bottom: 48px; -webkit-font-smoothing: antialiased;
+        }
+        body::before, body::after { content: ''; position: fixed; border-radius: 50%; filter: blur(70px); pointer-events: none; z-index: 0; opacity: 0.45; }
+        body::before { width: 380px; height: 380px; top: 8%; left: -120px; background: radial-gradient(circle, rgba(168,85,247,0.30), transparent 70%); }
+        body::after  { width: 420px; height: 420px; bottom: 4%; right: -140px; background: radial-gradient(circle, rgba(6,182,212,0.22), transparent 70%); }
+        body > * { position: relative; z-index: 1; }
+
+        .input-bar {
+            width: 100%; background: rgba(10, 15, 28, 0.55);
+            backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+            padding: 14px 16px; display: flex; justify-content: center; align-items: center; gap: 10px;
+            border-bottom: 1px solid var(--border-main); flex-wrap: wrap; position: sticky; top: 0; z-index: 50;
+        }
+        label.ui-label, .ui-label { font-family: var(--mono); font-size: 13px; color: var(--text-dim); letter-spacing: 0.2px; }
+        input[type="text"] {
+            background: var(--bg-input); border: 1px solid var(--border-main); color: var(--text-main);
+            height: 34px; border-radius: 9px; padding: 0 12px; font-size: 13px; font-family: var(--mono); width: 150px;
+            transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+        }
+        input[type="text"]:focus { outline: none; border-color: var(--accent-purple); box-shadow: 0 0 0 3px rgba(168, 85, 247, 0.18); background: rgba(168, 85, 247, 0.06); }
+
+        button {
+            height: 34px; border-radius: 9px; padding: 0 14px; background: var(--btn-bg);
+            border: 1px solid var(--border-main); color: var(--text-main); font-size: 13px; font-weight: 600; cursor: pointer;
+            transition: transform 0.15s ease, background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+        }
+        button:hover { background: var(--btn-hover); border-color: rgba(6, 182, 212, 0.5); box-shadow: 0 0 18px rgba(6, 182, 212, 0.18); transform: translateY(-1px); }
+        button:active { transform: translateY(0); }
+        #play-btn { background: linear-gradient(135deg, rgba(6,182,212,0.22), rgba(6,182,212,0.10)); border-color: rgba(6, 182, 212, 0.45); color: #a5f3fc; min-width: 80px; }
+
+        .shell { width: var(--shell); max-width: 95%; margin: 24px auto 0; display: flex; flex-direction: column; gap: 16px; }
+
+        .title-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+        .title-row h1 { font-size: 18px; font-weight: 800; margin: 0; letter-spacing: 0.2px; }
+        .title-row .sub { color: var(--text-dim); font-weight: 500; font-size: 13px; }
+        .step-badge { font-family: var(--mono); font-size: 12px; font-weight: 700; color: #a5f3fc; background: rgba(6,182,212,0.12); border: 1px solid rgba(6,182,212,0.3); padding: 4px 10px; border-radius: 999px; white-space: nowrap; }
+        .progress-track { height: 4px; width: 100%; background: rgba(255,255,255,0.07); border-radius: 999px; overflow: hidden; margin-top: -6px; }
+        .progress-fill { height: 100%; width: 0%; border-radius: 999px; background: linear-gradient(90deg, var(--accent-blue), var(--accent-purple)); box-shadow: 0 0 12px rgba(6,182,212,0.5); transition: width 0.45s cubic-bezier(0.34,1.1,0.64,1); }
+
+        .narration { background: var(--bg-surface); border: 1px solid rgba(6,182,212,0.22); border-radius: 12px; padding: 12px 18px; font-family: var(--mono); font-size: 14px; line-height: 1.5; color: #cfe9f5; min-height: 48px; display: flex; align-items: center; gap: 10px; transition: border-color 0.3s, background 0.3s; }
+        .narration::before { content: '\25B8'; color: var(--accent-blue); font-size: 13px; }
+        .narration.done { border-color: rgba(34,197,94,0.4); background: rgba(34,197,94,0.06); }
+        .narration.done::before { content: '\2713'; color: var(--accent-green); }
+        .narration.fail { border-color: rgba(244,63,94,0.4); background: rgba(244,63,94,0.06); }
+        .narration.fail::before { content: '\2717'; color: var(--accent-red); }
+        .narration code { background: rgba(6,182,212,0.14); color: #7dd3fc; padding: 1px 6px; border-radius: 5px; font-size: 12.5px; }
+        .narration b { color: #fff; }
+
+        .stage-card { background: var(--bg-surface); border: 1px solid var(--border-main); border-radius: 18px; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); box-shadow: 0 12px 38px rgba(0,0,0,0.4); overflow: hidden; }
+        .stage-screen { position: relative; margin: 14px; border-radius: 14px; background: radial-gradient(700px 300px at 50% -10%, rgba(6,182,212,0.08), transparent 70%), #090d18; border: 1px solid rgba(255,255,255,0.06); }
+        .grid-stage { position: relative; width: 100%; overflow: auto; scrollbar-width: thin; padding: 22px; display: flex; justify-content: center; }
+        .grid-stage::-webkit-scrollbar { height: 8px; width: 8px; }
+        .grid-stage::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 8px; }
+
+        .dp-grid { display: grid; gap: 5px; }
+        .cell {
+            display: flex; align-items: center; justify-content: center;
+            border-radius: 9px; font-family: var(--mono); font-weight: 800; font-size: 16px;
+            border: 2px solid var(--border-main); background: rgba(255,255,255,0.04); color: var(--text-main);
+            width: 44px; height: 44px; will-change: transform;
+            transition: background 0.35s, border-color 0.35s, color 0.35s, box-shadow 0.35s, transform 0.3s;
+        }
+        .cell.head { border: none; background: transparent; color: var(--text-dim); font-size: 17px; font-weight: 800; box-shadow: none; }
+        .cell.head.ch { color: #cbd5e8; }
+        .cell.head.tok { flex-direction: column; gap: 1px; }
+        .cell.head.tok .tk { font-size: 17px; }
+        .cell.head.tok .sub { font-size: 9px; color: var(--text-dim); font-weight: 700; letter-spacing: .3px; }
+        .cell.head.tok.star .tk { color: var(--accent-blue); }
+        .cell.head.tok.qmark .tk { color: var(--accent-purple); }
+        .cell.head.tok.esc .tk { color: var(--accent-orange); }
+        .cell.corner { background: transparent; border: none; box-shadow: none; }
+        .cell.true  { color: #06251a; border-color: var(--accent-green); background: linear-gradient(180deg, rgba(47,224,143,0.85), rgba(33,194,117,0.85)); box-shadow: 0 0 12px rgba(34,197,94,0.30); }
+        .cell.false { color: #ffb3bd; border-color: rgba(244,63,94,0.35); background: rgba(244,63,94,0.10); }
+        .cell.empty { color: var(--text-dim); background: rgba(255,255,255,0.02); }
+        .cell.dep { border-color: var(--accent-blue); background: rgba(6,182,212,0.16); color: #a5f3fc; box-shadow: 0 0 12px rgba(6,182,212,0.35); }
+        .cell.current { border-color: var(--accent-purple); background: rgba(168,85,247,0.18); color: #e9d5ff; box-shadow: 0 0 20px rgba(168,85,247,0.55), inset 0 0 12px rgba(168,85,247,0.12); transform: scale(1.06); z-index: 2; }
+        .cell.answer { border-color: var(--accent-orange); background: rgba(245,165,36,0.22); color: #ffd591; box-shadow: 0 0 22px rgba(245,165,36,0.6); transform: scale(1.04); }
+        .cell.head.lit { color: var(--accent-purple); }
+        .cell.head.lit2 { color: var(--accent-blue); }
+
+        .action-stage { position: relative; min-height: 92px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; }
+        .answer-track { display: flex; gap: 8px; align-items: center; min-height: 44px; }
+        .verdict { font-family: var(--mono); font-size: 24px; font-weight: 800; letter-spacing: 1px; padding: 6px 20px; border-radius: 12px; border: 2px solid; }
+        .verdict.yes { color: #062512; border-color: var(--accent-green); background: rgba(34,197,94,0.85); box-shadow: 0 0 22px rgba(34,197,94,0.5); }
+        .verdict.no  { color: #ffb3bd; border-color: var(--accent-red); background: rgba(244,63,94,0.18); box-shadow: 0 0 22px rgba(244,63,94,0.35); }
+        .action-word { font-family: var(--mono); font-weight: 800; font-size: 18px; letter-spacing: 0.4px; min-height: 22px; text-align: center; transition: color 0.3s; }
+        #confetti { position: absolute; inset: 0; overflow: visible; pointer-events: none; }
+        .confetti-piece { position: absolute; top: 0; left: 50%; width: 8px; height: 13px; border-radius: 2px; opacity: 0; animation: confettiFall ease-out forwards; }
+
+        .controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: center; }
+        .controls .kbd-hint { font-size: 11px; color: var(--text-dim); font-family: var(--mono); margin-left: 4px; }
+        .kbd { background: rgba(255,255,255,0.07); border: 1px solid var(--border-main); border-radius: 5px; padding: 1px 6px; font-size: 10px; }
+        input[type="range"] { accent-color: var(--accent-blue); width: 110px; cursor: pointer; }
+
+        .details-toggle { align-self: center; height: 32px; padding: 0 16px; border-radius: 999px; cursor: pointer; background: rgba(255,255,255,0.04); border: 1px solid var(--border-main); color: var(--text-dim); font-family: var(--mono); font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; gap: 8px; transition: color 0.2s, border-color 0.2s, background 0.2s; }
+        .details-toggle:hover { color: var(--text-main); border-color: rgba(6,182,212,0.4); background: rgba(6,182,212,0.06); }
+        .details-toggle .chev { transition: transform 0.3s ease; }
+        .details-wrap.open .details-toggle .chev { transform: rotate(180deg); }
+        .details-body { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.4s ease; }
+        .details-wrap.open .details-body { grid-template-rows: 1fr; }
+        .details-inner { overflow: hidden; min-height: 0; }
+        .details-grid { display: flex; flex-direction: column; gap: 14px; padding-top: 14px; }
+
+        .panel-card { background: var(--bg-surface); border: 1px solid var(--border-main); border-radius: 16px; backdrop-filter: blur(10px); box-shadow: 0 8px 30px rgba(0,0,0,0.35); }
+        .panel-head { display: flex; align-items: center; gap: 8px; padding: 11px 16px; border-bottom: 1px solid var(--border-main); font-size: 11px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; color: var(--text-dim); }
+        .panel-head .pip { width: 7px; height: 7px; border-radius: 50%; background: var(--accent-blue); box-shadow: 0 0 8px var(--accent-blue); }
+        .code-body { padding: 12px 6px 14px; font-family: var(--mono); font-size: 12.5px; line-height: 1.7; }
+        .code-line { display: flex; gap: 12px; padding: 1px 16px; border-left: 2px solid transparent; transition: background 0.3s, border-color 0.3s; white-space: pre; }
+        .code-line .lno { color: #4b5772; width: 16px; text-align: right; user-select: none; }
+        .code-line .src { color: #c4cee0; }
+        .code-line .kw { color: #c792ea; }
+        .code-line .fn { color: #82aaff; }
+        .code-line.active { background: rgba(6,182,212,0.12); border-left-color: var(--accent-blue); }
+        .code-line.active .src, .code-line.active .lno { color: #e8eefb; }
+
+        .state-strip { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 0 2px; }
+        .pill { display: inline-flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 12px; color: var(--text-dim); background: rgba(255,255,255,0.04); border: 1px solid var(--border-main); border-radius: 999px; padding: 4px 11px; }
+        .pill b { color: var(--text-main); font-weight: 800; }
+        .pill.c b { color: var(--accent-purple); } .pill.b b { color: var(--accent-blue); } .pill.g b { color: var(--accent-green); }
+
+        .log-panel { border-radius: 14px; padding: 12px 16px; height: 110px; overflow-y: auto; font-family: var(--mono); font-size: 12.5px; line-height: 1.5; background: var(--bg-surface); border: 1px solid var(--border-main); }
+        .log-panel::-webkit-scrollbar { width: 8px; }
+        .log-panel::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 8px; }
+
+        @keyframes confettiFall { 0%{ opacity:1; transform: translate(-50%, 0) rotate(0deg); } 100%{ opacity:0; transform: translate(calc(-50% + var(--x)), 220px) rotate(var(--rot)); } }
+        @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; } }
+    </style>
+</head>
+<body>
+
+    <div class="input-bar">
+        <label class="ui-label">Pattern =</label>
+        <input type="text" id="pattern-input" value="a*b" maxlength="14">
+        <label class="ui-label">String =</label>
+        <input type="text" id="string-input" value="acb" maxlength="12">
+        <button onclick="loadCustom()">Load</button>
+        <span class="ui-label" style="opacity:.5">|</span>
+        <button onclick="loadExample(0)">a*b vs acb</button>
+        <button onclick="loadExample(1)">a\*b vs a*b</button>
+        <button onclick="loadExample(2)">a?c* vs axcyz</button>
+    </div>
+
+    <div class="shell">
+        <div class="title-row">
+            <h1>Wildcard Pattern Matching <span class="sub">&middot; 2-D DP &middot; <code style="background:none;color:inherit">*</code>=any run &middot; <code style="background:none;color:inherit">?</code>=any one &middot; <code style="background:none;color:inherit">\</code> escapes next char</span></h1>
+            <span class="step-badge" id="step-badge">Step 1 / 1</span>
+        </div>
+        <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+
+        <div class="narration" id="main-panel">&mdash;</div>
+
+        <div class="stage-card">
+            <div class="stage-screen">
+                <div class="grid-stage" id="grid-stage">
+                    <div class="dp-grid" id="dp-grid"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="action-stage">
+            <div id="confetti"></div>
+            <div class="answer-track" id="answer-track"></div>
+            <div class="action-word" id="action-word"></div>
+        </div>
+
+        <div class="controls">
+            <button onclick="resetSim()">&#8634; Reset</button>
+            <button onclick="prevStep()">&#8592; Back</button>
+            <button onclick="togglePlay()" id="play-btn">Play</button>
+            <button onclick="nextStep()">Next &#8594;</button>
+            <span class="ui-label" style="margin-left:6px; font-size:11px">Speed</span>
+            <input type="range" id="speed" min="0" max="2" value="1">
+            <span class="kbd-hint"><span class="kbd">&#8592;</span> <span class="kbd">&#8594;</span> step &middot; <span class="kbd">space</span> play</span>
+        </div>
+
+        <div class="details-wrap" id="details-wrap">
+            <button class="details-toggle" onclick="toggleDetails()" aria-expanded="false">
+                <span id="details-label">Show code, state &amp; log</span> <span class="chev">&#9662;</span>
+            </button>
+            <div class="details-body">
+                <div class="details-inner">
+                    <div class="details-grid">
+                        <div class="state-strip">
+                            <span class="pill c">cell (i,j) <b id="st-cell">&mdash;</b></span>
+                            <span class="pill b">token <b id="st-tok">&mdash;</b></span>
+                            <span class="pill g">dp value <b id="st-val">&mdash;</b></span>
+                            <span class="pill">match <b id="st-ans">?</b></span>
+                        </div>
+                        <div class="panel-card">
+                            <div class="panel-head"><span class="pip"></span> Algorithm</div>
+                            <div class="code-body" id="code-panel"></div>
+                        </div>
+                        <div class="log-panel" id="log"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        'use strict';
+
+        // ───────── Motion engine (spring pop, zero deps) ─────────
+        const REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        const FRAME = 1000 / 60;
+        function sampleSpring(stiffness, damping, mass) {
+            const dt = 1 / 60; let x = 1, v = 0; const out = [];
+            for (let i = 0; i < 240; i++) { const a = (-stiffness * x - damping * v) / mass; v += a * dt; x += v * dt; out.push(1 - x); if (Math.abs(x) < 0.0015 && Math.abs(v) < 0.0015) break; }
+            out.push(1); return out;
+        }
+        const SPRING_POP = sampleSpring(520, 17, 1);
+        const durOf = (a) => a.length * FRAME;
+        const Motion = {
+            pop(el) {
+                if (REDUCED) return;
+                const kf = SPRING_POP.map(p => ({ transform: `scale(${(0.4 + 0.66 * p).toFixed(3)})` }));
+                el.animate(kf, { duration: durOf(SPRING_POP), easing: 'linear' });
+            },
+        };
+
+        // ───────── State ─────────
+        let PATTERN = "a*b", STR = "acb";
+        let TOKENS = [];        // [{kind:'lit'|'star'|'qmark', ch, label, sub}]
+        let steps = [];
+        let stepIdx = 0;
+        let timer = null;
+        let confettiArmed = true;
+        const delays = [1450, 720, 330];
+        const cellEls = {};     // 'gr,gc' -> element
+
+        const CODE = [
+            [['kw','def '],['fn','wildMatch'],['src','(s, toks):']],
+            [['src','  dp = [[False]*(T+1) for _ in range(n+1)]']],
+            [['src','  dp[0][0] = True']],
+            [['kw','  for '],['src','j in 1..T:']],
+            [['kw','    if '],['src','toks[j-1] is "*": dp[0][j] = dp[0][j-1]']],
+            [['kw','  for '],['src','i in 1..n:']],
+            [['kw','    for '],['src','j in 1..T:  t = toks[j-1]']],
+            [['kw','      if '],['src','t is "*": dp[i][j] = dp[i][j-1] or dp[i-1][j]']],
+            [['kw','      elif '],['src','t is "?" or t == s[i-1]: dp[i][j] = dp[i-1][j-1]']],
+            [['kw','      else'],['src',': dp[i][j] = False']],
+            [['kw','  return '],['src','dp[n][T]']],
+        ];
+        function buildCodePanel() {
+            const panel = document.getElementById('code-panel'); panel.innerHTML = '';
+            CODE.forEach((tokens, i) => {
+                const line = document.createElement('div'); line.className = 'code-line'; line.dataset.line = i;
+                const lno = document.createElement('span'); lno.className = 'lno'; lno.textContent = i + 1; line.appendChild(lno);
+                const src = document.createElement('span');
+                tokens.forEach(([cls, txt]) => { const s = document.createElement('span'); s.className = cls; s.textContent = txt; src.appendChild(s); });
+                line.appendChild(src); panel.appendChild(line);
+            });
+        }
+        function highlightCode(arr) { document.querySelectorAll('.code-line').forEach(el => el.classList.toggle('active', arr && arr.includes(+el.dataset.line))); }
+        function toggleDetails() {
+            const wrap = document.getElementById('details-wrap'); const open = wrap.classList.toggle('open');
+            wrap.querySelector('.details-toggle').setAttribute('aria-expanded', open ? 'true' : 'false');
+            document.getElementById('details-label').textContent = open ? 'Hide code, state & log' : 'Show code, state & log';
+        }
+
+        // ───────── tokenizer: backslash escapes the next char into a literal ─────────
+        function tokenize(p) {
+            const out = [];
+            for (let k = 0; k < p.length; k++) {
+                const c = p[k];
+                if (c === '\\' && k + 1 < p.length) {
+                    const lit = p[k + 1];
+                    out.push({ kind: 'lit', ch: lit, escaped: true, label: lit, sub: 'lit' });
+                    k++;
+                } else if (c === '*') {
+                    out.push({ kind: 'star', ch: '*', label: '*', sub: 'any run' });
+                } else if (c === '?') {
+                    out.push({ kind: 'qmark', ch: '?', label: '?', sub: 'any 1' });
+                } else {
+                    out.push({ kind: 'lit', ch: c, escaped: false, label: c, sub: 'lit' });
+                }
+            }
+            return out;
+        }
+        function tokDesc(t) {
+            if (t.kind === 'star') return "<code>*</code> matches any run (including empty)";
+            if (t.kind === 'qmark') return "<code>?</code> matches exactly one character";
+            return (t.escaped ? "escaped literal " : "literal ") + "<code>" + esc(t.ch) + "</code>";
+        }
+        function esc(c){ return c === '<' ? '&lt;' : c === '>' ? '&gt;' : c === '&' ? '&amp;' : c; }
+
+        // ───────── step generation ─────────
+        function deepCopy(g) { return g.map(row => row.slice()); }
+        function generateSteps() {
+            steps = [];
+            TOKENS = tokenize(PATTERN);
+            const n = STR.length, T = TOKENS.length;
+            // dp[i][j] : -1 unknown, 0 false, 1 true
+            const dp = Array.from({ length: n + 1 }, () => Array(T + 1).fill(-1));
+
+            const snap = (extra) => Object.assign({
+                dp: deepCopy(dp), n, T, tokens: TOKENS,
+                current: null, deps: [], answerCell: null, fillUpto: { i: -1, j: -1 }
+            }, extra);
+
+            const tokStr = TOKENS.map(t => t.label).join(' ');
+            steps.push(snap({
+                code: [0, 1, 2], action: 'BUILD TABLE', actionColor: 'var(--accent-blue)',
+                panel: `Does string <code>"${esc(STR)}"</code> match pattern <code>"${escP(PATTERN)}"</code>? Tokens = <b>${tokStr || '(empty)'}</b>. <code>dp[i][j]</code> = does the first <b>i</b> chars of the string match the first <b>j</b> tokens.`,
+                log: `init  s="${STR}" (n=${n})  tokens=[${tokStr}] (T=${T})`
+            }));
+
+            // base case
+            dp[0][0] = 1;
+            steps.push(snap({
+                dp: deepCopy(dp), current: [0, 0], code: [2],
+                action: 'dp[0][0] = true', actionColor: 'var(--accent-green)',
+                panel: `Base case: empty string matches empty pattern &#8594; <code>dp[0][0] = true</code>.`,
+                log: `dp[0][0] = true   (empty vs empty)`,
+                fillUpto: { i: 0, j: 0 }
+            }));
+
+            // first row: only leading '*' tokens can match the empty string
+            for (let j = 1; j <= T; j++) {
+                const t = TOKENS[j - 1];
+                const isStar = t.kind === 'star';
+                const v = isStar ? dp[0][j - 1] : 0;
+                steps.push(snap({
+                    dp: deepCopy(dp), current: [0, j],
+                    deps: isStar ? [[0, j - 1]] : [],
+                    code: [3, 4],
+                    action: isStar ? `* &#8594; dp[0][${j-1}]` : 'no * &#8594; false',
+                    actionColor: isStar ? 'var(--accent-blue)' : 'var(--accent-red)',
+                    panel: isStar
+                        ? `Row 0 (empty string): token <b>${j}</b> is <code>*</code>, which can match an empty run, so it just carries over <code>dp[0][${j-1}] = ${dp[0][j-1] ? 'true' : 'false'}</code>.`
+                        : `Row 0 (empty string): token <b>${j}</b> is ${tokDesc(t)} &#8594; it needs a character to consume, so <code>dp[0][${j}] = false</code>.`,
+                    log: `dp[0][${j}] = ${v ? 'true' : 'false'}   (${isStar ? '* carries left' : 'needs a char'})`,
+                    fillUpto: { i: 0, j }
+                }));
+                dp[0][j] = v;
+            }
+
+            // main fill
+            for (let i = 1; i <= n; i++) {
+                const sc = STR[i - 1];
+                for (let j = 1; j <= T; j++) {
+                    const t = TOKENS[j - 1];
+                    let deps, code, v, panel, actHead, actCol, logTail;
+
+                    if (t.kind === 'star') {
+                        deps = [[i, j - 1], [i - 1, j]];
+                        code = [6, 7];
+                        v = (dp[i][j - 1] === 1 || dp[i - 1][j] === 1) ? 1 : 0;
+                        actHead = '* : left OR up';
+                        actCol = v ? 'var(--accent-green)' : 'var(--accent-red)';
+                        panel = `Cell (${i},${j}) &#8594; token <code>*</code>. A star is true if it matches an <b>empty run</b> (left <code>dp[${i}][${j-1}]=${b(dp[i][j-1])}</code>) <b>or</b> it consumes <code>'${esc(sc)}'</code> (up <code>dp[${i-1}][${j}]=${b(dp[i-1][j])}</code>).`;
+                        logTail = `* left=${b(dp[i][j-1])} up=${b(dp[i-1][j])} &#8594; ${v?'true':'false'}`;
+                    } else if (t.kind === 'qmark') {
+                        deps = [[i - 1, j - 1]];
+                        code = [6, 8];
+                        v = dp[i - 1][j - 1] === 1 ? 1 : 0;
+                        actHead = '? : diagonal';
+                        actCol = v ? 'var(--accent-green)' : 'var(--accent-red)';
+                        panel = `Cell (${i},${j}) &#8594; token <code>?</code> matches any single char, so it consumes <code>'${esc(sc)}'</code> and inherits the diagonal <code>dp[${i-1}][${j-1}] = ${b(dp[i-1][j-1])}</code>.`;
+                        logTail = `? consumes '${sc}', diag=${b(dp[i-1][j-1])} &#8594; ${v?'true':'false'}`;
+                    } else {
+                        const eq = t.ch === sc;
+                        if (eq) {
+                            deps = [[i - 1, j - 1]];
+                            code = [6, 8];
+                            v = dp[i - 1][j - 1] === 1 ? 1 : 0;
+                            actHead = `'${esc(t.ch)}' == '${esc(sc)}'`;
+                            actCol = v ? 'var(--accent-green)' : 'var(--accent-red)';
+                            panel = `Cell (${i},${j}) &#8594; ${t.escaped ? 'escaped ' : ''}literal <code>'${esc(t.ch)}'</code> equals string char <code>'${esc(sc)}'</code>, so it consumes it and inherits the diagonal <code>dp[${i-1}][${j-1}] = ${b(dp[i-1][j-1])}</code>.`;
+                            logTail = `'${t.ch}'=='${sc}' diag=${b(dp[i-1][j-1])} &#8594; ${v?'true':'false'}`;
+                        } else {
+                            deps = [];
+                            code = [9];
+                            v = 0;
+                            actHead = `'${esc(t.ch)}' &#8800; '${esc(sc)}'`;
+                            actCol = 'var(--accent-red)';
+                            panel = `Cell (${i},${j}) &#8594; ${t.escaped ? 'escaped ' : ''}literal <code>'${esc(t.ch)}'</code> does not equal string char <code>'${esc(sc)}'</code> &#8594; <code>dp[${i}][${j}] = false</code>.`;
+                            logTail = `'${t.ch}'!='${sc}' &#8594; false`;
+                        }
+                    }
+
+                    steps.push(snap({
+                        dp: deepCopy(dp), current: [i, j], deps, code,
+                        action: actHead, actionColor: 'var(--accent-purple)',
+                        panel,
+                        log: `(${i},${j}) ${logTail}`,
+                        fillUpto: { i, j: j - 1 }
+                    }));
+                    dp[i][j] = v;
+                    steps.push(snap({
+                        dp: deepCopy(dp), current: [i, j], code,
+                        action: v ? 'dp = true' : 'dp = false', actionColor: actCol,
+                        panel: panel.replace(/\.$/, '') + ` &#8594; <code>dp[${i}][${j}] = ${v ? 'true' : 'false'}</code>.`,
+                        log: `  dp[${i}][${j}] = ${v ? 'true' : 'false'}`,
+                        fillUpto: { i, j }
+                    }));
+                }
+            }
+
+            const ans = n >= 0 && T >= 0 ? dp[n][T] === 1 : false;
+            steps.push(snap({
+                dp: deepCopy(dp), complete: true, confetti: ans, matched: ans,
+                code: [10], answerCell: [n, T],
+                action: ans ? '✓ MATCH' : '✗ NO MATCH',
+                actionColor: ans ? 'var(--accent-green)' : 'var(--accent-red)',
+                panel: ans
+                    ? `Done. The bottom-right cell <code>dp[${n}][${T}] = true</code> &#8594; string <code>"${esc(STR)}"</code> <b>matches</b> pattern <code>"${escP(PATTERN)}"</code>.`
+                    : `Done. The bottom-right cell <code>dp[${n}][${T}] = false</code> &#8594; string <code>"${esc(STR)}"</code> does <b>not</b> match pattern <code>"${escP(PATTERN)}"</code>.`,
+                log: `done  dp[${n}][${T}] = ${ans ? 'true' : 'false'}  &#8594; ${ans ? 'MATCH' : 'NO MATCH'}`,
+                fillUpto: { i: n, j: T }
+            }));
+        }
+        function b(v){ return v === 1 ? 'true' : v === 0 ? 'false' : '?'; }
+        function escP(p){ return [...p].map(c => esc(c)).join(''); }
+
+        // ───────── render (persistent DOM) ─────────
+        function isFilled(step, dr, dc) {
+            const f = step.fillUpto; if (!f) return false;
+            if (f.i < 0) return false;
+            return dr < f.i || (dr === f.i && dc <= f.j);
+        }
+        function renderStep(idx) {
+            stepIdx = idx; const step = steps[idx]; if (!step) return;
+            const grid = document.getElementById('dp-grid');
+            const rows = step.n + 2, cols = step.T + 2;   // +1 header row/col, +1 for dp index 0 (ε)
+            grid.style.gridTemplateColumns = `repeat(${cols}, 44px)`;
+
+            const depSet = new Set((step.deps || []).map(d => d[0] + ',' + d[1]));
+            const curKey = step.current ? step.current[0] + ',' + step.current[1] : null;
+            const ansKey = step.answerCell ? step.answerCell[0] + ',' + step.answerCell[1] : null;
+            const used = new Set();
+
+            for (let gr = 0; gr < rows; gr++) {
+                for (let gc = 0; gc < cols; gc++) {
+                    const key = gr + ',' + gc; used.add(key);
+                    let el = cellEls[key];
+                    if (!el) { el = document.createElement('div'); el.className = 'cell'; cellEls[key] = el; }
+                    let cls = 'cell', html = null, txt = '', isDpCell = false;
+
+                    if (gr === 0 && gc === 0) { cls += ' corner'; }
+                    else if (gc === 0) {                       // row-header column (string chars)
+                        cls += ' head';
+                        if (gr === 1) txt = 'ε';          // ε
+                        else { txt = STR[gr - 2]; cls += ' ch'; if (step.current && step.current[0] === gr - 1) cls += ' lit'; }
+                    } else if (gr === 0) {                     // col-header row (tokens)
+                        cls += ' head';
+                        if (gc === 1) txt = 'ε';
+                        else {
+                            const t = step.tokens[gc - 2];
+                            cls += ' tok';
+                            if (t.kind === 'star') cls += ' star';
+                            else if (t.kind === 'qmark') cls += ' qmark';
+                            else if (t.escaped) cls += ' esc';
+                            if (step.current && step.current[1] === gc - 1) cls += ' lit2';
+                            html = `<span class="tk">${esc(t.label)}</span><span class="sub">${t.sub}</span>`;
+                        }
+                    } else {                                   // a dp cell, dr/dc are dp indices
+                        isDpCell = true;
+                        const dr = gr - 1, dc = gc - 1, dpKey = dr + ',' + dc;
+                        const filled = isFilled(step, dr, dc);
+                        const val = step.dp[dr][dc];
+                        if (filled && val !== -1) { cls += val === 1 ? ' true' : ' false'; txt = val === 1 ? 'T' : 'F'; }
+                        else { cls += ' empty'; txt = ''; }
+                        if (depSet.has(dpKey)) cls += ' dep';
+                        if (curKey === dpKey) cls += ' current';
+                        if (ansKey === dpKey) cls += ' answer';
+                    }
+
+                    const wasEmpty = (el.textContent === '' && el.dataset.f !== '1');
+                    el.className = cls;
+                    if (html !== null) { el.innerHTML = html; el.dataset.f = '1'; }
+                    else { el.textContent = txt; el.dataset.f = txt === '' ? '' : '1'; }
+                    if (isDpCell && wasEmpty && txt !== '') Motion.pop(el);
+                    grid.appendChild(el);
+                }
+            }
+            Object.keys(cellEls).forEach(k => { if (!used.has(k)) { cellEls[k].remove(); delete cellEls[k]; } });
+
+            const at = document.getElementById('answer-track'); at.innerHTML = '';
+            if (step.complete) {
+                const v = document.createElement('div');
+                v.className = 'verdict ' + (step.matched ? 'yes' : 'no');
+                v.textContent = step.matched ? 'MATCH' : 'NO MATCH';
+                at.appendChild(v);
+            }
+
+            const mp = document.getElementById('main-panel');
+            mp.innerHTML = step.panel || '&mdash;';
+            mp.classList.toggle('done', !!(step.complete && step.matched));
+            mp.classList.toggle('fail', !!(step.complete && !step.matched));
+            const aw = document.getElementById('action-word'); aw.innerHTML = step.action || ''; aw.style.color = step.actionColor || 'var(--text-dim)';
+            highlightCode(step.code);
+
+            if (step.confetti) { if (confettiArmed) { fireConfetti(); confettiArmed = false; } } else confettiArmed = true;
+
+            const curTok = step.current && step.current[1] >= 1 && step.tokens[step.current[1] - 1] ? step.tokens[step.current[1] - 1].label : 'ε';
+            document.getElementById('st-cell').textContent = step.current ? `(${step.current[0]},${step.current[1]})` : '—';
+            document.getElementById('st-tok').textContent = step.current ? curTok : '—';
+            const cv = step.current ? step.dp[step.current[0]][step.current[1]] : -1;
+            document.getElementById('st-val').textContent = cv === 1 ? 'true' : cv === 0 ? 'false' : '—';
+            document.getElementById('st-ans').textContent = step.complete ? (step.matched ? 'TRUE' : 'FALSE') : '?';
+
+            document.getElementById('step-badge').textContent = `Step ${idx + 1} / ${steps.length}`;
+            document.getElementById('progress-fill').style.width = `${(idx / Math.max(1, steps.length - 1)) * 100}%`;
+
+            const logEl = document.getElementById('log');
+            logEl.innerHTML = steps.slice(0, idx + 1).map(s => `<div style="margin:3px 0;white-space:pre-wrap;">${s.log}</div>`).join('');
+            logEl.scrollTop = logEl.scrollHeight;
+        }
+
+        function fireConfetti() {
+            const host = document.getElementById('confetti'); if (!host || REDUCED) return;
+            const colors = ['#22c55e', '#06b6d4', '#a855f7', '#f5a524', '#f43f5e'];
+            for (let i = 0; i < 38; i++) {
+                const p = document.createElement('div'); p.className = 'confetti-piece';
+                p.style.setProperty('--x', ((Math.random() * 2 - 1) * 220) + 'px');
+                p.style.setProperty('--rot', ((Math.random() * 720 - 360)) + 'deg');
+                p.style.background = colors[i % colors.length];
+                p.style.animationDuration = (0.9 + Math.random() * 0.8) + 's';
+                p.style.animationDelay = (Math.random() * 0.15) + 's';
+                host.appendChild(p); setTimeout(() => p.remove(), 1900);
+            }
+        }
+
+        // ───────── controls ─────────
+        function nextStep() { if (stepIdx < steps.length - 1) renderStep(stepIdx + 1); else pause(); }
+        function prevStep() { if (stepIdx > 0) renderStep(stepIdx - 1); }
+        function resetSim() { pause(); renderStep(0); }
+        function togglePlay() {
+            const btn = document.getElementById('play-btn');
+            if (timer) { pause(); return; }
+            btn.textContent = 'Pause';
+            if (stepIdx >= steps.length - 1) renderStep(0);
+            timer = setInterval(() => { if (stepIdx < steps.length - 1) nextStep(); else pause(); }, delays[document.getElementById('speed').value]);
+        }
+        function pause() { clearInterval(timer); timer = null; document.getElementById('play-btn').textContent = 'Play'; }
+
+        function clearDom() { Object.keys(cellEls).forEach(k => { cellEls[k].remove(); delete cellEls[k]; }); confettiArmed = true; }
+        function loadPair(p, s) { pause(); PATTERN = p || ''; STR = s || ''; clearDom(); generateSteps(); renderStep(0); }
+        function loadCustom() {
+            const p = (document.getElementById('pattern-input').value || '').slice(0, 14);
+            const s = (document.getElementById('string-input').value || '').slice(0, 12);
+            if (p.length) loadPair(p, s);
+        }
+        function loadExample(n) {
+            const ex = [['a*b', 'acb'], ['a\\*b', 'a*b'], ['a?c*', 'axcyz']][n];
+            document.getElementById('pattern-input').value = ex[0];
+            document.getElementById('string-input').value = ex[1];
+            loadPair(ex[0], ex[1]);
+        }
+
+        document.addEventListener('keydown', (e) => {
+            const tag = (e.target.tagName || '').toLowerCase(); if (tag === 'input' || tag === 'textarea') return;
+            if (e.key === 'ArrowRight') { e.preventDefault(); pause(); nextStep(); }
+            else if (e.key === 'ArrowLeft') { e.preventDefault(); pause(); prevStep(); }
+            else if (e.key === ' ') { e.preventDefault(); togglePlay(); }
+        });
+        ['pattern-input', 'string-input'].forEach(id => document.getElementById(id).addEventListener('keydown', (e) => { if (e.key === 'Enter') loadCustom(); }));
+
+        buildCodePanel();
+        window.onload = () => loadExample(0);
+    </script>
+</body>
+</html>

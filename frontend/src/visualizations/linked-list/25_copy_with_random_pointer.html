@@ -1,0 +1,837 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Copy List with Random Pointer - Visualization</title>
+    <style>
+        :root {
+            --bg-page: #070b14;
+            --bg-surface: rgba(255, 255, 255, 0.045);
+            --bg-input: rgba(255, 255, 255, 0.04);
+            --border-main: rgba(255, 255, 255, 0.10);
+            --btn-bg: rgba(255, 255, 255, 0.05);
+            --btn-hover: rgba(255, 255, 255, 0.10);
+            --text-main: #e8eefb;
+            --text-dim: #8b98b3;
+            --accent-orange: #f5a524;   /* current original node */
+            --accent-blue:   #06b6d4;   /* links / next arrows   */
+            --accent-green:  #22c55e;   /* settled / done        */
+            --accent-red:    #f43f5e;   /* random target         */
+            --accent-purple: #a855f7;   /* random pointer arcs   */
+            --mono: ui-monospace, 'SF Mono', 'Cascadia Code', 'Courier New', monospace;
+            --sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+            --shell: 880px;
+        }
+
+        * { box-sizing: border-box; }
+        html, body { overflow-x: hidden; }
+        body {
+            background:
+                radial-gradient(1100px 600px at 15% -10%, rgba(6, 182, 212, 0.10), transparent 60%),
+                radial-gradient(900px 600px at 100% 10%, rgba(168, 85, 247, 0.10), transparent 55%),
+                linear-gradient(160deg, #070b14 0%, #0b1120 55%, #0a0f1c 100%);
+            background-attachment: fixed;
+            color: var(--text-main); font-family: var(--sans); margin: 0;
+            display: flex; flex-direction: column; align-items: center; min-height: 100vh;
+            padding-bottom: 48px; -webkit-font-smoothing: antialiased;
+        }
+        body::before, body::after { content: ''; position: fixed; border-radius: 50%; filter: blur(70px); pointer-events: none; z-index: 0; opacity: 0.45; }
+        body::before { width: 380px; height: 380px; top: 8%; left: -120px; background: radial-gradient(circle, rgba(168,85,247,0.24), transparent 70%); }
+        body::after  { width: 420px; height: 420px; bottom: 4%; right: -140px; background: radial-gradient(circle, rgba(6,182,212,0.22), transparent 70%); }
+        body > * { position: relative; z-index: 1; }
+
+        .input-bar {
+            width: 100%; background: rgba(10, 15, 28, 0.55);
+            backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+            padding: 14px 16px; display: flex; justify-content: center; align-items: center; gap: 10px;
+            border-bottom: 1px solid var(--border-main); flex-wrap: wrap; position: sticky; top: 0; z-index: 50;
+        }
+        label.ui-label, .ui-label { font-family: var(--mono); font-size: 13px; color: var(--text-dim); letter-spacing: 0.2px; }
+        input[type="text"], input[type="number"] {
+            background: var(--bg-input); border: 1px solid var(--border-main); color: var(--text-main);
+            height: 34px; border-radius: 9px; padding: 0 12px; font-size: 13px; font-family: var(--mono);
+            transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+        }
+        input[type="text"]:focus { outline: none; border-color: var(--accent-purple); box-shadow: 0 0 0 3px rgba(168, 85, 247, 0.18); background: rgba(168, 85, 247, 0.06); }
+        .head-input { width: 320px; }
+
+        button {
+            height: 34px; border-radius: 9px; padding: 0 16px; background: var(--btn-bg);
+            border: 1px solid var(--border-main); color: var(--text-main); font-size: 13px; font-weight: 600; cursor: pointer;
+            transition: transform 0.15s ease, background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+        }
+        button:hover { background: var(--btn-hover); border-color: rgba(168, 85, 247, 0.5); box-shadow: 0 0 18px rgba(168, 85, 247, 0.18); transform: translateY(-1px); }
+        button:active { transform: translateY(0); }
+        #play-btn { background: linear-gradient(135deg, rgba(168,85,247,0.22), rgba(168,85,247,0.10)); border-color: rgba(168, 85, 247, 0.45); color: #e9d5ff; min-width: 80px; }
+
+        .shell { width: var(--shell); max-width: 94%; margin: 28px auto 0; display: flex; flex-direction: column; gap: 16px; }
+
+        .title-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+        .title-row h1 { font-size: 18px; font-weight: 800; margin: 0; letter-spacing: 0.2px; }
+        .title-row .sub { color: var(--text-dim); font-weight: 500; font-size: 13px; }
+        .step-badge { font-family: var(--mono); font-size: 12px; font-weight: 700; color: #e9d5ff; background: rgba(168,85,247,0.12); border: 1px solid rgba(168,85,247,0.3); padding: 4px 10px; border-radius: 999px; white-space: nowrap; }
+        .progress-track { height: 4px; width: 100%; background: rgba(255,255,255,0.07); border-radius: 999px; overflow: hidden; margin-top: -6px; }
+        .progress-fill { height: 100%; width: 0%; border-radius: 999px; background: linear-gradient(90deg, var(--accent-blue), var(--accent-purple)); box-shadow: 0 0 12px rgba(168,85,247,0.5); transition: width 0.45s cubic-bezier(0.34,1.1,0.64,1); }
+
+        .narration { background: var(--bg-surface); border: 1px solid rgba(168,85,247,0.22); border-radius: 12px; padding: 12px 18px; font-family: var(--mono); font-size: 14px; line-height: 1.5; color: #efe6fb; min-height: 48px; display: flex; align-items: center; gap: 10px; transition: border-color 0.3s, background 0.3s; }
+        .narration::before { content: '\25B8'; color: var(--accent-purple); font-size: 13px; }
+        .narration.done { border-color: rgba(34,197,94,0.4); background: rgba(34,197,94,0.06); }
+        .narration.done::before { content: '\2713'; color: var(--accent-green); }
+        .narration code { background: rgba(168,85,247,0.14); color: #d8b4fe; padding: 1px 6px; border-radius: 5px; font-size: 12.5px; }
+        .narration b { color: #fff; }
+
+        .stage-card { background: var(--bg-surface); border: 1px solid var(--border-main); border-radius: 18px; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); box-shadow: 0 12px 38px rgba(0,0,0,0.4); overflow: hidden; }
+        .stage-screen { margin: 14px; border-radius: 14px; background: radial-gradient(700px 300px at 50% -10%, rgba(168,85,247,0.08), transparent 70%), #090d18; border: 1px solid rgba(255,255,255,0.06); padding: 6px 0; }
+
+        .rail-block { display: flex; flex-direction: column; }
+        .rail-label { font-family: var(--mono); font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--text-dim); padding: 8px 22px 0; }
+        .rail-label.orig { color: var(--accent-orange); }
+        .rail-label.clone { color: var(--accent-green); }
+
+        /* ORIGINAL rail: extra TOP room for random arcs arcing above */
+        .list-wrapper { display: flex; align-items: center; justify-content: flex-start; position: relative; overflow-x: auto; overflow-y: visible; scrollbar-width: thin; }
+        .list-wrapper.orig { min-height: 168px; padding: 82px 22px 18px; }
+        /* CLONE rail: extra BOTTOM room for random arcs arcing below */
+        .list-wrapper.clone { min-height: 168px; padding: 18px 22px 82px; }
+        .list-wrapper::-webkit-scrollbar { height: 7px; }
+        .list-wrapper::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 8px; }
+        .list-rail { display: flex; align-items: center; gap: 8px; margin: 0 auto; }
+
+        .node-unit { display: flex; flex-direction: column; align-items: center; gap: 6px; position: relative; flex: 0 0 auto; will-change: transform; }
+        .node {
+            min-width: 56px; height: 56px; display: flex; align-items: center; justify-content: center;
+            border-radius: 14px; font-size: 20px; font-weight: 800; font-family: var(--mono);
+            transition: background 0.4s ease, border-color 0.4s ease, color 0.4s ease, box-shadow 0.4s ease, outline-color 0.3s ease;
+            border: 2px solid var(--border-main); background: rgba(255, 255, 255, 0.05); color: var(--text-main);
+            position: relative; outline: 2px solid transparent; outline-offset: 3px;
+        }
+        .node.settled { background: rgba(255,255,255,0.06); border-color: rgba(255,255,255,0.18); }
+        /* current original node being processed */
+        .node.curr { outline-color: var(--accent-orange); box-shadow: 0 0 18px rgba(245,165,36,0.4); }
+        /* the original node's random target */
+        .node.random-target { outline-color: var(--accent-red); box-shadow: 0 0 18px rgba(244,63,94,0.4); }
+        /* the clone node currently being wired */
+        .node.clone-wire { outline-color: var(--accent-green); box-shadow: 0 0 18px rgba(34,197,94,0.45); }
+        .node.fully-done { background: linear-gradient(180deg, #2fe08f, #21c275); border-color: #34d399; color: #06251a; box-shadow: 0 0 16px rgba(34,197,94,0.35); }
+        .node-index { font-size: 11px; color: var(--text-dim); font-family: var(--mono); height: 14px; font-weight: 600; }
+        /* tiny R:null tag beneath a node with no random pointer */
+        .rnull-tag { position: absolute; bottom: -16px; left: 50%; transform: translateX(-50%); font-family: var(--mono); font-size: 9px; font-weight: 700; color: var(--text-dim); white-space: nowrap; opacity: 0.7; }
+
+        .arrow { flex: 0 0 auto; display: flex; align-items: center; height: 56px; filter: drop-shadow(0 0 6px rgba(6,182,212,0.45)); }
+        .arrow svg { display: block; overflow: visible; }
+        .arrow .ln { stroke: var(--accent-blue); stroke-width: 2.5; }
+        .arrow .hd { fill: var(--accent-blue); }
+        .arrow.to-null { filter: drop-shadow(0 0 4px rgba(139,152,179,0.25)); }
+        .arrow.to-null .ln { stroke: var(--text-dim); }
+        .arrow.to-null .hd { fill: var(--text-dim); }
+        .arrow.pending { opacity: 0.18; }
+        .arrow.new { filter: drop-shadow(0 0 9px rgba(34,197,94,0.65)); }
+        .arrow.new .ln { stroke: var(--accent-green); stroke-dasharray: 36; stroke-dashoffset: 36; animation: drawLine 0.7s ease forwards; }
+        .arrow.new .hd { fill: var(--accent-green); opacity: 0; animation: fadeHead 0.3s ease 0.55s forwards; }
+
+        .nullterm { flex: 0 0 auto; min-width: 50px; height: 56px; display: flex; align-items: center; justify-content: center; border-radius: 14px; border: 2px dashed var(--border-main); color: var(--text-dim); font-family: var(--mono); font-size: 13px; font-weight: 700; background: rgba(255,255,255,0.02); }
+        .clone-empty { font-family: var(--mono); font-size: 14px; color: var(--text-dim); padding: 0 8px; }
+
+        /* RANDOM-POINTER ARC overlay (one svg per rail; cleared & rebuilt each render) */
+        .randoverlay { position: absolute; left: 0; top: 0; pointer-events: none; z-index: 3; overflow: visible; }
+        .randoverlay .ra-ln { fill: none; stroke: var(--accent-purple); stroke-width: 2.2; opacity: 0.85; stroke-dasharray: 6 5; }
+        .randoverlay .ra-ln.fresh { animation: dashFlow 0.8s ease forwards; }
+        .randoverlay .ra-hd { fill: var(--accent-purple); opacity: 0.95; }
+        .randoverlay .ra-tag { font-family: var(--mono); font-size: 9px; font-weight: 800; fill: var(--accent-purple); opacity: 0.85; }
+
+        .controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: center; }
+        .controls .kbd-hint { font-size: 11px; color: var(--text-dim); font-family: var(--mono); margin-left: 4px; }
+        .kbd { background: rgba(255,255,255,0.07); border: 1px solid var(--border-main); border-radius: 5px; padding: 1px 6px; font-size: 10px; }
+        input[type="range"] { accent-color: var(--accent-purple); width: 110px; cursor: pointer; }
+
+        #confetti-host { position: relative; height: 0; }
+        #confetti { position: absolute; left: 0; right: 0; top: -40px; height: 120px; overflow: visible; pointer-events: none; }
+        .confetti-piece { position: absolute; top: 0; left: 50%; width: 8px; height: 13px; border-radius: 2px; opacity: 0; animation: confettiFall ease-out forwards; }
+
+        .details-toggle { align-self: center; height: 32px; padding: 0 16px; border-radius: 999px; cursor: pointer; background: rgba(255,255,255,0.04); border: 1px solid var(--border-main); color: var(--text-dim); font-family: var(--mono); font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; gap: 8px; transition: color 0.2s, border-color 0.2s, background 0.2s; }
+        .details-toggle:hover { color: var(--text-main); border-color: rgba(168,85,247,0.4); background: rgba(168,85,247,0.06); }
+        .details-toggle .chev { transition: transform 0.3s ease; }
+        .details-wrap.open .details-toggle .chev { transform: rotate(180deg); }
+        .details-body { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.4s ease; }
+        .details-wrap.open .details-body { grid-template-rows: 1fr; }
+        .details-inner { overflow: hidden; min-height: 0; }
+        .details-grid { display: flex; flex-direction: column; gap: 14px; padding-top: 14px; }
+
+        .panel-card { background: var(--bg-surface); border: 1px solid var(--border-main); border-radius: 16px; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); box-shadow: 0 8px 30px rgba(0,0,0,0.35); }
+        .panel-head { display: flex; align-items: center; gap: 8px; padding: 11px 16px; border-bottom: 1px solid var(--border-main); font-size: 11px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; color: var(--text-dim); }
+        .panel-head .pip { width: 7px; height: 7px; border-radius: 50%; background: var(--accent-purple); box-shadow: 0 0 8px var(--accent-purple); }
+
+        .code-body { padding: 12px 6px 14px; font-family: var(--mono); font-size: 12.5px; line-height: 1.7; }
+        .code-line { display: flex; gap: 12px; padding: 1px 16px; border-left: 2px solid transparent; transition: background 0.3s, border-color 0.3s; white-space: pre; }
+        .code-line .lno { color: #4b5772; width: 16px; text-align: right; user-select: none; }
+        .code-line .src { color: #c4cee0; }
+        .code-line .kw { color: #c792ea; }
+        .code-line .fn { color: #82aaff; }
+        .code-line.active { background: rgba(168,85,247,0.12); border-left-color: var(--accent-purple); }
+        .code-line.active .src, .code-line.active .lno { color: #e8eefb; }
+
+        .state-strip { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 4px 2px; }
+        .pill { display: inline-flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 12px; color: var(--text-dim); background: rgba(255,255,255,0.04); border: 1px solid var(--border-main); border-radius: 999px; padding: 4px 11px; }
+        .pill b { color: var(--text-main); font-weight: 800; }
+        .pill.c b { color: var(--accent-orange); }
+        .pill.r b { color: var(--accent-red); }
+        .pill.w b { color: var(--accent-green); }
+        .legend-inline { margin-left: auto; display: flex; gap: 14px; flex-wrap: wrap; }
+        .legend-item { display: flex; align-items: center; font-size: 11px; color: var(--text-dim); }
+        .dot { width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; display: inline-block; }
+        .swatch-arc { width: 18px; height: 0; border-top: 2.5px dashed var(--accent-purple); margin-right: 6px; display: inline-block; }
+
+        .log-panel { border-radius: 14px; padding: 12px 16px; height: 110px; overflow-y: auto; font-family: var(--mono); font-size: 12.5px; line-height: 1.5; background: var(--bg-surface); border: 1px solid var(--border-main); }
+        .log-panel::-webkit-scrollbar { width: 8px; }
+        .log-panel::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 8px; }
+
+        @keyframes drawLine { to { stroke-dashoffset: 0; } }
+        @keyframes fadeHead { to { opacity: 1; } }
+        @keyframes dashFlow { from { stroke-dashoffset: 60; opacity: 0.2; } to { stroke-dashoffset: 0; opacity: 0.85; } }
+        @keyframes confettiFall { 0%{ opacity:1; transform: translate(-50%, 0) rotate(0deg); } 100%{ opacity:0; transform: translate(calc(-50% + var(--x)), 190px) rotate(var(--rot)); } }
+
+        @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; } }
+    </style>
+</head>
+<body>
+
+    <div class="input-bar">
+        <label class="ui-label">pairs =</label>
+        <input type="text" id="head-input" class="head-input" placeholder="7,null; 13,0; 11,4; 10,2; 1,0">
+        <button onclick="loadCustom()">Load</button>
+        <button onclick="loadExample([[7,null],[13,0],[11,4],[10,2],[1,0]])">Ex 1</button>
+        <button onclick="loadExample([[1,1],[2,1]])">Ex 2</button>
+    </div>
+
+    <div class="shell">
+        <div class="title-row">
+            <h1>Copy List with Random Pointer <span class="sub">&middot; Hash Map &middot; O(n)</span></h1>
+            <span class="step-badge" id="step-badge">Step 1 / 1</span>
+        </div>
+        <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+
+        <div class="narration" id="main-panel">&mdash;</div>
+
+        <div class="stage-card">
+            <div class="stage-screen">
+                <div class="rail-block">
+                    <div class="rail-label orig">Original list &middot; random arcs above</div>
+                    <div class="list-wrapper orig" id="orig-wrapper">
+                        <svg class="randoverlay" id="orig-overlay" aria-hidden="true"></svg>
+                        <div class="list-rail" id="orig-container"></div>
+                    </div>
+                </div>
+                <div class="rail-block">
+                    <div class="rail-label clone">Clone list &middot; random arcs below</div>
+                    <div class="list-wrapper clone" id="clone-wrapper">
+                        <svg class="randoverlay" id="clone-overlay" aria-hidden="true"></svg>
+                        <div class="list-rail" id="clone-container"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="confetti-host"><div id="confetti"></div></div>
+
+        <div class="controls">
+            <button onclick="reset()">&#8634; Reset</button>
+            <button onclick="back()">&#8592; Back</button>
+            <button onclick="togglePlay()" id="play-btn">Play</button>
+            <button onclick="next()">Next &#8594;</button>
+            <span class="ui-label" style="margin-left:6px; font-size:11px">Speed</span>
+            <input type="range" id="speed-slider" min="0" max="2" value="1">
+            <span class="kbd-hint"><span class="kbd">&#8592;</span> <span class="kbd">&#8594;</span> step &middot; <span class="kbd">space</span> play</span>
+        </div>
+
+        <div class="details-wrap" id="details-wrap">
+            <button class="details-toggle" onclick="toggleDetails()" aria-expanded="false">
+                <span id="details-label">Show code, state &amp; log</span> <span class="chev">&#9662;</span>
+            </button>
+            <div class="details-body">
+                <div class="details-inner">
+                    <div class="details-grid">
+                        <div class="panel-card">
+                            <div class="panel-head"><span class="pip"></span> Algorithm</div>
+                            <div class="code-body" id="code-panel"></div>
+                        </div>
+
+                        <div class="state-strip">
+                            <span class="pill c">orig <b id="val-curr">&mdash;</b></span>
+                            <span class="pill r">random &#8594; <b id="val-random">&mdash;</b></span>
+                            <span class="pill w">clone <b id="val-clone">&mdash;</b></span>
+                            <span class="pill">map size <b id="val-map">&mdash;</b></span>
+                            <span class="legend-inline">
+                                <span class="legend-item"><span class="dot" style="background:rgba(245,165,36,0.15); border:2px solid var(--accent-orange)"></span>current orig</span>
+                                <span class="legend-item"><span class="dot" style="background:rgba(244,63,94,0.15); border:2px solid var(--accent-red)"></span>random target</span>
+                                <span class="legend-item"><span class="dot" style="background:linear-gradient(180deg,#2fe08f,#21c275); border:2px solid #34d399"></span>clone</span>
+                                <span class="legend-item"><span class="swatch-arc"></span>random arc</span>
+                            </span>
+                        </div>
+
+                        <div class="log-panel" id="log"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        'use strict';
+
+        // Motion engine (spring + FLIP, zero deps)
+        const REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        const FRAME = 1000 / 60;
+        function sampleSpring(stiffness, damping, mass) {
+            const dt = 1 / 60; let x = 1, v = 0; const out = [];
+            for (let i = 0; i < 240; i++) {
+                const a = (-stiffness * x - damping * v) / mass;
+                v += a * dt; x += v * dt; out.push(1 - x);
+                if (Math.abs(x) < 0.0015 && Math.abs(v) < 0.0015) break;
+            }
+            out.push(1); return out;
+        }
+        const SPRING_POS = sampleSpring(340, 30, 1);
+        const SPRING_POP = sampleSpring(540, 17, 1);
+        const durOf = (a) => a.length * FRAME;
+        const Motion = {
+            flip(el, dx, dy) {
+                if (REDUCED || (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5)) return;
+                const kf = SPRING_POS.map(p => ({ transform: `translate(${(dx*(1-p)).toFixed(2)}px, ${(dy*(1-p)).toFixed(2)}px)` }));
+                el.animate(kf, { duration: durOf(SPRING_POS), easing: 'linear' });
+            },
+            enter(el, delay = 0) {
+                if (REDUCED) return;
+                const kf = SPRING_POP.map(p => ({ opacity: Math.min(1, p*1.6).toFixed(3),
+                    transform: `translateY(${(-18*(1-p)).toFixed(2)}px) scale(${(0.45+0.55*p).toFixed(3)})` }));
+                el.animate(kf, { duration: durOf(SPRING_POP), easing: 'linear', delay, fill: 'backwards' });
+            },
+            pop(el) {
+                el.getAnimations().forEach(a => a.cancel());
+                if (REDUCED) { el.style.opacity = '1'; el.style.transform = 'scale(1)'; return; }
+                const kf = SPRING_POP.map(p => ({ opacity: Math.min(1, p*2).toFixed(3),
+                    transform: `scale(${(0.5+0.5*p).toFixed(3)}) translateY(${(10*(1-p)).toFixed(2)}px)` }));
+                el.animate(kf, { duration: durOf(SPRING_POP), easing: 'linear', fill: 'forwards' });
+            },
+            glide(el, x) {
+                const prev = el._x; el.style.opacity = '1';
+                const commit = `translateX(${x}px) translateX(-50%)`;
+                if (REDUCED || prev == null || Math.abs(x - prev) < 0.5) { el._x = x; el.style.transform = commit; return; }
+                const dx = x - prev;
+                const kf = SPRING_POS.map(p => ({ transform: `translateX(${(prev+dx*p).toFixed(2)}px) translateX(-50%)` }));
+                el.animate(kf, { duration: durOf(SPRING_POS), easing: 'linear' });
+                el._x = x; el.style.transform = commit;
+            },
+        };
+
+        // State
+        // pairs: array of [val, randomIndexOrNull]; index references original list position
+        let pairs = [];
+        let steps = [];
+        let stepIndex = 0;
+        let timer = null;
+        let confettiArmed = true;
+        const delays = [1800, 900, 450];
+        let elsO = {};   // original-rail node-units, key 'k:o'+i and arrows 'r:o'+i
+        let elsC = {};   // clone-rail node-units, key 'k:c'+i and arrows 'r:c'+i
+
+        const CODE = [
+            [['kw','def '],['fn','copyRandomList'],['src','(head):']],
+            [['src','    m = {}']],
+            [['src','    cur = head']],
+            [['kw','    while '],['src','cur:           '],['src','# pass 1: clone values']],
+            [['src','        m[cur] = Node(cur.val)']],
+            [['src','        cur = cur.next']],
+            [['src','    cur = head']],
+            [['kw','    while '],['src','cur:           '],['src','# pass 2: wire next + random']],
+            [['src','        m[cur].next   = m.get(cur.next)']],
+            [['src','        m[cur].random = m.get(cur.random)']],
+            [['src','        cur = cur.next']],
+            [['kw','    return '],['src','m.get(head)']],
+        ];
+        const ARR = String.fromCharCode(8594);    // ->
+        const CHK = String.fromCharCode(10003);    // check
+        const DASH = String.fromCharCode(8212);    // em dash placeholder
+
+        function buildCodePanel() {
+            const panel = document.getElementById('code-panel');
+            panel.innerHTML = '';
+            CODE.forEach((tokens, i) => {
+                const line = document.createElement('div');
+                line.className = 'code-line'; line.dataset.line = i;
+                const lno = document.createElement('span'); lno.className = 'lno'; lno.textContent = i + 1; line.appendChild(lno);
+                const src = document.createElement('span');
+                tokens.forEach(([cls, txt]) => { const s = document.createElement('span'); s.className = cls; s.textContent = txt; src.appendChild(s); });
+                line.appendChild(src); panel.appendChild(line);
+            });
+        }
+        function highlightCode(lineArr) {
+            document.querySelectorAll('.code-line').forEach(el => el.classList.toggle('active', lineArr && lineArr.includes(+el.dataset.line)));
+        }
+        function toggleDetails() {
+            const wrap = document.getElementById('details-wrap');
+            const open = wrap.classList.toggle('open');
+            wrap.querySelector('.details-toggle').setAttribute('aria-expanded', open ? 'true' : 'false');
+            document.getElementById('details-label').textContent = open ? 'Hide code, state & log' : 'Show code, state & log';
+        }
+
+        function init() { buildCodePanel(); loadExample([[7,null],[13,0],[11,4],[10,2],[1,0]]); }
+
+        // forgiving parser for "7,null; 13,0; 11,4; 10,2; 1,0"
+        // each entry separated by ; (or newline). within an entry: val,randomIndex
+        // randomIndex of 'null'/'' -> null. accepts plain "1->2->3" style as all-null too.
+        function parsePairs(str) {
+            if (!str || str.trim() === '') return [];
+            const trimmed = str.trim();
+            const out = [];
+            if (trimmed.indexOf(',') === -1 && trimmed.indexOf(';') === -1 && trimmed.indexOf('->') !== -1) {
+                // simple arrow list with no randoms
+                trimmed.split('->').forEach(tok => {
+                    const v = parseInt(tok.trim());
+                    if (!isNaN(v)) out.push([v, null]);
+                });
+                return out;
+            }
+            const entries = trimmed.split(/[;\n]+/);
+            entries.forEach(e => {
+                const parts = e.split(',').map(p => p.trim()).filter(p => p !== '');
+                if (parts.length === 0) return;
+                const v = parseInt(parts[0]);
+                if (isNaN(v)) return;
+                let r = null;
+                if (parts.length > 1) {
+                    const lower = parts[1].toLowerCase();
+                    if (lower !== 'null' && lower !== 'none' && lower !== 'x' && lower !== '-') {
+                        const ri = parseInt(parts[1]);
+                        if (!isNaN(ri)) r = ri;
+                    }
+                }
+                out.push([v, r]);
+            });
+            return out;
+        }
+
+        function pairsToString(p) {
+            return p.map(([v, r]) => `${v},${r === null ? 'null' : r}`).join('; ');
+        }
+
+        function normalizePairs(p) {
+            // clamp/validate random indices into [0, n) else null
+            const n = p.length;
+            return p.map(([v, r]) => [v, (r === null || r === undefined || r < 0 || r >= n) ? null : r]);
+        }
+
+        function loadExample(p) {
+            pairs = normalizePairs(p.map(x => [x[0], x[1]]));
+            document.getElementById('head-input').value = pairs.length ? pairsToString(pairs) : 'null';
+            resetDom();
+            generateSteps();
+            reset();
+        }
+
+        function loadCustom() {
+            const parsed = parsePairs(document.getElementById('head-input').value);
+            loadExample(parsed.length ? parsed : []);
+        }
+
+        // step generation -- hash map deep copy, LeetCode 138 semantics.
+        // We model each node as an object with key, val, nextIdx, randomIdx.
+        // origNodes[i] = original node; cloneNodes[i] = its deep copy.
+        // clone.next/clone.random store INDICES (into cloneNodes), never original objects.
+        function generateSteps() {
+            steps = [];
+            const n = pairs.length;
+            const vals = pairs.map(x => x[0]);
+            const rand = pairs.map(x => x[1]);   // random index or null
+            const origStr = n ? vals.join(' ' + ARR + ' ') : 'null';
+
+            if (n === 0) {
+                steps.push({
+                    type: 'final', complete: true, bold: true, confetti: false, codeLine: [11],
+                    origCount: 0, cloneCount: 0, curr: null, randTarget: null, cloneWire: null,
+                    drawNextO: null, drawNextC: null, freshClone: null,
+                    origRand: [], cloneRand: [], cloneNext: [], mapSize: 0,
+                    panel: `<code>head is null</code> ${ARR} the deep copy is also <b>null</b>.`,
+                    log: 'head == null -> return null', logColor: 'var(--text-dim)'
+                });
+                return;
+            }
+
+            // baseline: original always shows full structure (all next + random arcs).
+            const fullOrigRand = rand.slice();        // index or null per node
+            const fullOrigNext = vals.map((_, i) => i < n - 1 ? i + 1 : null);
+
+            // INIT
+            steps.push({
+                type: 'init', codeLine: [1, 2],
+                origCount: n, cloneCount: 0, curr: null, randTarget: null, cloneWire: null,
+                drawNextO: null, drawNextC: null, freshClone: null,
+                origRand: fullOrigRand, fullOrigNext,
+                cloneRand: [], cloneNext: [], mapSize: 0,
+                panel: `Deep-copy <code>${origStr}</code>. Build a map from each original node to its clone. <b>Pass 1</b> clones values; <b>Pass 2</b> wires next &amp; random.`,
+                log: `original = ${origStr}\nm = {}`, logColor: 'var(--text-dim)'
+            });
+
+            // PASS 1 -- clone values onto the clone rail (no arrows yet)
+            const cloneVals = [];
+            for (let i = 0; i < n; i++) {
+                cloneVals.push(vals[i]);
+                steps.push({
+                    type: 'clone-val', codeLine: [3, 4],
+                    origCount: n, cloneCount: cloneVals.length, curr: i, randTarget: null, cloneWire: i,
+                    drawNextO: null, drawNextC: null, freshClone: i,
+                    origRand: fullOrigRand, fullOrigNext,
+                    cloneRand: [], cloneNext: [], mapSize: i + 1,
+                    panel: `Pass 1: clone original node <b>${vals[i]}</b> (index ${i}). <code>m[orig${i}] = Node(${vals[i]})</code> &mdash; value only, no pointers yet.`,
+                    log: `clone Node(${vals[i]})  ->  m[orig${i}]`, logColor: 'var(--accent-green)'
+                });
+            }
+
+            // PASS 2 -- wire next + random on the clone rail
+            // cloneNextArr[i] = clone-index that clone i's .next points to (or null)
+            // cloneRandArr[i] = clone-index that clone i's .random points to (or null)
+            const cloneNextArr = [];
+            const cloneRandArr = [];
+            for (let i = 0; i < n; i++) {
+                const nextIdx = i < n - 1 ? i + 1 : null;
+                const randIdx = rand[i];
+
+                // wire next
+                cloneNextArr[i] = nextIdx;
+                steps.push({
+                    type: 'wire-next', codeLine: [7, 8],
+                    origCount: n, cloneCount: n,
+                    curr: i, randTarget: null, cloneWire: i,
+                    drawNextO: null, drawNextC: (nextIdx !== null ? i : null), freshClone: null,
+                    origRand: fullOrigRand, fullOrigNext,
+                    cloneRand: cloneRandArr.slice(), cloneNext: cloneNextArr.slice(), mapSize: n,
+                    panel: nextIdx !== null
+                        ? `Wire <code>clone${i}.next = m[orig${i}.next]</code> ${ARR} clone <b>${vals[nextIdx]}</b>. The clone's next is another <b>clone</b>, never an original.`
+                        : `<code>clone${i}.next = m[orig${i}.next] = null</code> (orig${i} is the tail).`,
+                    log: `clone${i}.next = clone${nextIdx === null ? 'null' : nextIdx}`, logColor: 'var(--accent-blue)'
+                });
+
+                // wire random
+                cloneRandArr[i] = randIdx;
+                steps.push({
+                    type: 'wire-random', codeLine: [9],
+                    origCount: n, cloneCount: n,
+                    curr: i, randTarget: randIdx, cloneWire: i,
+                    drawNextO: null, drawNextC: null, freshClone: null, freshRandC: (randIdx !== null ? i : null),
+                    origRand: fullOrigRand, fullOrigNext,
+                    cloneRand: cloneRandArr.slice(), cloneNext: cloneNextArr.slice(), mapSize: n,
+                    panel: randIdx !== null
+                        ? `Wire <code>clone${i}.random = m[orig${i}.random]</code> ${ARR} clone <b>${vals[randIdx]}</b> (index ${randIdx}). Purple arc mirrors the original's random.`
+                        : `<code>clone${i}.random = m[orig${i}.random] = null</code> &mdash; original node <b>${vals[i]}</b> has no random pointer.`,
+                    log: `clone${i}.random = clone${randIdx === null ? 'null' : randIdx}`, logColor: 'var(--accent-purple)'
+                });
+            }
+
+            // FINAL
+            steps.push({
+                type: 'final', complete: true, bold: true, confetti: true, codeLine: [11],
+                origCount: n, cloneCount: n, curr: null, randTarget: null, cloneWire: null,
+                drawNextO: null, drawNextC: null, freshClone: null, allDone: true,
+                origRand: fullOrigRand, fullOrigNext,
+                cloneRand: cloneRandArr.slice(), cloneNext: cloneNextArr.slice(), mapSize: n,
+                panel: `Deep copy complete: <code>${cloneVals.join(' ' + ARR + ' ')}</code>. Every clone <code>next</code>/<code>random</code> references only <b>clone</b> nodes &mdash; no pointer touches the original list.`,
+                log: `return m[head]\ndeep copy is fully independent`, logColor: 'var(--accent-green)'
+            });
+
+            // attach data the verifier / final summary may read
+            steps._cloneNext = cloneNextArr.slice();
+            steps._cloneRand = cloneRandArr.slice();
+        }
+
+        function resetDom() {
+            document.getElementById('orig-container').innerHTML = '';
+            document.getElementById('clone-container').innerHTML = '';
+            elsO = {}; elsC = {};
+            confettiArmed = true;
+        }
+
+        function arrowSVG() {
+            return `<svg viewBox="0 0 40 24" width="40" height="24">
+                <line class="ln" x1="2" y1="12" x2="28" y2="12" stroke-linecap="round"/>
+                <polygon class="hd" points="27,6 39,12 27,18"/></svg>`;
+        }
+
+        function fireConfetti() {
+            const host = document.getElementById('confetti');
+            if (!host || REDUCED) return;
+            const colors = ['#22c55e', '#06b6d4', '#a855f7', '#f5a524', '#f43f5e'];
+            for (let i = 0; i < 42; i++) {
+                const p = document.createElement('div'); p.className = 'confetti-piece';
+                p.style.setProperty('--x', ((Math.random() * 2 - 1) * 230) + 'px');
+                p.style.setProperty('--rot', ((Math.random() * 720 - 360)) + 'deg');
+                p.style.background = colors[i % colors.length];
+                p.style.animationDuration = (0.9 + Math.random() * 0.8) + 's';
+                p.style.animationDelay = (Math.random() * 0.15) + 's';
+                host.appendChild(p);
+                setTimeout(() => p.remove(), 1900);
+            }
+        }
+
+        // ---- render a single rail (reconciler with FLIP) ----
+        // prefix: 'o' for original, 'c' for clone. els: elsO / elsC.
+        function renderRail(containerId, prefix, els, count, vals, nextArr, opts) {
+            const container = document.getElementById(containerId);
+
+            if (count === 0) {
+                Array.from(container.children).forEach(ch => container.removeChild(ch));
+                Object.keys(els).forEach(k => delete els[k]);
+                if (prefix === 'c') {
+                    const empty = document.createElement('div');
+                    empty.className = 'clone-empty'; empty.textContent = 'null';
+                    container.appendChild(empty); els['empty'] = empty;
+                }
+                return;
+            }
+
+            // FLIP -- record FIRST rects
+            const firstRects = {};
+            Object.keys(els).forEach(k => { if (k.startsWith('k:') && els[k].isConnected) firstRects[k] = els[k].getBoundingClientRect(); });
+
+            const ordered = [];
+            const freshNodes = [];
+
+            for (let i = 0; i < count; i++) {
+                const nkey = 'k:' + prefix + i;
+                let unit = els[nkey], isFresh = false;
+                if (!unit) {
+                    isFresh = true;
+                    unit = document.createElement('div');
+                    unit.className = 'node-unit';
+                    unit.innerHTML = `<div class="node"></div><div class="node-index"></div>`;
+                    els[nkey] = unit;
+                }
+                const nodeEl = unit.firstChild;
+                nodeEl.textContent = vals[i];
+                unit.lastChild.textContent = i === 0 ? 'head' : i;
+
+                // node classes
+                nodeEl.className = 'node settled';
+                if (opts.allDone) nodeEl.classList.add('fully-done');
+                if (prefix === 'o') {
+                    if (opts.curr === i) nodeEl.classList.add('curr');
+                    if (opts.randTarget === i) nodeEl.classList.add('random-target');
+                } else {
+                    if (opts.cloneWire === i) nodeEl.classList.add('clone-wire');
+                }
+
+                // R:null tag for nodes with no random (only on settled view, optional)
+                let tag = unit.querySelector('.rnull-tag');
+                const showNull = opts.showRandNull && (opts.randArr[i] === null || opts.randArr[i] === undefined) && i < opts.randArrLen;
+                if (showNull) {
+                    if (!tag) { tag = document.createElement('div'); tag.className = 'rnull-tag'; tag.textContent = 'R:null'; unit.appendChild(tag); }
+                } else if (tag) { tag.remove(); }
+
+                if (isFresh) freshNodes.push({ nodeEl, idx: i });
+                ordered.push(unit);
+
+                // forward (next) arrow between consecutive nodes
+                if (i < count - 1) {
+                    const akey = 'r:' + prefix + i;
+                    let arr = els[akey];
+                    if (!arr) { arr = document.createElement('div'); arr.className = 'arrow'; arr.innerHTML = arrowSVG(); els[akey] = arr; }
+                    const wired = nextArr && nextArr[i] !== undefined && nextArr[i] !== null;
+                    arr.className = 'arrow' + (wired ? '' : ' pending');
+                    arr.classList.toggle('new', opts.drawNext === i);
+                    ordered.push(arr);
+                }
+            }
+            // tail -> null arrow + null terminator (only if next wired to null at tail, i.e. structure shown)
+            const tailWired = (nextArr && count > 0 && (nextArr[count - 1] === null));
+            if (prefix === 'o' || tailWired || opts.allDone) {
+                const tkey = 'r:' + prefix + (count - 1);
+                let tarr = els[tkey];
+                if (!tarr) { tarr = document.createElement('div'); tarr.className = 'arrow to-null'; tarr.innerHTML = arrowSVG(); els[tkey] = tarr; }
+                tarr.className = 'arrow to-null';
+                ordered.push(tarr);
+                let nul = els['nullterm'];
+                if (!nul) { nul = document.createElement('div'); nul.className = 'nullterm'; nul.textContent = 'null'; els['nullterm'] = nul; }
+                ordered.push(nul);
+            }
+
+            // reconcile
+            const used = new Set(ordered);
+            Array.from(container.children).forEach(ch => { if (!used.has(ch)) container.removeChild(ch); });
+            Object.keys(els).forEach(k => { if (!used.has(els[k])) delete els[k]; });
+            ordered.forEach(el => container.appendChild(el));
+
+            // FLIP play
+            Object.keys(firstRects).forEach(k => {
+                const el = els[k]; if (!el || !el.isConnected) return;
+                const last = el.getBoundingClientRect();
+                Motion.flip(el, firstRects[k].left - last.left, firstRects[k].top - last.top);
+            });
+            const stagger = freshNodes.length > 1;
+            freshNodes.forEach(({ nodeEl, idx: i }) => Motion.enter(nodeEl, stagger ? i * 55 : 0));
+        }
+
+        // ---- draw random-pointer arcs for a rail (the new primitive) ----
+        // randArr[i] = target index (into same rail) or null. above=true arcs over the rail, false arcs below.
+        // els: node-unit map for that rail. wrapperId/svgId identify the overlay.
+        function drawRandomArcs(wrapperId, svgId, prefix, els, count, randArr, above, freshIdx) {
+            const svg = document.getElementById(svgId);
+            const wrap = document.getElementById(wrapperId);
+            // clear & rebuild each render
+            while (svg.firstChild) svg.removeChild(svg.firstChild);
+            if (count === 0) { svg.style.display = 'none'; return; }
+
+            const wr = wrap.getBoundingClientRect();
+            const SVGNS = 'http://www.w3.org/2000/svg';
+            let drew = false;
+
+            for (let i = 0; i < count; i++) {
+                const tIdx = randArr[i];
+                if (tIdx === null || tIdx === undefined) continue;
+                const src = els['k:' + prefix + i];
+                const dst = els['k:' + prefix + tIdx];
+                if (!src || !dst) continue;
+
+                const sr = src.getBoundingClientRect();
+                const dr = dst.getBoundingClientRect();
+                // x at center; y at the edge that faces the arc (top if above, bottom if below)
+                const sx = (sr.left + sr.right) / 2 - wr.left + wrap.scrollLeft;
+                const ex = (dr.left + dr.right) / 2 - wr.left + wrap.scrollLeft;
+                const edgeY = above ? (sr.top - wr.top) : (sr.bottom - wr.top);
+                const dEdgeY = above ? (dr.top - wr.top) : (dr.bottom - wr.top);
+
+                drew = true;
+
+                if (i === tIdx) {
+                    // self-loop: small loop above/below the node
+                    const r = 16;
+                    const cy = above ? edgeY : edgeY;
+                    const dir = above ? -1 : 1;
+                    const loopY = cy + dir * 30;
+                    const x1 = sx - 11, x2 = sx + 11;
+                    const d = `M ${x1} ${edgeY} C ${x1 - 14} ${loopY}, ${x2 + 14} ${loopY}, ${x2} ${edgeY}`;
+                    appendArc(svg, SVGNS, d, x2, edgeY, above, (freshIdx === i), `R`, (x1 + x2) / 2, loopY + (above ? -4 : 12));
+                    continue;
+                }
+
+                const span = Math.abs(sx - ex);
+                // apex height scales with span; alternate slightly so neighbours are distinguishable
+                const baseLift = Math.min(64, 24 + span * 0.16);
+                const alt = (i % 2 === 0) ? 0 : 10;
+                const lift = baseLift + alt;
+                const dir = above ? -1 : 1;
+                const apexY = (above ? Math.min(edgeY, dEdgeY) : Math.max(edgeY, dEdgeY)) + dir * lift;
+                // approach the target a few px short so the arrowhead sits on its edge
+                const endY = dEdgeY + dir * 2;
+                const d = `M ${sx} ${edgeY} C ${sx} ${apexY}, ${ex} ${apexY}, ${ex} ${endY}`;
+                appendArc(svg, SVGNS, d, ex, dEdgeY, above, (freshIdx === i), '', (sx + ex) / 2, apexY + (above ? -3 : 11));
+            }
+
+            svg.setAttribute('width', Math.max(wrap.clientWidth, wrap.scrollWidth));
+            svg.setAttribute('height', wrap.clientHeight);
+            svg.style.display = drew ? 'block' : 'none';
+        }
+
+        function appendArc(svg, ns, d, ex, edgeY, above, fresh, label, tagX, tagY) {
+            const path = document.createElementNS(ns, 'path');
+            path.setAttribute('class', 'ra-ln' + (fresh ? ' fresh' : ''));
+            path.setAttribute('d', d);
+            svg.appendChild(path);
+            // arrowhead pointing into the target edge (down if above, up if below)
+            const hw = 5;
+            const tipY = above ? (edgeY - 1) : (edgeY + 1);
+            const baseY = above ? (edgeY - 11) : (edgeY + 11);
+            const hd = document.createElementNS(ns, 'polygon');
+            hd.setAttribute('class', 'ra-hd');
+            hd.setAttribute('points', `${ex - hw},${baseY} ${ex + hw},${baseY} ${ex},${tipY}`);
+            svg.appendChild(hd);
+            if (label) {
+                const t = document.createElementNS(ns, 'text');
+                t.setAttribute('class', 'ra-tag'); t.setAttribute('x', tagX); t.setAttribute('y', tagY);
+                t.setAttribute('text-anchor', 'middle'); t.textContent = label;
+                svg.appendChild(t);
+            }
+        }
+
+        function renderStep(idx) {
+            const step = steps[idx];
+            if (!step) return;
+            const vals = pairs.map(x => x[0]);
+
+            // ORIGINAL rail: always full structure (all next + random arcs). highlight curr / random target.
+            renderRail('orig-container', 'o', elsO, step.origCount, vals, step.fullOrigNext || [], {
+                curr: step.curr, randTarget: step.randTarget, cloneWire: null, drawNext: step.drawNextO,
+                allDone: false, showRandNull: true, randArr: step.origRand || [], randArrLen: step.origCount
+            });
+
+            // CLONE rail: grows during pass 1; arrows wired during pass 2.
+            renderRail('clone-container', 'c', elsC, step.cloneCount, vals, step.cloneNext || [], {
+                curr: null, randTarget: null, cloneWire: step.cloneWire, drawNext: step.drawNextC,
+                allDone: !!step.allDone, showRandNull: false, randArr: step.cloneRand || [], randArrLen: step.cloneCount
+            });
+
+            // random arcs: original arcs ABOVE, clone arcs BELOW
+            drawRandomArcs('orig-wrapper', 'orig-overlay', 'o', elsO, step.origCount, step.origRand || [], true, null);
+            drawRandomArcs('clone-wrapper', 'clone-overlay', 'c', elsC, step.cloneCount, step.cloneRand || [], false, step.freshRandC != null ? step.freshRandC : null);
+
+            // narration
+            const mainPanel = document.getElementById('main-panel');
+            mainPanel.innerHTML = step.panel || '&mdash;';
+            mainPanel.classList.toggle('done', !!step.complete);
+
+            // confetti once at completion
+            if (step.complete && step.confetti) { if (confettiArmed) { fireConfetti(); confettiArmed = false; } }
+            else if (!step.complete) { confettiArmed = true; }
+
+            // state pills
+            document.getElementById('val-curr').textContent = step.curr !== null && step.curr !== undefined ? vals[step.curr] : DASH;
+            document.getElementById('val-random').textContent = step.randTarget !== null && step.randTarget !== undefined ? vals[step.randTarget] : DASH;
+            document.getElementById('val-clone').textContent = step.cloneWire !== null && step.cloneWire !== undefined ? vals[step.cloneWire] : DASH;
+            document.getElementById('val-map').textContent = step.mapSize != null ? step.mapSize : DASH;
+            highlightCode(step.codeLine);
+
+            document.getElementById('step-badge').textContent = `Step ${idx + 1} / ${steps.length}`;
+            document.getElementById('progress-fill').style.width = `${(idx / Math.max(1, steps.length - 1)) * 100}%`;
+
+            // cumulative log
+            const logPanel = document.getElementById('log');
+            logPanel.innerHTML = '';
+            for (let k = 0; k <= idx; k++) {
+                if (steps[k].log) {
+                    const line = document.createElement('div');
+                    line.style.marginBottom = '3px'; line.style.whiteSpace = 'pre-wrap';
+                    if (steps[k].logColor) line.style.color = steps[k].logColor;
+                    if (steps[k].bold) line.style.fontWeight = 'bold';
+                    line.textContent = steps[k].log;
+                    logPanel.appendChild(line);
+                }
+            }
+            logPanel.scrollTop = logPanel.scrollHeight;
+        }
+
+        function next() { if (stepIndex < steps.length - 1) { stepIndex++; renderStep(stepIndex); } else pause(); }
+        function back() { if (stepIndex > 0) { stepIndex--; renderStep(stepIndex); } }
+        function reset() { pause(); stepIndex = 0; renderStep(0); }
+        function togglePlay() {
+            const btn = document.getElementById('play-btn');
+            if (timer) pause();
+            else {
+                btn.textContent = 'Pause';
+                if (stepIndex >= steps.length - 1) { stepIndex = 0; renderStep(0); }
+                timer = setInterval(next, delays[document.getElementById('speed-slider').value]);
+            }
+        }
+        function pause() { clearInterval(timer); timer = null; document.getElementById('play-btn').textContent = 'Play'; }
+
+        document.addEventListener('keydown', (e) => {
+            const tag = (e.target.tagName || '').toLowerCase();
+            if (tag === 'input' || tag === 'textarea') return;
+            if (e.key === 'ArrowRight') { e.preventDefault(); pause(); next(); }
+            else if (e.key === 'ArrowLeft') { e.preventDefault(); pause(); back(); }
+            else if (e.key === ' ') { e.preventDefault(); togglePlay(); }
+        });
+
+        let rT;
+        window.addEventListener('resize', () => { clearTimeout(rT); rT = setTimeout(() => { renderStep(stepIndex); }, 120); });
+        window.onload = init;
+    </script>
+</body>
+</html>

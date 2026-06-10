@@ -1,0 +1,617 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CRT with Large Moduli - Visualization</title>
+    <style>
+        :root {
+            --bg-page: #070b14;
+            --bg-surface: rgba(255, 255, 255, 0.045);
+            --bg-input: rgba(255, 255, 255, 0.04);
+            --border-main: rgba(255, 255, 255, 0.10);
+            --btn-bg: rgba(255, 255, 255, 0.05);
+            --btn-hover: rgba(255, 255, 255, 0.10);
+            --text-main: #e8eefb;
+            --text-dim: #8b98b3;
+            --accent-orange: #f5a524;   /* accumulated x / answer        */
+            --accent-blue:   #06b6d4;   /* current congruence / chrome    */
+            --accent-green:  #22c55e;   /* verified / solved              */
+            --accent-red:    #f43f5e;   /* failed verification            */
+            --accent-purple: #a855f7;   /* mulmod / inverse focus         */
+            --mono: ui-monospace, 'SF Mono', 'Cascadia Code', 'Courier New', monospace;
+            --sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+            --shell: 900px;
+        }
+
+        * { box-sizing: border-box; }
+        html, body { overflow-x: hidden; }
+        body {
+            background:
+                radial-gradient(1100px 600px at 15% -10%, rgba(168, 85, 247, 0.10), transparent 60%),
+                radial-gradient(900px 600px at 100% 10%, rgba(6, 182, 212, 0.10), transparent 55%),
+                linear-gradient(160deg, #070b14 0%, #0b1120 55%, #0a0f1c 100%);
+            background-attachment: fixed;
+            color: var(--text-main); font-family: var(--sans); margin: 0;
+            display: flex; flex-direction: column; align-items: center; min-height: 100vh;
+            padding-bottom: 48px; -webkit-font-smoothing: antialiased;
+        }
+        body::before, body::after { content: ''; position: fixed; border-radius: 50%; filter: blur(70px); pointer-events: none; z-index: 0; opacity: 0.45; }
+        body::before { width: 380px; height: 380px; top: 8%; left: -120px; background: radial-gradient(circle, rgba(168,85,247,0.30), transparent 70%); }
+        body::after  { width: 420px; height: 420px; bottom: 4%; right: -140px; background: radial-gradient(circle, rgba(6,182,212,0.22), transparent 70%); }
+        body > * { position: relative; z-index: 1; }
+
+        .input-bar {
+            width: 100%; background: rgba(10, 15, 28, 0.55);
+            backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+            padding: 14px 16px; display: flex; justify-content: center; align-items: center; gap: 10px;
+            border-bottom: 1px solid var(--border-main); flex-wrap: wrap; position: sticky; top: 0; z-index: 50;
+        }
+        label.ui-label, .ui-label { font-family: var(--mono); font-size: 13px; color: var(--text-dim); letter-spacing: 0.2px; }
+        input[type="text"] {
+            background: var(--bg-input); border: 1px solid var(--border-main); color: var(--text-main);
+            height: 34px; border-radius: 9px; padding: 0 12px; font-size: 13px; font-family: var(--mono); width: 230px;
+            transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+        }
+        input[type="text"]:focus { outline: none; border-color: var(--accent-purple); box-shadow: 0 0 0 3px rgba(168, 85, 247, 0.18); background: rgba(168, 85, 247, 0.06); }
+
+        button {
+            height: 34px; border-radius: 9px; padding: 0 14px; background: var(--btn-bg);
+            border: 1px solid var(--border-main); color: var(--text-main); font-size: 13px; font-weight: 600; cursor: pointer;
+            transition: transform 0.15s ease, background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+        }
+        button:hover { background: var(--btn-hover); border-color: rgba(6, 182, 212, 0.5); box-shadow: 0 0 18px rgba(6, 182, 212, 0.18); transform: translateY(-1px); }
+        button:active { transform: translateY(0); }
+        #play-btn { background: linear-gradient(135deg, rgba(6,182,212,0.22), rgba(6,182,212,0.10)); border-color: rgba(6, 182, 212, 0.45); color: #a5f3fc; min-width: 80px; }
+
+        .shell { width: var(--shell); max-width: 95%; margin: 24px auto 0; display: flex; flex-direction: column; gap: 16px; }
+
+        .title-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+        .title-row h1 { font-size: 18px; font-weight: 800; margin: 0; letter-spacing: 0.2px; }
+        .title-row .sub { color: var(--text-dim); font-weight: 500; font-size: 13px; }
+        .step-badge { font-family: var(--mono); font-size: 12px; font-weight: 700; color: #a5f3fc; background: rgba(6,182,212,0.12); border: 1px solid rgba(6,182,212,0.3); padding: 4px 10px; border-radius: 999px; white-space: nowrap; }
+        .progress-track { height: 4px; width: 100%; background: rgba(255,255,255,0.07); border-radius: 999px; overflow: hidden; margin-top: -6px; }
+        .progress-fill { height: 100%; width: 0%; border-radius: 999px; background: linear-gradient(90deg, var(--accent-blue), var(--accent-purple)); box-shadow: 0 0 12px rgba(6,182,212,0.5); transition: width 0.45s cubic-bezier(0.34,1.1,0.64,1); }
+
+        .narration { background: var(--bg-surface); border: 1px solid rgba(6,182,212,0.22); border-radius: 12px; padding: 12px 18px; font-family: var(--mono); font-size: 14px; line-height: 1.5; color: #cfe9f5; min-height: 48px; display: flex; align-items: center; gap: 10px; transition: border-color 0.3s, background 0.3s; }
+        .narration::before { content: '\25B8'; color: var(--accent-blue); font-size: 13px; }
+        .narration.done { border-color: rgba(34,197,94,0.4); background: rgba(34,197,94,0.06); }
+        .narration.done::before { content: '\2713'; color: var(--accent-green); }
+        .narration.fail { border-color: rgba(244,63,94,0.4); background: rgba(244,63,94,0.06); }
+        .narration.fail::before { content: '\2717'; color: var(--accent-red); }
+        .narration code { background: rgba(6,182,212,0.14); color: #7dd3fc; padding: 1px 6px; border-radius: 5px; font-size: 12.5px; }
+        .narration b { color: #fff; }
+
+        .stage-card { background: var(--bg-surface); border: 1px solid var(--border-main); border-radius: 18px; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); box-shadow: 0 12px 38px rgba(0,0,0,0.4); overflow: hidden; }
+        .stage-screen { position: relative; margin: 14px; border-radius: 14px; background: radial-gradient(700px 300px at 50% -10%, rgba(6,182,212,0.08), transparent 70%), #090d18; border: 1px solid rgba(255,255,255,0.06); }
+        .grid-stage { position: relative; width: 100%; overflow: auto; scrollbar-width: thin; padding: 22px; display: flex; flex-direction: column; align-items: center; gap: 16px; }
+        .grid-stage::-webkit-scrollbar { height: 8px; width: 8px; }
+        .grid-stage::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 8px; }
+
+        /* merge table */
+        .merge-table { display: grid; gap: 6px; min-width: 540px; }
+        .mrow { display: grid; grid-template-columns: 150px 1fr 1fr 130px; gap: 6px; align-items: stretch; }
+        .mcell {
+            display: flex; align-items: center; justify-content: center;
+            border-radius: 10px; font-family: var(--mono); font-weight: 700; font-size: 14px;
+            border: 2px solid var(--border-main); background: rgba(255,255,255,0.035); color: var(--text-main);
+            min-height: 44px; padding: 6px 10px; text-align: center; will-change: transform;
+            transition: background 0.35s, border-color 0.35s, color 0.35s, box-shadow 0.35s, transform 0.3s, opacity 0.35s;
+        }
+        .mcell.head { border: none; background: transparent; color: var(--text-dim); font-weight: 800; font-size: 11px; letter-spacing: 1px; text-transform: uppercase; min-height: 24px; }
+        .mcell.cong { color: #cbd5e8; }
+        .mcell.pending { opacity: 0.35; color: var(--text-dim); }
+        .mcell.current { border-color: var(--accent-blue); background: rgba(6,182,212,0.14); color: #a5f3fc; box-shadow: 0 0 18px rgba(6,182,212,0.4); transform: scale(1.03); z-index: 2; }
+        .mcell.mulmod { border-color: var(--accent-purple); background: rgba(168,85,247,0.16); color: #e9d5ff; box-shadow: 0 0 18px rgba(168,85,247,0.45); }
+        .mcell.acc { border-color: var(--accent-orange); background: rgba(245,165,36,0.16); color: #ffd591; box-shadow: 0 0 16px rgba(245,165,36,0.35); }
+        .mcell.solved { border-color: var(--accent-green); background: linear-gradient(180deg, rgba(47,224,143,0.85), rgba(33,194,117,0.85)); color: #06251a; box-shadow: 0 0 16px rgba(34,197,94,0.45); }
+        .mcell.verify-ok { border-color: var(--accent-green); background: rgba(34,197,94,0.14); color: #86efac; box-shadow: 0 0 14px rgba(34,197,94,0.3); }
+        .mcell.verify-bad { border-color: var(--accent-red); background: rgba(244,63,94,0.14); color: #fda4af; box-shadow: 0 0 14px rgba(244,63,94,0.3); }
+        .mcell .sub { font-size: 10.5px; color: var(--text-dim); font-weight: 600; display: block; margin-top: 2px; }
+        .mcell.current .sub, .mcell.acc .sub, .mcell.solved .sub, .mcell.mulmod .sub { color: inherit; opacity: 0.78; }
+
+        /* accumulator readout */
+        .acc-bar { display: flex; gap: 10px; align-items: center; justify-content: center; flex-wrap: wrap; min-height: 54px; }
+        .acc-chip { font-family: var(--mono); font-size: 13px; font-weight: 700; border-radius: 999px; padding: 8px 16px; border: 2px solid var(--border-main); background: rgba(255,255,255,0.04); color: var(--text-dim); transition: all 0.3s; }
+        .acc-chip b { font-size: 16px; }
+        .acc-chip.x { border-color: var(--accent-orange); background: rgba(245,165,36,0.12); color: #ffd591; }
+        .acc-chip.x b { color: #fff; }
+        .acc-chip.m { border-color: var(--accent-purple); background: rgba(168,85,247,0.12); color: #d8b4fe; }
+        .acc-chip.m b { color: #fff; }
+
+        .action-stage { position: relative; min-height: 92px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; }
+        .answer-track { display: flex; gap: 6px; align-items: center; min-height: 40px; }
+        .ans-tile { min-width: 34px; height: 40px; border-radius: 9px; display: flex; align-items: center; justify-content: center; font-family: var(--mono); font-size: 18px; font-weight: 800; border: 2px solid var(--accent-orange); background: rgba(245,165,36,0.16); color: #ffd591; box-shadow: 0 0 12px rgba(245,165,36,0.35); padding: 0 8px; }
+        .action-word { font-family: var(--mono); font-weight: 800; font-size: 18px; letter-spacing: 0.4px; min-height: 22px; text-align: center; transition: color 0.3s; }
+        #confetti { position: absolute; inset: 0; overflow: visible; pointer-events: none; }
+        .confetti-piece { position: absolute; top: 0; left: 50%; width: 8px; height: 13px; border-radius: 2px; opacity: 0; animation: confettiFall ease-out forwards; }
+
+        .controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: center; }
+        .controls .kbd-hint { font-size: 11px; color: var(--text-dim); font-family: var(--mono); margin-left: 4px; }
+        .kbd { background: rgba(255,255,255,0.07); border: 1px solid var(--border-main); border-radius: 5px; padding: 1px 6px; font-size: 10px; }
+        input[type="range"] { accent-color: var(--accent-blue); width: 110px; cursor: pointer; }
+
+        .details-toggle { align-self: center; height: 32px; padding: 0 16px; border-radius: 999px; cursor: pointer; background: rgba(255,255,255,0.04); border: 1px solid var(--border-main); color: var(--text-dim); font-family: var(--mono); font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; gap: 8px; transition: color 0.2s, border-color 0.2s, background 0.2s; }
+        .details-toggle:hover { color: var(--text-main); border-color: rgba(6,182,212,0.4); background: rgba(6,182,212,0.06); }
+        .details-toggle .chev { transition: transform 0.3s ease; }
+        .details-wrap.open .details-toggle .chev { transform: rotate(180deg); }
+        .details-body { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.4s ease; }
+        .details-wrap.open .details-body { grid-template-rows: 1fr; }
+        .details-inner { overflow: hidden; min-height: 0; }
+        .details-grid { display: flex; flex-direction: column; gap: 14px; padding-top: 14px; }
+
+        .panel-card { background: var(--bg-surface); border: 1px solid var(--border-main); border-radius: 16px; backdrop-filter: blur(10px); box-shadow: 0 8px 30px rgba(0,0,0,0.35); }
+        .panel-head { display: flex; align-items: center; gap: 8px; padding: 11px 16px; border-bottom: 1px solid var(--border-main); font-size: 11px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; color: var(--text-dim); }
+        .panel-head .pip { width: 7px; height: 7px; border-radius: 50%; background: var(--accent-blue); box-shadow: 0 0 8px var(--accent-blue); }
+        .code-body { padding: 12px 6px 14px; font-family: var(--mono); font-size: 12.5px; line-height: 1.7; }
+        .code-line { display: flex; gap: 12px; padding: 1px 16px; border-left: 2px solid transparent; transition: background 0.3s, border-color 0.3s; white-space: pre; }
+        .code-line .lno { color: #4b5772; width: 16px; text-align: right; user-select: none; }
+        .code-line .src { color: #c4cee0; }
+        .code-line .kw { color: #c792ea; }
+        .code-line .fn { color: #82aaff; }
+        .code-line.active { background: rgba(6,182,212,0.12); border-left-color: var(--accent-blue); }
+        .code-line.active .src, .code-line.active .lno { color: #e8eefb; }
+
+        .state-strip { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 0 2px; }
+        .pill { display: inline-flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 12px; color: var(--text-dim); background: rgba(255,255,255,0.04); border: 1px solid var(--border-main); border-radius: 999px; padding: 4px 11px; }
+        .pill b { color: var(--text-main); font-weight: 800; }
+        .pill.c b { color: var(--accent-blue); } .pill.b b { color: var(--accent-orange); } .pill.g b { color: var(--accent-purple); }
+
+        .log-panel { border-radius: 14px; padding: 12px 16px; height: 110px; overflow-y: auto; font-family: var(--mono); font-size: 12.5px; line-height: 1.5; background: var(--bg-surface); border: 1px solid var(--border-main); }
+        .log-panel::-webkit-scrollbar { width: 8px; }
+        .log-panel::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 8px; }
+
+        @keyframes confettiFall { 0%{ opacity:1; transform: translate(-50%, 0) rotate(0deg); } 100%{ opacity:0; transform: translate(calc(-50% + var(--x)), 220px) rotate(var(--rot)); } }
+        @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; } }
+    </style>
+</head>
+<body>
+
+    <div class="input-bar">
+        <label class="ui-label">Congruences =</label>
+        <input type="text" id="cong-input" placeholder="[(2,3),(3,5),(2,7)]" value="[(2, 3), (3, 5), (2, 7)]">
+        <button onclick="loadCustom()">Load</button>
+        <span class="ui-label" style="opacity:.5">|</span>
+        <button onclick="loadExample(0)">Ex 1: [(2,3),(3,5),(2,7)]</button>
+        <button onclick="loadExample(1)">Ex 2: [(1,2),(2,3),(3,5)]</button>
+    </div>
+
+    <div class="shell">
+        <div class="title-row">
+            <h1>CRT with Large Moduli <span class="sub">&middot; iterative merge &middot; x &equiv; a&#7522; (mod m&#7522;) &middot; mulmod-safe &middot; O(k&middot;log&nbsp;m)</span></h1>
+            <span class="step-badge" id="step-badge">Step 1 / 1</span>
+        </div>
+        <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+
+        <div class="narration" id="main-panel">&mdash;</div>
+
+        <div class="stage-card">
+            <div class="stage-screen">
+                <div class="grid-stage" id="grid-stage">
+                    <div class="merge-table" id="merge-table"></div>
+                    <div class="acc-bar" id="acc-bar"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="action-stage">
+            <div id="confetti"></div>
+            <div class="answer-track" id="answer-track"></div>
+            <div class="action-word" id="action-word"></div>
+        </div>
+
+        <div class="controls">
+            <button onclick="resetSim()">&#8634; Reset</button>
+            <button onclick="prevStep()">&#8592; Back</button>
+            <button onclick="togglePlay()" id="play-btn">Play</button>
+            <button onclick="nextStep()">Next &#8594;</button>
+            <span class="ui-label" style="margin-left:6px; font-size:11px">Speed</span>
+            <input type="range" id="speed" min="0" max="2" value="1">
+            <span class="kbd-hint"><span class="kbd">&#8592;</span> <span class="kbd">&#8594;</span> step &middot; <span class="kbd">space</span> play</span>
+        </div>
+
+        <div class="details-wrap" id="details-wrap">
+            <button class="details-toggle" onclick="toggleDetails()" aria-expanded="false">
+                <span id="details-label">Show code, state &amp; log</span> <span class="chev">&#9662;</span>
+            </button>
+            <div class="details-body">
+                <div class="details-inner">
+                    <div class="details-grid">
+                        <div class="state-strip">
+                            <span class="pill c">merging i <b id="st-i">&mdash;</b></span>
+                            <span class="pill b">x (mod M) <b id="st-x">0</b></span>
+                            <span class="pill g">M <b id="st-m">1</b></span>
+                            <span class="pill">answer <b id="st-ans">&mdash;</b></span>
+                        </div>
+                        <div class="panel-card">
+                            <div class="panel-head"><span class="pip"></span> Algorithm &mdash; iterative CRT merge (mulmod-safe)</div>
+                            <div class="code-body" id="code-panel"></div>
+                        </div>
+                        <div class="log-panel" id="log"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        'use strict';
+
+        // ───────── Motion engine (spring pop, zero deps) ─────────
+        const REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        const FRAME = 1000 / 60;
+        function sampleSpring(stiffness, damping, mass) {
+            const dt = 1 / 60; let x = 1, v = 0; const out = [];
+            for (let i = 0; i < 240; i++) { const a = (-stiffness * x - damping * v) / mass; v += a * dt; x += v * dt; out.push(1 - x); if (Math.abs(x) < 0.0015 && Math.abs(v) < 0.0015) break; }
+            out.push(1); return out;
+        }
+        const SPRING_POP = sampleSpring(520, 17, 1);
+        const durOf = (a) => a.length * FRAME;
+        const Motion = {
+            pop(el) {
+                if (REDUCED) return;
+                const kf = SPRING_POP.map(p => ({ transform: `scale(${(0.55 + 0.5 * p).toFixed(3)})` }));
+                el.animate(kf, { duration: durOf(SPRING_POP), easing: 'linear' });
+            },
+        };
+
+        // ───────── State ─────────
+        let congruences = [[2, 3], [3, 5], [2, 7]];
+        let steps = [];
+        let stepIdx = 0;
+        let timer = null;
+        let confettiArmed = true;
+        const delays = [1450, 720, 330];
+        const rowEls = {};   // 'r,c' -> cell element
+
+        const CODE = [
+            [['kw','def '],['fn','crt'],['src','(cong):']],
+            [['src','  x, M = 0, 1']],
+            [['kw','  for '],['src','(a, m) in cong:']],
+            [['src','    g = mulmod(M % m, M_inv, m)   # M_inv = inverse of M mod m']],
+            [['src','    t = ((a - x) % m) * M_inv % m']],
+            [['src','    x = x + mulmod(M, t, M*m)      # mulmod avoids overflow']],
+            [['src','    M = M * m']],
+            [['src','    x = x % M']],
+            [['kw','  return '],['src','x % M']],
+        ];
+        function buildCodePanel() {
+            const panel = document.getElementById('code-panel'); panel.innerHTML = '';
+            CODE.forEach((tokens, i) => {
+                const line = document.createElement('div'); line.className = 'code-line'; line.dataset.line = i;
+                const lno = document.createElement('span'); lno.className = 'lno'; lno.textContent = i + 1; line.appendChild(lno);
+                const src = document.createElement('span');
+                tokens.forEach(([cls, txt]) => { const s = document.createElement('span'); s.className = cls; s.textContent = txt; src.appendChild(s); });
+                line.appendChild(src); panel.appendChild(line);
+            });
+        }
+        function highlightCode(arr) { document.querySelectorAll('.code-line').forEach(el => el.classList.toggle('active', arr && arr.includes(+el.dataset.line))); }
+        function toggleDetails() {
+            const wrap = document.getElementById('details-wrap'); const open = wrap.classList.toggle('open');
+            wrap.querySelector('.details-toggle').setAttribute('aria-expanded', open ? 'true' : 'false');
+            document.getElementById('details-label').textContent = open ? 'Hide code, state & log' : 'Show code, state & log';
+        }
+
+        // ───────── number theory helpers ─────────
+        function egcd(a, b) { if (b === 0) return [a, 1, 0]; const [g, x, y] = egcd(b, a % b); return [g, y, x - Math.floor(a / b) * y]; }
+        function modInverse(a, m) { a = ((a % m) + m) % m; const [g, x] = egcd(a, m); if (g !== 1) return null; return ((x % m) + m) % m; }
+        // mulmod via BigInt to faithfully avoid 64-bit overflow on large moduli
+        function mulmod(a, b, m) { return Number((BigInt(a) * BigInt(b)) % BigInt(m)); }
+
+        // ───────── step generation (genuine simulation) ─────────
+        function snapBase(rows, x, M, i) {
+            return {
+                rows: rows.map(r => Object.assign({}, r)),   // immutable per-step snapshot
+                x, M, i,
+                code: [], action: '', actionColor: 'var(--text-dim)', panel: '', log: '',
+                complete: false, fail: false, answer: null, hi: {}
+            };
+        }
+
+        function generateSteps() {
+            steps = [];
+            const k = congruences.length;
+            // each row tracks display fields, all start pending
+            const rows = congruences.map(([a, m], idx) => ({
+                idx, a, m, aMod: ((a % m) + m) % m, t: '', x: '', state: 'pending'
+            }));
+
+            let x = 0, M = 1;
+
+            steps.push(Object.assign(snapBase(rows, x, M, -1), {
+                code: [0, 1],
+                action: 'INITIALISE', actionColor: 'var(--accent-blue)',
+                panel: `Combine ${k} congruences with the <b>iterative CRT merge</b>. Start with <code>x = 0</code>, <code>M = 1</code>, then fold in one congruence at a time. Each merge uses <code>mulmod</code> so the product <code>M&middot;t</code> never overflows 64 bits.`,
+                log: `init  x=0  M=1  (${k} congruences)`
+            }));
+
+            let infeasible = false;
+            for (let i = 0; i < k; i++) {
+                const [a, m] = congruences[i];
+                const aMod = ((a % m) + m) % m;
+
+                // step A: focus this congruence
+                {
+                    const r = rows.map(rr => Object.assign({}, rr));
+                    r[i].state = 'current';
+                    steps.push(Object.assign(snapBase(r, x, M, i), {
+                        code: [2, 3],
+                        action: `MERGE x ≡ ${aMod} (mod ${m})`, actionColor: 'var(--accent-blue)',
+                        panel: `Fold in congruence ${i + 1}: <code>x &equiv; ${aMod} (mod ${m})</code>. We already have <code>x &equiv; ${x} (mod ${M})</code>, so look for <code>t</code> with <code>x + M&middot;t &equiv; ${aMod} (mod ${m})</code>.`,
+                        log: `merge[${i}]  x ≡ ${aMod} (mod ${m})   have x=${x}, M=${M}`,
+                        hi: { row: i, focus: 'cong' }
+                    }));
+                }
+
+                // compute inverse of M mod m
+                const Mmod = ((M % m) + m) % m;
+                const Minv = modInverse(Mmod, m);
+
+                if (Minv === null) {
+                    // moduli not coprime — for these examples this never triggers, but handle correctly
+                    const r = rows.map(rr => Object.assign({}, rr));
+                    r[i].state = 'verify-bad';
+                    steps.push(Object.assign(snapBase(r, x, M, i), {
+                        code: [3],
+                        action: 'NOT COPRIME', actionColor: 'var(--accent-red)',
+                        panel: `<code>M = ${M}</code> and <code>m = ${m}</code> share a factor &#8594; <code>M</code> has no inverse mod <code>m</code>. This simple merge needs pairwise-coprime moduli.`,
+                        log: `merge[${i}]  gcd(${M},${m}) > 1 — no inverse`,
+                        hi: { row: i }
+                    }));
+                    infeasible = true;
+                    break;
+                }
+
+                // step B: mulmod to get t
+                const t = (((aMod - x) % m) + m) % m * Minv % m;
+                {
+                    const r = rows.map(rr => Object.assign({}, rr));
+                    r[i].state = 'current'; r[i].t = String(t);
+                    steps.push(Object.assign(snapBase(r, x, M, i), {
+                        code: [4],
+                        action: `t = ${t}`, actionColor: 'var(--accent-purple)',
+                        panel: `<code>M&#8315;&#185; mod ${m} = ${Minv}</code>. Then <code>t = (${aMod} &minus; ${x}) &middot; ${Minv} mod ${m} = ${t}</code>. This <code>t</code> tells us how many copies of <code>M</code> to add.`,
+                        log: `   M⁻¹ mod ${m} = ${Minv};  t = (${aMod}-${x})·${Minv} mod ${m} = ${t}`,
+                        hi: { row: i, focus: 'mulmod' }
+                    }));
+                }
+
+                // step C: mulmod M*t and update x, M
+                const newM = M * m;
+                const add = mulmod(M, t, newM);   // mulmod-safe M*t
+                const newX = ((x + add) % newM + newM) % newM;
+                {
+                    const r = rows.map(rr => Object.assign({}, rr));
+                    r[i].state = 'acc'; r[i].t = String(t); r[i].x = String(newX);
+                    steps.push(Object.assign(snapBase(r, x, newM, i), {
+                        x: newX, M: newM,
+                        code: [5, 6, 7],
+                        action: `x = ${newX}  (mod ${newM})`, actionColor: 'var(--accent-orange)',
+                        panel: `<code>x &larr; x + mulmod(M, t) = ${x} + ${add} = ${newX}</code>, then <code>M &larr; M&middot;${m} = ${newM}</code>. Now <code>x &equiv; ${newX} (mod ${newM})</code> &mdash; this satisfies every congruence merged so far.`,
+                        log: `   x = ${x} + mulmod(${M},${t}) = ${newX};  M = ${newM}`,
+                        hi: { row: i, focus: 'acc' }
+                    }));
+                }
+
+                x = newX; M = newM;
+                rows[i].state = 'done'; rows[i].t = String(t); rows[i].x = String(newX);
+            }
+
+            if (!infeasible) {
+                // verification pass — confirm x satisfies each congruence
+                const r = rows.map(rr => Object.assign({}, rr, { state: 'verify-ok' }));
+                let ok = true;
+                congruences.forEach(([a, m], idx) => { if (((x % m) + m) % m !== (((a % m) + m) % m)) ok = false; });
+                steps.push(Object.assign(snapBase(r, x, M, -1), {
+                    complete: true, confetti: ok, answer: x,
+                    code: [8],
+                    action: `✓ x = ${x}`, actionColor: 'var(--accent-green)',
+                    panel: `Done. The unique solution mod <code>M = ${M}</code> is <code>x = ${x}</code>. It satisfies all ${congruences.length} congruences: ${congruences.map(([a, m]) => `<code>${x} mod ${m} = ${((x % m) + m) % m}</code>`).join(', ')}.`,
+                    log: `done  x = ${x}  (mod ${M})  ✓ verified`
+                }));
+            } else {
+                steps.push(Object.assign(snapBase(rows, x, M, -1), {
+                    complete: true, fail: true, answer: null,
+                    code: [8],
+                    action: 'NO SOLUTION', actionColor: 'var(--accent-red)',
+                    panel: `The moduli are not pairwise coprime, so this direct merge cannot combine them. No solution is produced by this method.`,
+                    log: `done  no solution (moduli not coprime)`
+                }));
+            }
+        }
+
+        // ───────── render (persistent DOM) ─────────
+        // skeleton rebuilt once per input-load; per-step we only reconcile values/classes.
+        function buildSkeleton() {
+            const table = document.getElementById('merge-table');
+            table.innerHTML = ''; Object.keys(rowEls).forEach(k => delete rowEls[k]);
+            const k = congruences.length;
+            table.style.minWidth = '540px';
+
+            // header row
+            const head = document.createElement('div'); head.className = 'mrow';
+            ['Congruence', 'M⁻¹ · multiplier t', 'x  (mod M)', 'Modulus M'].forEach(h => {
+                const c = document.createElement('div'); c.className = 'mcell head'; c.textContent = h; head.appendChild(c);
+            });
+            table.appendChild(head);
+
+            for (let i = 0; i < k; i++) {
+                const row = document.createElement('div'); row.className = 'mrow'; row.dataset.row = i;
+                for (let c = 0; c < 4; c++) {
+                    const cell = document.createElement('div'); cell.className = 'mcell';
+                    rowEls[i + ',' + c] = cell; row.appendChild(cell);
+                }
+                table.appendChild(row);
+            }
+            // accumulator chips
+            const accBar = document.getElementById('acc-bar');
+            accBar.innerHTML = '';
+            const xc = document.createElement('div'); xc.className = 'acc-chip x'; xc.id = 'acc-x'; accBar.appendChild(xc);
+            const mc = document.createElement('div'); mc.className = 'acc-chip m'; mc.id = 'acc-m'; accBar.appendChild(mc);
+        }
+
+        function renderStep(idx) {
+            stepIdx = idx; const step = steps[idx]; if (!step) return;
+            const k = congruences.length;
+            // running M per row so the "Modulus M" column shows the accumulating product
+            let runM = 1;
+
+            for (let i = 0; i < k; i++) {
+                const rd = step.rows[i];
+                runM *= rd.m;
+                const stCls = rd.state;                       // pending|current|mulmod|acc|done|verify-ok|verify-bad
+                const isHi = step.hi && step.hi.row === i;
+                const focus = isHi ? step.hi.focus : null;
+
+                // col 0 — congruence
+                setCell(i, 0, `x &equiv; ${rd.aMod} (mod ${rd.m})`, cellClass(stCls, 'cong', focus === 'cong' && stCls === 'current' ? 'current' : (stCls === 'current' ? 'current' : '')));
+
+                // col 1 — multiplier t
+                const tTxt = rd.t === '' ? '&mdash;' : `t = ${rd.t}`;
+                let c1 = '';
+                if (rd.state === 'pending') c1 = 'pending';
+                else if (focus === 'mulmod') c1 = 'mulmod';
+                else if (rd.state === 'current') c1 = '';
+                else c1 = '';
+                setCell(i, 1, tTxt, cellClass(stCls === 'pending' ? 'pending' : '', '', c1));
+
+                // col 2 — x (mod M)
+                const xTxt = rd.x === '' ? '&mdash;' : `${rd.x}`;
+                let c2 = '';
+                if (rd.state === 'pending') c2 = 'pending';
+                else if (focus === 'acc') c2 = 'acc';
+                else if (rd.state === 'done' || rd.state === 'acc') c2 = 'acc';
+                else if (rd.state === 'verify-ok') c2 = 'verify-ok';
+                else if (rd.state === 'verify-bad') c2 = 'verify-bad';
+                setCell(i, 2, xTxt, cellClass('', '', c2));
+
+                // col 3 — accumulating modulus M
+                let mTxt, c3 = '';
+                if (rd.state === 'pending') { mTxt = `&times; ${rd.m}`; c3 = 'pending'; }
+                else { mTxt = `${runM}`; if (focus === 'acc' || rd.state === 'done') c3 = 'acc'; if (rd.state === 'verify-ok') c3 = 'verify-ok'; }
+                setCell(i, 3, mTxt, cellClass('', '', c3));
+            }
+
+            // accumulator chips
+            const accX = document.getElementById('acc-x'); const accM = document.getElementById('acc-m');
+            if (accX) { accX.innerHTML = `x &equiv; <b>${step.x}</b>`; }
+            if (accM) { accM.innerHTML = `mod M = <b>${step.M}</b>`; }
+            if (step.complete && step.answer != null) { accX.classList.add('x'); }
+
+            // answer tiles
+            const at = document.getElementById('answer-track'); at.innerHTML = '';
+            if (step.complete && step.answer != null) {
+                const t = document.createElement('div'); t.className = 'ans-tile'; t.textContent = 'x = ' + step.answer; at.appendChild(t);
+            }
+
+            // narration + action
+            const mp = document.getElementById('main-panel');
+            mp.innerHTML = step.panel || '&mdash;';
+            mp.classList.toggle('done', !!step.complete && !step.fail);
+            mp.classList.toggle('fail', !!step.fail);
+            const aw = document.getElementById('action-word'); aw.textContent = step.action || ''; aw.style.color = step.actionColor || 'var(--text-dim)';
+            highlightCode(step.code);
+
+            if (step.confetti) { if (confettiArmed) { fireConfetti(); confettiArmed = false; } } else confettiArmed = true;
+
+            // state pills
+            document.getElementById('st-i').textContent = step.i >= 0 ? (step.i + 1) : '—';
+            document.getElementById('st-x').textContent = step.x;
+            document.getElementById('st-m').textContent = step.M;
+            document.getElementById('st-ans').textContent = step.complete ? (step.answer != null ? step.answer : 'none') : '—';
+
+            document.getElementById('step-badge').textContent = `Step ${idx + 1} / ${steps.length}`;
+            document.getElementById('progress-fill').style.width = `${(idx / Math.max(1, steps.length - 1)) * 100}%`;
+
+            const logEl = document.getElementById('log');
+            logEl.innerHTML = steps.slice(0, idx + 1).map(s => `<div style="margin:3px 0;white-space:pre-wrap;">${s.log}</div>`).join('');
+            logEl.scrollTop = logEl.scrollHeight;
+        }
+
+        // build a class string for a merge cell, then apply with pop on value change
+        function cellClass(base, extra, state) {
+            let cls = 'mcell';
+            if (base === 'pending') cls += ' pending';
+            if (extra) cls += ' ' + extra;
+            if (state) cls += ' ' + state;
+            return cls;
+        }
+        function setCell(r, c, html, cls) {
+            const el = rowEls[r + ',' + c]; if (!el) return;
+            const prev = el.innerHTML;
+            el.className = cls;
+            if (prev !== html) {
+                el.innerHTML = html;
+                if (html !== '&mdash;' && !cls.includes('pending') && prev !== '' ) Motion.pop(el);
+            }
+        }
+
+        function fireConfetti() {
+            const host = document.getElementById('confetti'); if (!host || REDUCED) return;
+            const colors = ['#22c55e', '#06b6d4', '#a855f7', '#f5a524', '#f43f5e'];
+            for (let i = 0; i < 38; i++) {
+                const p = document.createElement('div'); p.className = 'confetti-piece';
+                p.style.setProperty('--x', ((Math.random() * 2 - 1) * 220) + 'px');
+                p.style.setProperty('--rot', ((Math.random() * 720 - 360)) + 'deg');
+                p.style.background = colors[i % colors.length];
+                p.style.animationDuration = (0.9 + Math.random() * 0.8) + 's';
+                p.style.animationDelay = (Math.random() * 0.15) + 's';
+                host.appendChild(p); setTimeout(() => p.remove(), 1900);
+            }
+        }
+
+        // ───────── controls ─────────
+        function nextStep() { if (stepIdx < steps.length - 1) renderStep(stepIdx + 1); else pause(); }
+        function prevStep() { if (stepIdx > 0) renderStep(stepIdx - 1); }
+        function resetSim() { pause(); renderStep(0); }
+        function togglePlay() {
+            const btn = document.getElementById('play-btn');
+            if (timer) { pause(); return; }
+            btn.textContent = 'Pause';
+            if (stepIdx >= steps.length - 1) renderStep(0);
+            timer = setInterval(() => { if (stepIdx < steps.length - 1) nextStep(); else pause(); }, delays[document.getElementById('speed').value]);
+        }
+        function pause() { clearInterval(timer); timer = null; document.getElementById('play-btn').textContent = 'Play'; }
+
+        function loadList(list) {
+            pause(); congruences = list; confettiArmed = true;
+            buildSkeleton(); generateSteps(); renderStep(0);
+        }
+        function parseCongruences(raw) {
+            // accept [(a,m),(a,m)] or [[a,m],[a,m]] -> array of [int,int] with m>0
+            const nums = raw.match(/-?\d+/g);
+            if (!nums || nums.length < 2 || nums.length % 2 !== 0) return null;
+            const out = [];
+            for (let i = 0; i < nums.length; i += 2) {
+                const a = parseInt(nums[i], 10), m = parseInt(nums[i + 1], 10);
+                if (!Number.isFinite(a) || !Number.isFinite(m) || m <= 0) return null;
+                out.push([a, m]);
+            }
+            return out.length ? out : null;
+        }
+        function loadCustom() {
+            const raw = document.getElementById('cong-input').value || '';
+            const parsed = parseCongruences(raw);
+            if (!parsed) { document.getElementById('cong-input').focus(); return; }
+            loadList(parsed);
+        }
+        function loadExample(n) {
+            const ex = [[[2, 3], [3, 5], [2, 7]], [[1, 2], [2, 3], [3, 5]]][n];
+            document.getElementById('cong-input').value = '[' + ex.map(([a, m]) => `(${a}, ${m})`).join(', ') + ']';
+            loadList(ex.map(p => p.slice()));
+        }
+
+        document.addEventListener('keydown', (e) => {
+            const tag = (e.target.tagName || '').toLowerCase(); if (tag === 'input' || tag === 'textarea') return;
+            if (e.key === 'ArrowRight') { e.preventDefault(); pause(); nextStep(); }
+            else if (e.key === 'ArrowLeft') { e.preventDefault(); pause(); prevStep(); }
+            else if (e.key === ' ') { e.preventDefault(); togglePlay(); }
+        });
+        document.getElementById('cong-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') loadCustom(); });
+        window.addEventListener('resize', () => { if (steps.length) renderStep(stepIdx); });
+
+        buildCodePanel();
+        window.onload = () => loadExample(0);
+    </script>
+</body>
+</html>
