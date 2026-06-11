@@ -203,7 +203,13 @@ resource "aws_ecs_task_definition" "api" {
       { name = "TRUSTED_PROXIES", value = var.vpc_cidr },
       # Runner reachable via Cloud Map private DNS on the API SG path:
       { name = "IDE_RUNNER_URL", value = "http://runner.marevlo.internal:4002" },
-      { name = "NOTEBOOK_BASE_URL", value = "https://${var.domain}/notebook" }
+      { name = "NOTEBOOK_BASE_URL", value = "https://${var.domain}/notebook" },
+      # Compliance gates. REQUIRE_EMAIL_VERIFICATION blocks password login for
+      # unverified emails — flip to "true" only after SES production access is
+      # granted and SMTP secrets are filled, or new signups cannot log in.
+      { name = "REQUIRE_EMAIL_VERIFICATION", value = "false" },
+      { name = "REQUIRE_TOS_ACCEPT", value = "true" },
+      { name = "TOS_VERSION", value = "1.0" }
     ]
     secrets = local.api_secrets
     logConfiguration = {

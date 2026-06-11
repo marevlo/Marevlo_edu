@@ -109,6 +109,14 @@ resource "aws_cloudfront_distribution" "spa" {
     cached_methods           = ["GET", "HEAD"]
     cache_policy_id          = data.aws_cloudfront_cache_policy.disabled.id
     origin_request_policy_id = data.aws_cloudfront_origin_request_policy.all_viewer.id
+
+    # The SPA is built with VITE_API_URL=/api, but FastAPI serves routes at the
+    # root (/auth, /profile, ...). Strip the prefix here — same rewrite the Vite
+    # dev proxy does — or every API call 404s in production.
+    function_association {
+      event_type   = "viewer-request"
+      function_arn = aws_cloudfront_function.strip_api_prefix.arn
+    }
   }
 
   # SPA fallback: client-side routes (e.g. /courses/x) return index.html.
@@ -130,6 +138,23 @@ resource "aws_cloudfront_distribution" "spa" {
     ssl_support_method       = "sni-only"
     minimum_protocol_version = "TLSv1.2_2021"
   }
+}
+
+# Rewrite /api/<path> -> /<path> before the request reaches the ALB origin.
+# Mirrors the Vite dev proxy: rewrite: (path) => path.replace(/^\/api/, '').
+resource "aws_cloudfront_function" "strip_api_prefix" {
+  name    = "marevlo-strip-api-prefix"
+  runtime = "cloudfront-js-2.0"
+  comment = "Strip the /api prefix so FastAPI's root-mounted routes match"
+  publish = true
+  code    = <<-EOT
+    function handler(event) {
+      var request = event.request;
+      request.uri = request.uri.replace(/^\/api/, '');
+      if (request.uri === '') { request.uri = '/'; }
+      return request;
+    }
+  EOT
 }
 
 # AWS-managed policies (referenced by id)
