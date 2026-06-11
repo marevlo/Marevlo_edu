@@ -104,7 +104,13 @@ export default function ShowcaseCard({
     };
 
     return (
-        <div style={{ animation: 'fadeSlideUp 0.45s cubic-bezier(0.22,1,0.36,1) both', animationDelay: `${Math.min(index, 8) * 50}ms` }}>
+        // Fill the grid cell so every card in a row gets the same height —
+        // the card body flexes, the part label keeps its natural height.
+        <div style={{
+            display: 'flex', flexDirection: 'column', height: '100%',
+            animation: 'fadeSlideUp 0.45s cubic-bezier(0.22,1,0.36,1) both',
+            animationDelay: `${Math.min(index, 8) * 50}ms`,
+        }}>
             {label && (
                 <div className="rc-part-label" style={{ color: t.primary }}>
                     {label}
@@ -115,7 +121,7 @@ export default function ShowcaseCard({
                 onClick={onClick}
                 style={{
                     position: 'relative', overflow: 'hidden', cursor: onClick ? 'pointer' : 'default',
-                    borderRadius: 24, minHeight, padding: 24,
+                    borderRadius: 24, minHeight, padding: 24, flex: 1,
                     display: 'flex', flexDirection: 'column', justifyContent: 'space-between',
                     background: surface,
                     border: `1px solid ${restingBorder}`,
