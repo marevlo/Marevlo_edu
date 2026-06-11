@@ -296,6 +296,8 @@ class ChatService:
         """Returns sender_id if newly read; None if already read or message
         belongs to the reader.
         """
+        from sqlalchemy.exc import IntegrityError
+
         msg = db.get(Message, message_id)
         if not msg:
             raise NotFound("Message not found")
@@ -312,8 +314,13 @@ class ChatService:
         ).scalar_one_or_none()
         if existing:
             return None
-        db.add(MessageRead(message_id=message_id, reader_id=reader_id))
-        db.commit()
+
+        try:
+            db.add(MessageRead(message_id=message_id, reader_id=reader_id))
+            db.commit()
+        except IntegrityError:
+            db.rollback()
+            return None
         return msg.sender_id
 
     def edit_message(

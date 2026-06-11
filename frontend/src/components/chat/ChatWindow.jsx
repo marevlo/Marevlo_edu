@@ -967,7 +967,7 @@ export default function ChatWindow({ chatId: chatIdProp, userId, onBack }) {
                                     <div className="relative max-w-[68%] group">
                                         {/* Quick reactions bar — appears above bubble on hover */}
                                         {!isDeleted && !isEditing && (
-                                            <div className={`absolute -top-9 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 pointer-events-none group-hover:pointer-events-auto transition-all duration-200 z-20 ${isOwn ? 'right-0' : 'left-0'}`}>
+                                            <div className={`absolute -top-9 pb-2 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 pointer-events-none group-hover:pointer-events-auto transition-all duration-200 z-20 ${isOwn ? 'right-0' : 'left-0'}`}>
                                                 {['❤️', '👍', '😂', '😮', '😢'].map(emoji => (
                                                     <button
                                                         key={emoji}

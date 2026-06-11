@@ -13,6 +13,10 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
 
+# Optimize sources by using a fast CDN mirror to speed up builds on Windows/WSL2
+RUN if [ -f /etc/apt/sources.list ]; then sed -i 's/deb.debian.org/cdn-fastly.deb.debian.org/g' /etc/apt/sources.list; fi \
+ && if [ -f /etc/apt/sources.list.d/debian.sources ]; then sed -i 's/deb.debian.org/cdn-fastly.deb.debian.org/g' /etc/apt/sources.list.d/debian.sources; fi
+
 # build deps for psycopg2 et al.
 RUN apt-get update && apt-get install -y --no-install-recommends \
         build-essential \
@@ -33,6 +37,10 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PATH="/opt/venv/bin:$PATH" \
     PYTHONPATH=/app
+
+# Optimize sources by using a fast CDN mirror to speed up builds on Windows/WSL2
+RUN if [ -f /etc/apt/sources.list ]; then sed -i 's/deb.debian.org/cdn-fastly.deb.debian.org/g' /etc/apt/sources.list; fi \
+ && if [ -f /etc/apt/sources.list.d/debian.sources ]; then sed -i 's/deb.debian.org/cdn-fastly.deb.debian.org/g' /etc/apt/sources.list.d/debian.sources; fi
 
 # runtime deps only — no compilers
 RUN apt-get update && apt-get install -y --no-install-recommends \

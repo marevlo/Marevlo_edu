@@ -1,7 +1,21 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 
 const HTTP_URL = import.meta.env.VITE_API_URL;
-const WS_URL = HTTP_URL ? HTTP_URL.replace('http://', 'ws://').replace('https://', 'wss://') : 'ws://localhost:8000';
+let WS_URL;
+if (!HTTP_URL || HTTP_URL.startsWith('/')) {
+    // Relative path (like /api)
+    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+        // Local dev: connect directly to backend port 8000 to bypass Vite proxy
+        WS_URL = 'ws://localhost:8000';
+    } else {
+        // Production: resolve relative to window.location
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        WS_URL = `${protocol}//${window.location.host}${HTTP_URL || ''}`;
+    }
+} else {
+    // Absolute path
+    WS_URL = HTTP_URL.replace('http://', 'ws://').replace('https://', 'wss://');
+}
 
 const RECONNECT_DELAY = 3000;
 const MAX_RECONNECT_ATTEMPTS = 10;

@@ -30,6 +30,12 @@ class RequestIdMiddleware(BaseHTTPMiddleware):
 
     HEADER = "X-Request-ID"
 
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+        await super().__call__(scope, receive, send)
+
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
         # Honor an inbound request ID (e.g. set by ALB) or mint a new one.
         rid = request.headers.get(self.HEADER) or uuid.uuid4().hex
@@ -112,6 +118,12 @@ class ProxyHeadersMiddleware(BaseHTTPMiddleware):
             except ValueError:
                 logger.warning("Invalid trusted_proxy CIDR: %s", cidr)
 
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+        await super().__call__(scope, receive, send)
+
     def _is_trusted(self, host: str | None) -> bool:
         if not host:
             return False
@@ -151,6 +163,12 @@ class MaxBodySizeMiddleware(BaseHTTPMiddleware):
     def __init__(self, app, max_bytes: int = 10 * 1024 * 1024):
         super().__init__(app)
         self.max_bytes = max_bytes
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+        await super().__call__(scope, receive, send)
 
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
         # Skip WebSocket and OPTIONS — they don't carry meaningful bodies.

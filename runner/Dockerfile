@@ -38,6 +38,10 @@ ENV NODE_ENV=production \
     COMPILE_CACHE_DIR=/cache/compile \
     DEBIAN_FRONTEND=noninteractive
 
+# Optimize sources by using a fast CDN mirror to speed up builds on Windows/WSL2
+RUN if [ -f /etc/apt/sources.list ]; then sed -i 's/deb.debian.org/cdn-fastly.deb.debian.org/g' /etc/apt/sources.list; fi \
+ && if [ -f /etc/apt/sources.list.d/debian.sources ]; then sed -i 's/deb.debian.org/cdn-fastly.deb.debian.org/g' /etc/apt/sources.list.d/debian.sources; fi
+
 # Runtime toolchains only — no docs/man/locale.
 # javac is needed at runtime (compile-cache miss path), so jdk-headless not jre.
 RUN apt-get update && apt-get install -y --no-install-recommends \

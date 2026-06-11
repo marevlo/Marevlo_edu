@@ -44,6 +44,7 @@ export default defineConfig(({ mode }) => ({
                 target: 'http://localhost:8000',
                 changeOrigin: true,
                 secure: false,
+                ws: true,
                 rewrite: (path) => path.replace(/^\/api/, ''),
             },
         },

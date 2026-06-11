@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
     Camera, Edit2, Save, X, MapPin, Briefcase, FileText,
     Zap, Trophy, Github, Linkedin, ArrowUpRight,
@@ -8,6 +9,7 @@ import {
     Award, Calendar, CalendarCheck, UserCheck,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { loadAllTopics } from '../utils/topicsLoader';
 
 /* ────────────────────────────────────────────────────────────────────────
    PALETTE — brand-monochrome + 4 semantic colors only.
@@ -807,6 +809,7 @@ function ResumeRow({ resumeUrl, resumeName, onUpload, onDelete, loading }) {
    ════════════════════════════════════════════════════════════════════════ */
 export default function Profile() {
     const { user, profileStats, achievements, profileData, updateUser, uploadResume, uploadAvatar, refreshStats } = useAuth();
+    const navigate = useNavigate();
 
     const [isEditing, setIsEditing] = useState(false);
     const [activityData, setActivityData] = useState([]);
@@ -857,6 +860,72 @@ export default function Profile() {
             .then(setActivityData)
             .catch(() => setActivityData([]));
     }, [user?.id]);
+
+    const handleSolveAnother = async () => {
+        const token = localStorage.getItem('access_token');
+        if (!token) {
+            navigate('/login');
+            return;
+        }
+
+        try {
+            const res = await fetch(`${import.meta.env.VITE_API_URL}/submissions/my-submissions?limit=100`, {
+                headers: { Authorization: `Bearer ${token}` },
+            });
+            if (!res.ok) {
+                navigate('/problems');
+                return;
+            }
+            const submissions = await res.json();
+            const lastAccepted = submissions.find(s => s.status === 'accepted');
+            const topics = await loadAllTopics();
+            
+            if (lastAccepted) {
+                const lastTitleNormalized = lastAccepted.problem_title.trim().toLowerCase();
+                let solvedTopicIndex = -1;
+                let solvedProblemIndex = -1;
+                
+                for (let tIdx = 0; tIdx < topics.length; tIdx++) {
+                    const pIdx = topics[tIdx].problems.findIndex(
+                        p => p.title.trim().toLowerCase() === lastTitleNormalized
+                    );
+                    if (pIdx !== -1) {
+                        solvedTopicIndex = tIdx;
+                        solvedProblemIndex = pIdx;
+                        break;
+                    }
+                }
+                
+                if (solvedTopicIndex !== -1 && solvedProblemIndex !== -1) {
+                    const currentTopic = topics[solvedTopicIndex];
+                    if (solvedProblemIndex + 1 < currentTopic.problems.length) {
+                        const nextProblem = currentTopic.problems[solvedProblemIndex + 1];
+                        navigate(`/problems/${currentTopic.id}/${nextProblem.id}`);
+                        return;
+                    } else {
+                        const nextTopicIndex = (solvedTopicIndex + 1) % topics.length;
+                        const nextTopic = topics[nextTopicIndex];
+                        if (nextTopic && nextTopic.problems.length > 0) {
+                            const nextProblem = nextTopic.problems[0];
+                            navigate(`/problems/${nextTopic.id}/${nextProblem.id}`);
+                            return;
+                        }
+                    }
+                }
+            }
+            
+            for (const t of topics) {
+                if (t.problems && t.problems.length > 0) {
+                    navigate(`/problems/${t.id}/${t.problems[0].id}`);
+                    return;
+                }
+            }
+            navigate('/problems');
+        } catch (err) {
+            console.error('Error finding next problem:', err);
+            navigate('/problems');
+        }
+    };
 
     const set = (key, val) => setForm(f => ({ ...f, [key]: val }));
 
@@ -1126,7 +1195,7 @@ export default function Profile() {
                     <TodayPanel
                         streak={displayStats.streak}
                         todayActive={todayActive}
-                        onCta={() => { window.location.hash = '#/problems'; }}
+                        onCta={handleSolveAnother}
                     />
                 </div>
 
