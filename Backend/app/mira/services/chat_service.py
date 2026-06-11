@@ -188,6 +188,12 @@ def chat(db: Session, user_id: int, question: str,
         build_credit_delta=(1 if build_reserved else 0), cost_inr=float(result.cost_inr),
         latency_ms=int((time.time() - t0) * 1000))
 
+    # 9. count this answered turn against the user-facing question limit. Skip
+    # pure redirects (out-of-scope / "I can't help with that") — those didn't
+    # actually answer the user's question, so they shouldn't burn a slot.
+    if result.answer_format != "redirect":
+        quota.commit_question(access)
+
     return {"ok": True, "blocks": result.blocks,
             "meta": {"request_id": request_id, "intent": result.intent,
                      "answer_format": result.answer_format, "concept": result.concept,
