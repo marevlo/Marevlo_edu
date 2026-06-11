@@ -1,4 +1,5 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import {
     Zap, Newspaper, Image, Calendar, PenTool, X, Users, Sparkles, Flame,
     Clock, CheckCircle2, AlertCircle, Info
@@ -681,14 +682,30 @@ export default function Feed() {
 
                         {/* Footer Links */}
                         <div className="flex flex-wrap gap-x-3 gap-y-2 text-[11px] px-2">
-                            {['About', 'Accessibility', 'Help Center', 'Privacy & Terms'].map((link) => (
-                                <span
-                                    key={link}
-                                    className="cursor-pointer hover:underline transition-colors duration-200 text-muted-foreground"
-                                >
-                                    {link}
-                                </span>
-                            ))}
+                            <Link
+                                to="/about"
+                                className="cursor-pointer hover:underline transition-colors duration-200 text-muted-foreground"
+                            >
+                                About
+                            </Link>
+                            <a
+                                href="mailto:support@marevlo.com"
+                                className="cursor-pointer hover:underline transition-colors duration-200 text-muted-foreground"
+                            >
+                                Help Center
+                            </a>
+                            <Link
+                                to="/legal/privacy"
+                                className="cursor-pointer hover:underline transition-colors duration-200 text-muted-foreground"
+                            >
+                                Privacy
+                            </Link>
+                            <Link
+                                to="/legal/terms"
+                                className="cursor-pointer hover:underline transition-colors duration-200 text-muted-foreground"
+                            >
+                                Terms
+                            </Link>
                             <div className="text-[11px] text-muted-foreground" style={{ opacity: 0.6 }}>
                                 © 2026 Marevlo
                             </div>
