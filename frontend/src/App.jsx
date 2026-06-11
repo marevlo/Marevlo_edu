@@ -1,5 +1,5 @@
 import React, { Suspense } from 'react';
-import { BrowserRouter as Router, Routes, Route, useNavigate, useParams, useLocation, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, useNavigate, useParams } from 'react-router-dom';
 
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ThemeProvider } from './context/ThemeContext';
@@ -8,6 +8,7 @@ import { ToastProvider, useToast } from './components/Toast';
 
 import Layout from './components/Layout';
 import JobBoardGuard from './components/JobBoardGuard';
+import CourseAccessGate from './components/CourseAccessGate';
 
 import { loadAllTopics, loadProblemRaw } from './utils/topicsLoader';
 
@@ -33,6 +34,12 @@ const ResearchCourseContent = React.lazy(() => import('./pages/ResearchCourseCon
 const ResearchPaperContent = React.lazy(() => import('./pages/ResearchPaperContent'));
 const T3TrackLanding = React.lazy(() => import('./pages/T3TrackLanding'));
 const TopicProblems = React.lazy(() => import('./pages/TopicProblems'));
+const PrivacyPolicy = React.lazy(() => import('./pages/legal/PrivacyPolicy'));
+const TermsOfService = React.lazy(() => import('./pages/legal/TermsOfService'));
+const RefundPolicy = React.lazy(() => import('./pages/legal/RefundPolicy'));
+const CookiePolicy = React.lazy(() => import('./pages/legal/CookiePolicy'));
+const Settings = React.lazy(() => import('./pages/Settings'));
+const VerifyEmail = React.lazy(() => import('./pages/VerifyEmail'));
 
 export default function App() {
     return (
@@ -54,7 +61,7 @@ export default function App() {
                                 <Route path="/messages" element={<MessagesWrapper />} />
                                 <Route path="/project" element={<Project />} />
                                 <Route path="/courses/*" element={<Courses />} />
-                                <Route path="/course/:id" element={<CourseContent />} />
+                                <Route path="/course/:id" element={<CourseAccessGate><CourseContent /></CourseAccessGate>} />
                                 <Route path="/jobs" element={<JobBoardGuard><JobBoard /></JobBoardGuard>} />
                                 <Route path="/plan" element={<Plan />} />
                                 <Route path="/profile" element={<Profile />} />
@@ -65,6 +72,12 @@ export default function App() {
                                 <Route path="/research/courses/*" element={<ResearchCourses />} />
                                 <Route path="/research/track/recommender-system" element={<T3TrackLanding />} />
                                 <Route path="/research/course/:id" element={<ResearchCourseContent />} />
+                                <Route path="/legal/privacy" element={<PrivacyPolicy />} />
+                                <Route path="/legal/terms" element={<TermsOfService />} />
+                                <Route path="/legal/refunds" element={<RefundPolicy />} />
+                                <Route path="/legal/cookies" element={<CookiePolicy />} />
+                                <Route path="/settings" element={<Settings />} />
+                                <Route path="/verify-email" element={<VerifyEmail />} />
                             </Route>
                         </Routes>
                     </Router>
@@ -93,7 +106,7 @@ function LoginWrapper() {
 function SignupWrapper() {
     const navigate = useNavigate();
     const showToast = useToast();
-    return <Signup onLogin={() => navigate('/login')} onSignupSuccess={() => { showToast('Account created! Please sign in.', 'success'); navigate('/login'); }} />;
+    return <Signup onLogin={() => navigate('/login')} onSignupSuccess={(u) => { showToast('Account created! Check your email for a verification code.', 'success'); navigate('/verify-email?email=' + encodeURIComponent(u?.email || '')); }} />;
 }
 
 function ProblemWrapper() {

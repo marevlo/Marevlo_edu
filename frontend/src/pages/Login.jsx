@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { motion as Motion, AnimatePresence } from 'framer-motion';
+import { useNavigate } from 'react-router-dom';
 import { ArrowRight, Github, Globe, X, Mail, Lock } from 'lucide-react';
 import { getFirebaseAuth } from '../lib/firebase';
 import AuthVisual from '../components/AuthVisual';
@@ -8,6 +9,7 @@ import { staggerParent, fadeUp, notice, backdrop, modalPanel } from '../lib/moti
 const API = import.meta.env.VITE_API_URL;
 
 export default function Login({ onLogin, onSignup }) {
+    const navigate = useNavigate();
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
 
@@ -39,6 +41,11 @@ export default function Login({ onLogin, onSignup }) {
             });
 
             if (!response.ok) {
+                const errData = await response.json().catch(() => ({}));
+                if (errData?.error?.code === 'email_not_verified') {
+                    navigate('/verify-email?email=' + encodeURIComponent(email));
+                    return;
+                }
                 throw new Error('Incorrect email or password');
             }
 

@@ -173,7 +173,7 @@ export default function Navigation() {
                                                 <p className="text-xs truncate text-muted-foreground">{user.handle || user.email}</p>
                                             </div>
                                             <button onClick={() => { navigate('/profile'); setShowProfileMenu(false); }} className="nav-dropdown-item">Profile</button>
-                                            <button className="nav-dropdown-item" disabled>Settings</button>
+                                            <button onClick={() => { navigate('/settings'); setShowProfileMenu(false); }} className="nav-dropdown-item">Settings</button>
                                             <button onClick={() => { navigate('/about'); setShowProfileMenu(false); }} className="nav-dropdown-item">About Us</button>
                                             <div className="h-px my-1" style={{ backgroundColor: 'var(--border)' }} />
                                             <button onClick={() => { setShowBugReport(true); setShowProfileMenu(false); }} className="nav-dropdown-item">Report a Bug</button>

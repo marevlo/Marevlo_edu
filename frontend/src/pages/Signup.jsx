@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { motion as Motion, AnimatePresence } from 'framer-motion';
+import { Link } from 'react-router-dom';
 import { ArrowRight, User, Mail, Lock, X, Github, Globe } from 'lucide-react';
 import { getFirebaseAuth } from '../lib/firebase';
 import AuthVisual from '../components/AuthVisual';
@@ -15,7 +16,8 @@ export default function Signup({ onLogin, onSignupSuccess }) {
         confirmPassword: '',
         dateOfBirth: '',
         guardianEmail: '',
-        guardianConsent: false
+        guardianConsent: false,
+        tosAccepted: false
     });
 
     const [passwordStrength, setPasswordStrength] = useState(0);
@@ -63,6 +65,10 @@ export default function Signup({ onLogin, onSignupSuccess }) {
             setPasswordError('A parent/guardian email and consent are required for users under 18.');
             return;
         }
+        if (!formData.tosAccepted) {
+            setPasswordError('Please accept the Terms of Service and Privacy Policy.');
+            return;
+        }
 
         try {
             // Ensure username meets backend requirements: 3-50 chars, letters/numbers/underscore
@@ -86,6 +92,7 @@ export default function Signup({ onLogin, onSignupSuccess }) {
                     date_of_birth: formData.dateOfBirth,
                     guardian_email: minor ? formData.guardianEmail : undefined,
                     guardian_consent: minor ? formData.guardianConsent : false,
+                    tos_accepted: formData.tosAccepted,
                     heard_from: localStorage.getItem('heardFrom')
                 }),
             });
@@ -359,6 +366,16 @@ export default function Signup({ onLogin, onSignupSuccess }) {
                         )}
                         </AnimatePresence>
 
+                        <label className="flex items-start gap-2 text-sm text-foreground cursor-pointer">
+                            <input
+                                type="checkbox"
+                                checked={formData.tosAccepted}
+                                onChange={(e) => setFormData({ ...formData, tosAccepted: e.target.checked })}
+                                className="mt-1"
+                            />
+                            <span>I agree to the <Link to="/legal/terms" target="_blank" className="text-primary hover:underline">Terms of Service</Link> and <Link to="/legal/privacy" target="_blank" className="text-primary hover:underline">Privacy Policy</Link>.</span>
+                        </label>
+
                         <AnimatePresence>
                         {passwordError && (
                             <Motion.div
@@ -411,6 +428,9 @@ export default function Signup({ onLogin, onSignupSuccess }) {
                                 {googleLoading ? 'Signing up…' : 'Google'}
                             </button>
                         </div>
+                        <p className="mt-3 text-[11px] text-muted-foreground text-center">
+                            By continuing with Google, you agree to our <Link to="/legal/terms" target="_blank" className="text-primary hover:underline">Terms</Link> and <Link to="/legal/privacy" target="_blank" className="text-primary hover:underline">Privacy Policy</Link>.
+                        </p>
                     </Motion.div>
 
                     <Motion.p variants={fadeUp} className="mt-8 text-center text-[13px] text-muted-foreground">
