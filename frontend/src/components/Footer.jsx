@@ -1,16 +1,5 @@
 import React from 'react';
-import { Link, useLocation } from 'react-router-dom';
-
-// Exact-match paths where the footer is shown ('/' is handled separately).
-const EXACT_PATHS = new Set([
-    '/about',
-    '/plan',
-    '/jobs',
-    '/profile',
-    '/settings',
-    '/research',
-    '/research/papers',
-]);
+import { Link } from 'react-router-dom';
 
 const COLUMNS = [
     {
@@ -40,21 +29,10 @@ const COLUMNS = [
     },
 ];
 
+// Mounted at the bottom of a page's own scroll container (currently only the
+// landing page) so it scrolls with the content — never in Layout, where it
+// would force a second scrollbar on pages that manage their own scrolling.
 export default function Footer() {
-    const { pathname } = useLocation();
-    const path = pathname.length > 1 ? pathname.replace(/\/+$/, '') : pathname;
-
-    // Visible only on the landing page, a small set of full pages, and the
-    // legal/courses sections. Never on immersive surfaces (/course/:id, /ide,
-    // /messages, /feed, /login, /signup, /problems, research content...).
-    const visible =
-        path === '/' ||
-        EXACT_PATHS.has(path) ||
-        path.startsWith('/legal') ||
-        path.startsWith('/courses');
-
-    if (!visible) return null;
-
     return (
         <footer className="border-t border-border" style={{ background: 'var(--card)' }}>
             <div style={{ maxWidth: 1120, margin: '0 auto', padding: '40px 24px 28px' }}>

@@ -4,6 +4,7 @@ import { useScrollReveal, useActiveInView } from '../hooks/useScrollReveal';
 import RevealText from '../components/RevealText';
 import { ChevronRight, Layers, Users, Briefcase, Code, Terminal, Globe, ArrowUpRight, CheckCircle2, Zap, MessageSquare, Brain, Cpu, GitBranch, Film, Map, Puzzle, Lightbulb, TrendingUp, Target, Rocket, GraduationCap, Eye, Hammer, Wrench, Lock, Unlock, ListOrdered, Sparkles, Keyboard, Bot } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
+import Footer from '../components/Footer';
 
 // Animated Typing Terminal
 const CODE_SNIPPETS = [
@@ -2105,6 +2106,8 @@ export default function LandingPage({ onStart, onExplore }) {
                     <p className="mt-6 text-sm text-muted-foreground">No credit card required. Free forever.</p>
                 </div>
             </section>
+
+            <Footer />
         </div>
     );
 }

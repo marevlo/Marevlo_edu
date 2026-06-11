@@ -3,7 +3,6 @@ import { Outlet, useLocation } from 'react-router-dom';
 import Navigation from './Navigation';
 import ErrorBoundary from './ErrorBoundary';
 import MiraWidget from './mira/MiraWidget';
-import Footer from './Footer';
 import CookieConsent from './CookieConsent';
 
 export default function Layout() {
@@ -23,7 +22,6 @@ export default function Layout() {
                         <div key={section} className="route-enter h-full">
                             <Outlet />
                         </div>
-                        <Footer />
                     </Suspense>
                 </ErrorBoundary>
             </main>
