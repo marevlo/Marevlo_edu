@@ -42,6 +42,13 @@ class Settings(BaseSettings):
     MINORS_MODE: str = "consent"
     REQUIRE_DOB: bool = True  # require date of birth at signup (off in tests)
 
+    # Compliance: email verification + ToS consent. REQUIRE_EMAIL_VERIFICATION
+    # blocks password logins until the email is verified (Google accounts are
+    # pre-verified). TOS_VERSION is stamped onto users at acceptance time.
+    REQUIRE_EMAIL_VERIFICATION: bool = False
+    REQUIRE_TOS_ACCEPT: bool = True
+    TOS_VERSION: str = "1.0"
+
     # ── Database ─────────────────────────────────────────────────────────
     DATABASE_URL: str = (
         "postgresql+psycopg2://marevlo:marevlo@localhost:5432/marevlo_dev"

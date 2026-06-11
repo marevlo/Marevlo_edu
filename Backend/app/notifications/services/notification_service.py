@@ -23,13 +23,31 @@ import logging
 from datetime import datetime, timezone
 from typing import Iterable, Optional
 
-from sqlalchemy import func, select, update
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.orm import Session
 
 from app.auth.models.user import User
-from app.notifications.models.notification import Notification
+from app.notifications.models.notification import (
+    NOTIF_ADMIN_ANNOUNCEMENT,
+    NOTIF_COMMENT_REPLY,
+    NOTIF_NEW_FOLLOWER,
+    NOTIF_POST_COMMENT,
+    NOTIF_POST_LIKE,
+    Notification,
+)
+from app.notifications.models.preference import UserNotificationPrefs
 
 logger = logging.getLogger(__name__)
+
+# Which preference toggle governs each notification type. Types not listed
+# here (certificate_ready, report_resolved, ...) are always delivered.
+PREF_FIELD_BY_TYPE = {
+    NOTIF_COMMENT_REPLY: "in_app_social",
+    NOTIF_POST_COMMENT: "in_app_social",
+    NOTIF_POST_LIKE: "in_app_social",
+    NOTIF_NEW_FOLLOWER: "in_app_social",
+    NOTIF_ADMIN_ANNOUNCEMENT: "in_app_announcements",
+}
 
 
 class NotificationService:
@@ -47,9 +65,13 @@ class NotificationService:
         """Persist a notification for one recipient.
 
         Self-notifications are filtered: if actor_user_id == user_id we no-op
-        (no point telling you about your own action).
+        (no point telling you about your own action). Recipients who disabled
+        the type's preference toggle are skipped (missing row = defaults = allow).
         """
         if actor_user_id is not None and actor_user_id == user_id:
+            return None  # type: ignore[return-value]
+
+        if not self._prefs_allow(db, user_id=user_id, type=type):
             return None  # type: ignore[return-value]
 
         notif = Notification(
@@ -104,10 +126,24 @@ class NotificationService:
 
         At our scale (≤ a few thousand users) one INSERT per user is fine.
         At Coursera scale you'd want a fan-in/fan-out queue. We're not there.
+
+        Users who opted out of announcements are excluded; users with no
+        prefs row keep the default (announcements on).
         """
         ids = [
             uid for (uid,) in db.execute(
-                select(User.id).where(User.is_active.is_(True))
+                select(User.id)
+                .outerjoin(
+                    UserNotificationPrefs,
+                    UserNotificationPrefs.user_id == User.id,
+                )
+                .where(User.is_active.is_(True))
+                .where(
+                    or_(
+                        UserNotificationPrefs.user_id.is_(None),
+                        UserNotificationPrefs.in_app_announcements.is_(True),
+                    )
+                )
             ).all()
         ]
         return self.notify_many(
@@ -117,6 +153,44 @@ class NotificationService:
             payload=payload,
             actor_user_id=actor_user_id,
         )
+
+    # ── Preferences ─────────────────────────────────────────────────────
+    def _prefs_allow(self, db: Session, *, user_id: int, type: str) -> bool:
+        """True if the recipient's prefs allow this notification type.
+
+        Missing prefs row means defaults (everything on). Unknown types are
+        always allowed — preference gating is opt-in per type.
+        """
+        field = PREF_FIELD_BY_TYPE.get(type)
+        if field is None:
+            return True
+        prefs = db.get(UserNotificationPrefs, user_id)
+        if prefs is None:
+            return True
+        return bool(getattr(prefs, field))
+
+    def get_prefs(self, db: Session, *, user_id: int) -> UserNotificationPrefs:
+        """Get-or-create the user's prefs row (defaults = everything on)."""
+        prefs = db.get(UserNotificationPrefs, user_id)
+        if prefs is None:
+            prefs = UserNotificationPrefs(user_id=user_id)
+            db.add(prefs)
+            db.commit()
+            db.refresh(prefs)
+        return prefs
+
+    def update_prefs(
+        self, db: Session, *, user_id: int, fields: dict
+    ) -> UserNotificationPrefs:
+        """Partial update — only the provided toggles change."""
+        prefs = self.get_prefs(db, user_id=user_id)
+        for key in ("in_app_social", "in_app_announcements", "email_updates"):
+            value = fields.get(key)
+            if value is not None:
+                setattr(prefs, key, bool(value))
+        db.commit()
+        db.refresh(prefs)
+        return prefs
 
     # ── Read ────────────────────────────────────────────────────────────
     def list_for_user(

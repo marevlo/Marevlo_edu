@@ -19,6 +19,8 @@ os.environ.setdefault("JWT_SECRET", "test-secret-thats-long-enough-1234")
 os.environ.setdefault("REDIS_REQUIRED", "false")
 os.environ.setdefault("RATE_LIMIT_ENABLED", "false")
 os.environ.setdefault("REQUIRE_DOB", "false")
+os.environ.setdefault("REQUIRE_TOS_ACCEPT", "false")
+os.environ.setdefault("REQUIRE_EMAIL_VERIFICATION", "false")
 os.environ.setdefault("ENFORCE_COURSE_ACCESS", "false")
 os.environ.setdefault("LOG_FORMAT", "text")
 

@@ -30,9 +30,11 @@ from app.common.security_event import (
     EVT_PW_RESET_REQUESTED,
     EVT_SUSPICIOUS_LOGIN,
 )
+from app.core.config import get_settings
 from app.core.exceptions import (
     AccountInactive,
     EmailAlreadyRegistered,
+    EmailNotVerified,
     InvalidCredentials,
     TokenError,
     UsernameTaken,
@@ -51,6 +53,14 @@ from app.core.security import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Audit event types for the account-settings / verification flows. The
+# canonical EVT_* registry lives in app.common.security_event; audit_logger
+# accepts any short string, so these stay local to avoid widening that module.
+EVT_PW_CHANGED = "password_changed"
+EVT_ACCOUNT_DELETED = "account_deleted"
+EVT_EMAIL_VERIFY_REQUESTED = "email_verify_requested"
+EVT_EMAIL_VERIFIED = "email_verified"
 
 
 class AuthService:
@@ -206,6 +216,8 @@ class AuthService:
         date_of_birth=None,
         guardian_email: str | None = None,
         guardian_consent_at=None,
+        tos_accepted_at=None,
+        tos_version: str | None = None,
     ) -> User:
         # Lowercase email for storage; usernames are case-sensitive but unique.
         email_normalized = email.lower().strip()
@@ -224,6 +236,8 @@ class AuthService:
             date_of_birth=date_of_birth,
             guardian_email=guardian_email,
             guardian_consent_at=guardian_consent_at,
+            tos_accepted_at=tos_accepted_at,
+            tos_version=tos_version,
         )
         db.add(user)
         db.commit()
@@ -262,6 +276,16 @@ class AuthService:
             )
             raise InvalidCredentials("Incorrect email or password")
         self._ensure_usable(user)
+
+        # Block unverified password accounts when verification is required.
+        # Google-only accounts (no password_hash) never reach this path, but
+        # the password_hash guard keeps linked accounts safe regardless.
+        if (
+            get_settings().REQUIRE_EMAIL_VERIFICATION
+            and user.email_verified_at is None
+            and user.password_hash is not None
+        ):
+            raise EmailNotVerified()
 
         user.last_login_at = datetime.now(timezone.utc)
         session = self._open_session(db, user=user, ip=ip, user_agent=user_agent)
@@ -348,12 +372,19 @@ class AuthService:
             suffix += 1
             if suffix > 1000:  # paranoid safety
                 raise RuntimeError("Could not allocate username")
+        now = datetime.now(timezone.utc)
         user = User(
             email=email,
             username=username,
             password_hash=None,
             google_uid=google_uid,
             is_active=True,
+            # Google verifies email ownership before issuing the ID token.
+            email_verified_at=now,
+            # Proceeding through the Google sign-in flow constitutes acceptance
+            # (the consent copy lives on the login/signup screens).
+            tos_accepted_at=now,
+            tos_version=get_settings().TOS_VERSION,
         )
         db.add(user)
         db.flush()
@@ -444,10 +475,12 @@ class AuthService:
             )
             return  # silent no-op
 
-        # Mark previous unused OTPs as used.
+        # Mark previous unused password-reset OTPs as used.
         now = datetime.now(timezone.utc)
         db.query(EmailOTP).filter(
-            EmailOTP.user_id == user.id, EmailOTP.used_at.is_(None)
+            EmailOTP.user_id == user.id,
+            EmailOTP.purpose == "password_reset",
+            EmailOTP.used_at.is_(None),
         ).update({EmailOTP.used_at: now})
 
         otp = generate_otp()
@@ -455,6 +488,7 @@ class AuthService:
             EmailOTP(
                 user_id=user.id,
                 code_hash=hash_otp(otp),
+                purpose="password_reset",
                 expires_at=now + timedelta(minutes=self.OTP_TTL_MINUTES),
             )
         )
@@ -501,6 +535,7 @@ class AuthService:
             otp_entry = db.execute(
                 select(EmailOTP)
                 .where(EmailOTP.user_id == user.id)
+                .where(EmailOTP.purpose == "password_reset")
                 .where(EmailOTP.used_at.is_(None))
                 .where(EmailOTP.expires_at > datetime.now(timezone.utc))
                 .order_by(EmailOTP.created_at.desc())
@@ -519,9 +554,10 @@ class AuthService:
         now = datetime.now(timezone.utc)
         otp_entry.used_at = now
         user.password_hash = hash_password(new_password)
-        # Also burn any other outstanding OTPs.
+        # Also burn any other outstanding password-reset OTPs.
         db.query(EmailOTP).filter(
             EmailOTP.user_id == user.id,
+            EmailOTP.purpose == "password_reset",
             EmailOTP.used_at.is_(None),
             EmailOTP.id != otp_entry.id,
         ).update({EmailOTP.used_at: now})
@@ -544,6 +580,231 @@ class AuthService:
             email_service.send_password_changed(to_email=user.email)
         except Exception:
             logger.exception("send_password_changed_failed user_id=%s", user.id)
+
+    # ── Email verification ──────────────────────────────────────────────
+    def request_email_verification(
+        self,
+        db: Session,
+        *,
+        email: str,
+        ip: Optional[str] = None,
+        user_agent: Optional[str] = None,
+    ) -> None:
+        """Send a verification OTP if the email exists and is unverified.
+
+        Always returns silently — never leaks whether the email is registered
+        (or already verified).
+        """
+        email_norm = email.lower().strip()
+        # Per-email rate limit, same defence-in-depth as password reset.
+        rate_guard.check(
+            key=f"ev_request:{email_norm}", limit=5, window_seconds=3600
+        )
+
+        user = self._get_user_by_email(db, email_norm)
+        if not user or not user.is_usable() or user.email_verified_at is not None:
+            # Still audit the attempt — useful for spotting probing.
+            audit_logger.log(
+                db,
+                event_type=EVT_EMAIL_VERIFY_REQUESTED,
+                user_id=user.id if user else None,
+                ip_address=ip,
+                user_agent=user_agent,
+                meta={"email": email_norm, "sent": False},
+            )
+            return  # silent no-op
+
+        # Mark previous unused verification OTPs as used.
+        now = datetime.now(timezone.utc)
+        db.query(EmailOTP).filter(
+            EmailOTP.user_id == user.id,
+            EmailOTP.purpose == "email_verify",
+            EmailOTP.used_at.is_(None),
+        ).update({EmailOTP.used_at: now})
+
+        otp = generate_otp()
+        db.add(
+            EmailOTP(
+                user_id=user.id,
+                code_hash=hash_otp(otp),
+                purpose="email_verify",
+                expires_at=now + timedelta(minutes=self.OTP_TTL_MINUTES),
+            )
+        )
+        db.commit()
+
+        audit_logger.log(
+            db,
+            event_type=EVT_EMAIL_VERIFY_REQUESTED,
+            user_id=user.id,
+            ip_address=ip,
+            user_agent=user_agent,
+            meta={"email": email_norm, "sent": True},
+        )
+
+        try:
+            email_service.send_verify_otp(to_email=user.email, otp=otp)
+        except Exception:
+            # Swallow — the OTP is committed, so the user can re-request.
+            logger.exception("send_verify_otp_failed user_id=%s", user.id)
+
+    def confirm_email_verification(
+        self,
+        db: Session,
+        *,
+        email: str,
+        otp: str,
+        ip: Optional[str] = None,
+        user_agent: Optional[str] = None,
+    ) -> None:
+        email_norm = email.lower().strip()
+        # Hard cap: 10 wrong-OTP attempts per email per hour.
+        rate_guard.check(
+            key=f"ev_confirm:{email_norm}", limit=10, window_seconds=3600
+        )
+
+        user = self._get_user_by_email(db, email_norm)
+
+        # Look up the OTP entry only for real, still-unverified users.
+        otp_entry = None
+        if user is not None and user.email_verified_at is None:
+            otp_entry = db.execute(
+                select(EmailOTP)
+                .where(EmailOTP.user_id == user.id)
+                .where(EmailOTP.purpose == "email_verify")
+                .where(EmailOTP.used_at.is_(None))
+                .where(EmailOTP.expires_at > datetime.now(timezone.utc))
+                .order_by(EmailOTP.created_at.desc())
+                .limit(1)
+            ).scalar_one_or_none()
+
+        # Always run HMAC regardless of whether user/OTP was found — prevents
+        # email-enumeration via timing differences between the two code paths.
+        _sentinel = hash_otp("000000")
+        stored_hash = otp_entry.code_hash if otp_entry else _sentinel
+        otp_valid = verify_otp(otp, stored_hash)
+
+        if not user or not otp_entry or not otp_valid:
+            raise InvalidCredentials("Invalid or expired OTP")
+
+        now = datetime.now(timezone.utc)
+        otp_entry.used_at = now
+        user.email_verified_at = now
+        # Also burn any other outstanding verification OTPs.
+        db.query(EmailOTP).filter(
+            EmailOTP.user_id == user.id,
+            EmailOTP.purpose == "email_verify",
+            EmailOTP.used_at.is_(None),
+            EmailOTP.id != otp_entry.id,
+        ).update({EmailOTP.used_at: now})
+        db.commit()
+
+        audit_logger.log(
+            db,
+            event_type=EVT_EMAIL_VERIFIED,
+            user_id=user.id,
+            ip_address=ip,
+            user_agent=user_agent,
+            meta={"email": email_norm},
+        )
+
+    # ── Change password (logged-in) ─────────────────────────────────────
+    def change_password(
+        self,
+        db: Session,
+        *,
+        user: User,
+        current_password: str,
+        new_password: str,
+        ip: Optional[str] = None,
+        user_agent: Optional[str] = None,
+    ) -> None:
+        if not user.password_hash:
+            raise ValidationError(
+                "This account uses Google sign-in. "
+                "Use 'Forgot password' to set a password first."
+            )
+        if not verify_password(current_password, user.password_hash):
+            raise InvalidCredentials("Current password is incorrect")
+
+        user.password_hash = hash_password(new_password)
+        db.commit()
+
+        # Force re-login everywhere by revoking all refresh tokens.
+        refresh_token_store.revoke_all_for_user(user_id=user.id)
+
+        audit_logger.log(
+            db,
+            event_type=EVT_PW_CHANGED,
+            user_id=user.id,
+            ip_address=ip,
+            user_agent=user_agent,
+            meta={"email": user.email},
+        )
+
+        # Confirmation email — best-effort.
+        try:
+            email_service.send_password_changed(to_email=user.email)
+        except Exception:
+            logger.exception("send_password_changed_failed user_id=%s", user.id)
+
+    # ── Delete account ──────────────────────────────────────────────────
+    def delete_account(
+        self,
+        db: Session,
+        *,
+        user: User,
+        password: Optional[str],
+        confirm: str,
+        ip: Optional[str] = None,
+        user_agent: Optional[str] = None,
+    ) -> None:
+        """Soft-delete + anonymize. The row stays (FKs survive) but the unique
+        email/username are freed for re-registration and all PII is cleared.
+        """
+        if confirm != "DELETE":
+            raise ValidationError('Type "DELETE" to confirm account deletion.')
+        if user.password_hash and not (
+            password and verify_password(password, user.password_hash)
+        ):
+            raise InvalidCredentials("Incorrect password")
+
+        original_email = user.email
+
+        # Goodbye email first — after anonymization there's no address left.
+        # Best-effort: a mail failure must not block the deletion.
+        try:
+            email_service.send_account_deleted(to_email=original_email)
+        except Exception:
+            logger.exception("send_account_deleted_failed user_id=%s", user.id)
+
+        now = datetime.now(timezone.utc)
+        user.deleted_at = now
+        user.is_active = False
+        user.email = f"deleted_user_{user.id}@deleted.invalid"
+        user.username = f"deleted_user_{user.id}"
+        user.password_hash = None
+        user.google_uid = None
+        user.guardian_email = None
+        user.date_of_birth = None
+
+        # Close any open sessions.
+        db.query(UserSession).filter(
+            UserSession.user_id == user.id,
+            UserSession.logout_time.is_(None),
+        ).update({UserSession.logout_time: now})
+        db.commit()
+
+        refresh_token_store.revoke_all_for_user(user_id=user.id)
+
+        audit_logger.log(
+            db,
+            event_type=EVT_ACCOUNT_DELETED,
+            user_id=user.id,
+            ip_address=ip,
+            user_agent=user_agent,
+            meta={"email": original_email},
+        )
 
 
 auth_service = AuthService()

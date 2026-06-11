@@ -24,6 +24,7 @@ from app.moderation.models.moderation import (  # noqa: F401
     UserBlock,
 )
 from app.notifications.models.notification import Notification  # noqa: F401
+from app.notifications.models.preference import UserNotificationPrefs  # noqa: F401
 from app.problems.models.problem import Problem, ProblemTestCase  # noqa: F401
 from app.profile.models.profile import UserAchievement, UserProfile  # noqa: F401
 from app.submissions.models.submission import ProblemSubmission  # noqa: F401

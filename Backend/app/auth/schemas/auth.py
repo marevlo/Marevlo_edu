@@ -26,6 +26,7 @@ class UserCreate(BaseModel):
     date_of_birth: Optional[date] = None
     guardian_email: Optional[EmailStr] = None
     guardian_consent: bool = False
+    tos_accepted: bool = False
 
     @field_validator("password")
     @classmethod
@@ -44,6 +45,7 @@ class UserOut(BaseModel):
     is_active: bool
     created_at: Optional[datetime] = None
     last_login_at: Optional[datetime] = None
+    email_verified_at: Optional[datetime] = None
 
 
 class GoogleLoginRequest(BaseModel):
@@ -73,6 +75,36 @@ class ResetPasswordRequest(BaseModel):
         if v.lower() == v or v.upper() == v or not any(c.isdigit() for c in v):
             raise ValueError("Password must include upper, lower, and digit characters")
         return v
+
+
+# ── Account settings ────────────────────────────────────────────────────
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str = Field(..., min_length=8, max_length=128)
+
+    @field_validator("new_password")
+    @classmethod
+    def _password_strength(cls, v: str) -> str:
+        if v.lower() == v or v.upper() == v or not any(c.isdigit() for c in v):
+            raise ValueError("Password must include upper, lower, and digit characters")
+        return v
+
+
+class DeleteAccountRequest(BaseModel):
+    # Password is required when the account has one; Google-only accounts
+    # confirm with the literal string alone.
+    password: Optional[str] = None
+    confirm: str
+
+
+# ── Email verification ──────────────────────────────────────────────────
+class EmailVerifyRequest(BaseModel):
+    email: EmailStr
+
+
+class EmailVerifyConfirm(BaseModel):
+    email: EmailStr
+    otp: str = Field(..., min_length=6, max_length=6)
 
 
 # ── Generic OK ─────────────────────────────────────────────────────────

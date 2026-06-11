@@ -32,3 +32,19 @@ class UnreadCountOut(BaseModel):
 class MessageOut(BaseModel):
     message: str
     affected: int = 0
+
+
+class NotificationPrefsOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    in_app_social: bool
+    in_app_announcements: bool
+    email_updates: bool
+
+
+class NotificationPrefsUpdate(BaseModel):
+    """PUT body — any subset of the toggles; omitted fields are unchanged."""
+
+    in_app_social: Optional[bool] = None
+    in_app_announcements: Optional[bool] = None
+    email_updates: Optional[bool] = None
