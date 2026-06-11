@@ -2,6 +2,7 @@ import React, { Suspense } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import Navigation from './Navigation';
 import ErrorBoundary from './ErrorBoundary';
+import MiraWidget from './mira/MiraWidget';
 
 export default function Layout() {
     // Key the outlet on the top-level section (/courses, /feed, …) so route
@@ -23,6 +24,7 @@ export default function Layout() {
                     </Suspense>
                 </ErrorBoundary>
             </main>
+            <MiraWidget />
         </div>
     );
 }
