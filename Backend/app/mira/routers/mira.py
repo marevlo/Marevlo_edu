@@ -21,10 +21,23 @@ from app.mira.services.entitlement_bridge import resolve_access
 router = APIRouter(prefix="/mira", tags=["mira"])
 
 
+class HistoryMsg(BaseModel):
+    role: str = Field(description="user | mira")
+    content: str = Field(max_length=4000)
+
+
 class ChatReq(BaseModel):
     question: str = Field(min_length=1, max_length=2000)
     course_id: str | None = None
     lesson_id: str | None = None
+    # the problem the user is currently on (from /problems/:topic/:id or /ide/:id)
+    problem_id: str | None = None
+    # live page context — e.g. the IDE problem statement + the user's current
+    # code + last run output — so MIRA can debug THEIR code, not a generic one.
+    page_context: str | None = Field(default=None, max_length=8000)
+    # recent turns of the CURRENT chat thread, oldest->newest, for follow-up
+    # context ("provide me code", "explain step by step"). Bounded server-side.
+    history: list[HistoryMsg] | None = Field(default=None)
 
 
 class FeedbackReq(BaseModel):
@@ -44,8 +57,11 @@ class PracticeAnswerReq(BaseModel):
 @router.post("/chat")
 def mira_chat(body: ChatReq, user: User = Depends(get_current_user),
               db: Session = Depends(get_db)):
+    history = [m.model_dump() for m in (body.history or [])][-8:]
     return chat_service.chat(db, user_id=user.id, question=body.question,
-                             course_id=body.course_id, lesson_id=body.lesson_id)
+                             course_id=body.course_id, lesson_id=body.lesson_id,
+                             problem_id=body.problem_id, page_context=body.page_context,
+                             history=history)
 
 
 @router.get("/profile")

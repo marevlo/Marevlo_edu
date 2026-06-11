@@ -43,8 +43,8 @@ class Classification:
 
 # ---- vocabulary the rules pass keys on ----
 _LEARN_CUES = ("what is", "what's", "explain", "how does", "how do", "how is",
-               "understand", "i don't get", "teach me", "intuition", "why does",
-               "what are", "difference between", "compare")
+               "how to", "how can i", "understand", "i don't get", "teach me",
+               "intuition", "why does", "what are", "difference between", "compare")
 _PRACTICE_CUES = ("give me problems", "practice", "quiz me", "exercises",
                   "problems to solve", "more like that", "drill", "leetcode",
                   "give me 3", "give me a few", "give me some", "problems that",
@@ -219,6 +219,15 @@ def classify_rules(message: str) -> Classification | None:
 
     # nothing matched -> let the LLM decide
     return None
+
+
+def is_explicit_off_topic(message: str) -> bool:
+    """True only when the message has a clear NON-technical cue and no technical
+    content (e.g. 'what's the weather'). Used to still redirect a genuinely
+    off-topic ask even inside an in-domain context like a live problem page,
+    while letting vague-but-on-task asks ('why isn't this working') through."""
+    t = message.lower().strip()
+    return _has_any(t, _OFF_TOPIC_CUES) and not _looks_technical(t)
 
 
 def _detect_language(t: str) -> str | None:

@@ -10,10 +10,13 @@ those are 'must-not-get-this-wrong' moments (and they're rare, so affordable).
 """
 from __future__ import annotations
 
+import logging
 import time
 from dataclasses import dataclass, field
 
 from .providers import Provider, Completion
+
+log = logging.getLogger("mira.router")
 
 
 # ----------------------------- circuit breaker -----------------------------
@@ -106,6 +109,7 @@ class Router:
             last = comp
             if comp.ok:
                 return comp
+            log.warning("MIRA provider '%s' failed: %s", name, comp.error)
         # everything failed -> signal caller to use the cache/golden floor
         return last or Completion(text="", usage=None, latency_ms=0, provider="none",
                                   ok=False, error="all providers down")

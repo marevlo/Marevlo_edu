@@ -64,7 +64,9 @@ def _course_context(db: Session, user_id: int, course_id: str | None,
 
 
 def chat(db: Session, user_id: int, question: str,
-         course_id: str | None = None, lesson_id: str | None = None) -> dict:
+         course_id: str | None = None, lesson_id: str | None = None,
+         problem_id: str | None = None, page_context: str | None = None,
+         history: list[dict] | None = None) -> dict:
     t0 = time.time()
     access: MiraAccess = resolve_access(db, user_id)
 
@@ -126,6 +128,20 @@ def chat(db: Session, user_id: int, question: str,
             setattr(ctx, k, v)
         except Exception:
             pass
+    # attach the (thread-accurate) conversation history so the engine can resolve
+    # follow-ups like "provide me code" / "explain step by step" in context.
+    if history:
+        try:
+            ctx.history = history
+        except Exception:
+            pass
+    # attach the current page / problem context so MIRA can help solve THIS
+    # problem (its statement + the user's live code + last error).
+    try:
+        ctx.problem_id = problem_id
+        ctx.page_context = page_context
+    except Exception:
+        pass
     # Inject a course-specific KnowledgeBase built from the course's concept
     # lattice (mira_concept_lattices). This is what makes runtime concept
     # matching use real Marevlo course concepts instead of the built-in 16.
@@ -176,6 +192,8 @@ def chat(db: Session, user_id: int, question: str,
             "meta": {"request_id": request_id, "intent": result.intent,
                      "answer_format": result.answer_format, "concept": result.concept,
                      "depth": result.depth, "served_from": result.served_from,
+                     "domain": result.domain, "topic": result.topic,
+                     "subtopic": result.subtopic,
                      "course_id": course_id, "lesson_id": lesson_id,
                      "quota": quota.get_usage(db, access)}}
 

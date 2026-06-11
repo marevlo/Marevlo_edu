@@ -36,13 +36,12 @@ _entitlements = EntitlementService()
 # (mira_pro / mira_plus), paid SEPARATELY from courses. No MIRA entitlement = free.
 PLAN_QUOTA = {
     "free":  {"token_limit": 60_000,    "build_credit_limit": 0,   "window": "week"},
-    "day":   {"token_limit": 160_000,   "build_credit_limit": 0,   "window": "day"},
     "plus":  {"token_limit": 2_000_000, "build_credit_limit": 50,  "window": "month"},
     "pro":   {"token_limit": 5_000_000, "build_credit_limit": 150, "window": "month"},
 }
 
 # Entitlement products that grant a MIRA plan (paid separately from courses).
-MIRA_PLAN_PRODUCTS = {"mira_pro": "pro", "mira_plus": "plus", "mira_day": "day"}
+MIRA_PLAN_PRODUCTS = {"mira_pro": "pro", "mira_plus": "plus"}
 # Course products — they unlock Marevlo courses and feed course context to MIRA,
 # but do NOT grant a MIRA plan.
 COURSE_PRODUCTS = {"all_access", "dsa", "courses"}
@@ -123,10 +122,6 @@ def resolve_access(db: Session, user_id: int) -> MiraAccess:
     elif any(r.product == "mira_plus" for r in active):
         mira_ent = next(r for r in active if r.product == "mira_plus")
         plan = "plus"
-    elif any(r.product == "mira_day" for r in active):
-        # Day-pass: 40 questions; the entitlement's 24h expiry (expires_at) ends it.
-        mira_ent = next(r for r in active if r.product == "mira_day")
-        plan = "day"
     if mira_ent is not None:
         ent_id = mira_ent.id
         period_start = mira_ent.created_at.isoformat() if mira_ent.created_at else None

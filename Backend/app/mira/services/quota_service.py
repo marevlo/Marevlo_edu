@@ -70,13 +70,6 @@ def credit_charge(db: Session, user_id: int, amount: int, reason: str = "charge"
 
 
 # ── build allotment (entitlement-period) ────────────────────────────────────
-def add_credit_topup(db: Session, user_id: int, credits: int, ref: str) -> dict:
-    """Apply a purchased build-credit top-up (e.g. the +100 pack). Durable and
-    idempotent: `ref` is the payment id, so the same purchase can't double-credit
-    (enforced by the ledger's unique (ref, reason='purchase') index)."""
-    return credit_grant(db, user_id, credits, reason="purchase", ref=ref)
-
-
 def _allotment_row(db: Session, user_id: int, ent_key: str) -> MiraAllotmentUsage:
     row = db.get(MiraAllotmentUsage, (user_id, ent_key))
     if row is None:
@@ -130,11 +123,8 @@ def check_and_charge(access: MiraAccess, estimated_tokens: int) -> dict:
         if used + estimated_tokens > access.token_limit:
             return {"ok": False, "remaining": max(0, access.token_limit - used)}
         r.incrby(key, estimated_tokens)
-        # window TTL: ~2 days for a day-pass, 8 for week, 32 for month
-        if access.window == "day":
-            r.expire(key, 2 * 86400)
-        else:
-            r.expire(key, 32 * 86400 if access.window == "month" else 8 * 86400)
+        # window TTL: 8 days for week, 32 for month
+        r.expire(key, 32 * 86400 if access.window == "month" else 8 * 86400)
         return {"ok": True, "remaining": access.token_limit - used - estimated_tokens}
     except Exception:
         return {"ok": True, "remaining": access.token_limit, "degraded": True}
