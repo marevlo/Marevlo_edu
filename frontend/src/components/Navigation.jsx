@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { motion as Motion, AnimatePresence } from 'framer-motion';
 import { Zap, Sun, Moon, Menu, X, ArrowRight } from 'lucide-react';
+import { popover, drawer, backdrop, modalPanel, staggerParent, fadeUp } from '../lib/motion';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import NavItem from './NavItem';
@@ -82,7 +84,7 @@ export default function Navigation() {
 
     return (
         <>
-            <nav className={`fixed top-0 left-0 right-0 z-50 border-b border-border backdrop-blur-xl transition-all duration-300 ${scrolled ? 'nav-scrolled bg-background/98' : 'bg-background/90'}`}>
+            <nav className={`fixed top-0 left-0 right-0 z-50 glass-chrome transition-shadow duration-300 ${scrolled ? 'nav-scrolled' : ''}`}>
                 <div className="relative max-w-7xl mx-auto px-4 h-[68px] flex items-center justify-between">
                     <div className="flex items-center cursor-pointer group" onClick={() => navigate('/')}>
                         <img src="/logo/logo marevlo.svg" alt="Marevlo" className="h-10 w-auto group-hover:scale-105 transition-transform duration-300" />
@@ -156,9 +158,15 @@ export default function Navigation() {
                                         }
                                     </button>
 
+                                    <AnimatePresence>
                                     {showProfileMenu && (
-                                        <div
-                                            className="absolute right-0 top-12 w-48 rounded-xl shadow-2xl py-2 z-50 bg-card border border-border"
+                                        <Motion.div
+                                            variants={popover}
+                                            initial="hidden"
+                                            animate="visible"
+                                            exit="exit"
+                                            style={{ transformOrigin: 'top right' }}
+                                            className="absolute right-0 top-12 w-48 rounded-xl py-2 z-50 glass-card glass-edge"
                                         >
                                             <div className="px-4 py-2 mb-1 border-b border-border">
                                                 <p className="text-sm font-bold truncate text-foreground">{user.name}</p>
@@ -171,8 +179,9 @@ export default function Navigation() {
                                             <button onClick={() => { setShowBugReport(true); setShowProfileMenu(false); }} className="nav-dropdown-item">Report a Bug</button>
                                             <div className="h-px my-1" style={{ backgroundColor: 'var(--border)' }} />
                                             <button onClick={() => { logout(); navigate('/'); }} className="w-full text-left px-4 py-2 text-sm text-red-500 hover:bg-red-500/10 transition-colors">Sign Out</button>
-                                        </div>
+                                        </Motion.div>
                                     )}
+                                    </AnimatePresence>
                                 </div>
                             </>
                         ) : (
@@ -200,9 +209,21 @@ export default function Navigation() {
                 </div>
 
                 {/* Mobile drawer */}
+                <AnimatePresence>
                 {user && showMobileMenu && (
-                    <div className="md:hidden border-t border-border bg-background/98 backdrop-blur-xl">
-                        <div className="max-w-7xl mx-auto px-4 py-3 flex flex-col gap-1">
+                    <Motion.div
+                        variants={drawer}
+                        initial="hidden"
+                        animate="visible"
+                        exit="exit"
+                        className="md:hidden border-t border-border overflow-hidden"
+                    >
+                        <Motion.div
+                            variants={staggerParent}
+                            initial="hidden"
+                            animate="visible"
+                            className="max-w-7xl mx-auto px-4 py-3 flex flex-col gap-1"
+                        >
                             {[
                                 { label: 'Project', to: '/project' },
                                 { label: 'Jobs', to: '/jobs' },
@@ -212,25 +233,39 @@ export default function Navigation() {
                                 { label: 'Problems', to: '/problems' },
                                 { label: 'Research', to: '/research' },
                             ].map(item => (
-                                <NavItem key={item.to} label={item.label} to={item.to} onNavigate={() => setShowMobileMenu(false)} />
+                                <Motion.div key={item.to} variants={fadeUp} className="glass-row px-1">
+                                    <NavItem label={item.label} to={item.to} onNavigate={() => setShowMobileMenu(false)} />
+                                </Motion.div>
                             ))}
-                            <div className="mt-2 pt-2 border-t border-border flex items-center gap-2 text-foreground">
+                            <Motion.div variants={fadeUp} className="mt-2 pt-2 border-t border-border flex items-center gap-2 text-foreground">
                                 <Zap size={14} fill="currentColor" />
                                 <span className="font-mono font-bold text-xs">{userPoints} XP</span>
-                            </div>
-                        </div>
-                    </div>
+                            </Motion.div>
+                        </Motion.div>
+                    </Motion.div>
                 )}
+                </AnimatePresence>
             </nav>
 
             {showBugReport && <BugReportModal isDark={isDark} onClose={() => setShowBugReport(false)} />}
 
+            <AnimatePresence>
             {showHeardFromModal && (
                 <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
-                    <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
-                    <div
-                        className="relative w-full max-w-md rounded-2xl p-6 shadow-2xl"
-                        style={{ backgroundColor: 'var(--color-surface)', border: '1px solid var(--color-border)' }}
+                    <Motion.div
+                        variants={backdrop}
+                        initial="hidden"
+                        animate="visible"
+                        exit="exit"
+                        className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+                        onClick={() => setShowHeardFromModal(false)}
+                    />
+                    <Motion.div
+                        variants={modalPanel}
+                        initial="hidden"
+                        animate="visible"
+                        exit="exit"
+                        className="relative w-full max-w-md rounded-2xl p-6 glass-card glass-edge"
                     >
                         <h2 className="text-xl font-bold mb-4" style={{ color: 'var(--color-primary-text)' }}>
                             How did you hear about us?
@@ -240,7 +275,7 @@ export default function Navigation() {
                             {heardFromOptions.map((option) => (
                                 <label
                                     key={option}
-                                    className="flex items-center gap-3 rounded-lg px-3 py-2 cursor-pointer"
+                                    className="glass-row flex items-center gap-3 px-3 py-2 cursor-pointer"
                                     style={{ backgroundColor: 'var(--color-surface-hover)' }}
                                 >
                                     <input
@@ -268,31 +303,11 @@ export default function Navigation() {
                         >
                             Continue
                         </button>
-                    </div>
+                    </Motion.div>
                 </div>
             )}
+            </AnimatePresence>
 
-            <style>{`
-                .nav-dropdown-item {
-                    display: block;
-                    width: 100%;
-                    text-align: left;
-                    padding: 8px 16px;
-                    font-size: 14px;
-                    color: var(--color-muted-text);
-                    background: transparent;
-                    border: none;
-                    cursor: pointer;
-                    transition: background-color 150ms ease, color 150ms ease;
-                }
-                .nav-dropdown-item:hover:not(:disabled) {
-                    background-color: var(--color-surface-hover);
-                    color: var(--color-primary-text);
-                }
-                .nav-dropdown-item:disabled {
-                    cursor: default;
-                }
-            `}</style>
         </>
     );
 }

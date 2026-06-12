@@ -3,6 +3,7 @@ import { ArrowRight, BookOpen, Zap, Target, Sparkles } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { loadAllTopics } from '../utils/topicsLoader';
 import ShowcaseCard from '../components/ShowcaseCard';
+import PageHero from '../components/PageHero';
 
 function FeatureCard({ icon, title, desc, color, horizontal = false }) {
     const cardRef = useRef(null);
@@ -244,16 +245,16 @@ function FeatureSidebar() {
     );
 }
 
-export default function ProblemList({ onSelect }) {
+export default function ProblemList() {
     const [topics, setTopics]                 = useState([]);
-const [expandedTopics, setExpandedTopics] = useState(() => {
-    const saved = sessionStorage.getItem('problemListExpandedTopics');
-    return saved ? JSON.parse(saved) : { arrays: true };
-});
-    const [visibleCounts, setVisibleCounts] = useState(() => {
-    const saved = sessionStorage.getItem('problemListVisibleCounts');
-    return saved ? JSON.parse(saved) : { arrays: 10 };
-});
+    const [expandedTopics] = useState(() => {
+        const saved = sessionStorage.getItem('problemListExpandedTopics');
+        return saved ? JSON.parse(saved) : { arrays: true };
+    });
+    const [visibleCounts] = useState(() => {
+        const saved = sessionStorage.getItem('problemListVisibleCounts');
+        return saved ? JSON.parse(saved) : { arrays: 10 };
+    });
     const [loading, setLoading]               = useState(true);
     const navigate = useNavigate();
 
@@ -283,42 +284,18 @@ useEffect(() => {
     return (
         <div className="flex-1 overflow-y-auto custom-scrollbar">
 
-            {/* Hero — unchanged */}
-            <div className="relative overflow-hidden border-b bg-card dark:bg-background border-black/[0.06] dark:border-white/[0.06]" style={{ minHeight: '340px' }}>
-                <div className="absolute inset-0 pointer-events-none" aria-hidden="true" style={{ backgroundImage: 'linear-gradient(rgba(148,163,184,0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(148,163,184,0.05) 1px, transparent 1px)', backgroundSize: '44px 44px', maskImage: 'radial-gradient(circle at center, black 20%, transparent 90%)' }} />
-
-                <div style={{ position: 'relative', zIndex: 1, textAlign: 'center', padding: '48px 24px 44px' }}>
-                    <div className="page-hero-badge">
-                        <Sparkles size={10} style={{ color: '#3fa9c9' }} />
-                        Algorithm Practice
-                    </div>
-
-                    <h1 className="courses-hero-title-grad" style={{
-                        margin: '0 0 12px',
-                        fontSize: 'clamp(2.8rem, 5vw, 3.75rem)',
-                        fontWeight: 900, letterSpacing: '-0.04em', lineHeight: 1.1,
-                    }}>
-                        Practice Problems
-                    </h1>
-
-                    <p className="page-hero-sub" style={{ marginBottom: 26, maxWidth: 420, fontSize: '0.93rem' }}>
-                        Master data structures and algorithms — one problem at a time.
-                    </p>
-
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, flexWrap: 'wrap' }}>
-                        {[
-                            { icon: <BookOpen size={13} />, label: `${loading ? '…' : totalProblems} Problems` },
-                            { icon: <Target    size={13} />, label: `${loading ? '…' : topics.length} Topics`   },
-                            { icon: <Zap      size={13} />, label: '6-Level Ladder' },
-                        ].map(({ icon, label }) => (
-                            <div key={label} className="page-hero-chip">
-                                <span>{icon}</span>
-                                {label}
-                            </div>
-                        ))}
-                    </div>
-                </div>
-            </div>
+            {/* Hero — shared PageHero keeps sizing identical across catalog pages */}
+            <PageHero
+                badgeIcon={Sparkles}
+                badgeLabel="Algorithm Practice"
+                title="Practice Problems"
+                subtitle="Master data structures and algorithms — one problem at a time."
+                chips={[
+                    { icon: BookOpen, label: `${loading ? '…' : totalProblems} Problems` },
+                    { icon: Target,   label: `${loading ? '…' : topics.length} Topics` },
+                    { icon: Zap,      label: '6-Level Ladder' },
+                ]}
+            />
 
             {/* How it works — shown before the topic cards */}
             <div className="page-container" style={{ paddingTop: 32 }}>

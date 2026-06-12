@@ -1,6 +1,6 @@
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
-    Search, Eye, Heart, Clock, ExternalLink, Github, Download, X,
+    Eye, Heart, Clock, ExternalLink, Github, Download,
     Zap, Star, ChevronDown, Filter, BookOpen,
     Cpu, BarChart2, MessageSquare, Globe, SlidersHorizontal,
     ArrowUpRight, Code2, Database, Brain, Sparkles, FileText, Target,
@@ -9,6 +9,7 @@ import {
 import { useTheme } from '../context/ThemeContext';
 import ProjectDetail from './ProjectDetail';
 import ShowcaseCard from '../components/ShowcaseCard';
+import PageHero from '../components/PageHero';
 
 // Project Data
 const PROJECTS_DATA = [
@@ -779,45 +780,13 @@ function getCategoryIcon(cat) {
 // Main Component
 export default function Project() {
     const { isDark } = useTheme();
-    const [search, setSearch]           = useState('');
     const [activeTags, setActiveTags]   = useState([]);
-    const [sortBy, setSortBy]           = useState('newest');
+    const [sortBy]                      = useState('newest');
     const [selectedProject, setSelectedProject] = useState(null);
-    const [showFilters, setShowFilters] = useState(false);
-    const searchRef = useRef(null);
-
-    // Keyboard shortcut: Cmd/Ctrl+K → focus search
-    useEffect(() => {
-        const handler = e => {
-            if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
-                e.preventDefault();
-                searchRef.current?.focus();
-            }
-        };
-        window.addEventListener('keydown', handler);
-        return () => window.removeEventListener('keydown', handler);
-    }, []);
-
-    // Toggle tag filter
-    const toggleTag = tag => {
-        setActiveTags(prev =>
-            prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag]
-        );
-    };
 
     // Filtered + sorted projects
     const filtered = useMemo(() => {
         let list = PROJECTS_DATA;
-        if (search.trim()) {
-            const q = search.toLowerCase();
-            list = list.filter(p =>
-                p.title.toLowerCase().includes(q) ||
-                p.description.toLowerCase().includes(q) ||
-                p.category.toLowerCase().includes(q) ||
-                p.tags.some(t => t.toLowerCase().includes(q)) ||
-                p.techStack.some(t => t.toLowerCase().includes(q))
-            );
-        }
         if (activeTags.length > 0) {
             list = list.filter(p => activeTags.every(t => p.tags.includes(t)));
         }
@@ -827,9 +796,7 @@ export default function Project() {
             case 'likes':   return [...list].sort((a, b) => b.likes - a.likes);
             default:        return list; // newest = original order
         }
-    }, [search, activeTags, sortBy]);
-
-    const accentGrad = 'linear-gradient(135deg,#6672e0,#9180e8)';
+    }, [activeTags, sortBy]);
 
     return (
         <div className="text-foreground" style={{
@@ -837,85 +804,35 @@ export default function Project() {
             fontFamily: 'Geist, Inter, sans-serif',
         }}>
 
-            {/* Hero Section */}
-            <div className="relative overflow-hidden border-b bg-card dark:bg-background border-black/[0.06] dark:border-white/[0.06]" style={{minHeight:'340px'}}>
-                <div className="absolute inset-0 pointer-events-none" aria-hidden="true" style={{backgroundImage:'linear-gradient(rgba(148,163,184,0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(148,163,184,0.05) 1px, transparent 1px)',backgroundSize:'44px 44px',maskImage:'radial-gradient(circle at center, black 20%, transparent 90%)'}} />
-
-                <div className="relative z-10 text-center px-6 pt-12 pb-10 max-w-4xl mx-auto">
-                    {/* Pill badge */}
-                    <div className="page-hero-badge">
-                        <Sparkles size={10} style={{ color: '#3fa9c9' }} />
-                        AI Research Projects
-                    </div>
-
-                    {/* Title */}
-                    <h1 className="text-5xl md:text-[3.75rem] font-black tracking-tight leading-none courses-hero-title-grad mb-3">
-                        Projects
-                    </h1>
-
-                    <p className="page-hero-sub">
-                        Build real AI systems — from NLP and computer vision to data science and beyond.
-                    </p>
-
-                    {/* Stat chips */}
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, flexWrap: 'wrap' }}>
-                        {[
-                            { icon: <Brain size={13} />,   label: `${PROJECTS_DATA.length} Projects` },
-                            { icon: <Target size={13} />,  label: `${ALL_TAGS.filter(t=>t!=='Advanced').length} Topics` },
-                            { icon: <Eye size={13} />,     label: `${fmtNum(PROJECTS_DATA.reduce((s,p)=>s+p.views,0))} Views` },
-                            { icon: <Star size={13} />,    label: `${PROJECTS_DATA.filter(p=>p.featured).length} Featured` },
-                        ].map(({ icon, label }) => (
-                            <div key={label} className="page-hero-chip">
-                                <span>{icon}</span>
-                                {label}
-                            </div>
-                        ))}
-                    </div>
-                </div>
-            </div>
+            {/* Hero Section — shared PageHero keeps sizing identical across catalog pages */}
+            <PageHero
+                badgeIcon={Sparkles}
+                badgeLabel="AI Research Projects"
+                title="Projects"
+                subtitle="Build real AI systems — from NLP and computer vision to data science and beyond."
+                chips={[
+                    { icon: Brain,  label: `${PROJECTS_DATA.length} Projects` },
+                    { icon: Target, label: `${ALL_TAGS.filter(t=>t!=='Advanced').length} Topics` },
+                    { icon: Eye,    label: `${fmtNum(PROJECTS_DATA.reduce((s,p)=>s+p.views,0))} Views` },
+                    { icon: Star,   label: `${PROJECTS_DATA.filter(p=>p.featured).length} Featured` },
+                ]}
+            />
 
             {/* Main Content */}
             <div className="page-container" style={{ padding: '32px 24px 64px' }}>
                 {/* Left: projects grid */}
                 <div>
                     {/* Reset row */}
-                    {(search || activeTags.length > 0) && (
+                    {activeTags.length > 0 && (
                         <div className="flex items-center mb-4">
                             <button
-                                onClick={() => { setSearch(''); setActiveTags([]); }}
+                                onClick={() => setActiveTags([])}
                                 className="text-[0.72rem] font-bold text-red-400 bg-red-500/10 hover:bg-red-500/20 px-3 py-1.5 rounded-lg transition-colors"
                             >
                                 Reset Filters
                             </button>
                         </div>
                     )}
-
-                    {/* Search Bar */}
-                    <div className="mb-7 relative">
-                        <div className={`p-[2px] rounded-2xl transition-all duration-300 ${
-                            search
-                                ? 'bg-gradient-to-r from-indigo-500 via-cyan-400 to-violet-500 bg-[length:300%] animate-[searchGradient_3s_linear_infinite] shadow-[0_8px_32px_-8px_rgba(63,169,201,0.3)]'
-                                : 'bg-border'
-                        }`}>
-                            <div className={`flex items-center rounded-[14px] px-5 py-3 ${
-                                isDark ? 'bg-[#14161d]' : 'bg-white'
-                            }`}>
-                                <Search size={18} className={`flex-shrink-0 transition-colors duration-300 ${search ? 'text-cyan-400' : 'text-muted-foreground/50'}`}/>
-                                <input
-                                    ref={searchRef}
-                                    className="flex-1 px-4 bg-transparent border-none outline-none text-[0.95rem] search-focus text-foreground placeholder:text-muted-foreground/40"
-                                    value={search}
-                                    onChange={e => setSearch(e.target.value)}
-                                    placeholder="Search projects, tags, tech stack..."
-                                />
-                                {search && (
-                                    <button onClick={() => setSearch('')} className="ml-3 w-6 h-6 flex-shrink-0 flex items-center justify-center rounded-full bg-red-500/10 hover:bg-red-500/20 text-red-400 transition-all hover:scale-110">
-                                        <X size={12}/>
-                                    </button>
-                                )}
-                            </div>
-                        </div>
-                    </div>
 
                     {/* Grid */}
                     {filtered.length > 0 ? (
@@ -942,9 +859,9 @@ export default function Project() {
                         <div className="text-center py-20 rounded-3xl border bg-card border-border">
                             <div className="text-5xl mb-4">🔍</div>
                             <h3 className="text-lg font-extrabold mb-2 text-foreground">No projects found</h3>
-                            <p className="text-[0.9rem] mb-5 text-muted-foreground">Try adjusting your search or filters</p>
+                            <p className="text-[0.9rem] mb-5 text-muted-foreground">Try adjusting your filters</p>
                             <button
-                                onClick={() => { setSearch(''); setActiveTags([]); }}
+                                onClick={() => setActiveTags([])}
                                 className="px-6 py-2.5 rounded-xl font-bold text-[0.85rem] text-white bg-gradient-to-r from-indigo-500 to-violet-500 shadow-lg shadow-indigo-500/30 hover:scale-105 transition-transform"
                             >
                                 Clear filters
