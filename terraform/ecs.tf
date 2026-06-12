@@ -132,9 +132,9 @@ resource "aws_ecs_task_definition" "runner" {
   memory                   = var.runner_memory
   execution_role_arn       = aws_iam_role.task_exec.arn
   container_definitions = jsonencode([{
-    name      = "runner"
-    image     = var.runner_image
-    essential = true
+    name         = "runner"
+    image        = var.runner_image
+    essential    = true
     portMappings = [{ containerPort = 4002 }]
     environment = [
       { name = "PORT", value = "4002" },
@@ -160,7 +160,10 @@ resource "aws_service_discovery_service" "runner" {
   name = "runner"
   dns_config {
     namespace_id = aws_service_discovery_private_dns_namespace.internal.id
-    dns_records { ttl = 10, type = "A" }
+    dns_records {
+      ttl  = 10
+      type = "A"
+    }
     routing_policy = "MULTIVALUE"
   }
   health_check_custom_config { failure_threshold = 1 }
@@ -189,9 +192,9 @@ resource "aws_ecs_task_definition" "api" {
   execution_role_arn       = aws_iam_role.task_exec.arn
   task_role_arn            = aws_iam_role.api_task.arn
   container_definitions = jsonencode([{
-    name      = "api"
-    image     = var.api_image
-    essential = true
+    name         = "api"
+    image        = var.api_image
+    essential    = true
     portMappings = [{ containerPort = 8000 }]
     environment = [
       { name = "ENV", value = var.env },

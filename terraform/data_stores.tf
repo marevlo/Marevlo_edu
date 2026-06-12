@@ -23,9 +23,9 @@ resource "aws_secretsmanager_secret" "app" {
 resource "aws_secretsmanager_secret_version" "app" {
   secret_id = aws_secretsmanager_secret.app.id
   secret_string = jsonencode({
-    JWT_SECRET = random_password.jwt.result
+    JWT_SECRET   = random_password.jwt.result
     DATABASE_URL = "postgresql+psycopg2://marevlo:${random_password.db.result}@${aws_db_instance.pg.address}:5432/marevlo"
-    REDIS_URL  = "redis://:${random_password.redis_auth.result}@${aws_elasticache_replication_group.redis.primary_endpoint_address}:6379/0"
+    REDIS_URL    = "rediss://:${random_password.redis_auth.result}@${aws_elasticache_replication_group.redis.primary_endpoint_address}:6379/0"
     # Fill these post-apply (Firebase JSON, SMTP creds from SES):
     FIREBASE_CREDENTIALS_JSON = ""
     SMTP_HOST                 = "email-smtp.${var.region}.amazonaws.com"
@@ -43,26 +43,26 @@ resource "aws_db_subnet_group" "pg" {
 }
 
 resource "aws_db_instance" "pg" {
-  identifier              = "marevlo-${var.env}"
-  engine                  = "postgres"
-  engine_version          = "16"
-  instance_class          = var.rds_instance_class
-  allocated_storage       = var.rds_allocated_storage
-  storage_type            = "gp3"
-  db_name                 = "marevlo"
-  username                = "marevlo"
-  password                = random_password.db.result
-  db_subnet_group_name    = aws_db_subnet_group.pg.name
-  vpc_security_group_ids  = [aws_security_group.data.id]
-  multi_az                = false # flip true for HA before heavy load
-  publicly_accessible     = false
-  storage_encrypted       = true
-  backup_retention_period = 7 # automated daily backups + PITR window
-  deletion_protection     = true
-  skip_final_snapshot     = false
-  final_snapshot_identifier = "marevlo-${var.env}-final"
+  identifier                   = "marevlo-${var.env}"
+  engine                       = "postgres"
+  engine_version               = "16"
+  instance_class               = var.rds_instance_class
+  allocated_storage            = var.rds_allocated_storage
+  storage_type                 = "gp3"
+  db_name                      = "marevlo"
+  username                     = "marevlo"
+  password                     = random_password.db.result
+  db_subnet_group_name         = aws_db_subnet_group.pg.name
+  vpc_security_group_ids       = [aws_security_group.data.id]
+  multi_az                     = false # flip true for HA before heavy load
+  publicly_accessible          = false
+  storage_encrypted            = true
+  backup_retention_period      = 7 # automated daily backups + PITR window
+  deletion_protection          = true
+  skip_final_snapshot          = false
+  final_snapshot_identifier    = "marevlo-${var.env}-final"
   performance_insights_enabled = true
-  apply_immediately       = false
+  apply_immediately            = false
 }
 
 # ── ElastiCache Redis (with auth token = the password the app uses) ──────────

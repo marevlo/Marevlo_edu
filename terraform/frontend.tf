@@ -5,9 +5,11 @@
 #   - response headers   -> the security headers vercel.json used to set
 ###############################################################################
 
+data "aws_caller_identity" "current" {}
+
 # ── SPA bucket (private; only CloudFront reads it via OAC) ───────────────────
 resource "aws_s3_bucket" "spa" {
-  bucket = "marevlo-spa-${var.env}"
+  bucket = "marevlo-spa-${var.env}-${data.aws_caller_identity.current.account_id}"
 }
 resource "aws_s3_bucket_public_access_block" "spa" {
   bucket                  = aws_s3_bucket.spa.id
@@ -19,7 +21,7 @@ resource "aws_s3_bucket_public_access_block" "spa" {
 
 # ── user-uploads bucket (private; presigned URLs only — your storage.py) ─────
 resource "aws_s3_bucket" "uploads" {
-  bucket = "marevlo-user-uploads-${var.env}"
+  bucket = "marevlo-user-uploads-${var.env}-${data.aws_caller_identity.current.account_id}"
 }
 resource "aws_s3_bucket_public_access_block" "uploads" {
   bucket                  = aws_s3_bucket.uploads.id
@@ -37,6 +39,7 @@ resource "aws_s3_bucket_lifecycle_configuration" "uploads" {
   rule {
     id     = "expire-noncurrent"
     status = "Enabled"
+    filter {}
     noncurrent_version_expiration { noncurrent_days = 90 }
   }
 }
@@ -53,15 +56,47 @@ resource "aws_cloudfront_origin_access_control" "spa" {
 resource "aws_cloudfront_response_headers_policy" "sec" {
   name = "marevlo-security-headers"
   security_headers_config {
-    content_type_options { override = true }
-    frame_options { frame_option = "SAMEORIGIN", override = true }
-    referrer_policy { referrer_policy = "strict-origin-when-cross-origin", override = true }
+    content_type_options {
+      override = true
+    }
+
+    frame_options {
+      frame_option = "SAMEORIGIN"
+      override     = true
+    }
+
+    referrer_policy {
+      referrer_policy = "strict-origin-when-cross-origin"
+      override        = true
+    }
     strict_transport_security {
       access_control_max_age_sec = 31536000
       include_subdomains         = true
       override                   = true
     }
   }
+}
+
+resource "aws_cloudfront_function" "rewrite_api" {
+  name    = "marevlo-rewrite-api-${var.env}"
+  runtime = "cloudfront-js-2.0"
+  comment = "Strips /api prefix from request URI before sending to origin"
+  publish = true
+  code    = <<EOF
+function handler(event) {
+    var request = event.request;
+    var uri = request.uri;
+    
+    if (uri.startsWith('/api')) {
+        request.uri = uri.replace(/^\/api/, '');
+        if (request.uri === '') {
+            request.uri = '/';
+        }
+    }
+    
+    return request;
+}
+EOF
 }
 
 resource "aws_cloudfront_distribution" "spa" {
@@ -91,12 +126,12 @@ resource "aws_cloudfront_distribution" "spa" {
 
   # default: serve the SPA
   default_cache_behavior {
-    target_origin_id       = "spa-s3"
-    viewer_protocol_policy = "redirect-to-https"
-    allowed_methods        = ["GET", "HEAD", "OPTIONS"]
-    cached_methods         = ["GET", "HEAD"]
-    compress               = true
-    cache_policy_id        = data.aws_cloudfront_cache_policy.optimized.id
+    target_origin_id           = "spa-s3"
+    viewer_protocol_policy     = "redirect-to-https"
+    allowed_methods            = ["GET", "HEAD", "OPTIONS"]
+    cached_methods             = ["GET", "HEAD"]
+    compress                   = true
+    cache_policy_id            = data.aws_cloudfront_cache_policy.optimized.id
     response_headers_policy_id = aws_cloudfront_response_headers_policy.sec.id
   }
 
@@ -115,7 +150,7 @@ resource "aws_cloudfront_distribution" "spa" {
     # dev proxy does — or every API call 404s in production.
     function_association {
       event_type   = "viewer-request"
-      function_arn = aws_cloudfront_function.strip_api_prefix.arn
+      function_arn = aws_cloudfront_function.rewrite_api.arn
     }
   }
 
@@ -131,30 +166,17 @@ resource "aws_cloudfront_distribution" "spa" {
     response_page_path = "/index.html"
   }
 
-  restrictions { geo_restriction { restriction_type = "none" } }
+  restrictions {
+    geo_restriction {
+      restriction_type = "none"
+    }
+  }
 
   viewer_certificate {
     acm_certificate_arn      = aws_acm_certificate_validation.cf.certificate_arn
     ssl_support_method       = "sni-only"
     minimum_protocol_version = "TLSv1.2_2021"
   }
-}
-
-# Rewrite /api/<path> -> /<path> before the request reaches the ALB origin.
-# Mirrors the Vite dev proxy: rewrite: (path) => path.replace(/^\/api/, '').
-resource "aws_cloudfront_function" "strip_api_prefix" {
-  name    = "marevlo-strip-api-prefix"
-  runtime = "cloudfront-js-2.0"
-  comment = "Strip the /api prefix so FastAPI's root-mounted routes match"
-  publish = true
-  code    = <<-EOT
-    function handler(event) {
-      var request = event.request;
-      request.uri = request.uri.replace(/^\/api/, '');
-      if (request.uri === '') { request.uri = '/'; }
-      return request;
-    }
-  EOT
 }
 
 # AWS-managed policies (referenced by id)
