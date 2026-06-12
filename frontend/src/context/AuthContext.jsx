@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { useWebSocket } from '../utils/useWebSocket';
+import { safeStorage } from '../utils/safeStorage';
 
 /* eslint-disable react-refresh/only-export-components */
 
@@ -24,13 +25,13 @@ export function AuthProvider({ children }) {
         setProfileStats({ xp: 0, level: 1, streak: 0, rank: null, courses_completed: 0, problems_solved: 0 });
         setAchievements([]);
         setProfileData(null);
-        localStorage.removeItem('marevlo_user');
-        localStorage.removeItem('access_token');
-        localStorage.removeItem('refresh_token');
+        safeStorage.removeItem('marevlo_user');
+        safeStorage.removeItem('access_token');
+        safeStorage.removeItem('refresh_token');
     }, []);
 
     const apiCall = useCallback(async (path, options = {}) => {
-        let token = localStorage.getItem('access_token');
+        let token = safeStorage.getItem('access_token');
         const makeRequest = async (t) => {
             // Don't set Content-Type for FormData — the browser must set it with the boundary
             const isFormData = options.body instanceof FormData;
@@ -45,7 +46,7 @@ export function AuthProvider({ children }) {
         let resp = await makeRequest(token);
         // Token expired - try to refresh once, then retry
         if (resp.status === 401) {
-            const refreshToken = localStorage.getItem('refresh_token');
+            const refreshToken = safeStorage.getItem('refresh_token');
             if (refreshToken) {
                 try {
                     const r = await fetch(`${API_BASE}/auth/refresh`, {
@@ -54,8 +55,8 @@ export function AuthProvider({ children }) {
                     });
                     if (r.ok) {
                         const data = await r.json();
-                        localStorage.setItem('access_token', data.access_token);
-                        localStorage.setItem('refresh_token', data.refresh_token);
+                        safeStorage.setItem('access_token', data.access_token);
+                        safeStorage.setItem('refresh_token', data.refresh_token);
                         token = data.access_token;
                         resp = await makeRequest(token);
                     } else {
@@ -108,12 +109,12 @@ export function AuthProvider({ children }) {
     }, [apiCall]);
 
     useEffect(() => {
-        const storedUser = localStorage.getItem('marevlo_user');
+        const storedUser = safeStorage.getItem('marevlo_user');
         if (storedUser) {
             try {
                 setUser(JSON.parse(storedUser));
             } catch {
-                localStorage.removeItem('marevlo_user');
+                safeStorage.removeItem('marevlo_user');
             }
         }
         setIsLoading(false);
@@ -128,7 +129,7 @@ export function AuthProvider({ children }) {
     useEffect(() => {
         if (!user) return;
         const interval = setInterval(async () => {
-            const refreshToken = localStorage.getItem('refresh_token');
+            const refreshToken = safeStorage.getItem('refresh_token');
             if (!refreshToken) return;
             try {
                 const r = await fetch(`${API_BASE}/auth/refresh`, {
@@ -137,8 +138,8 @@ export function AuthProvider({ children }) {
                 });
                 if (r.ok) {
                     const data = await r.json();
-                    localStorage.setItem('access_token', data.access_token);
-                    localStorage.setItem('refresh_token', data.refresh_token);
+                    safeStorage.setItem('access_token', data.access_token);
+                    safeStorage.setItem('refresh_token', data.refresh_token);
                 } else {
                     logout();
                 }
@@ -167,7 +168,7 @@ export function AuthProvider({ children }) {
             handle: '@' + username.toLowerCase().replace(/\s+/g, ''),
         };
         setUser(userObj);
-        localStorage.setItem('marevlo_user', JSON.stringify(userObj));
+        safeStorage.setItem('marevlo_user', JSON.stringify(userObj));
     };
 
     const addPoints = (points = 50) => {
@@ -178,7 +179,7 @@ export function AuthProvider({ children }) {
         // Local state update
         setUser(prev => {
             const updated = { ...prev, ...updates };
-            localStorage.setItem('marevlo_user', JSON.stringify(updated));
+            safeStorage.setItem('marevlo_user', JSON.stringify(updated));
             return updated;
         });
 
