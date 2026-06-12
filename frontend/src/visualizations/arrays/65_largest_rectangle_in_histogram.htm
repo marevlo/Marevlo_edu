@@ -3,485 +3,640 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Largest Rectangle in Histogram - Brute Force Visualization</title>
+    <title>Largest Rectangle in Histogram (Monotonic Stack) - Visualization</title>
     <style>
         :root {
-            --bg-page: #000000;
-            --bg-surface: #161b22;
-            --bg-input: #000000;
-            --border-main: #30363d;
-            --btn-bg: #21262d;
-            --btn-hover: #2d333b;
-            --text-main: #c9d1d9;
-            --text-dim: #8b949e;
-            --text-log: #58a6ff;
-            --accent-orange: #e3b341;
-            --accent-blue: #388bfd;
-            --accent-green: #3fb950;
-            --accent-red: #f85149;
+            --bg-page: #070b14;
+            --bg-surface: rgba(255, 255, 255, 0.045);
+            --bg-input: rgba(255, 255, 255, 0.04);
+            --border-main: rgba(255, 255, 255, 0.10);
+            --btn-bg: rgba(255, 255, 255, 0.05);
+            --btn-hover: rgba(255, 255, 255, 0.10);
+            --text-main: #e8eefb;
+            --text-dim: #8b98b3;
+            --accent-orange: #f5a524;   /* popped bar / area being measured     */
+            --accent-blue:   #06b6d4;   /* waiting in stack / chrome            */
+            --accent-green:  #22c55e;   /* best rectangle / answer              */
+            --accent-red:    #f43f5e;   /* shorter bar that triggers a pop      */
+            --accent-purple: #a855f7;   /* current scan pointer i               */
+            --mono: ui-monospace, 'SF Mono', 'Cascadia Code', 'Courier New', monospace;
+            --sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+            --shell: 900px;
         }
 
         * { box-sizing: border-box; }
-
+        html, body { overflow-x: hidden; }
         body {
-            background-color: var(--bg-page);
-            color: var(--text-main);
-            font-family: system-ui, -apple-system, sans-serif;
-            margin: 0;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            min-height: 100vh;
-            padding-bottom: 40px;
+            background:
+                radial-gradient(1100px 600px at 15% -10%, rgba(168, 85, 247, 0.10), transparent 60%),
+                radial-gradient(900px 600px at 100% 10%, rgba(6, 182, 212, 0.10), transparent 55%),
+                linear-gradient(160deg, #070b14 0%, #0b1120 55%, #0a0f1c 100%);
+            background-attachment: fixed;
+            color: var(--text-main); font-family: var(--sans); margin: 0;
+            display: flex; flex-direction: column; align-items: center; min-height: 100vh;
+            padding-bottom: 48px; -webkit-font-smoothing: antialiased;
         }
+        body::before, body::after { content: ''; position: fixed; border-radius: 50%; filter: blur(70px); pointer-events: none; z-index: 0; opacity: 0.45; }
+        body::before { width: 380px; height: 380px; top: 8%; left: -120px; background: radial-gradient(circle, rgba(168,85,247,0.30), transparent 70%); }
+        body::after  { width: 420px; height: 420px; bottom: 4%; right: -140px; background: radial-gradient(circle, rgba(6,182,212,0.22), transparent 70%); }
+        body > * { position: relative; z-index: 1; }
 
         .input-bar {
-            width: 100%;
-            background-color: var(--bg-surface);
-            padding: 12px 16px;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            gap: 8px;
-            border-bottom: 1px solid var(--border-main);
+            width: 100%; background: rgba(10, 15, 28, 0.55);
+            backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+            padding: 14px 16px; display: flex; justify-content: center; align-items: center; gap: 10px;
+            border-bottom: 1px solid var(--border-main); flex-wrap: wrap; position: sticky; top: 0; z-index: 50;
         }
-
-        label.array-label {
-            font-family: 'Courier New', monospace;
-            font-size: 14px;
-            color: var(--text-dim);
-        }
-
+        label.ui-label, .ui-label { font-family: var(--mono); font-size: 13px; color: var(--text-dim); letter-spacing: 0.2px; }
         input[type="text"] {
-            background: var(--bg-input);
-            border: 1px solid var(--border-main);
-            color: var(--text-main);
-            height: 32px;
-            border-radius: 6px;
-            padding: 0 10px;
-            width: 280px;
-            font-size: 14px;
+            background: var(--bg-input); border: 1px solid var(--border-main); color: var(--text-main);
+            height: 34px; border-radius: 9px; padding: 0 12px; font-size: 13px; font-family: var(--mono); width: 260px;
+            transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
         }
+        input[type="text"]:focus { outline: none; border-color: var(--accent-purple); box-shadow: 0 0 0 3px rgba(168, 85, 247, 0.18); background: rgba(168, 85, 247, 0.06); }
 
         button {
-            height: 32px;
-            border-radius: 6px;
-            padding: 0 14px;
-            background: var(--btn-bg);
-            border: 1px solid var(--border-main);
-            color: var(--text-main);
-            font-size: 13px;
-            cursor: pointer;
-            transition: background 0.2s ease;
+            height: 34px; border-radius: 9px; padding: 0 14px; background: var(--btn-bg);
+            border: 1px solid var(--border-main); color: var(--text-main); font-size: 13px; font-weight: 600; cursor: pointer;
+            transition: transform 0.15s ease, background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
         }
+        button:hover { background: var(--btn-hover); border-color: rgba(6, 182, 212, 0.5); box-shadow: 0 0 18px rgba(6, 182, 212, 0.18); transform: translateY(-1px); }
+        button:active { transform: translateY(0); }
+        #play-btn { background: linear-gradient(135deg, rgba(6,182,212,0.22), rgba(6,182,212,0.10)); border-color: rgba(6, 182, 212, 0.45); color: #a5f3fc; min-width: 80px; }
 
-        button:hover { background: var(--btn-hover); }
+        .shell { width: var(--shell); max-width: 95%; margin: 24px auto 0; display: flex; flex-direction: column; gap: 16px; }
 
-        .array-container {
-            margin-top: 20px;
-            display: flex;
-            align-items: flex-end;
-            gap: 8px;
+        .title-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+        .title-row h1 { font-size: 18px; font-weight: 800; margin: 0; letter-spacing: 0.2px; }
+        .title-row .sub { color: var(--text-dim); font-weight: 500; font-size: 13px; }
+        .step-badge { font-family: var(--mono); font-size: 12px; font-weight: 700; color: #a5f3fc; background: rgba(6,182,212,0.12); border: 1px solid rgba(6,182,212,0.3); padding: 4px 10px; border-radius: 999px; white-space: nowrap; }
+        .progress-track { height: 4px; width: 100%; background: rgba(255,255,255,0.07); border-radius: 999px; overflow: hidden; margin-top: -6px; }
+        .progress-fill { height: 100%; width: 0%; border-radius: 999px; background: linear-gradient(90deg, var(--accent-blue), var(--accent-purple)); box-shadow: 0 0 12px rgba(6,182,212,0.5); transition: width 0.45s cubic-bezier(0.34,1.1,0.64,1); }
+
+        .narration { background: var(--bg-surface); border: 1px solid rgba(6,182,212,0.22); border-radius: 12px; padding: 12px 18px; font-family: var(--mono); font-size: 14px; line-height: 1.5; color: #cfe9f5; min-height: 48px; display: flex; align-items: center; gap: 10px; transition: border-color 0.3s, background 0.3s; }
+        .narration::before { content: '\25B8'; color: var(--accent-blue); font-size: 13px; }
+        .narration.done { border-color: rgba(34,197,94,0.4); background: rgba(34,197,94,0.06); }
+        .narration.done::before { content: '\2713'; color: var(--accent-green); }
+        .narration.pop { border-color: rgba(245,165,36,0.4); background: rgba(245,165,36,0.06); }
+        .narration.pop::before { content: '\25B8'; color: var(--accent-orange); }
+        .narration.push { border-color: rgba(6,182,212,0.4); background: rgba(6,182,212,0.06); }
+        .narration code { background: rgba(6,182,212,0.14); color: #7dd3fc; padding: 1px 6px; border-radius: 5px; font-size: 12.5px; }
+        .narration b { color: #fff; }
+
+        .stage-card { background: var(--bg-surface); border: 1px solid var(--border-main); border-radius: 18px; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); box-shadow: 0 12px 38px rgba(0,0,0,0.4); overflow: hidden; }
+        .stage-screen { position: relative; margin: 14px; border-radius: 14px; background: radial-gradient(700px 300px at 50% -10%, rgba(6,182,212,0.08), transparent 70%), #090d18; border: 1px solid rgba(255,255,255,0.06); }
+        .array-stage { position: relative; width: 100%; overflow: auto; scrollbar-width: thin; padding: 30px 22px 24px; display: flex; flex-direction: column; align-items: center; gap: 22px; }
+        .array-stage::-webkit-scrollbar { height: 8px; width: 8px; }
+        .array-stage::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 8px; }
+
+        /* The histogram idiom: a row of bars sitting on a baseline */
+        .scan-board { position: relative; display: inline-flex; flex-direction: column; gap: 0; }
+        .row-label { font-family: var(--mono); font-size: 11px; letter-spacing: 1px; text-transform: uppercase; color: var(--text-dim); margin-bottom: 8px; }
+        .hist-row { position: relative; display: flex; gap: 10px; align-items: flex-end; padding: 0 2px; border-bottom: 2px solid rgba(255,255,255,0.14); }
+        .col { display: flex; flex-direction: column; align-items: center; }
+
+        /* the best-rectangle outline overlay (positioned over the bars) */
+        .best-outline {
+            position: absolute; pointer-events: none; border: 2px dashed var(--accent-green);
+            border-radius: 6px; background: rgba(34,197,94,0.10);
+            box-shadow: 0 0 18px rgba(34,197,94,0.30); opacity: 0;
+            transition: left 0.35s, width 0.35s, height 0.35s, bottom 0.35s, opacity 0.35s;
+            z-index: 1;
         }
+        .best-outline.show { opacity: 1; }
+        .best-outline .bo-tag { position: absolute; top: -20px; left: 50%; transform: translateX(-50%); font-family: var(--mono); font-size: 10px; color: #bbf7d0; white-space: nowrap; }
 
-        .tile-unit {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 4px;
+        .bar {
+            position: relative; width: 50px; display: flex; align-items: flex-start; justify-content: center;
+            border-radius: 7px 7px 0 0; font-family: var(--mono); font-weight: 800; font-size: 14px; padding-top: 5px;
+            border: 2px solid var(--border-main); border-bottom: none; background: rgba(255,255,255,0.05); color: var(--text-main);
+            will-change: transform; z-index: 2;
+            transition: background 0.35s, border-color 0.35s, color 0.35s, box-shadow 0.35s, transform 0.3s;
         }
+        .idx-label { font-family: var(--mono); font-size: 11px; color: var(--text-dim); margin-top: 6px; transition: color 0.3s; }
+        .idx-label.lit { color: var(--accent-purple); }
 
-        .tile {
-            width: 44px;
-            display: flex;
-            align-items: flex-end;
-            justify-content: center;
-            border-radius: 4px 4px 0 0;
-            font-size: 13px;
-            font-weight: 700;
-            font-family: 'Courier New', monospace;
-            transition: all 0.3s ease;
-            color: var(--text-main);
-            border: 1px solid var(--border-main);
+        /* bars whose index is still waiting in the monotonic stack */
+        .bar.instack { border-color: var(--accent-blue); background: rgba(6,182,212,0.16); color: #a5f3fc; box-shadow: 0 0 12px rgba(6,182,212,0.28); }
+        /* the scan pointer (current index i) */
+        .bar.current  { border-color: var(--accent-purple); background: rgba(168,85,247,0.20); color: #e9d5ff; box-shadow: 0 0 20px rgba(168,85,247,0.55), inset 0 0 12px rgba(168,85,247,0.12); transform: scaleY(1.03); z-index: 4; }
+        /* the bar just popped, whose rectangle area is being measured */
+        .bar.popped { border-color: var(--accent-orange); background: rgba(245,165,36,0.22); color: #ffd591; box-shadow: 0 0 22px rgba(245,165,36,0.55); z-index: 4; }
+        /* bars spanned by the rectangle being measured this step */
+        .bar.span { border-color: rgba(245,165,36,0.55); background: rgba(245,165,36,0.10); }
+        /* bars in the final best rectangle */
+        .bar.best { border-color: var(--accent-green); background: rgba(34,197,94,0.18); color: #bbf7d0; box-shadow: 0 0 18px rgba(34,197,94,0.45); }
+        .bar.dim      { opacity: 0.42; color: var(--text-dim); }
+
+        /* a small pointer triangle that sits above the current bar */
+        .scan-arrow { position: absolute; top: -22px; left: 50%; transform: translateX(-50%); color: var(--accent-purple); font-size: 14px; opacity: 0; transition: opacity 0.25s; pointer-events: none; }
+        .bar.current  .scan-arrow { opacity: 1; }
+
+        /* the monotonic stack panel, under the row */
+        .stack-board { position: relative; display: inline-flex; flex-direction: column; align-items: center; gap: 8px; min-width: 220px; }
+        .stack-rail { display: flex; gap: 8px; align-items: center; justify-content: center; min-height: 56px; padding: 6px 12px; border-radius: 12px; border: 1px dashed rgba(255,255,255,0.12); background: rgba(255,255,255,0.02); }
+        .stack-rail .base-tag { font-family: var(--mono); font-size: 10px; letter-spacing: 1px; text-transform: uppercase; color: var(--text-dim); align-self: center; padding-right: 4px; }
+        .stack-item {
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            width: 46px; height: 46px; border-radius: 9px; font-family: var(--mono);
+            border: 2px solid var(--accent-blue); background: rgba(6,182,212,0.14); color: #a5f3fc;
+            box-shadow: 0 0 12px rgba(6,182,212,0.25); will-change: transform;
         }
+        .stack-item .si-val { font-size: 15px; font-weight: 800; line-height: 1; }
+        .stack-item .si-idx { font-size: 9px; color: var(--text-dim); margin-top: 3px; }
+        .stack-item.top { border-color: var(--accent-orange); background: rgba(245,165,36,0.16); color: #ffd591; box-shadow: 0 0 16px rgba(245,165,36,0.4); }
+        .stack-empty { font-family: var(--mono); font-size: 12px; color: var(--text-dim); opacity: 0.7; }
 
-        .tile-index {
-            font-size: 9px;
-            color: var(--text-dim);
-        }
+        .action-stage { position: relative; min-height: 92px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; }
+        .answer-track { display: flex; gap: 8px; align-items: center; min-height: 40px; flex-wrap: wrap; justify-content: center; }
+        .ans-tile { min-width: 70px; height: 46px; padding: 0 12px; border-radius: 9px; display: flex; flex-direction: column; align-items: center; justify-content: center; font-family: var(--mono); border: 2px solid var(--border-main); background: rgba(255,255,255,0.04); color: var(--text-dim); transition: all 0.3s; }
+        .ans-tile .av { font-size: 20px; font-weight: 800; line-height: 1; }
+        .ans-tile .ai { font-size: 9px; color: var(--text-dim); margin-top: 3px; letter-spacing: 0.5px; }
+        .ans-tile.set { border-color: var(--accent-orange); background: rgba(245,165,36,0.16); color: #ffd591; box-shadow: 0 0 12px rgba(245,165,36,0.3); }
+        .ans-tile.best { border-color: var(--accent-green); background: rgba(34,197,94,0.18); color: #bbf7d0; box-shadow: 0 0 14px rgba(34,197,94,0.4); }
+        .ans-tile.flash { transform: scale(1.10); }
+        .action-word { font-family: var(--mono); font-weight: 800; font-size: 18px; letter-spacing: 0.4px; min-height: 22px; text-align: center; transition: color 0.3s; }
+        #confetti { position: absolute; inset: 0; overflow: visible; pointer-events: none; }
+        .confetti-piece { position: absolute; top: 0; left: 50%; width: 8px; height: 13px; border-radius: 2px; opacity: 0; animation: confettiFall ease-out forwards; }
 
-        .tile.idle { background: #21262d; }
-        .tile.current { background: var(--accent-orange); transform: scale(1.1); border-color: var(--accent-orange); }
-        .tile.expanding { background: #3fb95033; border-color: var(--accent-green); }
-        .tile.past { opacity: 0.4; }
+        .controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: center; }
+        .controls .kbd-hint { font-size: 11px; color: var(--text-dim); font-family: var(--mono); margin-left: 4px; }
+        .kbd { background: rgba(255,255,255,0.07); border: 1px solid var(--border-main); border-radius: 5px; padding: 1px 6px; font-size: 10px; }
+        input[type="range"] { accent-color: var(--accent-blue); width: 110px; cursor: pointer; }
 
-        .sum-panel {
-            margin-top: 16px;
-            background: var(--bg-surface);
-            border: 1px solid var(--border-main);
-            border-radius: 6px;
-            padding: 12px 20px;
-            min-width: 520px;
-            text-align: center;
-            font-family: monospace;
-            font-size: 14px;
-        }
+        .details-toggle { align-self: center; height: 32px; padding: 0 16px; border-radius: 999px; cursor: pointer; background: rgba(255,255,255,0.04); border: 1px solid var(--border-main); color: var(--text-dim); font-family: var(--mono); font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; gap: 8px; transition: color 0.2s, border-color 0.2s, background 0.2s; }
+        .details-toggle:hover { color: var(--text-main); border-color: rgba(6,182,212,0.4); background: rgba(6,182,212,0.06); }
+        .details-toggle .chev { transition: transform 0.3s ease; }
+        .details-wrap.open .details-toggle .chev { transform: rotate(180deg); }
+        .details-body { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.4s ease; }
+        .details-wrap.open .details-body { grid-template-rows: 1fr; }
+        .details-inner { overflow: hidden; min-height: 0; }
+        .details-grid { display: flex; flex-direction: column; gap: 14px; padding-top: 14px; }
 
-        .info-panel {
-            margin-top: 12px;
-            display: flex;
-            gap: 12px;
-        }
+        .panel-card { background: var(--bg-surface); border: 1px solid var(--border-main); border-radius: 16px; backdrop-filter: blur(10px); box-shadow: 0 8px 30px rgba(0,0,0,0.35); }
+        .panel-head { display: flex; align-items: center; gap: 8px; padding: 11px 16px; border-bottom: 1px solid var(--border-main); font-size: 11px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; color: var(--text-dim); }
+        .panel-head .pip { width: 7px; height: 7px; border-radius: 50%; background: var(--accent-blue); box-shadow: 0 0 8px var(--accent-blue); }
+        .code-body { padding: 12px 6px 14px; font-family: var(--mono); font-size: 12.5px; line-height: 1.7; }
+        .code-line { display: flex; gap: 12px; padding: 1px 16px; border-left: 2px solid transparent; transition: background 0.3s, border-color 0.3s; white-space: pre; }
+        .code-line .lno { color: #4b5772; width: 16px; text-align: right; user-select: none; }
+        .code-line .src { color: #c4cee0; }
+        .code-line .kw { color: #c792ea; }
+        .code-line .fn { color: #82aaff; }
+        .code-line.active { background: rgba(6,182,212,0.12); border-left-color: var(--accent-blue); }
+        .code-line.active .src, .code-line.active .lno { color: #e8eefb; }
 
-        .info-cell {
-            background: var(--bg-surface);
-            border: 1px solid var(--border-main);
-            border-radius: 6px;
-            padding: 8px 14px;
-            min-width: 120px;
-            text-align: center;
-        }
+        .state-strip { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 0 2px; }
+        .pill { display: inline-flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 12px; color: var(--text-dim); background: rgba(255,255,255,0.04); border: 1px solid var(--border-main); border-radius: 999px; padding: 4px 11px; }
+        .pill b { color: var(--text-main); font-weight: 800; }
+        .pill.c b { color: var(--accent-purple); } .pill.v b { color: var(--accent-blue); } .pill.s b { color: var(--accent-orange); } .pill.d b { color: var(--accent-green); }
 
-        .info-label { font-size: 11px; color: var(--text-dim); }
-        .info-value { font-family: monospace; font-size: 18px; font-weight: 700; }
+        .log-panel { border-radius: 14px; padding: 12px 16px; height: 110px; overflow-y: auto; font-family: var(--mono); font-size: 12.5px; line-height: 1.5; background: var(--bg-surface); border: 1px solid var(--border-main); }
+        .log-panel::-webkit-scrollbar { width: 8px; }
+        .log-panel::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 8px; }
 
-        .result-display {
-            margin-top: 12px;
-            font-size: 18px;
-        }
-        #res-val { font-family: monospace; transition: all 0.3s; }
-        .pop { animation: popAnim 500ms ease; color: var(--accent-green) !important; font-size: 32px; }
-
-        @keyframes popAnim {
-            0% { transform: scale(1); }
-            50% { transform: scale(1.3); }
-            100% { transform: scale(1); }
-        }
-
-        .status-bar { margin-top: 8px; font-size: 13px; color: var(--text-dim); min-height: 1.4em; }
-
-        .controls {
-            margin-top: 24px;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        .legend {
-            margin-top: 16px;
-            display: flex;
-            gap: 20px;
-            flex-wrap: wrap;
-            justify-content: center;
-        }
-        .legend-item { display: flex; align-items: center; font-size: 12px; color: var(--text-dim); }
-
-        .log-panel {
-            margin-top: 16px;
-            background: var(--bg-page);
-            border: 1px solid var(--border-main);
-            border-radius: 6px;
-            padding: 12px 16px;
-            width: 700px;
-            max-width: 90%;
-            height: 140px;
-            overflow-y: auto;
-            font-family: 'Courier New', monospace;
-            font-size: 13px;
-        }
+        @keyframes confettiFall { 0%{ opacity:1; transform: translate(-50%, 0) rotate(0deg); } 100%{ opacity:0; transform: translate(calc(-50% + var(--x)), 220px) rotate(var(--rot)); } }
+        @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; } }
     </style>
 </head>
 <body>
 
     <div class="input-bar">
-        <label class="array-label">heights =</label>
-        <input type="text" id="array-input" placeholder="2,1,5,6,2,3" style="width: 280px;">
+        <label class="ui-label">heights =</label>
+        <input type="text" id="nums-input" value="[2,1,5,6,2,3]" maxlength="60">
         <button onclick="loadCustom()">Load</button>
-        <button onclick="loadExample([2,1,5,6,2,3])">Example 1</button>
-        <button onclick="loadExample([1,2,3,4,5])">Example 2</button>
+        <span class="ui-label" style="opacity:.5">|</span>
+        <button onclick="loadExample(0)">[2,1,5,6,2,3]</button>
+        <button onclick="loadExample(1)">[1,2,3,4,5]</button>
     </div>
 
-    <div class="array-container" id="tiles-container"></div>
+    <div class="shell">
+        <div class="title-row">
+            <h1>Largest Rectangle in Histogram <span class="sub">&middot; Monotonic Stack &middot; while h[i] &lt; h[top]: pop &amp; measure area &middot; O(n)</span></h1>
+            <span class="step-badge" id="step-badge">Step 1 / 1</span>
+        </div>
+        <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
 
-    <div class="sum-panel" id="sum-panel">—</div>
+        <div class="narration" id="main-panel">&mdash;</div>
 
-    <div class="info-panel">
-        <div class="info-cell">
-            <div class="info-label">Current Bar</div>
-            <div class="info-value" id="val-i" style="color: var(--accent-orange);">—</div>
+        <div class="stage-card">
+            <div class="stage-screen">
+                <div class="array-stage" id="array-stage">
+                    <div class="scan-board" id="scan-board">
+                        <div class="row-label">heights[i] &middot; bars sit on the baseline &middot; scan left &rarr; right</div>
+                        <div class="hist-row" id="num-row">
+                            <div class="best-outline" id="best-outline"><span class="bo-tag" id="bo-tag"></span></div>
+                        </div>
+                    </div>
+                    <div class="stack-board">
+                        <div class="row-label">monotonic increasing stack (bar indices)</div>
+                        <div class="stack-rail" id="stack-rail"></div>
+                    </div>
+                </div>
+            </div>
         </div>
-        <div class="info-cell">
-            <div class="info-label">Height</div>
-            <div class="info-value" id="val-height" style="color: var(--accent-green);">—</div>
+
+        <div class="action-stage">
+            <div id="confetti"></div>
+            <div class="answer-track" id="answer-track"></div>
+            <div class="action-word" id="action-word"></div>
         </div>
-        <div class="info-cell">
-            <div class="info-label">Width</div>
-            <div class="info-value" id="val-width" style="color: var(--accent-blue);">—</div>
+
+        <div class="controls">
+            <button onclick="resetSim()">&#8634; Reset</button>
+            <button onclick="prevStep()">&#8592; Back</button>
+            <button onclick="togglePlay()" id="play-btn">Play</button>
+            <button onclick="nextStep()">Next &#8594;</button>
+            <span class="ui-label" style="margin-left:6px; font-size:11px">Speed</span>
+            <input type="range" id="speed" min="0" max="2" value="1">
+            <span class="kbd-hint"><span class="kbd">&#8592;</span> <span class="kbd">&#8594;</span> step &middot; <span class="kbd">space</span> play</span>
         </div>
-        <div class="info-cell">
-            <div class="info-label">Area</div>
-            <div class="info-value" id="val-area" style="color: var(--accent-orange);">—</div>
-        </div>
-        <div class="info-cell">
-            <div class="info-label">Max Area</div>
-            <div class="info-value" id="val-max" style="color: var(--accent-green);">0</div>
+
+        <div class="details-wrap" id="details-wrap">
+            <button class="details-toggle" onclick="toggleDetails()" aria-expanded="false">
+                <span id="details-label">Show code, state &amp; log</span> <span class="chev">&#9662;</span>
+            </button>
+            <div class="details-body">
+                <div class="details-inner">
+                    <div class="details-grid">
+                        <div class="state-strip">
+                            <span class="pill c">index i <b id="st-i">&mdash;</b></span>
+                            <span class="pill v">stack <b id="st-stack">&mdash;</b></span>
+                            <span class="pill s">area <b id="st-area">&mdash;</b></span>
+                            <span class="pill d">best <b id="st-best">0</b></span>
+                        </div>
+                        <div class="panel-card">
+                            <div class="panel-head"><span class="pip"></span> Algorithm</div>
+                            <div class="code-body" id="code-panel"></div>
+                        </div>
+                        <div class="log-panel" id="log"></div>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
-
-    <div class="result-display">
-        <div id="res-label">Largest Rectangle Area =</div>
-        <div id="res-val">—</div>
-    </div>
-
-    <div class="status-bar" id="status-text">Ready...</div>
-
-    <div class="controls">
-        <button onclick="reset()">↺ Reset</button>
-        <button onclick="back()">← Back</button>
-        <button onclick="togglePlay()" id="play-btn" style="min-width: 80px;">Play</button>
-        <button onclick="next()">Next →</button>
-        <div class="speed-control">
-            <span class="speed-label">Speed</span>
-            <input type="range" id="speed-slider" min="0" max="2" step="1" value="1">
-        </div>
-    </div>
-
-    <div class="legend">
-        <div class="legend-item"><div class="dot" style="background: var(--accent-orange);"></div> Current Bar</div>
-        <div class="legend-item"><div class="dot" style="background: var(--accent-green);"></div> Expanding Range</div>
-        <div class="legend-item"><div class="dot" style="background: var(--accent-blue);"></div> Max Area</div>
-    </div>
-
-    <div class="log-panel" id="log"></div>
 
     <script>
-        let currentArray = [2,1,5,6,2,3];
+        'use strict';
+
+        // ───────── Motion engine (spring pop, zero deps) ─────────
+        const REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        const FRAME = 1000 / 60;
+        function sampleSpring(stiffness, damping, mass) {
+            const dt = 1 / 60; let x = 1, v = 0; const out = [];
+            for (let i = 0; i < 240; i++) { const a = (-stiffness * x - damping * v) / mass; v += a * dt; x += v * dt; out.push(1 - x); if (Math.abs(x) < 0.0015 && Math.abs(v) < 0.0015) break; }
+            out.push(1); return out;
+        }
+        const SPRING_POP = sampleSpring(520, 17, 1);
+        const durOf = (a) => a.length * FRAME;
+        const Motion = {
+            pop(el) {
+                if (REDUCED || !el) return;
+                const kf = SPRING_POP.map(p => ({ transform: `scale(${(0.55 + 0.55 * p).toFixed(3)})` }));
+                el.animate(kf, { duration: durOf(SPRING_POP), easing: 'linear' });
+            },
+        };
+
+        // ───────── State ─────────
+        let nums = [2, 1, 5, 6, 2, 3];
         let steps = [];
-        let stepIndex = 0;
+        let stepIdx = 0;
         let timer = null;
-        let isPlaying = false;
+        let confettiArmed = true;
+        const delays = [1450, 720, 330];
+        const barEls = [];   // index -> bar element
+        const idxEls = [];   // index -> index-label element
 
-        const delays = [1600, 800, 400];
-
-        function init() {
-            loadExample([2,1,5,6,2,3]);
+        const CODE = [
+            [['kw','def '],['fn','largestRectangle'],['src','(h):']],
+            [['src','  stack = []                  # indices, increasing heights']],
+            [['src','  best = 0']],
+            [['kw','  for '],['src','i in 0..n:                 # n = sentinel height 0']],
+            [['kw','    while '],['src','stack and h[i] < h[stack[-1]]:']],
+            [['src','      top = stack.pop()        # bar to measure']],
+            [['src','      left = stack[-1] if stack else -1']],
+            [['src','      width = i - left - 1']],
+            [['src','      best = max(best, h[top] * width)']],
+            [['src','    stack.append(i)']],
+            [['kw','  return '],['src','best']],
+        ];
+        function buildCodePanel() {
+            const panel = document.getElementById('code-panel'); panel.innerHTML = '';
+            CODE.forEach((tokens, i) => {
+                const line = document.createElement('div'); line.className = 'code-line'; line.dataset.line = i;
+                const lno = document.createElement('span'); lno.className = 'lno'; lno.textContent = i + 1; line.appendChild(lno);
+                const src = document.createElement('span');
+                tokens.forEach(([cls, txt]) => { const s = document.createElement('span'); s.className = cls; s.textContent = txt; src.appendChild(s); });
+                line.appendChild(src); panel.appendChild(line);
+            });
+        }
+        function highlightCode(arr) { document.querySelectorAll('.code-line').forEach(el => el.classList.toggle('active', arr && arr.includes(+el.dataset.line))); }
+        function toggleDetails() {
+            const wrap = document.getElementById('details-wrap'); const open = wrap.classList.toggle('open');
+            wrap.querySelector('.details-toggle').setAttribute('aria-expanded', open ? 'true' : 'false');
+            document.getElementById('details-label').textContent = open ? 'Hide code, state & log' : 'Show code, state & log';
         }
 
-        function loadExample(arr) {
-            currentArray = arr.slice(0, 12);
-            document.getElementById('array-input').value = currentArray.join(', ');
-            generateSteps();
-            reset();
-        }
-
-        function loadCustom() {
-            const val = document.getElementById('array-input').value;
-            const arr = val.split(',').map(x => parseInt(x.trim())).filter(x => !isNaN(x));
-            if (arr.length > 0) {
-                currentArray = arr;
-                generateSteps();
-                reset();
-            }
-        }
-
+        // ───────── step generation (immutable snapshots) ─────────
         function generateSteps() {
             steps = [];
-            const n = currentArray.length;
-            let maxArea = 0;
-            let bestLeft = 0, bestRight = 0, bestBar = 0;
+            const n = nums.length;
 
-            steps.push({
-                type: 'init',
-                heights: currentArray.slice(),
-                i: -1,
-                left: -1,
-                right: -1,
-                area: 0,
-                maxArea: 0,
-                tileStates: Array(n).fill('idle'),
-                scanText: `Histogram with ${n} bars. Starting brute force O(n²)`,
-                status: `Starting Largest Rectangle in Histogram — Brute Force`,
-                log: `Starting Brute Force: For each bar, expand left & right`
-            });
+            // base snapshot shape: every step carries a full, immutable view of state
+            const snap = (extra) => Object.assign({
+                i: null,                 // current scan pointer (n == sentinel)
+                stack: [],               // indices currently in the monotonic stack
+                popped: null,            // bar index just popped/measured this step
+                span: null,              // [l, r] inclusive bar indices the rectangle covers
+                area: null,              // area measured this step
+                best: 0,                 // running best area
+                bestRect: null,          // {left, right, height} of best rectangle so far
+                phase: null,             // 'arrive' | 'pop' | 'push' | 'final'
+                complete: false, confetti: false, answer: null
+            }, extra);
 
-            for (let i = 0; i < n; i++) {
-                const h = currentArray[i];
-                let left = i;
-                let right = i;
+            const stack = [];            // indices, increasing heights
+            let best = 0;
+            let bestRect = null;         // {left, right, height}
+            const H = (k) => (k < n ? nums[k] : 0);   // sentinel height 0 at index n
 
-                // Expand left
-                while (left > 0 && currentArray[left-1] >= h) left--;
+            steps.push(snap({
+                code: [0, 1, 2], action: 'MONOTONIC STACK', actionColor: 'var(--accent-blue)',
+                panel: `Largest rectangle that fits under the histogram <code>heights = [${nums.join(', ')}]</code>. Keep an <b>increasing</b> stack of bar indices. When a shorter bar arrives, pop the taller bars and measure the rectangle each can form. Scan <code>i</code> left &#8594; right.`,
+                log: `init  heights = [${nums.join(',')}]  (n=${n})`,
+                stack: [], best: 0
+            }));
 
-                // Expand right
-                while (right < n-1 && currentArray[right+1] >= h) right++;
+            for (let i = 0; i <= n; i++) {
+                const isSentinel = (i === n);
+                // arrival of pointer i
+                steps.push(snap({
+                    i, stack: stack.slice(), best, bestRect: bestRect && { ...bestRect },
+                    phase: 'arrive', code: [3, 4],
+                    action: isSentinel ? `FLUSH (h = 0)` : `SCAN i = ${i}`, actionColor: 'var(--accent-purple)',
+                    panel: isSentinel
+                        ? `Reached the end. Treat it as a sentinel bar of height <code>0</code> so every bar still on the stack gets popped and measured.`
+                        : `Bar <b>i = ${i}</b> with height <code>${nums[i]}</code>. While the stack top is <b>taller</b> than this bar, those bars can grow no further right &mdash; pop and measure each.`,
+                    log: `i=${i}  h=${isSentinel ? 0 : nums[i]}  stack=[${stack.join(',')}]`
+                }));
 
-                const width = right - left + 1;
-                const area = h * width;
-
-                let tileStates = Array(n).fill('idle');
-                for (let k = left; k <= right; k++) {
-                    tileStates[k] = 'expanding';
+                // pop & measure loop: pop while top is strictly taller than current
+                while (stack.length && H(i) < H(stack[stack.length - 1])) {
+                    const top = stack.pop();
+                    const height = nums[top];
+                    const left = stack.length ? stack[stack.length - 1] : -1;   // new boundary on the left
+                    const width = i - left - 1;
+                    const area = height * width;
+                    const spanL = left + 1, spanR = i - 1;
+                    if (area > best) { best = area; bestRect = { left: spanL, right: spanR, height }; }
+                    steps.push(snap({
+                        i, stack: stack.slice(), popped: top,
+                        span: [spanL, spanR], area, best, bestRect: bestRect && { ...bestRect },
+                        phase: 'pop', code: [5, 6, 7, 8],
+                        action: area >= best ? `AREA ${area}` : `AREA ${area}`, actionColor: 'var(--accent-orange)',
+                        panel: `Pop bar <b>${top}</b> (height <code>${height}</code>). Left boundary is <code>${left < 0 ? '-1' : 'index ' + left}</code>, right boundary is <code>index ${i}</code>, so width <code>= ${i} - ${left} - 1 = ${width}</code>. Area <code>= ${height} &times; ${width} = ${area}</code>.` + (area === best && bestRect && bestRect.height === height && bestRect.left === spanL ? ` That is a <b>new best</b>.` : ``),
+                        log: `pop ${top}  h=${height} w=${width}  area=${area}  best=${best}`
+                    }));
                 }
-                tileStates[i] = 'current';
 
-                steps.push({
-                    type: 'expand',
-                    heights: currentArray.slice(),
-                    i: i,
-                    left: left,
-                    right: right,
-                    area: area,
-                    maxArea: Math.max(maxArea, area),
-                    tileStates: tileStates,
-                    scanText: `Bar ${i} (h=${h}) → left=${left}, right=${right}, width=${width}, area=${area}`,
-                    status: `Bar ${i} height=${h} → width=${width} → area=${area}`,
-                    log: `i=${i} h=${h} → [${left}..${right}] width=${width} area=${area}`
-                });
-
-                if (area > maxArea) {
-                    maxArea = area;
-                    bestLeft = left;
-                    bestRight = right;
-                    bestBar = i;
-                    steps.push({
-                        type: 'new_max',
-                        heights: currentArray.slice(),
-                        i: i,
-                        left: left,
-                        right: right,
-                        area: area,
-                        maxArea: maxArea,
-                        tileStates: tileStates,
-                        scanText: `New maximum area = ${area}`,
-                        status: `New max area = ${area} (from bar ${i})`,
-                        log: `New max area updated to ${area}`,
-                        logColor: 'var(--accent-green)'
-                    });
+                // push i (skip pushing the sentinel index itself; it does no further work)
+                if (!isSentinel) {
+                    stack.push(i);
+                    steps.push(snap({
+                        i, stack: stack.slice(), best, bestRect: bestRect && { ...bestRect },
+                        phase: 'push', code: [9],
+                        action: `PUSH ${i}`, actionColor: 'var(--accent-blue)',
+                        panel: `Stack top is now no taller than this bar (or stack empty). Push <b>${i}</b> &mdash; it stays on the increasing stack. Stack = <code>[${stack.join(', ')}]</code>.`,
+                        log: `push ${i}  stack=[${stack.join(',')}]`
+                    }));
                 }
             }
 
-            steps.push({
-                type: 'final',
-                heights: currentArray.slice(),
-                i: bestBar,
-                left: bestLeft,
-                right: bestRight,
-                area: maxArea,
-                maxArea: maxArea,
-                tileStates: Array(n).fill('past'),
-                scanText: `Final largest area = ${maxArea}`,
-                status: `Completed. Largest rectangle area = ${maxArea}`,
-                log: `Final Result: ${maxArea}`,
-                logColor: 'var(--accent-blue)',
-                bold: true,
-                result: maxArea
+            // finalize
+            steps.push(snap({
+                i: null, stack: [], best, bestRect: bestRect && { ...bestRect },
+                phase: 'final', complete: true, confetti: true, code: [10],
+                answer: best,
+                action: `✓ AREA ${best}`, actionColor: 'var(--accent-green)',
+                panel: bestRect
+                    ? `Done. The largest rectangle spans bars <code>[${bestRect.left}..${bestRect.right}]</code> at height <code>${bestRect.height}</code>: area <code>= ${bestRect.height} &times; ${bestRect.right - bestRect.left + 1} = <b>${best}</b></code>.`
+                    : `Done. Largest rectangle area = <code><b>${best}</b></code>.`,
+                log: `done  largest area = ${best}`
+            }));
+        }
+
+        // ───────── build persistent DOM skeleton (once per input load) ─────────
+        function buildBoard() {
+            const numRow = document.getElementById('num-row');
+            // keep the best-outline overlay, rebuild the bars
+            barEls.length = 0; idxEls.length = 0;
+            // remove old bar columns but preserve overlay
+            Array.from(numRow.querySelectorAll('.col')).forEach(el => el.remove());
+
+            const maxH = Math.max(...nums, 1);
+            nums.forEach((v, i) => {
+                const col = document.createElement('div'); col.className = 'col';
+                const bar = document.createElement('div'); bar.className = 'bar idle';
+                const heightPx = Math.max(34, Math.round((v / maxH) * 170));
+                bar.style.height = heightPx + 'px';
+                const arrow = document.createElement('span'); arrow.className = 'scan-arrow'; arrow.textContent = '▼';
+                const valSpan = document.createElement('span'); valSpan.textContent = String(v);
+                bar.appendChild(arrow); bar.appendChild(valSpan);
+                const lab = document.createElement('div'); lab.className = 'idx-label'; lab.textContent = i;
+                col.appendChild(bar); col.appendChild(lab); numRow.appendChild(col);
+                barEls.push(bar); idxEls.push(lab);
             });
         }
 
+        // ───────── render (pure function of steps[idx], persistent DOM) ─────────
         function renderStep(idx) {
-            const step = steps[idx];
-            if (!step) return;
+            stepIdx = idx; const step = steps[idx]; if (!step) return;
+            const inStackSet = new Set(step.stack);
+            const spanSet = new Set();
+            if (step.span) for (let k = step.span[0]; k <= step.span[1]; k++) spanSet.add(k);
+            const bestSet = new Set();
+            if (step.complete && step.bestRect) for (let k = step.bestRect.left; k <= step.bestRect.right; k++) bestSet.add(k);
 
-            const container = document.getElementById('tiles-container');
-            container.innerHTML = '';
+            for (let i = 0; i < nums.length; i++) {
+                let cls = 'bar';
+                const prevPopped = barEls[i].classList.contains('popped');
+                const prevCur = barEls[i].classList.contains('current');
 
-            const maxH = Math.max(...step.heights);
-            step.heights.forEach((h, i) => {
-                const unit = document.createElement('div');
-                unit.className = 'tile-unit';
+                if (step.complete) {
+                    if (bestSet.has(i)) cls += ' best'; else cls += ' dim';
+                } else if (step.popped === i) {
+                    cls += ' popped';
+                } else if (step.i === i && step.i < nums.length) {
+                    cls += ' current';
+                } else if (spanSet.has(i)) {
+                    cls += ' span';
+                } else if (inStackSet.has(i)) {
+                    cls += ' instack';
+                } else if (step.i != null && i > step.i) {
+                    cls += ' dim';
+                }
 
-                const tile = document.createElement('div');
-                tile.className = `tile ${step.tileStates[i]}`;
-                const heightPx = Math.max(30, (h / maxH) * 180);
-                tile.style.height = `${heightPx}px`;
-                tile.innerText = h;
+                barEls[i].className = cls;
+                idxEls[i].className = 'idx-label' + (step.i === i && step.i < nums.length ? ' lit' : '');
 
-                const idxLabel = document.createElement('div');
-                idxLabel.className = 'tile-index';
-                idxLabel.innerText = `[${i}]`;
-
-                unit.appendChild(tile);
-                unit.appendChild(idxLabel);
-                container.appendChild(unit);
-            });
-
-            document.getElementById('sum-panel').innerHTML = step.scanText || '—';
-
-            document.getElementById('val-i').innerText = step.i !== undefined ? step.i : '—';
-            document.getElementById('val-height').innerText = step.i !== undefined && step.i >= 0 ? step.heights[step.i] : '—';
-            document.getElementById('val-width').innerText = (step.left !== undefined && step.right !== undefined) ? (step.right - step.left + 1) : '—';
-            document.getElementById('val-area').innerText = step.area || '—';
-            document.getElementById('val-max').innerText = step.maxArea || 0;
-
-            const resVal = document.getElementById('res-val');
-            if (step.result !== undefined) {
-                resVal.innerText = step.result;
-                resVal.classList.add('pop');
-            } else {
-                resVal.innerText = '—';
-                resVal.classList.remove('pop');
+                const nowPopped = barEls[i].classList.contains('popped');
+                const nowCur = barEls[i].classList.contains('current');
+                if (nowPopped && !prevPopped) Motion.pop(barEls[i]);
+                if (nowCur && !prevCur) Motion.pop(barEls[i]);
             }
 
-            document.getElementById('status-text').innerText = step.status || '';
+            // ── best-rectangle outline overlay ──
+            renderBestOutline(step);
+
+            // ── monotonic stack panel ──
+            const rail = document.getElementById('stack-rail');
+            rail.innerHTML = '';
+            const base = document.createElement('span'); base.className = 'base-tag'; base.textContent = 'base';
+            rail.appendChild(base);
+            if (step.stack.length === 0) {
+                const e = document.createElement('span'); e.className = 'stack-empty'; e.textContent = '(empty)';
+                rail.appendChild(e);
+            } else {
+                step.stack.forEach((si, pos) => {
+                    const it = document.createElement('div');
+                    it.className = 'stack-item' + (pos === step.stack.length - 1 ? ' top' : '');
+                    const val = document.createElement('div'); val.className = 'si-val'; val.textContent = nums[si];
+                    const ix = document.createElement('div'); ix.className = 'si-idx'; ix.textContent = '[' + si + ']';
+                    it.appendChild(val); it.appendChild(ix); rail.appendChild(it);
+                    if (pos === step.stack.length - 1 && step.phase === 'push') Motion.pop(it);
+                });
+            }
+
+            // ── answer track: this-area tile + running best tile ──
+            const at = document.getElementById('answer-track'); at.innerHTML = '';
+            const areaTile = document.createElement('div'); areaTile.className = 'ans-tile';
+            const aav = document.createElement('div'); aav.className = 'av';
+            const aai = document.createElement('div'); aai.className = 'ai'; aai.textContent = 'THIS AREA';
+            if (step.area != null) { areaTile.classList.add('set'); aav.textContent = step.area; if (step.phase === 'pop') { areaTile.classList.add('flash'); Motion.pop(areaTile); } }
+            else aav.textContent = '·';
+            areaTile.appendChild(aav); areaTile.appendChild(aai); at.appendChild(areaTile);
+
+            const bestTile = document.createElement('div'); bestTile.className = 'ans-tile best';
+            const bav = document.createElement('div'); bav.className = 'av';
+            const bai = document.createElement('div'); bai.className = 'ai'; bai.textContent = step.complete ? 'ANSWER' : 'MAX AREA';
+            bav.textContent = step.best;
+            if (step.complete) { bestTile.classList.add('flash'); Motion.pop(bestTile); }
+            bestTile.appendChild(bav); bestTile.appendChild(bai); at.appendChild(bestTile);
+
+            const mp = document.getElementById('main-panel');
+            mp.innerHTML = step.panel || '&mdash;';
+            mp.classList.toggle('done', !!step.complete);
+            mp.classList.toggle('pop', step.phase === 'pop' && !step.complete);
+            mp.classList.toggle('push', step.phase === 'push' && !step.complete);
+            const aw = document.getElementById('action-word'); aw.textContent = step.action || ''; aw.style.color = step.actionColor || 'var(--text-dim)';
+            highlightCode(step.code);
+
+            if (step.confetti) { if (confettiArmed) { fireConfetti(); confettiArmed = false; } } else confettiArmed = true;
+
+            document.getElementById('st-i').textContent = step.i != null ? (step.i < nums.length ? step.i : 'end') : '—';
+            document.getElementById('st-stack').textContent = step.stack.length ? '[' + step.stack.join(',') + ']' : '[]';
+            document.getElementById('st-area').textContent = step.area != null ? step.area : '—';
+            document.getElementById('st-best').textContent = step.best;
+
+            document.getElementById('step-badge').textContent = `Step ${idx + 1} / ${steps.length}`;
+            document.getElementById('progress-fill').style.width = `${(idx / Math.max(1, steps.length - 1)) * 100}%`;
 
             const logEl = document.getElementById('log');
-            logEl.innerHTML = '';
-            for (let k = 0; k <= idx; k++) {
-                if (steps[k].log) {
-                    const line = document.createElement('div');
-                    line.className = 'log-line';
-                    if (steps[k].logColor) line.style.color = steps[k].logColor;
-                    if (steps[k].bold) line.style.fontWeight = 'bold';
-                    line.innerText = steps[k].log;
-                    logEl.appendChild(line);
-                }
-            }
+            logEl.innerHTML = steps.slice(0, idx + 1).map(s => `<div style="margin:3px 0;white-space:pre-wrap;">${s.log}</div>`).join('');
             logEl.scrollTop = logEl.scrollHeight;
         }
 
-        function next() {
-            if (stepIndex < steps.length - 1) {
-                stepIndex++;
-                renderStep(stepIndex);
-            } else pause();
+        // position the dashed best-rectangle outline over the bars
+        function renderBestOutline(step) {
+            const outline = document.getElementById('best-outline');
+            const tag = document.getElementById('bo-tag');
+            let rect = null;
+            // during the run, draw the rectangle being measured this pop step; at the end, draw the best
+            if (step.complete && step.bestRect) rect = step.bestRect;
+            else if (step.phase === 'pop' && step.span && step.popped != null) {
+                rect = { left: step.span[0], right: step.span[1], height: nums[step.popped] };
+            }
+            if (!rect || rect.right < rect.left) { outline.classList.remove('show'); return; }
+
+            const row = document.getElementById('num-row');
+            const lBar = barEls[rect.left], rBar = barEls[rect.right];
+            if (!lBar || !rBar) { outline.classList.remove('show'); return; }
+            const rowBox = row.getBoundingClientRect();
+            const lBox = lBar.getBoundingClientRect();
+            const rBox = rBar.getBoundingClientRect();
+            const maxH = Math.max(...nums, 1);
+            const heightPx = Math.max(34, Math.round((rect.height / maxH) * 170));
+
+            const left = lBox.left - rowBox.left;
+            const width = (rBox.right - rowBox.left) - left;
+            const baselineBottom = 2; // the .hist-row border-bottom
+            outline.style.left = (left - 3) + 'px';
+            outline.style.width = (width + 6) + 'px';
+            outline.style.height = (heightPx + 3) + 'px';
+            outline.style.bottom = baselineBottom + 'px';
+            tag.innerHTML = step.complete
+                ? `best ${rect.height} &times; ${rect.right - rect.left + 1} = ${rect.height * (rect.right - rect.left + 1)}`
+                : `${rect.height} &times; ${rect.right - rect.left + 1} = ${rect.height * (rect.right - rect.left + 1)}`;
+            outline.classList.add('show');
         }
 
-        function back() {
-            if (stepIndex > 0) {
-                stepIndex--;
-                renderStep(stepIndex);
+        function fireConfetti() {
+            const host = document.getElementById('confetti'); if (!host || REDUCED) return;
+            const colors = ['#22c55e', '#06b6d4', '#a855f7', '#f5a524', '#f43f5e'];
+            for (let i = 0; i < 38; i++) {
+                const p = document.createElement('div'); p.className = 'confetti-piece';
+                p.style.setProperty('--x', ((Math.random() * 2 - 1) * 220) + 'px');
+                p.style.setProperty('--rot', ((Math.random() * 720 - 360)) + 'deg');
+                p.style.background = colors[i % colors.length];
+                p.style.animationDuration = (0.9 + Math.random() * 0.8) + 's';
+                p.style.animationDelay = (Math.random() * 0.15) + 's';
+                host.appendChild(p); setTimeout(() => p.remove(), 1900);
             }
         }
 
-        function reset() {
-            pause();
-            stepIndex = 0;
-            renderStep(0);
-        }
-
+        // ───────── controls ─────────
+        function nextStep() { if (stepIdx < steps.length - 1) renderStep(stepIdx + 1); else pause(); }
+        function prevStep() { if (stepIdx > 0) renderStep(stepIdx - 1); }
+        function resetSim() { pause(); renderStep(0); }
         function togglePlay() {
-            if (isPlaying) pause();
-            else play();
+            const btn = document.getElementById('play-btn');
+            if (timer) { pause(); return; }
+            btn.textContent = 'Pause';
+            if (stepIdx >= steps.length - 1) renderStep(0);
+            timer = setInterval(() => { if (stepIdx < steps.length - 1) nextStep(); else pause(); }, delays[document.getElementById('speed').value]);
+        }
+        function pause() { clearInterval(timer); timer = null; document.getElementById('play-btn').textContent = 'Play'; }
+
+        function loadArr(arr) {
+            pause(); nums = arr.slice(); confettiArmed = true;
+            buildBoard(); generateSteps(); renderStep(0);
+        }
+        function loadCustom() {
+            const raw = document.getElementById('nums-input').value;
+            let parsed;
+            try { parsed = JSON.parse(raw); }
+            catch (e) {
+                parsed = raw.split(',').map(x => parseInt(x.trim(), 10)).filter(x => !isNaN(x));
+            }
+            if (Array.isArray(parsed) && parsed.length > 0 && parsed.every(x => typeof x === 'number' && isFinite(x) && x >= 0) && parsed.length <= 12) {
+                loadArr(parsed);
+            }
+        }
+        function loadExample(n) {
+            const ex = [[2, 1, 5, 6, 2, 3], [1, 2, 3, 4, 5]][n];
+            document.getElementById('nums-input').value = JSON.stringify(ex);
+            loadArr(ex);
         }
 
-        function play() {
-            if (stepIndex >= steps.length - 1) stepIndex = 0;
-            isPlaying = true;
-            document.getElementById('play-btn').innerText = 'Pause';
-            timer = setInterval(next, delays[document.getElementById('speed-slider').value]);
-        }
+        document.addEventListener('keydown', (e) => {
+            const tag = (e.target.tagName || '').toLowerCase(); if (tag === 'input' || tag === 'textarea') return;
+            if (e.key === 'ArrowRight') { e.preventDefault(); pause(); nextStep(); }
+            else if (e.key === 'ArrowLeft') { e.preventDefault(); pause(); prevStep(); }
+            else if (e.key === ' ') { e.preventDefault(); togglePlay(); }
+        });
+        document.getElementById('nums-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') loadCustom(); });
 
-        function pause() {
-            isPlaying = false;
-            document.getElementById('play-btn').innerText = 'Play';
-            clearInterval(timer);
-        }
-
-        document.getElementById('speed-slider').oninput = function() {
-            if (isPlaying) { pause(); play(); }
-        };
-
-        window.onload = init;
+        buildCodePanel();
+        window.onload = () => loadExample(0);
     </script>
 </body>
 </html>

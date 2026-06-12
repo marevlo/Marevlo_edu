@@ -3,577 +3,606 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Swim in Rising Water (Dijkstra) - Visualization</title>
+    <title>Swim in Rising Water - Visualization</title>
     <style>
         :root {
-            --bg-page: #000000;
-            --bg-surface: #161b22;
-            --bg-input: #000000;
-            --border-main: #30363d;
-            --btn-bg: #21262d;
-            --btn-hover: #2d333b;
-            --text-main: #c9d1d9;
-            --text-dim: #8b949e;
-            --text-log: #58a6ff;
-            --accent-orange: #e3b341;
-            --accent-blue: #388bfd;
-            --accent-green: #3fb950;
-            --accent-red: #f85149;
-            --accent-purple: #a371f7;
-            
-            --cell-dry: #3a3221;
-            --cell-dry-text: #cda85e;
-            --cell-water: #0d2a4a;
-            --cell-water-text: #58a6ff;
-            --cell-frontier: #2a200a;
-            --cell-frontier-text: #e3b341;
+            --bg-page: #070b14;
+            --bg-surface: rgba(255, 255, 255, 0.045);
+            --bg-input: rgba(255, 255, 255, 0.04);
+            --border-main: rgba(255, 255, 255, 0.10);
+            --btn-bg: rgba(255, 255, 255, 0.05);
+            --btn-hover: rgba(255, 255, 255, 0.10);
+            --text-main: #e8eefb;
+            --text-dim: #8b98b3;
+            --accent-orange: #f5a524;   /* active popped cell (u)            */
+            --accent-blue:   #06b6d4;   /* in priority queue / frontier      */
+            --accent-green:  #22c55e;   /* submerged / settled / final path  */
+            --accent-red:    #f85149;   /* skip / out-of-bounds              */
+            --accent-purple: #a855f7;   /* neighbour under evaluation (v)    */
+            --mono: ui-monospace, 'SF Mono', 'Cascadia Code', 'Courier New', monospace;
+            --sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+            --shell: 880px;
         }
 
         * { box-sizing: border-box; }
+        html, body { overflow-x: hidden; }
         body {
-            background-color: var(--bg-page);
-            color: var(--text-main);
-            font-family: system-ui, -apple-system, sans-serif;
-            margin: 0;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            min-height: 100vh;
-            padding-bottom: 40px;
+            background:
+                radial-gradient(1100px 600px at 15% -10%, rgba(168, 85, 247, 0.10), transparent 60%),
+                radial-gradient(900px 600px at 100% 10%, rgba(6, 182, 212, 0.10), transparent 55%),
+                linear-gradient(160deg, #070b14 0%, #0b1120 55%, #0a0f1c 100%);
+            background-attachment: fixed;
+            color: var(--text-main); font-family: var(--sans); margin: 0;
+            display: flex; flex-direction: column; align-items: center; min-height: 100vh;
+            padding-bottom: 48px; -webkit-font-smoothing: antialiased;
         }
+        body::before, body::after { content: ''; position: fixed; border-radius: 50%; filter: blur(70px); pointer-events: none; z-index: 0; opacity: 0.45; }
+        body::before { width: 380px; height: 380px; top: 8%; left: -120px; background: radial-gradient(circle, rgba(168,85,247,0.30), transparent 70%); }
+        body::after  { width: 420px; height: 420px; bottom: 4%; right: -140px; background: radial-gradient(circle, rgba(6,182,212,0.22), transparent 70%); }
+        body > * { position: relative; z-index: 1; }
 
-        /* ROW 1: INPUT BAR */
         .input-bar {
-            width: 100%;
-            background-color: var(--bg-surface);
-            padding: 12px 16px;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            gap: 8px;
-            border-bottom: 1px solid var(--border-main);
-            flex-wrap: wrap;
+            width: 100%; background: rgba(10, 15, 28, 0.55);
+            backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+            padding: 14px 16px; display: flex; justify-content: center; align-items: center; gap: 10px;
+            border-bottom: 1px solid var(--border-main); flex-wrap: wrap; position: sticky; top: 0; z-index: 50;
         }
-        label.ui-label { font-family: 'Courier New', monospace; font-size: 13px; color: var(--text-dim); }
+        label.ui-label, .ui-label { font-family: var(--mono); font-size: 13px; color: var(--text-dim); letter-spacing: 0.2px; }
         input[type="text"] {
-            background: var(--bg-input);
-            border: 1px solid var(--border-main);
-            color: var(--text-main);
-            height: 32px;
-            border-radius: 6px;
-            padding: 0 10px;
-            font-size: 13px;
+            background: var(--bg-input); border: 1px solid var(--border-main); color: var(--text-main);
+            height: 34px; border-radius: 9px; padding: 0 12px; font-size: 13px; font-family: var(--mono);
+            transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
         }
-        .large-input { width: 450px; font-family: monospace; font-size: 12px;}
+        .grid-input { width: 360px; max-width: 60vw; }
+        input:focus { outline: none; border-color: var(--accent-purple); box-shadow: 0 0 0 3px rgba(168, 85, 247, 0.18); background: rgba(168, 85, 247, 0.06); }
 
         button {
-            height: 32px; border-radius: 6px; padding: 0 14px; background: var(--btn-bg);
-            border: 1px solid var(--border-main); color: var(--text-main); font-size: 13px; cursor: pointer;
-            transition: background 0.2s ease;
+            height: 34px; border-radius: 9px; padding: 0 14px; background: var(--btn-bg);
+            border: 1px solid var(--border-main); color: var(--text-main); font-size: 13px; font-weight: 600; cursor: pointer;
+            transition: transform 0.15s ease, background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
         }
-        button:hover { background: var(--btn-hover); }
+        button:hover { background: var(--btn-hover); border-color: rgba(6, 182, 212, 0.5); box-shadow: 0 0 18px rgba(6, 182, 212, 0.18); transform: translateY(-1px); }
+        button:active { transform: translateY(0); }
+        #play-btn { background: linear-gradient(135deg, rgba(6,182,212,0.22), rgba(6,182,212,0.10)); border-color: rgba(6, 182, 212, 0.45); color: #a5f3fc; min-width: 80px; }
 
-        /* ROW 2: GRAPH AREA & ARRAYS */
-        .visual-container { margin-top: 20px; display: flex; align-items: flex-start; gap: 30px; width: 100%; justify-content: center; flex-wrap: wrap; }
-        
-        .graph-area {
-            background: var(--bg-surface);
-            border: 1px solid var(--border-main);
-            border-radius: 8px;
-            padding: 20px;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 350px;
-            min-width: 400px;
+        .shell { width: var(--shell); max-width: 95%; margin: 24px auto 0; display: flex; flex-direction: column; gap: 16px; }
+
+        .title-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+        .title-row h1 { font-size: 18px; font-weight: 800; margin: 0; letter-spacing: 0.2px; }
+        .title-row .sub { color: var(--text-dim); font-weight: 500; font-size: 13px; }
+        .step-badge { font-family: var(--mono); font-size: 12px; font-weight: 700; color: #a5f3fc; background: rgba(6,182,212,0.12); border: 1px solid rgba(6,182,212,0.3); padding: 4px 10px; border-radius: 999px; white-space: nowrap; }
+        .progress-track { height: 4px; width: 100%; background: rgba(255,255,255,0.07); border-radius: 999px; overflow: hidden; margin-top: -6px; }
+        .progress-fill { height: 100%; width: 0%; border-radius: 999px; background: linear-gradient(90deg, var(--accent-blue), var(--accent-purple)); box-shadow: 0 0 12px rgba(6,182,212,0.5); transition: width 0.45s cubic-bezier(0.34,1.1,0.64,1); }
+
+        .narration { background: var(--bg-surface); border: 1px solid rgba(6,182,212,0.22); border-radius: 12px; padding: 12px 18px; font-family: var(--mono); font-size: 14px; line-height: 1.5; color: #cfe9f5; min-height: 48px; display: flex; align-items: center; gap: 10px; transition: border-color 0.3s, background 0.3s; }
+        .narration::before { content: '\25B8'; color: var(--accent-blue); font-size: 13px; }
+        .narration.done { border-color: rgba(34,197,94,0.4); background: rgba(34,197,94,0.06); }
+        .narration.done::before { content: '\2713'; color: var(--accent-green); }
+        .narration.fail { border-color: rgba(248,81,73,0.4); background: rgba(248,81,73,0.06); }
+        .narration.fail::before { content: '\2717'; color: var(--accent-red); }
+        .narration code { background: rgba(6,182,212,0.14); color: #7dd3fc; padding: 1px 6px; border-radius: 5px; font-size: 12.5px; }
+        .narration b { color: #fff; }
+
+        .stage-card { background: var(--bg-surface); border: 1px solid var(--border-main); border-radius: 18px; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); box-shadow: 0 12px 38px rgba(0,0,0,0.4); overflow: hidden; }
+        .stage-screen { position: relative; margin: 14px; border-radius: 14px; background: radial-gradient(700px 300px at 50% -10%, rgba(6,182,212,0.08), transparent 70%), #090d18; border: 1px solid rgba(255,255,255,0.06); }
+        .grid-stage { position: relative; width: 100%; overflow: auto; scrollbar-width: thin; padding: 22px; display: flex; justify-content: center; align-items: flex-start; gap: 34px; flex-wrap: wrap; }
+        .grid-stage::-webkit-scrollbar { height: 8px; width: 8px; }
+        .grid-stage::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 8px; }
+
+        .board-wrap { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+        .board-title { font-family: var(--mono); font-size: 11px; font-weight: 800; letter-spacing: 1.2px; text-transform: uppercase; color: var(--text-dim); }
+        .water-meter { font-family: var(--mono); font-size: 11px; font-weight: 700; color: #7dd3fc; background: rgba(6,182,212,0.12); border: 1px solid rgba(6,182,212,0.3); padding: 3px 10px; border-radius: 999px; }
+        .water-meter b { color: #a5f3fc; font-size: 13px; }
+        .dp-grid { display: grid; gap: 6px; }
+        .cell {
             position: relative;
+            display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+            border-radius: 10px; font-family: var(--mono); font-weight: 800;
+            border: 2px solid var(--border-main); background: rgba(255,255,255,0.04); color: var(--text-main);
+            width: 58px; height: 58px; will-change: transform;
+            transition: background 0.35s, border-color 0.35s, color 0.35s, box-shadow 0.35s, transform 0.3s, opacity 0.35s;
         }
+        .cell .hv { font-size: 18px; line-height: 1; }
 
-        #grid-container {
-            display: grid;
-            gap: 4px;
-        }
+        /* frontier: in the priority queue, required-level known but not settled */
+        .cell.in-pq { border-color: rgba(6,182,212,0.55); background: rgba(6,182,212,0.10); box-shadow: inset 0 0 14px rgba(6,182,212,0.18); }
+        .cell.in-pq .hv { color: #a5f3fc; }
+        /* submerged / settled: this cell is reachable, water has risen to cover it */
+        .cell.processed { border-color: rgba(34,197,94,0.5); background: rgba(34,197,94,0.10); }
+        .cell.processed .hv { color: #86efac; }
+        /* active popped cell (u) */
+        .cell.active { border-color: var(--accent-orange); box-shadow: 0 0 22px rgba(245,165,36,0.6), inset 0 0 12px rgba(245,165,36,0.18); transform: scale(1.10); z-index: 3; }
+        .cell.active .hv { color: var(--accent-orange); }
+        /* neighbour under evaluation (v) */
+        .cell.neighbor { border-color: var(--accent-purple); box-shadow: 0 0 18px rgba(168,85,247,0.5); transform: scale(1.07); z-index: 3; }
+        .cell.neighbor.relaxed { border-color: var(--accent-blue); box-shadow: 0 0 18px rgba(6,182,212,0.5); }
+        .cell.neighbor.skipped { box-shadow: 0 0 18px rgba(248,81,73,0.45); border-color: var(--accent-red); }
+        /* final chosen path */
+        .cell.final-path { border-color: var(--accent-green); background: linear-gradient(180deg, rgba(47,224,143,0.88), rgba(33,194,117,0.88)); box-shadow: 0 0 16px rgba(34,197,94,0.5); transform: scale(1.05); z-index: 2; }
+        .cell.final-path .hv { color: #06251a; }
+        /* start / target markers */
+        .cell .corner-tag { position: absolute; top: -8px; font-size: 9px; font-weight: 900; letter-spacing: 0.5px; padding: 1px 5px; border-radius: 999px; pointer-events: none; }
+        .cell .corner-tag.start { left: -6px; color: #0a0f1c; background: var(--accent-purple); }
+        .cell .corner-tag.target { right: -6px; color: #0a0f1c; background: var(--accent-blue); }
 
-        .grid-cell {
-            width: 50px;
-            height: 50px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 18px;
-            font-weight: bold;
-            border-radius: 6px;
-            font-family: 'Courier New', monospace;
-            transition: all 0.3s ease;
-            position: relative;
-            border: 2px solid transparent;
-        }
+        /* priority-queue column */
+        .pq-wrap { display: flex; flex-direction: column; align-items: center; gap: 10px; min-width: 200px; }
+        .pq-col { display: flex; flex-direction: column; gap: 6px; align-items: stretch; width: 200px; min-height: 58px; }
+        .pq-tile { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-family: var(--mono); font-size: 12.5px; font-weight: 700; padding: 8px 12px; border-radius: 9px; border: 1.5px solid rgba(6,182,212,0.45); background: rgba(6,182,212,0.10); color: #cfe9f5; white-space: nowrap; will-change: transform, opacity; }
+        .pq-tile.top { border-color: var(--accent-orange); background: rgba(245,165,36,0.14); color: #ffd591; box-shadow: 0 0 14px rgba(245,165,36,0.3); }
+        .pq-tile .eff { color: var(--accent-blue); font-weight: 900; }
+        .pq-tile.top .eff { color: #ffd591; }
+        .pq-tile .pos { color: var(--text-dim); }
+        .pq-tile.top .pos { color: #ffe9bf; }
+        .pq-empty { font-family: var(--mono); font-size: 12px; color: var(--text-dim); opacity: 0.6; text-align: center; padding: 8px; }
+        .pq-note { font-family: var(--mono); font-size: 10.5px; color: var(--text-dim); opacity: 0.75; text-align: center; max-width: 200px; line-height: 1.4; }
 
-        .cell-dry { background: var(--cell-dry); color: var(--cell-dry-text); border-color: #55482e; }
-        .cell-frontier { background: var(--cell-frontier); color: var(--cell-frontier-text); border-color: var(--accent-orange); }
-        .cell-water { background: var(--cell-water); color: var(--cell-water-text); border-color: var(--accent-blue); }
+        .controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: center; }
+        .controls .kbd-hint { font-size: 11px; color: var(--text-dim); font-family: var(--mono); margin-left: 4px; }
+        .kbd { background: rgba(255,255,255,0.07); border: 1px solid var(--border-main); border-radius: 5px; padding: 1px 6px; font-size: 10px; }
+        input[type="range"] { accent-color: var(--accent-blue); width: 110px; cursor: pointer; }
 
-        .grid-cell.active-node { transform: scale(1.15); box-shadow: 0 0 15px var(--accent-blue); border-color: var(--accent-blue); z-index: 3; }
-        .grid-cell.neighbor-node { transform: scale(1.1); box-shadow: 0 0 12px var(--accent-purple); border-color: var(--accent-purple); z-index: 2; }
-        .grid-cell.path-node { background: #0f2a1a; color: var(--accent-green); border-color: var(--accent-green); box-shadow: 0 0 15px var(--accent-green); transform: scale(1.1); z-index: 4; }
+        .details-toggle { align-self: center; height: 32px; padding: 0 16px; border-radius: 999px; cursor: pointer; background: rgba(255,255,255,0.04); border: 1px solid var(--border-main); color: var(--text-dim); font-family: var(--mono); font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; gap: 8px; transition: color 0.2s, border-color 0.2s, background 0.2s; }
+        .details-toggle:hover { color: var(--text-main); border-color: rgba(6,182,212,0.4); background: rgba(6,182,212,0.06); }
+        .details-toggle .chev { transition: transform 0.3s ease; }
+        .details-wrap.open .details-toggle .chev { transform: rotate(180deg); }
+        .details-body { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.4s ease; }
+        .details-wrap.open .details-body { grid-template-rows: 1fr; }
+        .details-inner { overflow: hidden; min-height: 0; }
+        .details-grid { display: flex; flex-direction: column; gap: 14px; padding-top: 14px; }
 
-        .arrays-col { display: flex; flex-direction: column; gap: 16px; min-width: 320px; max-width: 400px; }
-        
-        .array-section { display: flex; flex-direction: column; gap: 8px; background: var(--bg-surface); padding: 12px; border-radius: 8px; border: 1px solid var(--border-main); min-height: 100px;}
-        .stats-row { display: flex; justify-content: space-between; font-family: monospace; font-size: 14px; margin-bottom: 4px; border-bottom: 1px solid var(--border-main); padding-bottom: 4px;}
-        .stats-val { font-weight: bold; color: var(--text-main); font-size: 16px;}
-        
-        .tiles-wrapper { display: flex; gap: 8px; flex-wrap: wrap; align-content: flex-start;}
-        .tile {
-            height: 32px; display: flex; align-items: center; justify-content: center; padding: 0 8px;
-            border-radius: 4px; font-size: 13px; font-weight: bold; font-family: 'Courier New', monospace;
-            transition: all 0.3s ease; background: #21262d; border: 1px solid var(--border-main);
-            color: var(--text-main);
-        }
-        .tile.pq-tile { background: #0d213f; border-color: var(--accent-blue); color: var(--accent-blue); }
-        .tile.pq-tile.pushing { animation: pushAnim 0.3s ease; }
-        .tile.pq-tile.popping { transform: scale(1.1); opacity: 0; }
+        .panel-card { background: var(--bg-surface); border: 1px solid var(--border-main); border-radius: 16px; backdrop-filter: blur(10px); box-shadow: 0 8px 30px rgba(0,0,0,0.35); }
+        .panel-head { display: flex; align-items: center; gap: 8px; padding: 11px 16px; border-bottom: 1px solid var(--border-main); font-size: 11px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; color: var(--text-dim); }
+        .panel-head .pip { width: 7px; height: 7px; border-radius: 50%; background: var(--accent-blue); box-shadow: 0 0 8px var(--accent-blue); }
+        .code-body { padding: 12px 6px 14px; font-family: var(--mono); font-size: 12.5px; line-height: 1.7; }
+        .code-line { display: flex; gap: 12px; padding: 1px 16px; border-left: 2px solid transparent; transition: background 0.3s, border-color 0.3s; white-space: pre; }
+        .code-line .lno { color: #4b5772; width: 16px; text-align: right; user-select: none; }
+        .code-line .src { color: #c4cee0; }
+        .code-line .kw { color: #c792ea; }
+        .code-line .fn { color: #82aaff; }
+        .code-line.active { background: rgba(6,182,212,0.12); border-left-color: var(--accent-blue); }
+        .code-line.active .src, .code-line.active .lno { color: #e8eefb; }
 
-        @keyframes pushAnim { 0%{transform:scale(0.5); opacity:0;} 100%{transform:scale(1); opacity:1;} }
+        .state-strip { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 0 2px; }
+        .pill { display: inline-flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 12px; color: var(--text-dim); background: rgba(255,255,255,0.04); border: 1px solid var(--border-main); border-radius: 999px; padding: 4px 11px; }
+        .pill b { color: var(--text-main); font-weight: 800; }
+        .pill.c b { color: var(--accent-orange); } .pill.o b { color: var(--accent-purple); } .pill.n b { color: var(--accent-blue); } .pill.d b { color: var(--accent-green); }
 
-        /* ROW 3: PANEL */
-        .action-panel {
-            margin-top: 14px; background: var(--bg-surface); border: 1px solid var(--border-main);
-            border-radius: 6px; padding: 12px 20px; width: 750px; text-align: center; font-family: monospace; min-height: 80px;
-            display: flex; flex-direction: column; justify-content: center; font-size: 14px; line-height: 1.5;
-        }
+        .log-panel { border-radius: 14px; padding: 12px 16px; height: 110px; overflow-y: auto; font-family: var(--mono); font-size: 12.5px; line-height: 1.5; background: var(--bg-surface); border: 1px solid var(--border-main); }
+        .log-panel::-webkit-scrollbar { width: 8px; }
+        .log-panel::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 8px; }
 
-        /* ROW 4: INFO PANEL */
-        .info-panel { margin-top: 10px; display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; width: 750px;}
-        .info-cell {
-            background: var(--bg-surface); border: 1px solid var(--border-main); border-radius: 6px;
-            padding: 8px 14px; display: flex; flex-direction: column; align-items: center; min-width: 120px; gap: 4px; flex: 1;
-        }
-        .info-label { font-size: 11px; color: var(--text-dim); }
-        .info-value { font-family: monospace; font-size: 15px; font-weight: 700; text-align: center;}
+        /* confetti */
+        .confetti { position: fixed; width: 9px; height: 14px; top: -20px; z-index: 999; pointer-events: none; border-radius: 2px; }
 
-        /* ROW 5: RESULT DISPLAY */
-        .result-display { margin-top: 10px; display: flex; flex-direction: column; align-items: center; }
-        #res-val { font-size: 28px; color: var(--text-dim); font-family: monospace; transition: all 0.3s; font-weight: bold; margin-top: 4px; }
-        .pop { animation: popAnim 400ms ease; color: var(--accent-green) !important; text-shadow: 0 0 15px var(--accent-green); transform: scale(1.1); }
-
-        @keyframes popAnim { 0%{transform:scale(1)} 50%{transform:scale(1.2)} 100%{transform:scale(1.1)} }
-
-        /* ROW 6: STATUS BAR */
-        .status-bar { margin-top: 8px; font-size: 13px; color: var(--text-dim); height: 1.2em; text-align: center; width: 600px;}
-
-        /* ROW 7: CONTROLS */
-        .controls { margin-top: 24px; display: flex; align-items: center; gap: 8px; }
-        input[type="range"] { accent-color: var(--accent-blue); width: 100px; cursor: pointer; }
-
-        /* ROW 8: LEGEND */
-        .legend { margin-top: 12px; display: flex; gap: 16px; flex-wrap: wrap; justify-content: center; max-width: 800px; }
-        .legend-item { display: flex; align-items: center; font-size: 12px; color: var(--text-dim); }
-        .dot { width: 12px; height: 12px; border-radius: 2px; margin-right: 6px; display: inline-block; border: 1px solid var(--border-main);}
-
-        /* ROW 9: LOG PANEL */
-        .log-panel {
-            margin-top: 12px; background: var(--bg-page); border: 1px solid var(--border-main);
-            border-radius: 6px; padding: 12px 16px; width: 750px; max-width: 90%; height: 130px;
-            overflow-y: auto; font-family: 'Courier New', monospace; font-size: 13px;
-        }
+        @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; } }
     </style>
 </head>
 <body>
 
     <div class="input-bar">
         <label class="ui-label">grid =</label>
-        <input type="text" id="g-input" class="large-input" placeholder="[[0,2],[1,3]]">
+        <input type="text" id="grid-input" class="grid-input" placeholder="[[0,2],[1,3]]">
         <button onclick="loadCustom()">Load</button>
-        <button onclick="loadExample('[[0,2],[1,3]]')">Ex 1</button>
-        <button onclick="loadExample('[[0,1,2,3,4],[24,23,22,21,5],[12,13,14,15,16],[11,17,18,19,20],[10,9,8,7,6]]')">Ex 2</button>
+        <span class="ui-label" style="opacity:.5">|</span>
+        <button onclick="loadExample(0)">Ex 1</button>
+        <button onclick="loadExample(1)">Ex 2</button>
     </div>
 
-    <div class="visual-container">
-        <div class="graph-area">
-            <div id="grid-container"></div>
+    <div class="shell">
+        <div class="title-row">
+            <h1>Swim in Rising Water <span class="sub">&middot; Dijkstra minimax &middot; lowest water level to cross the grid &middot; O(n&sup2;&middot;log&#8201;n)</span></h1>
+            <span class="step-badge" id="step-badge">Step 1 / 1</span>
         </div>
-        <div class="arrays-col">
-            <div class="array-section">
-                <div class="ui-label" style="color: var(--accent-orange); text-align:center;">Dijkstra / Water Status</div>
-                <div class="stats-row"><span>Current Water Level:</span> <span class="stats-val" id="stat-level" style="color:var(--accent-blue)">0</span></div>
+        <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+
+        <div class="narration" id="main-panel">&mdash;</div>
+
+        <div class="stage-card">
+            <div class="stage-screen">
+                <div class="grid-stage" id="grid-stage">
+                    <div class="board-wrap">
+                        <div class="board-title">Elevation grid</div>
+                        <div class="dp-grid" id="dp-grid"></div>
+                        <div class="water-meter">water level t &equiv; <b id="water-val">0</b></div>
+                    </div>
+                    <div class="pq-wrap">
+                        <div class="board-title">Min-heap (PQ)</div>
+                        <div class="pq-col" id="pq-col"></div>
+                        <div class="pq-note">[level, (r,c)] &middot; popped lowest-level first</div>
+                    </div>
+                </div>
             </div>
-            
-            <div class="array-section">
-                <div class="ui-label" style="color: var(--accent-blue);">Priority Queue (Min-Heap):</div>
-                <div class="tiles-wrapper" id="pq-tiles"></div>
-                <div style="font-size: 10px; color: var(--text-dim); margin-top: 4px;">Format: [max_elevation, r, c]</div>
+        </div>
+
+        <div class="controls">
+            <button onclick="resetSim()">&#8634; Reset</button>
+            <button onclick="prevStep()">&#8592; Back</button>
+            <button onclick="togglePlay()" id="play-btn">Play</button>
+            <button onclick="nextStep()">Next &#8594;</button>
+            <span class="ui-label" style="margin-left:6px; font-size:11px">Speed</span>
+            <input type="range" id="speed" min="0" max="2" value="1">
+            <span class="kbd-hint"><span class="kbd">&#8592;</span> <span class="kbd">&#8594;</span> step &middot; <span class="kbd">space</span> play</span>
+        </div>
+
+        <div class="details-wrap" id="details-wrap">
+            <button class="details-toggle" onclick="toggleDetails()" aria-expanded="false">
+                <span id="details-label">Show code, state &amp; log</span> <span class="chev">&#9662;</span>
+            </button>
+            <div class="details-body">
+                <div class="details-inner">
+                    <div class="details-grid">
+                        <div class="state-strip">
+                            <span class="pill c">popped u <b id="st-u">&mdash;</b></span>
+                            <span class="pill o">neighbour v <b id="st-v">&mdash;</b></span>
+                            <span class="pill">req level <b id="st-req">&mdash;</b></span>
+                            <span class="pill n">PQ size <b id="st-pq">&mdash;</b></span>
+                            <span class="pill d">submerged <b id="st-proc">&mdash;</b></span>
+                            <span class="pill d">min time <b id="st-ans">&mdash;</b></span>
+                        </div>
+                        <div class="panel-card">
+                            <div class="panel-head"><span class="pip"></span> Algorithm</div>
+                            <div class="code-body" id="code-panel"></div>
+                        </div>
+                        <div class="log-panel" id="log"></div>
+                    </div>
+                </div>
             </div>
-            
-            <div class="result-display">
-                <span class="ui-label">minimum time to reach end =</span>
-                <span id="res-val">—</span>
-            </div>
         </div>
     </div>
-
-    <div class="action-panel" id="main-panel">—</div>
-
-    <div class="info-panel">
-        <div class="info-cell">
-            <span class="info-label">Popped Cell (t, r, c)</span>
-            <span class="info-value" id="val-u" style="color: var(--accent-blue);">—</span>
-        </div>
-        <div class="info-cell">
-            <span class="info-label">Checking Neighbor</span>
-            <span class="info-value" id="val-v" style="color: var(--accent-purple);">—</span>
-        </div>
-        <div class="info-cell">
-            <span class="info-label">New Required Level</span>
-            <span class="info-value" id="val-req" style="color: var(--text-main);">—</span>
-        </div>
-    </div>
-
-    <div class="status-bar" id="status-text"></div>
-
-    <div class="controls">
-        <button onclick="reset()">↺ Reset</button>
-        <button onclick="back()">← Back</button>
-        <button onclick="togglePlay()" id="play-btn">Play</button>
-        <button onclick="next()">Next →</button>
-        <div class="controls" style="margin-top:0">
-            <span class="ui-label" style="margin-right:4px; font-size:11px">Speed</span>
-            <input type="range" id="speed-slider" min="0" max="2" value="1">
-        </div>
-    </div>
-
-    <div class="legend">
-        <div class="legend-item"><span class="dot" style="background:var(--cell-dry); border-color:#55482e;"></span> Unvisited / Dry</div>
-        <div class="legend-item"><span class="dot" style="background:var(--cell-frontier); border-color:var(--accent-orange)"></span> In Queue (Frontier)</div>
-        <div class="legend-item"><span class="dot" style="background:var(--cell-water); border-color:var(--accent-blue)"></span> Submerged (Visited)</div>
-        <div class="legend-item"><span class="dot" style="background:transparent; border:2px solid var(--accent-blue)"></span> Popped Cell</div>
-        <div class="legend-item"><span class="dot" style="background:transparent; border:2px solid var(--accent-purple)"></span> Neighbor Check</div>
-        <div class="legend-item"><span class="dot" style="background:#0f2a1a; border-color:var(--accent-green)"></span> Final Path</div>
-    </div>
-
-    <div class="log-panel" id="log"></div>
 
     <script>
-        let grid = [[0,2],[1,3]];
-        let N = 2;
-        
+        'use strict';
+
+        // --------- Motion engine (spring pop, zero deps) ---------
+        const REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        const FRAME = 1000 / 60;
+        function sampleSpring(stiffness, damping, mass) {
+            const dt = 1 / 60; let x = 1, v = 0; const out = [];
+            for (let i = 0; i < 240; i++) { const a = (-stiffness * x - damping * v) / mass; v += a * dt; x += v * dt; out.push(1 - x); if (Math.abs(x) < 0.0015 && Math.abs(v) < 0.0015) break; }
+            out.push(1); return out;
+        }
+        const SPRING_POP = sampleSpring(520, 17, 1);
+        const durOf = (a) => a.length * FRAME;
+        const Motion = {
+            pop(el) {
+                if (REDUCED) return;
+                const kf = SPRING_POP.map(p => ({ transform: `scale(${(0.7 + 0.4 * p).toFixed(3)})` }));
+                el.animate(kf, { duration: durOf(SPRING_POP), easing: 'linear' });
+            },
+            enter(el) {
+                if (REDUCED) return;
+                el.animate([{ opacity: 0, transform: 'translateY(8px) scale(0.9)' }, { opacity: 1, transform: 'translateY(0) scale(1)' }], { duration: 260, easing: 'cubic-bezier(0.34,1.2,0.64,1)' });
+            },
+        };
+
+        // --------- State ---------
+        let GRID = [[0,2],[1,3]];
+        let M = 2, N = 2;            // grid is square (N x N) but track both
         let steps = [];
-        let stepIndex = 0;
+        let stepIdx = 0;
         let timer = null;
-        const delays = [2000, 1000, 400]; 
+        const delays = [2000, 1000, 480];
+        const INF = Infinity;
+        const cellEls = {};   // 'r,c'        -> grid cell element
+        const tileEls = {};   // 'lvl:r,c'    -> pq tile element
 
-        function init() { 
-            loadExample('[[0,2],[1,3]]'); 
+        const fmt = (v) => v === INF ? '∞' : String(v);   // infinity glyph in JS string
+
+        // --------- code panel (the real algorithm) ---------
+        const CODE = [
+            [['kw','def '],['fn','swimInWater'],['src','(grid):']],
+            [['src','  n = len(grid)']],
+            [['src','  pq = [(grid[0][0], 0, 0)]   '],['src','  # (level, r, c)']],
+            [['src','  seen = {(0, 0)}']],
+            [['kw','  while '],['src','pq:']],
+            [['src','    t, r, c = '],['fn','heappop'],['src','(pq)']],
+            [['kw','    if '],['src','(r, c) == (n-1, n-1): '],['kw','return '],['src','t']],
+            [['kw','    for '],['src','nr, nc '],['kw','in '],['src','neighbours(r, c):']],
+            [['kw','      if '],['src','(nr, nc) '],['kw','not in '],['src','seen:']],
+            [['src','        nt = max(t, grid[nr][nc])']],
+            [['src','        seen.add((nr, nc))']],
+            [['src','        '],['fn','heappush'],['src','(pq, (nt, nr, nc))']],
+        ];
+        function buildCodePanel() {
+            const panel = document.getElementById('code-panel'); panel.innerHTML = '';
+            CODE.forEach((tokens, i) => {
+                const line = document.createElement('div'); line.className = 'code-line'; line.dataset.line = i;
+                const lno = document.createElement('span'); lno.className = 'lno'; lno.textContent = i + 1; line.appendChild(lno);
+                const src = document.createElement('span');
+                tokens.forEach(([cls, txt]) => { const s = document.createElement('span'); s.className = cls; s.textContent = txt; src.appendChild(s); });
+                line.appendChild(src); panel.appendChild(line);
+            });
+        }
+        function highlightCode(arr) { document.querySelectorAll('.code-line').forEach(el => el.classList.toggle('active', arr && arr.includes(+el.dataset.line))); }
+        function toggleDetails() {
+            const wrap = document.getElementById('details-wrap'); const open = wrap.classList.toggle('open');
+            wrap.querySelector('.details-toggle').setAttribute('aria-expanded', open ? 'true' : 'false');
+            document.getElementById('details-label').textContent = open ? 'Hide code, state & log' : 'Show code, state & log';
         }
 
-        function loadExample(jsonStr) {
-            document.getElementById('g-input').value = jsonStr;
-            parseAndGenerate();
-        }
-
-        function loadCustom() {
-            parseAndGenerate();
-        }
-
-        function parseAndGenerate() {
-            try {
-                const valStr = document.getElementById('g-input').value;
-                grid = JSON.parse(valStr);
-                if (!Array.isArray(grid) || !Array.isArray(grid[0])) throw "Must be a 2D array";
-                N = grid.length;
-                for (let i=0; i<N; i++) {
-                    if (grid[i].length !== N) throw "Grid must be NxN";
-                }
-                
-                buildGridDom();
-                generateSteps();
-                reset();
-            } catch(e) {
-                alert("Invalid format. Expected an NxN 2D JSON array.");
-            }
-        }
-
-        function buildGridDom() {
-            const container = document.getElementById('grid-container');
-            container.innerHTML = '';
-            // Scale cell size based on N to fit area
-            let cellSize = N <= 3 ? 60 : (N <= 5 ? 40 : 30);
-            let fontSize = N <= 3 ? 18 : (N <= 5 ? 14 : 11);
-            
-            container.style.gridTemplateColumns = `repeat(${N}, ${cellSize}px)`;
-            
-            for(let r = 0; r < N; r++) {
-                for(let c = 0; c < N; c++) {
-                    const cell = document.createElement('div');
-                    cell.className = 'grid-cell';
-                    cell.style.width = `${cellSize}px`;
-                    cell.style.height = `${cellSize}px`;
-                    cell.style.fontSize = `${fontSize}px`;
-                    cell.id = `cell-${r}-${c}`;
-                    container.appendChild(cell);
-                }
-            }
-        }
-
-        function clonePQ(pq) {
-            return pq.map(item => ({...item}));
-        }
+        // --------- step generation (genuine Dijkstra minimax simulation) ---------
+        const DIRS = [[-1,0],[1,0],[0,-1],[0,1]];
+        const DIRWORD = { '-1,0':'up', '1,0':'down', '0,-1':'left', '0,1':'right' };
 
         function generateSteps() {
             steps = [];
-            
-            let pq = [];
-            let visited = Array.from({length: N}, () => new Array(N).fill(false));
-            let inQueue = Array.from({length: N}, () => new Array(N).fill(false));
-            let parent = Array.from({length: N}, () => new Array(N).fill(null));
-            
-            let currentWaterLevel = 0;
+            const seen = Array.from({ length: M }, () => new Array(N).fill(false));   // added to PQ at least once
+            const settled = new Set();                                                // popped (water has risen over it)
+            const parents = Array.from({ length: M }, () => new Array(N).fill(null));
+            let pq = [];                 // array of {t, r, c}; sorted on pop = min-heap
+            let waterLevel = 0;          // running max elevation on the chosen path so far
 
-            pq.push({t: grid[0][0], r: 0, c: 0});
-            inQueue[0][0] = true;
+            seen[0][0] = true;
+            pq.push({ t: GRID[0][0], r: 0, c: 0 });
 
-            steps.push({
-                type: 'init',
-                pq: clonePQ(pq), visited: visited.map(row => [...row]), inQueue: inQueue.map(row => [...row]), path: [],
-                u: null, v: null, reqT: null, waterLevel: currentWaterLevel, popped: null, pushed: null,
-                panel: `<b>Dijkstra's on Grid</b><br>We want to find a path from <code>(0,0)</code> to <code>(${N-1},${N-1})</code> minimizing the maximum elevation encountered.<br>Initialize Priority Queue with start cell <code>[${grid[0][0]}, 0, 0]</code>.`,
-                statusText: `Initialization complete.`,
-                log: `Initialized N=${N} grid. Pushed start (0,0) to PQ.`
-            });
+            // immutable snapshot helper
+            const snap = (extra) => Object.assign({
+                m: M, n: N,
+                pq: pq.map(o => ({ ...o })),
+                seen: seen.map(row => row.slice()),
+                settled: new Set(settled),
+                waterLevel,
+                active: null, neighbor: null, req: null, relaxed: false, skipped: false,
+                finalPath: null, complete: false, result: null, fail: false,
+                code: [], panel: '', log: ''
+            }, extra);
 
-            let dirs = [[-1,0], [1,0], [0,-1], [0,1]];
-            let found = false;
+            steps.push(snap({
+                code: [0, 1, 2, 3],
+                panel: `Initialise <b>Dijkstra's minimax</b>. The cost of a path is its <b>highest elevation cell</b> (the moment its water level submerges the whole route). Push the start <code>(${GRID[0][0]}, (0,0))</code> onto the min-heap and mark <code>(0,0)</code> seen.`,
+                log: `init  ${M}&times;${N} grid &middot; push (${GRID[0][0]},(0,0))`
+            }));
 
-            while (pq.length > 0 && !found) {
-                pq.sort((a, b) => a.t - b.t);
-                let curr = pq.shift();
-                
-                visited[curr.r][curr.c] = true;
-                inQueue[curr.r][curr.c] = false;
-                
-                currentWaterLevel = Math.max(currentWaterLevel, curr.t);
+            let answer = INF;
 
-                steps.push({
-                    type: 'pop',
-                    pq: clonePQ(pq), visited: visited.map(row => [...row]), inQueue: inQueue.map(row => [...row]), path: [],
-                    u: {r: curr.r, c: curr.c}, v: null, reqT: null, waterLevel: currentWaterLevel, popped: curr, pushed: null,
-                    panel: `<b>Pop Min-Heap:</b> Extract cell <code>(${curr.r}, ${curr.c})</code> with required elevation <b>${curr.t}</b>.<br>Update global water level to <b>${currentWaterLevel}</b>.`,
-                    statusText: `Processing (${curr.r}, ${curr.c})...`,
-                    log: `\nPopped (${curr.r}, ${curr.c}) at elevation ${curr.t}. Water level = ${currentWaterLevel}.`
-                });
+            while (pq.length > 0) {
+                pq.sort((a, b) => a.t - b.t);          // min-heap behaviour
+                const cur = pq.shift();
+                const r = cur.r, c = cur.c, t = cur.t;
+                const key = r + ',' + c;
 
-                if (curr.r === N - 1 && curr.c === N - 1) {
-                    found = true;
-                    
-                    let path = [];
-                    let pr = curr.r, pc = curr.c;
-                    while(pr !== null && pc !== null) {
-                        path.push({r: pr, c: pc});
-                        let p = parent[pr][pc];
-                        if (p) {
-                            pr = p.r; pc = p.c;
-                        } else break;
-                    }
+                settled.add(key);
+                waterLevel = Math.max(waterLevel, t);
 
-                    steps.push({
-                        type: 'final',
-                        pq: clonePQ(pq), visited: visited.map(row => [...row]), inQueue: inQueue.map(row => [...row]), path: path,
-                        u: {r: curr.r, c: curr.c}, v: null, reqT: null, waterLevel: currentWaterLevel, popped: null, pushed: null,
-                        panel: `<b style="color:var(--accent-green); font-size:16px;">Destination Reached!</b><br>We successfully reached <code>(${N-1}, ${N-1})</code>.<br>The minimum time/elevation required is <b>${currentWaterLevel}</b>.`,
-                        complete: true, result: currentWaterLevel,
-                        statusText: `Algorithm Complete!`,
-                        log: `Destination reached! Final answer = ${currentWaterLevel}.`,
-                        logColor: 'var(--accent-green)'
-                    });
+                steps.push(snap({
+                    code: [4, 5], active: { r, c },
+                    panel: `<b>Pop the lowest level</b> from the heap: <code>(${r}, ${c})</code> at level <b>${t}</b>. Water rises to <code>t = ${waterLevel}</code>, submerging this cell. Dijkstra settles cells in non-decreasing level, so this is the lowest water that reaches <code>(${r}, ${c})</code>.`,
+                    log: `pop   (${r},${c}) level=${t} &middot; water=${waterLevel}`
+                }));
+
+                // reached target -> answer is locked in
+                if (r === M - 1 && c === N - 1) {
+                    answer = waterLevel;
+                    steps.push(snap({
+                        code: [6], active: { r, c },
+                        panel: `<b>Target popped!</b> The destination <code>(${M - 1}, ${N - 1})</code> came off the heap at level <b>${waterLevel}</b>. Since it was the lowest-level reachable, <b>${waterLevel}</b> is the minimum time &mdash; return it.`,
+                        log: `reach (${M - 1},${N - 1}) level=${waterLevel} &#8594; answer locked`
+                    }));
                     break;
                 }
 
-                for (let [dr, dc] of dirs) {
-                    let nr = curr.r + dr;
-                    let nc = curr.c + dc;
+                for (const [dr, dc] of DIRS) {
+                    const nr = r + dr, nc = c + dc;
+                    const dirw = DIRWORD[dr + ',' + dc];
 
-                    if (nr >= 0 && nr < N && nc >= 0 && nc < N && !visited[nr][nc] && !inQueue[nr][nc]) {
-                        
-                        let nElevation = grid[nr][nc];
-                        let requiredTime = Math.max(currentWaterLevel, nElevation);
-                        
-                        steps.push({
-                            type: 'check',
-                            pq: clonePQ(pq), visited: visited.map(row => [...row]), inQueue: inQueue.map(row => [...row]), path: [],
-                            u: {r: curr.r, c: curr.c}, v: {r: nr, c: nc}, reqT: requiredTime, waterLevel: currentWaterLevel, popped: null, pushed: null,
-                            panel: `Evaluating neighbor <code>(${nr}, ${nc})</code>. Its elevation is <b>${nElevation}</b>.<br>Path max elevation so far is <b>${currentWaterLevel}</b>.<br>Required level to cross this edge = <code>max(${currentWaterLevel}, ${nElevation}) = <b>${requiredTime}</b></code>.`,
-                            statusText: `Checking neighbor (${nr}, ${nc})...`,
-                            log: `  Check neighbor (${nr}, ${nc}) elevation ${nElevation}. Req level = ${requiredTime}.`
-                        });
+                    if (nr < 0 || nr >= M || nc < 0 || nc >= N) continue;     // off the grid
+                    const nKey = nr + ',' + nc;
 
-                        inQueue[nr][nc] = true;
-                        parent[nr][nc] = {r: curr.r, c: curr.c};
-                        let pushItem = {t: requiredTime, r: nr, c: nc};
-                        pq.push(pushItem);
-
-                        steps.push({
-                            type: 'push',
-                            pq: clonePQ(pq), visited: visited.map(row => [...row]), inQueue: inQueue.map(row => [...row]), path: [],
-                            u: {r: curr.r, c: curr.c}, v: {r: nr, c: nc}, reqT: requiredTime, waterLevel: currentWaterLevel, popped: null, pushed: pushItem,
-                            panel: `Enqueue state: <code>[${requiredTime}, ${nr}, ${nc}]</code>.<br>Cell added to the frontier.`,
-                            statusText: `Enqueued neighbor (${nr}, ${nc}).`,
-                            log: `    -> Enqueued [${requiredTime}, ${nr}, ${nc}].`,
-                            logColor: 'var(--accent-orange)'
-                        });
+                    if (seen[nr][nc]) {
+                        steps.push(snap({
+                            code: [7, 8], active: { r, c }, neighbor: { r: nr, c: nc }, skipped: true, fail: true,
+                            panel: `Look <b>${dirw}</b> at <code>(${nr}, ${nc})</code> &mdash; already <b>seen</b> (queued or submerged). Dijkstra never needs a cell twice, so skip it.`,
+                            log: `skip  (${nr},${nc}) already seen`
+                        }));
+                        continue;
                     }
+
+                    const req = Math.max(waterLevel, GRID[nr][nc]);
+
+                    steps.push(snap({
+                        code: [7, 8, 9], active: { r, c }, neighbor: { r: nr, c: nc }, req,
+                        panel: `Look <b>${dirw}</b> at <code>(${nr}, ${nc})</code>, elevation <b>${GRID[nr][nc]}</b>. To swim here the water must cover both this cell and the path so far: <code>max(${waterLevel}, ${GRID[nr][nc]}) = <b>${req}</b></code>.`,
+                        log: `check (${nr},${nc}) elev=${GRID[nr][nc]} &#8594; req=max(${waterLevel},${GRID[nr][nc]})=${req}`
+                    }));
+
+                    seen[nr][nc] = true;
+                    parents[nr][nc] = { r, c };
+                    pq.push({ t: req, r: nr, c: nc });
+
+                    steps.push(snap({
+                        code: [10, 11], active: { r, c }, neighbor: { r: nr, c: nc }, req, relaxed: true,
+                        panel: `<b>Enqueue</b> &#8594; mark <code>(${nr}, ${nc})</code> seen and push <code>(${req}, (${nr},${nc}))</code> onto the heap. It now waits in the frontier until the water reaches level <b>${req}</b>.`,
+                        log: `push  (${nr},${nc}) level=${req} &#8594; into PQ`
+                    }));
                 }
             }
+
+            // reconstruct path from target back to start
+            const finalPath = [];
+            let node = { r: M - 1, c: N - 1 };
+            while (node) { finalPath.push(node.r + ',' + node.c); node = parents[node.r][node.c]; }
+
+            steps.push(snap({
+                code: [6], complete: true, result: answer, finalPath, waterLevel: answer,
+                panel: `<b>Done.</b> The lowest-water path glows green; its highest elevation cell &mdash; the minimum time &mdash; is <b>${answer}</b>. At any level below <b>${answer}</b> the destination stays unreachable.`,
+                log: `done  minimum time = ${answer}`
+            }));
         }
 
-        function renderPQ(step) {
-            const container = document.getElementById('pq-tiles');
-            container.innerHTML = '';
-            
-            if (step.pq.length === 0 && !step.popped) {
-                container.innerHTML = '<span style="color:var(--text-dim); font-size:13px; font-family:monospace; margin-top:8px;">{ empty }</span>';
-                return;
-            }
-
-            if (step.popped !== null && step.type === 'pop') {
-                const popTile = document.createElement('div');
-                popTile.className = `tile pq-tile popping`;
-                popTile.innerText = `[${step.popped.t}, ${step.popped.r}, ${step.popped.c}]`;
-                container.appendChild(popTile);
-            }
-
-            // visually sort for stability
-            let dispPq = [...step.pq].sort((a,b) => a.t - b.t);
-
-            dispPq.forEach(item => {
-                const tile = document.createElement('div');
-                tile.className = 'tile pq-tile';
-                tile.innerText = `[${item.t}, ${item.r}, ${item.c}]`;
-                
-                if (step.pushed && step.pushed.r === item.r && step.pushed.c === item.c && step.pushed.t === item.t) {
-                    tile.classList.add('pushing');
+        // --------- render (persistent DOM) ---------
+        function ensureGrid() {
+            const grid = document.getElementById('dp-grid');
+            grid.style.gridTemplateColumns = `repeat(${N}, 58px)`;
+            for (let r = 0; r < M; r++) {
+                for (let c = 0; c < N; c++) {
+                    const key = r + ',' + c;
+                    if (cellEls[key]) continue;
+                    const el = document.createElement('div'); el.className = 'cell';
+                    let tags = '';
+                    if (r === 0 && c === 0) tags += '<span class="corner-tag start">START</span>';
+                    if (r === M - 1 && c === N - 1) tags += '<span class="corner-tag target">END</span>';
+                    el.innerHTML = `${tags}<span class="hv">${GRID[r][c]}</span>`;
+                    cellEls[key] = el; grid.appendChild(el);
+                    Motion.pop(el);
                 }
-                container.appendChild(tile);
-            });
+            }
         }
 
         function renderStep(idx) {
-            const step = steps[idx];
-            if (!step) return;
+            stepIdx = idx; const step = steps[idx]; if (!step) return;
 
-            // Determine if a cell is part of the final path
-            let isPathCell = (r, c) => {
-                if (!step.path) return false;
-                return step.path.some(p => p.r === r && p.c === c);
-            };
+            const finalSet = step.finalPath ? new Set(step.finalPath) : null;
+            const inPq = new Set(step.pq.map(o => o.r + ',' + o.c));
 
-            // Render Grid Nodes
-            for(let r=0; r<N; r++){
-                for(let c=0; c<N; c++){
-                    let cell = document.getElementById(`cell-${r}-${c}`);
-                    if(!cell) continue;
+            for (let r = 0; r < M; r++) {
+                for (let c = 0; c < N; c++) {
+                    const key = r + ',' + c;
+                    const el = cellEls[key]; if (!el) continue;
+                    let cls = 'cell';
+                    const isActive = step.active && step.active.r === r && step.active.c === c;
+                    const isNbr = step.neighbor && step.neighbor.r === r && step.neighbor.c === c;
 
-                    let val = grid[r][c];
-                    let isVis = step.visited[r][c];
-                    let isInQ = step.inQueue[r][c];
-                    
-                    cell.className = 'grid-cell';
-                    if (isPathCell(r,c)) {
-                        cell.classList.add('path-node');
-                    } else if (isVis) {
-                        cell.classList.add('cell-water');
-                    } else if (isInQ) {
-                        cell.classList.add('cell-frontier');
-                    } else {
-                        cell.classList.add('cell-dry');
-                    }
+                    // base layer (priority order matches reference idiom)
+                    if (finalSet && finalSet.has(key)) cls += ' final-path';
+                    else if (isActive) cls += ' active';
+                    else if (isNbr) { cls += ' neighbor' + (step.relaxed ? ' relaxed' : '') + (step.skipped ? ' skipped' : ''); }
+                    else if (step.settled.has(key)) cls += ' processed';
+                    else if (inPq.has(key)) cls += ' in-pq';
 
-                    cell.innerText = val;
-
-                    // Action overlays
-                    if (step.u && step.u.r === r && step.u.c === c && !step.complete) {
-                        cell.classList.add('active-node');
-                    }
-                    if (step.v && step.v.r === r && step.v.c === c) {
-                        cell.classList.add('neighbor-node');
-                    }
+                    el.className = cls;
                 }
             }
 
-            renderPQ(step);
-
-            // Update Stats
-            document.getElementById('stat-level').innerText = step.waterLevel;
-
-            // Update Info Panel
-            document.getElementById('main-panel').innerHTML = step.panel;
-            
-            document.getElementById('val-u').innerText = step.u !== null ? `(${step.waterLevel}, ${step.u.r}, ${step.u.c})` : '—';
-            document.getElementById('val-v').innerText = step.v !== null ? `(${step.v.r}, ${step.v.c})` : '—';
-            document.getElementById('val-req').innerText = step.reqT !== null ? step.reqT : '—';
-
-            const resVal = document.getElementById('res-val');
-            resVal.innerText = step.complete ? step.result : '—';
-            if (step.complete) {
-                resVal.classList.add('pop');
+            // --- priority-queue column (persistent, keyed by level+pos) ---
+            const pqCol = document.getElementById('pq-col');
+            const disp = [...step.pq].sort((a, b) => a.t - b.t);
+            if (disp.length === 0) {
+                Object.keys(tileEls).forEach(k => { tileEls[k].remove(); delete tileEls[k]; });
+                if (!pqCol.querySelector('.pq-empty')) pqCol.innerHTML = '<div class="pq-empty">{ empty }</div>';
             } else {
-                resVal.classList.remove('pop');
+                const emptyEl = pqCol.querySelector('.pq-empty'); if (emptyEl) emptyEl.remove();
+                const used = new Set();
+                disp.forEach((it, i) => {
+                    const tkey = it.t + ':' + it.r + ',' + it.c;
+                    used.add(tkey);
+                    let te = tileEls[tkey];
+                    const fresh = !te;
+                    if (fresh) { te = document.createElement('div'); te.className = 'pq-tile'; tileEls[tkey] = te; }
+                    te.innerHTML = `<span>[<span class="eff">${it.t}</span>,&nbsp;<span class="pos">(${it.r},&nbsp;${it.c})</span>]</span>`;
+                    te.classList.toggle('top', i === 0);
+                    pqCol.appendChild(te);
+                    if (fresh) Motion.enter(te);
+                });
+                Object.keys(tileEls).forEach(k => { if (!used.has(k)) { tileEls[k].remove(); delete tileEls[k]; } });
             }
 
-            document.getElementById('status-text').innerText = step.statusText;
+            // narration
+            const mp = document.getElementById('main-panel');
+            mp.innerHTML = step.panel || '&mdash;';
+            mp.classList.toggle('done', !!step.complete);
+            mp.classList.toggle('fail', !step.complete && !!step.fail);
+            highlightCode(step.code);
 
-            // Update Log
-            const logPanel = document.getElementById('log');
-            logPanel.innerHTML = '';
-            for (let k = 0; k <= idx; k++) {
-                if (steps[k].log) {
-                    const line = document.createElement('div');
-                    line.style.marginBottom = '2px';
-                    line.style.whiteSpace = 'pre-wrap';
-                    if (steps[k].logColor) line.style.color = steps[k].logColor;
-                    line.innerText = steps[k].log;
-                    logPanel.appendChild(line);
-                }
+            // water meter
+            document.getElementById('water-val').textContent = step.waterLevel;
+
+            // state pills
+            document.getElementById('st-u').textContent = step.active ? `(${step.active.r},${step.active.c})` : '—';
+            document.getElementById('st-v').textContent = step.neighbor ? `(${step.neighbor.r},${step.neighbor.c})` : '—';
+            document.getElementById('st-req').textContent = step.req != null ? step.req : '—';
+            document.getElementById('st-pq').textContent = step.pq.length;
+            document.getElementById('st-proc').textContent = step.settled.size;
+            document.getElementById('st-ans').textContent = step.complete ? step.result : '—';
+
+            document.getElementById('step-badge').textContent = `Step ${idx + 1} / ${steps.length}`;
+            document.getElementById('progress-fill').style.width = `${(idx / Math.max(1, steps.length - 1)) * 100}%`;
+
+            const logEl = document.getElementById('log');
+            logEl.innerHTML = steps.slice(0, idx + 1).map(s => `<div style="margin:3px 0;white-space:pre-wrap;">${s.log}</div>`).join('');
+            logEl.scrollTop = logEl.scrollHeight;
+
+            if (step.complete) fireConfetti();
+        }
+
+        // --------- confetti on completion ---------
+        let confettiFired = false;
+        function fireConfetti() {
+            if (REDUCED || confettiFired) return;
+            confettiFired = true;
+            const colors = ['#06b6d4', '#a855f7', '#f5a524', '#22c55e', '#7dd3fc'];
+            for (let i = 0; i < 70; i++) {
+                const d = document.createElement('div');
+                d.className = 'confetti';
+                d.style.left = Math.random() * 100 + 'vw';
+                d.style.background = colors[i % colors.length];
+                d.style.transform = `rotate(${Math.random() * 360}deg)`;
+                document.body.appendChild(d);
+                const dx = (Math.random() - 0.5) * 240;
+                d.animate([
+                    { transform: `translate(0,0) rotate(0deg)`, opacity: 1 },
+                    { transform: `translate(${dx}px, ${window.innerHeight + 60}px) rotate(${Math.random() * 720}deg)`, opacity: 0.9 }
+                ], { duration: 1700 + Math.random() * 900, easing: 'cubic-bezier(0.2,0.6,0.4,1)' }).onfinish = () => d.remove();
             }
-            logPanel.scrollTop = logPanel.scrollHeight;
         }
 
-        function next() {
-            if (stepIndex < steps.length - 1) {
-                stepIndex++;
-                renderStep(stepIndex);
-            } else pause();
-        }
-
-        function back() {
-            if (stepIndex > 0) {
-                stepIndex--;
-                renderStep(stepIndex);
-            }
-        }
-
-        function reset() {
-            pause();
-            stepIndex = 0;
-            renderStep(0);
-        }
-
+        // --------- controls ---------
+        function nextStep() { if (stepIdx < steps.length - 1) renderStep(stepIdx + 1); else pause(); }
+        function prevStep() { if (stepIdx > 0) renderStep(stepIdx - 1); }
+        function resetSim() { pause(); confettiFired = false; renderStep(0); }
         function togglePlay() {
             const btn = document.getElementById('play-btn');
-            if (timer) pause();
-            else {
-                btn.innerText = 'Pause';
-                if (stepIndex >= steps.length - 1) stepIndex = 0;
-                timer = setInterval(next, delays[document.getElementById('speed-slider').value]);
+            if (timer) { pause(); return; }
+            btn.textContent = 'Pause';
+            if (stepIdx >= steps.length - 1) { confettiFired = false; renderStep(0); }
+            timer = setInterval(() => { if (stepIdx < steps.length - 1) nextStep(); else pause(); }, delays[document.getElementById('speed').value]);
+        }
+        function pause() { clearInterval(timer); timer = null; document.getElementById('play-btn').textContent = 'Play'; }
+
+        function clearDom() {
+            Object.keys(cellEls).forEach(k => { cellEls[k].remove(); delete cellEls[k]; });
+            Object.keys(tileEls).forEach(k => { tileEls[k].remove(); delete tileEls[k]; });
+            document.getElementById('dp-grid').innerHTML = '';
+            document.getElementById('pq-col').innerHTML = '';
+        }
+        function loadData(g) { pause(); confettiFired = false; GRID = g; M = g.length; N = g[0].length; clearDom(); ensureGrid(); generateSteps(); renderStep(0); }
+
+        function loadCustom() {
+            try {
+                const g = JSON.parse(document.getElementById('grid-input').value);
+                if (!Array.isArray(g) || !Array.isArray(g[0])) throw 0;
+                const n = g.length;
+                if (!g.every(row => Array.isArray(row) && row.length === n && row.every(v => Number.isFinite(v)))) throw 0;
+                loadData(g.map(row => row.slice()));
+            } catch (e) {
+                const mp = document.getElementById('main-panel');
+                mp.classList.add('fail'); mp.classList.remove('done');
+                mp.innerHTML = `Invalid input. Expected a square N&times;N JSON array of numbers, e.g. <code>[[0,2],[1,3]]</code>.`;
             }
         }
 
-        function pause() {
-            clearInterval(timer);
-            timer = null;
-            document.getElementById('play-btn').innerText = 'Play';
+        // preserve the original file's examples & default
+        const EXAMPLES = [
+            [[0,2],[1,3]],                                                                                   // Ex 1  -> answer 3
+            [[0,1,2,3,4],[24,23,22,21,5],[12,13,14,15,16],[11,17,18,19,20],[10,9,8,7,6]],                   // Ex 2  -> answer 16
+        ];
+        function loadExample(i) {
+            const g = EXAMPLES[i];
+            document.getElementById('grid-input').value = JSON.stringify(g);
+            loadData(g.map(row => row.slice()));
         }
 
-        window.onload = () => { setTimeout(init, 100); };
+        document.addEventListener('keydown', (e) => {
+            const tag = (e.target.tagName || '').toLowerCase(); if (tag === 'input' || tag === 'textarea') return;
+            if (e.key === 'ArrowRight') { e.preventDefault(); pause(); nextStep(); }
+            else if (e.key === 'ArrowLeft') { e.preventDefault(); pause(); prevStep(); }
+            else if (e.key === ' ') { e.preventDefault(); togglePlay(); }
+        });
+        document.getElementById('grid-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') loadCustom(); });
+        window.addEventListener('resize', () => { if (steps.length) renderStep(stepIdx); });
+
+        buildCodePanel();
+        window.onload = () => loadExample(0);
     </script>
 </body>
 </html>

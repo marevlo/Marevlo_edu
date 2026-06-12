@@ -3,580 +3,606 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Count Enclaves (Boundary DFS) - Visualization</title>
+    <title>Count Enclaves - Visualization</title>
     <style>
         :root {
-            --bg-page: #000000;
-            --bg-surface: #161b22;
-            --bg-input: #000000;
-            --border-main: #30363d;
-            --btn-bg: #21262d;
-            --btn-hover: #2d333b;
-            --text-main: #c9d1d9;
-            --text-dim: #8b949e;
-            --text-log: #58a6ff;
-            --accent-orange: #e3b341;
-            --accent-blue: #388bfd;
-            --accent-green: #3fb950;
-            --accent-red: #f85149;
-            --accent-purple: #a371f7;
-            
-            --water: #05142a;
-            --water-text: #1f4f8a;
-            --land-unvisited: #3a3221;
-            --land-unvisited-text: #cda85e;
-            --land-safe: #0f2a1a;
-            --land-safe-text: var(--accent-green);
-            --land-enclave: #3a0d0d;
-            --land-enclave-text: var(--accent-red);
+            --bg-page: #070b14;
+            --bg-surface: rgba(255, 255, 255, 0.045);
+            --bg-input: rgba(255, 255, 255, 0.04);
+            --border-main: rgba(255, 255, 255, 0.10);
+            --btn-bg: rgba(255, 255, 255, 0.05);
+            --btn-hover: rgba(255, 255, 255, 0.10);
+            --text-main: #e8eefb;
+            --text-dim: #8b98b3;
+            --accent-orange: #f5a524;   /* active DFS cell (u)            */
+            --accent-blue:   #06b6d4;   /* perimeter scan cursor          */
+            --accent-green:  #22c55e;   /* safe / boundary-connected land */
+            --accent-red:    #f43f5e;   /* enclave / trapped land         */
+            --accent-purple: #a855f7;   /* neighbour being checked (v)    */
+            --mono: ui-monospace, 'SF Mono', 'Cascadia Code', 'Courier New', monospace;
+            --sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+            --shell: 900px;
         }
 
         * { box-sizing: border-box; }
+        html, body { overflow-x: hidden; }
         body {
-            background-color: var(--bg-page);
-            color: var(--text-main);
-            font-family: system-ui, -apple-system, sans-serif;
-            margin: 0;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            min-height: 100vh;
-            padding-bottom: 40px;
+            background:
+                radial-gradient(1100px 600px at 15% -10%, rgba(168, 85, 247, 0.10), transparent 60%),
+                radial-gradient(900px 600px at 100% 10%, rgba(6, 182, 212, 0.10), transparent 55%),
+                linear-gradient(160deg, #070b14 0%, #0b1120 55%, #0a0f1c 100%);
+            background-attachment: fixed;
+            color: var(--text-main); font-family: var(--sans); margin: 0;
+            display: flex; flex-direction: column; align-items: center; min-height: 100vh;
+            padding-bottom: 48px; -webkit-font-smoothing: antialiased;
         }
+        body::before, body::after { content: ''; position: fixed; border-radius: 50%; filter: blur(70px); pointer-events: none; z-index: 0; opacity: 0.45; }
+        body::before { width: 380px; height: 380px; top: 8%; left: -120px; background: radial-gradient(circle, rgba(168,85,247,0.30), transparent 70%); }
+        body::after  { width: 420px; height: 420px; bottom: 4%; right: -140px; background: radial-gradient(circle, rgba(6,182,212,0.22), transparent 70%); }
+        body > * { position: relative; z-index: 1; }
 
-        /* ROW 1: INPUT BAR */
         .input-bar {
-            width: 100%;
-            background-color: var(--bg-surface);
-            padding: 12px 16px;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            gap: 8px;
-            border-bottom: 1px solid var(--border-main);
-            flex-wrap: wrap;
+            width: 100%; background: rgba(10, 15, 28, 0.55);
+            backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+            padding: 14px 16px; display: flex; justify-content: center; align-items: center; gap: 10px;
+            border-bottom: 1px solid var(--border-main); flex-wrap: wrap; position: sticky; top: 0; z-index: 50;
         }
-        label.ui-label { font-family: 'Courier New', monospace; font-size: 13px; color: var(--text-dim); }
+        label.ui-label, .ui-label { font-family: var(--mono); font-size: 13px; color: var(--text-dim); letter-spacing: 0.2px; }
         input[type="text"] {
-            background: var(--bg-input);
-            border: 1px solid var(--border-main);
-            color: var(--text-main);
-            height: 32px;
-            border-radius: 6px;
-            padding: 0 10px;
-            font-size: 13px;
+            background: var(--bg-input); border: 1px solid var(--border-main); color: var(--text-main);
+            height: 34px; border-radius: 9px; padding: 0 12px; font-size: 13px; font-family: var(--mono);
+            transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
         }
-        .large-input { width: 400px; font-family: monospace; font-size: 12px;}
+        .grid-input { width: 360px; }
+        input:focus { outline: none; border-color: var(--accent-blue); box-shadow: 0 0 0 3px rgba(6, 182, 212, 0.18); background: rgba(6, 182, 212, 0.06); }
 
         button {
-            height: 32px; border-radius: 6px; padding: 0 14px; background: var(--btn-bg);
-            border: 1px solid var(--border-main); color: var(--text-main); font-size: 13px; cursor: pointer;
-            transition: background 0.2s ease;
+            height: 34px; border-radius: 9px; padding: 0 14px; background: var(--btn-bg);
+            border: 1px solid var(--border-main); color: var(--text-main); font-size: 13px; font-weight: 600; cursor: pointer;
+            transition: transform 0.15s ease, background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
         }
-        button:hover { background: var(--btn-hover); }
+        button:hover { background: var(--btn-hover); border-color: rgba(6, 182, 212, 0.5); box-shadow: 0 0 18px rgba(6, 182, 212, 0.18); transform: translateY(-1px); }
+        button:active { transform: translateY(0); }
+        #play-btn { background: linear-gradient(135deg, rgba(6,182,212,0.22), rgba(6,182,212,0.10)); border-color: rgba(6, 182, 212, 0.45); color: #a5f3fc; min-width: 80px; }
 
-        /* ROW 2: GRAPH AREA & ARRAYS */
-        .visual-container { margin-top: 20px; display: flex; align-items: flex-start; gap: 30px; width: 100%; justify-content: center; flex-wrap: wrap; }
-        
-        .graph-area {
-            background: var(--bg-surface);
-            border: 1px solid var(--border-main);
-            border-radius: 8px;
-            padding: 20px;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 350px;
-            min-width: 400px;
-        }
+        .shell { width: var(--shell); max-width: 95%; margin: 24px auto 0; display: flex; flex-direction: column; gap: 16px; }
 
-        #grid-container {
-            display: grid;
-            gap: 4px;
-        }
+        .title-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+        .title-row h1 { font-size: 18px; font-weight: 800; margin: 0; letter-spacing: 0.2px; }
+        .title-row .sub { color: var(--text-dim); font-weight: 500; font-size: 13px; }
+        .step-badge { font-family: var(--mono); font-size: 12px; font-weight: 700; color: #a5f3fc; background: rgba(6,182,212,0.12); border: 1px solid rgba(6,182,212,0.3); padding: 4px 10px; border-radius: 999px; white-space: nowrap; }
+        .progress-track { height: 4px; width: 100%; background: rgba(255,255,255,0.07); border-radius: 999px; overflow: hidden; margin-top: -6px; }
+        .progress-fill { height: 100%; width: 0%; border-radius: 999px; background: linear-gradient(90deg, var(--accent-blue), var(--accent-purple)); box-shadow: 0 0 12px rgba(6,182,212,0.5); transition: width 0.45s cubic-bezier(0.34,1.1,0.64,1); }
 
-        .grid-cell {
-            width: 50px;
-            height: 50px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 18px;
-            font-weight: bold;
-            border-radius: 6px;
-            font-family: 'Courier New', monospace;
-            transition: all 0.3s ease;
+        .narration { background: var(--bg-surface); border: 1px solid rgba(6,182,212,0.22); border-radius: 12px; padding: 12px 18px; font-family: var(--mono); font-size: 14px; line-height: 1.5; color: #cfe9f5; min-height: 48px; display: flex; align-items: center; gap: 10px; transition: border-color 0.3s, background 0.3s; }
+        .narration::before { content: '\25B8'; color: var(--accent-blue); font-size: 13px; flex-shrink: 0; }
+        .narration.done { border-color: rgba(34,197,94,0.4); background: rgba(34,197,94,0.06); }
+        .narration.done::before { content: '\2713'; color: var(--accent-green); }
+        .narration code { background: rgba(6,182,212,0.14); color: #7dd3fc; padding: 1px 6px; border-radius: 5px; font-size: 12.5px; }
+        .narration b { color: #fff; }
+        .narration .safe { color: var(--accent-green); }
+        .narration .trap { color: var(--accent-red); }
+
+        .stage-card { background: var(--bg-surface); border: 1px solid var(--border-main); border-radius: 18px; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); box-shadow: 0 12px 38px rgba(0,0,0,0.4); overflow: hidden; }
+        .stage-screen { position: relative; margin: 14px; border-radius: 14px; background: radial-gradient(700px 300px at 50% -10%, rgba(6,182,212,0.08), transparent 70%), #090d18; border: 1px solid rgba(255,255,255,0.06); }
+        .grid-stage { position: relative; width: 100%; overflow: auto; scrollbar-width: thin; padding: 22px; display: flex; justify-content: center; align-items: flex-start; gap: 34px; flex-wrap: wrap; }
+        .grid-stage::-webkit-scrollbar { height: 8px; width: 8px; }
+        .grid-stage::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 8px; }
+
+        .board-wrap { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+        .board-title { font-family: var(--mono); font-size: 11px; font-weight: 800; letter-spacing: 1.2px; text-transform: uppercase; color: var(--text-dim); }
+        .dp-grid { display: grid; gap: 5px; }
+        .cell {
             position: relative;
-            border: 2px solid transparent;
+            display: flex; align-items: center; justify-content: center;
+            border-radius: 9px; font-family: var(--mono); font-weight: 800; font-size: 16px;
+            border: 2px solid var(--border-main); background: rgba(255,255,255,0.04); color: var(--text-main);
+            width: 46px; height: 46px; will-change: transform;
+            transition: background 0.35s, border-color 0.35s, color 0.35s, box-shadow 0.35s, transform 0.3s, opacity 0.35s;
         }
+        .cell.head { border: none; background: transparent; color: var(--text-dim); font-size: 13px; font-weight: 800; box-shadow: none; }
+        .cell.corner { background: transparent; border: none; box-shadow: none; }
+        .cell.head.litR, .cell.head.litC { color: var(--accent-blue); }
+        /* water (0) */
+        .cell.water { border-color: rgba(255,255,255,0.06); background: rgba(11,30,58,0.55); color: #36567f; opacity: 0.85; }
+        /* unvisited land (1) */
+        .cell.land { border-color: rgba(245,165,36,0.35); background: rgba(245,165,36,0.10); color: #f1c674; }
+        /* boundary-connected safe land */
+        .cell.safe { border-color: var(--accent-green); background: linear-gradient(180deg, rgba(34,197,94,0.30), rgba(22,163,74,0.20)); color: #b7f7cf; box-shadow: 0 0 12px rgba(34,197,94,0.28); }
+        /* trapped enclave land */
+        .cell.enclave { border-color: var(--accent-red); background: linear-gradient(180deg, rgba(244,63,94,0.32), rgba(225,29,72,0.22)); color: #ffd0d8; box-shadow: 0 0 16px rgba(244,63,94,0.45), inset 0 0 10px rgba(244,63,94,0.25); }
+        /* perimeter-scan cursor (dashed ring) */
+        .cell.scanning::after { content: ''; position: absolute; inset: 2px; border-radius: 7px; border: 2px dashed rgba(6,182,212,0.85); pointer-events: none; }
+        /* DFS active cell (u) */
+        .cell.active { border-color: var(--accent-orange); box-shadow: 0 0 22px rgba(245,165,36,0.6), inset 0 0 12px rgba(245,165,36,0.18); transform: scale(1.08); z-index: 3; opacity: 1; }
+        /* neighbour being checked (v) */
+        .cell.neighbor { border-color: var(--accent-purple); box-shadow: 0 0 18px rgba(168,85,247,0.55); transform: scale(1.05); z-index: 2; opacity: 1; }
+        .cell .dir { position: absolute; top: -10px; right: -8px; font-size: 13px; font-weight: 900; color: #fff; text-shadow: 0 0 6px rgba(0,0,0,0.7); pointer-events: none; }
 
-        /* Base States */
-        .cell-water { background: var(--water); color: var(--water-text); border-color: var(--border-main); }
-        .cell-land { background: var(--land-unvisited); color: var(--land-unvisited-text); border-color: #55482e; }
-        .cell-safe { background: var(--land-safe); border-color: var(--accent-green); color: var(--land-safe-text); }
-        .cell-enclave { background: var(--land-enclave); border-color: var(--accent-red); color: var(--land-enclave-text); box-shadow: inset 0 0 10px rgba(248,81,73,0.5); }
+        /* DFS call-stack column */
+        .stack-wrap { display: flex; flex-direction: column; align-items: center; gap: 10px; min-width: 150px; }
+        .stack-col { display: flex; flex-direction: column-reverse; gap: 5px; align-items: stretch; width: 150px; min-height: 46px; }
+        .frame { font-family: var(--mono); font-size: 12.5px; font-weight: 700; padding: 7px 10px; border-radius: 9px; border: 1.5px solid var(--border-main); background: rgba(255,255,255,0.04); color: var(--text-dim); white-space: nowrap; will-change: transform, opacity; }
+        .frame.top { border-color: var(--accent-orange); background: rgba(245,165,36,0.14); color: #ffd591; box-shadow: 0 0 14px rgba(245,165,36,0.3); }
+        .stack-empty { font-family: var(--mono); font-size: 12px; color: var(--text-dim); opacity: 0.6; }
 
-        /* Action Overlays */
-        .grid-cell.scanning { border: 2px dashed #fff; transform: scale(1.05); z-index: 2; }
-        .grid-cell.active-node { transform: scale(1.15); box-shadow: 0 0 15px var(--accent-orange); border-color: var(--accent-orange); z-index: 3; color: var(--accent-orange); }
-        .grid-cell.neighbor-node { transform: scale(1.1); box-shadow: 0 0 12px var(--accent-purple); border-color: var(--accent-purple); z-index: 2; color: var(--accent-purple); }
+        .controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: center; }
+        .controls .kbd-hint { font-size: 11px; color: var(--text-dim); font-family: var(--mono); margin-left: 4px; }
+        .kbd { background: rgba(255,255,255,0.07); border: 1px solid var(--border-main); border-radius: 5px; padding: 1px 6px; font-size: 10px; }
+        input[type="range"] { accent-color: var(--accent-blue); width: 110px; cursor: pointer; }
 
-        /* Side Info Col */
-        .arrays-col { display: flex; flex-direction: column; gap: 16px; min-width: 250px; max-width: 320px; }
-        
-        .array-section { display: flex; flex-direction: column; gap: 8px; background: var(--bg-surface); padding: 12px; border-radius: 8px; border: 1px solid var(--border-main); min-height: 100px;}
-        .stats-row { display: flex; justify-content: space-between; font-family: monospace; font-size: 14px; margin-bottom: 4px; border-bottom: 1px solid var(--border-main); padding-bottom: 4px;}
-        .stats-val { font-weight: bold; color: var(--text-main); font-size: 16px;}
-        
-        /* ROW 3: PANEL */
-        .action-panel {
-            margin-top: 14px; background: var(--bg-surface); border: 1px solid var(--border-main);
-            border-radius: 6px; padding: 12px 20px; width: 750px; text-align: center; font-family: monospace; min-height: 80px;
-            display: flex; flex-direction: column; justify-content: center; font-size: 14px; line-height: 1.5;
-        }
+        .details-toggle { align-self: center; height: 32px; padding: 0 16px; border-radius: 999px; cursor: pointer; background: rgba(255,255,255,0.04); border: 1px solid var(--border-main); color: var(--text-dim); font-family: var(--mono); font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; gap: 8px; transition: color 0.2s, border-color 0.2s, background 0.2s; }
+        .details-toggle:hover { color: var(--text-main); border-color: rgba(6,182,212,0.4); background: rgba(6,182,212,0.06); }
+        .details-toggle .chev { transition: transform 0.3s ease; }
+        .details-wrap.open .details-toggle .chev { transform: rotate(180deg); }
+        .details-body { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.4s ease; }
+        .details-wrap.open .details-body { grid-template-rows: 1fr; }
+        .details-inner { overflow: hidden; min-height: 0; }
+        .details-grid { display: flex; flex-direction: column; gap: 14px; padding-top: 14px; }
 
-        /* ROW 4: INFO PANEL */
-        .info-panel { margin-top: 10px; display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; width: 750px;}
-        .info-cell {
-            background: var(--bg-surface); border: 1px solid var(--border-main); border-radius: 6px;
-            padding: 8px 14px; display: flex; flex-direction: column; align-items: center; min-width: 120px; gap: 4px; flex: 1;
-        }
-        .info-label { font-size: 11px; color: var(--text-dim); }
-        .info-value { font-family: monospace; font-size: 15px; font-weight: 700; text-align: center;}
+        .panel-card { background: var(--bg-surface); border: 1px solid var(--border-main); border-radius: 16px; backdrop-filter: blur(10px); box-shadow: 0 8px 30px rgba(0,0,0,0.35); }
+        .panel-head { display: flex; align-items: center; gap: 8px; padding: 11px 16px; border-bottom: 1px solid var(--border-main); font-size: 11px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; color: var(--text-dim); }
+        .panel-head .pip { width: 7px; height: 7px; border-radius: 50%; background: var(--accent-blue); box-shadow: 0 0 8px var(--accent-blue); }
+        .code-body { padding: 12px 6px 14px; font-family: var(--mono); font-size: 12.5px; line-height: 1.7; }
+        .code-line { display: flex; gap: 12px; padding: 1px 16px; border-left: 2px solid transparent; transition: background 0.3s, border-color 0.3s; white-space: pre; }
+        .code-line .lno { color: #4b5772; width: 16px; text-align: right; user-select: none; }
+        .code-line .src { color: #c4cee0; }
+        .code-line .kw { color: #c792ea; }
+        .code-line .fn { color: #82aaff; }
+        .code-line.active { background: rgba(6,182,212,0.12); border-left-color: var(--accent-blue); }
+        .code-line.active .src, .code-line.active .lno { color: #e8eefb; }
 
-        /* ROW 5: RESULT DISPLAY */
-        .result-display { margin-top: 10px; display: flex; flex-direction: column; align-items: center; }
-        #res-val { font-size: 28px; color: var(--text-dim); font-family: monospace; transition: all 0.3s; font-weight: bold; margin-top: 4px; }
-        .pop { animation: popAnim 400ms ease; color: var(--accent-red) !important; text-shadow: 0 0 15px var(--accent-red); transform: scale(1.1); }
+        .state-strip { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 0 2px; }
+        .pill { display: inline-flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 12px; color: var(--text-dim); background: rgba(255,255,255,0.04); border: 1px solid var(--border-main); border-radius: 999px; padding: 4px 11px; }
+        .pill b { color: var(--text-main); font-weight: 800; }
+        .pill.phase b { color: var(--accent-blue); } .pill.u b { color: var(--accent-orange); } .pill.v b { color: var(--accent-purple); } .pill.s b { color: var(--accent-green); } .pill.e b { color: var(--accent-red); }
 
-        @keyframes popAnim { 0%{transform:scale(1)} 50%{transform:scale(1.2)} 100%{transform:scale(1.1)} }
+        .log-panel { border-radius: 14px; padding: 12px 16px; height: 110px; overflow-y: auto; font-family: var(--mono); font-size: 12.5px; line-height: 1.5; background: var(--bg-surface); border: 1px solid var(--border-main); }
+        .log-panel::-webkit-scrollbar { width: 8px; }
+        .log-panel::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 8px; }
 
-        /* ROW 6: STATUS BAR */
-        .status-bar { margin-top: 8px; font-size: 13px; color: var(--text-dim); height: 1.2em; text-align: center; width: 600px;}
-
-        /* ROW 7: CONTROLS */
-        .controls { margin-top: 24px; display: flex; align-items: center; gap: 8px; }
-        input[type="range"] { accent-color: var(--accent-blue); width: 100px; cursor: pointer; }
-
-        /* ROW 8: LEGEND */
-        .legend { margin-top: 12px; display: flex; gap: 16px; flex-wrap: wrap; justify-content: center; max-width: 800px; }
-        .legend-item { display: flex; align-items: center; font-size: 12px; color: var(--text-dim); }
-        .dot { width: 12px; height: 12px; border-radius: 2px; margin-right: 6px; display: inline-block; border: 1px solid var(--border-main);}
-
-        /* ROW 9: LOG PANEL */
-        .log-panel {
-            margin-top: 12px; background: var(--bg-page); border: 1px solid var(--border-main);
-            border-radius: 6px; padding: 12px 16px; width: 750px; max-width: 90%; height: 130px;
-            overflow-y: auto; font-family: 'Courier New', monospace; font-size: 13px;
-        }
+        @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; } }
     </style>
 </head>
 <body>
 
     <div class="input-bar">
         <label class="ui-label">grid =</label>
-        <input type="text" id="g-input" class="large-input" placeholder="[[0,0,0,0],[1,0,1,0],[0,1,1,0],[0,0,0,0]]">
+        <input type="text" id="g-input" class="grid-input" placeholder="[[0,0,0,0],[1,0,1,0],[0,1,1,0],[0,0,0,0]]">
         <button onclick="loadCustom()">Load</button>
-        <button onclick="loadExample('[[0,0,0,0],[1,0,1,0],[0,1,1,0],[0,0,0,0]]')">Ex 1</button>
-        <button onclick="loadExample('[[0,1,1,0],[0,0,1,0],[0,0,0,0],[0,0,0,0]]')">Ex 2</button>
+        <span class="ui-label" style="opacity:.5">|</span>
+        <button onclick="loadExample(0)">Ex 1</button>
+        <button onclick="loadExample(1)">Ex 2</button>
     </div>
 
-    <div class="visual-container">
-        <div class="graph-area">
-            <div id="grid-container"></div>
+    <div class="shell">
+        <div class="title-row">
+            <h1>Count Enclaves <span class="sub">&middot; boundary DFS &middot; 4-connected &middot; trapped land cells &middot; O(m&middot;n)</span></h1>
+            <span class="step-badge" id="step-badge">Step 1 / 1</span>
         </div>
-        <div class="arrays-col">
-            <div class="array-section">
-                <div class="ui-label" style="color: var(--accent-orange); text-align:center;">Algorithm Status</div>
-                <div class="stats-row"><span>Algorithm Phase:</span> <span class="stats-val" id="stat-phase" style="color:var(--text-dim)">—</span></div>
-                <div class="stats-row" style="border:none;"><span>Enclaves Count:</span> <span class="stats-val" id="stat-count" style="color:var(--accent-red)">0</span></div>
+        <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+
+        <div class="narration" id="main-panel">&mdash;</div>
+
+        <div class="stage-card">
+            <div class="stage-screen">
+                <div class="grid-stage" id="grid-stage">
+                    <div class="board-wrap">
+                        <div class="board-title">Grid</div>
+                        <div class="dp-grid" id="dp-grid"></div>
+                    </div>
+                    <div class="stack-wrap">
+                        <div class="board-title">DFS call stack</div>
+                        <div class="stack-col" id="stack-col"></div>
+                    </div>
+                </div>
             </div>
-            
-            <div class="result-display">
-                <span class="ui-label">total enclaves =</span>
-                <span id="res-val">0</span>
+        </div>
+
+        <div class="controls">
+            <button onclick="resetSim()">&#8634; Reset</button>
+            <button onclick="prevStep()">&#8592; Back</button>
+            <button onclick="togglePlay()" id="play-btn">Play</button>
+            <button onclick="nextStep()">Next &#8594;</button>
+            <span class="ui-label" style="margin-left:6px; font-size:11px">Speed</span>
+            <input type="range" id="speed" min="0" max="2" value="1">
+            <span class="kbd-hint"><span class="kbd">&#8592;</span> <span class="kbd">&#8594;</span> step &middot; <span class="kbd">space</span> play</span>
+        </div>
+
+        <div class="details-wrap" id="details-wrap">
+            <button class="details-toggle" onclick="toggleDetails()" aria-expanded="false">
+                <span id="details-label">Show code, state &amp; log</span> <span class="chev">&#9662;</span>
+            </button>
+            <div class="details-body">
+                <div class="details-inner">
+                    <div class="details-grid">
+                        <div class="state-strip">
+                            <span class="pill phase">phase <b id="st-phase">&mdash;</b></span>
+                            <span class="pill">scan (r,c) <b id="st-scan">&mdash;</b></span>
+                            <span class="pill u">active u <b id="st-u">&mdash;</b></span>
+                            <span class="pill v">neighbor v <b id="st-v">&mdash;</b></span>
+                            <span class="pill s">safe <b id="st-safe">&mdash;</b></span>
+                            <span class="pill e">enclaves <b id="st-count">&mdash;</b></span>
+                        </div>
+                        <div class="panel-card">
+                            <div class="panel-head"><span class="pip"></span> Algorithm</div>
+                            <div class="code-body" id="code-panel"></div>
+                        </div>
+                        <div class="log-panel" id="log"></div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
-
-    <div class="action-panel" id="main-panel">—</div>
-
-    <div class="info-panel">
-        <div class="info-cell">
-            <span class="info-label">Scanning Cell (r, c)</span>
-            <span class="info-value" id="val-scan" style="color: #fff;">—</span>
-        </div>
-        <div class="info-cell">
-            <span class="info-label">DFS Active Cell (u)</span>
-            <span class="info-value" id="val-u" style="color: var(--accent-orange);">—</span>
-        </div>
-        <div class="info-cell">
-            <span class="info-label">Checking Neighbor (v)</span>
-            <span class="info-value" id="val-v" style="color: var(--accent-purple);">—</span>
-        </div>
-    </div>
-
-    <div class="status-bar" id="status-text"></div>
-
-    <div class="controls">
-        <button onclick="reset()">↺ Reset</button>
-        <button onclick="back()">← Back</button>
-        <button onclick="togglePlay()" id="play-btn">Play</button>
-        <button onclick="next()">Next →</button>
-        <div class="controls" style="margin-top:0">
-            <span class="ui-label" style="margin-right:4px; font-size:11px">Speed</span>
-            <input type="range" id="speed-slider" min="0" max="2" value="1">
-        </div>
-    </div>
-
-    <div class="legend">
-        <div class="legend-item"><span class="dot" style="background:var(--land-unvisited); border-color:#55482e;"></span> Unvisited Land (1)</div>
-        <div class="legend-item"><span class="dot" style="background:var(--water)"></span> Water (0)</div>
-        <div class="legend-item"><span class="dot" style="background:var(--land-safe); border-color:var(--accent-green)"></span> Safe (Boundary Connected)</div>
-        <div class="legend-item"><span class="dot" style="background:var(--land-enclave); border-color:var(--accent-red)"></span> Enclave (Trapped)</div>
-        <div class="legend-item"><span class="dot" style="background:transparent; border:2px dashed #fff"></span> Scanning</div>
-        <div class="legend-item"><span class="dot" style="background:transparent; border:2px solid var(--accent-orange)"></span> DFS Active</div>
-    </div>
-
-    <div class="log-panel" id="log"></div>
 
     <script>
-        let grid = [[0,0,0,0],[1,0,1,0],[0,1,1,0],[0,0,0,0]];
-        let R = 4;
-        let C = 4;
-        
+        'use strict';
+
+        // --------- Motion engine (spring pop, zero deps) ---------
+        const REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        const FRAME = 1000 / 60;
+        function sampleSpring(stiffness, damping, mass) {
+            const dt = 1 / 60; let x = 1, v = 0; const out = [];
+            for (let i = 0; i < 240; i++) { const a = (-stiffness * x - damping * v) / mass; v += a * dt; x += v * dt; out.push(1 - x); if (Math.abs(x) < 0.0015 && Math.abs(v) < 0.0015) break; }
+            out.push(1); return out;
+        }
+        const SPRING_POP = sampleSpring(520, 17, 1);
+        const durOf = (a) => a.length * FRAME;
+        const Motion = {
+            pop(el) {
+                if (REDUCED) return;
+                const kf = SPRING_POP.map(p => ({ transform: `scale(${(0.7 + 0.4 * p).toFixed(3)})` }));
+                el.animate(kf, { duration: durOf(SPRING_POP), easing: 'linear' });
+            },
+            enter(el) {
+                if (REDUCED) return;
+                el.animate([{ opacity: 0, transform: 'translateY(8px) scale(0.9)' }, { opacity: 1, transform: 'translateY(0) scale(1)' }], { duration: 260, easing: 'cubic-bezier(0.34,1.2,0.64,1)' });
+            },
+        };
+
+        // --------- State ---------
+        let GRID = [[0,0,0,0],[1,0,1,0],[0,1,1,0],[0,0,0,0]];
+        let R = 4, C = 4;
         let steps = [];
-        let stepIndex = 0;
+        let stepIdx = 0;
         let timer = null;
-        const delays = [2000, 1000, 400]; // Faster for grid
+        const delays = [1300, 650, 300];
+        const cellEls = {};   // 'gr,gc' -> grid cell element (incl. header row/col)
+        const frameEls = {};  // 'depth:r,c' -> stack frame element
 
-        function init() { 
-            loadExample('[[0,0,0,0],[1,0,1,0],[0,1,1,0],[0,0,0,0]]'); 
+        const CODE = [
+            [['kw','def '],['fn','numEnclaves'],['src','(grid):']],
+            [['kw','  def '],['fn','dfs'],['src','(r, c):']],
+            [['kw','    if '],['src','out of bounds '],['kw','or '],['src','grid[r][c] != 1: '],['kw','return']],
+            [['src','    visited[r][c] = True']],
+            [['kw','    for '],['src','(dr,dc) in dirs: '],['fn','dfs'],['src','(r+dr, c+dc)']],
+            [['src','  # Phase 1: flood-fill land from the border']],
+            [['kw','  for '],['src','each boundary cell (r,c):']],
+            [['kw','    if '],['src','grid[r][c] == 1 and not visited: '],['fn','dfs'],['src','(r,c)']],
+            [['src','  # Phase 2: count remaining interior land']],
+            [['kw','  for '],['src','each interior cell (r,c):']],
+            [['kw','    if '],['src','grid[r][c] == 1 and not visited: count += 1']],
+            [['kw','  return '],['src','count']],
+        ];
+        function buildCodePanel() {
+            const panel = document.getElementById('code-panel'); panel.innerHTML = '';
+            CODE.forEach((tokens, i) => {
+                const line = document.createElement('div'); line.className = 'code-line'; line.dataset.line = i;
+                const lno = document.createElement('span'); lno.className = 'lno'; lno.textContent = i + 1; line.appendChild(lno);
+                const src = document.createElement('span');
+                tokens.forEach(([cls, txt]) => { const s = document.createElement('span'); s.className = cls; s.textContent = txt; src.appendChild(s); });
+                line.appendChild(src); panel.appendChild(line);
+            });
+        }
+        function highlightCode(arr) { document.querySelectorAll('.code-line').forEach(el => el.classList.toggle('active', arr && arr.includes(+el.dataset.line))); }
+        function toggleDetails() {
+            const wrap = document.getElementById('details-wrap'); const open = wrap.classList.toggle('open');
+            wrap.querySelector('.details-toggle').setAttribute('aria-expanded', open ? 'true' : 'false');
+            document.getElementById('details-label').textContent = open ? 'Hide code, state & log' : 'Show code, state & log';
         }
 
-        function loadExample(jsonStr) {
-            document.getElementById('g-input').value = jsonStr;
-            parseAndGenerate();
-        }
-
-        function loadCustom() {
-            parseAndGenerate();
-        }
-
-        function parseAndGenerate() {
-            try {
-                const valStr = document.getElementById('g-input').value;
-                grid = JSON.parse(valStr);
-                if (!Array.isArray(grid) || !Array.isArray(grid[0])) throw "Must be a 2D array";
-                R = grid.length;
-                C = grid[0].length;
-                buildGridDom();
-                generateSteps();
-                reset();
-            } catch(e) {
-                alert("Invalid format. Expected a 2D JSON array (e.g., [[0,0],[1,1]]).");
-            }
-        }
-
-        function buildGridDom() {
-            const container = document.getElementById('grid-container');
-            container.innerHTML = '';
-            container.style.gridTemplateColumns = `repeat(${C}, 50px)`;
-            
-            for(let r = 0; r < R; r++) {
-                for(let c = 0; c < C; c++) {
-                    const cell = document.createElement('div');
-                    cell.className = 'grid-cell';
-                    cell.id = `cell-${r}-${c}`;
-                    container.appendChild(cell);
-                }
-            }
-        }
-
-        function deepCopy(arr) {
-            return arr.map(row => [...row]);
-        }
+        // --------- step generation (genuine boundary-DFS simulation) ---------
+        // directions order: up, down, left, right
+        const DIRS = [[-1,0],[1,0],[0,-1],[0,1]];
+        const DIRWORD = { '-1,0':'up', '1,0':'down', '0,-1':'left', '0,1':'right' };
+        const DIRMARK = { '-1,0':'&#8593;', '1,0':'&#8595;', '0,-1':'&#8592;', '0,1':'&#8594;' };
+        const clone2 = (a) => a.map(row => row.slice());
 
         function generateSteps() {
             steps = [];
-            
-            let visited = Array.from({length: R}, () => new Array(C).fill(false));
-            let enclaves = Array.from({length: R}, () => new Array(C).fill(false));
-            let count = 0;
+            const visited = Array.from({ length: R }, () => new Array(C).fill(false));
+            const enclave = Array.from({ length: R }, () => new Array(C).fill(false));
+            let count = 0, safeCount = 0;
+            const stack = []; // live DFS frames [r,c]
 
-            steps.push({
-                type: 'init', visited: deepCopy(visited), enclaves: deepCopy(enclaves), count: 0,
-                scan: null, active: null, neighbor: null, phase: 'Phase 1: Perimeter Scan',
-                panel: `<b>Count Enclaves</b><br><b>Phase 1:</b> We scan only the perimeter (boundary) of the grid.<br>Any land (<code>1</code>) touching the boundary can escape, so we run DFS to mark it and all connected land as <b style="color:var(--accent-green)">Safe</b>.`,
-                statusText: `Ready to start Perimeter Scan.`,
-                log: `Grid size: ${R}x${C}. Starting Phase 1 (Perimeter Scan).`
-            });
+            const snap = (extra) => Object.assign({
+                R, C, board: GRID,
+                visited: clone2(visited), enclave: clone2(enclave),
+                count, safe: safeCount,
+                scan: null, active: null, neighbor: null, dir: null,
+                stack: stack.slice(), phase: 'Phase 1', complete: false
+            }, extra);
 
-            function dfs(cr, cc, depth) {
-                let pad = "  ".repeat(depth);
-                visited[cr][cc] = true;
+            // INIT
+            steps.push(snap({
+                code: [0, 5], scan: null,
+                panel: `<b>Count enclaves:</b> land cells (<code>1</code>) that can <b>never</b> reach the grid boundary. <b>Phase 1</b> &#8212; flood-fill DFS from every boundary land cell to mark all <span class="safe">boundary-connected (safe)</span> land.`,
+                log: `init  ${R}&times;${C} grid &middot; phase 1: flood-fill from the border`
+            }));
 
-                steps.push({
-                    type: 'dfs_visit', visited: deepCopy(visited), enclaves: deepCopy(enclaves), count: count,
-                    scan: null, active: {r: cr, c: cc}, neighbor: null, phase: 'Phase 1: DFS',
-                    panel: `<code>dfs(${cr}, ${cc})</code>: Mark cell as <b style="color:var(--accent-green)">Safe (Boundary-Connected)</b>.<br>Checking 4 directional neighbors for more land...`,
-                    statusText: `Marking (${cr}, ${cc}) safe...`,
-                    log: `${pad}Marking (${cr}, ${cc}) safe.`
-                });
+            function dfs(r, c, depth) {
+                stack.push([r, c]);
+                visited[r][c] = true; safeCount++;
+                steps.push(snap({
+                    code: [2, 3], active: [r, c], phase: 'Phase 1',
+                    panel: `<code>dfs(${r}, ${c})</code>: land reachable from the border &#8594; mark <span class="safe">safe</span>. Now scan its 4 neighbours (up, down, left, right) for more connected land.`,
+                    log: `dfs(${r},${c})  mark safe  (safe=${safeCount})`
+                }));
 
-                let dirs = [[-1,0], [1,0], [0,-1], [0,1]];
-                for (let [dr, dc] of dirs) {
-                    let nr = cr + dr;
-                    let nc = cc + dc;
+                for (let i = 0; i < DIRS.length; i++) {
+                    const [dr, dc] = DIRS[i];
+                    const nr = r + dr, nc = c + dc;
+                    const key = dr + ',' + dc;
+                    const inB = nr >= 0 && nr < R && nc >= 0 && nc < C;
 
-                    if (nr >= 0 && nr < R && nc >= 0 && nc < C) {
-                        let nVal = grid[nr][nc];
-                        let isVis = visited[nr][nc];
-
-                        steps.push({
-                            type: 'dfs_check', visited: deepCopy(visited), enclaves: deepCopy(enclaves), count: count,
-                            scan: null, active: {r: cr, c: cc}, neighbor: {r: nr, c: nc}, phase: 'Phase 1: DFS',
-                            panel: `Checking neighbor <code>(${nr}, ${nc})</code>. Value is <code>${nVal}</code>, Safe: <code>${isVis}</code>.`,
-                            statusText: `Evaluating neighbor (${nr}, ${nc})...`,
-                            log: `${pad}  Check neighbor (${nr}, ${nc}) = ${nVal}.`
-                        });
-
-                        if (nVal === 1 && !isVis) {
-                            steps.push({
-                                type: 'dfs_recurse', visited: deepCopy(visited), enclaves: deepCopy(enclaves), count: count,
-                                scan: null, active: {r: cr, c: cc}, neighbor: {r: nr, c: nc}, phase: 'Phase 1: DFS',
-                                panel: `Neighbor <code>(${nr}, ${nc})</code> is <b style="color:var(--accent-green)">unvisited land</b>.<br>Recursively calling <code>dfs(${nr}, ${nc})</code> to map the escape route.`,
-                                statusText: `Recursing to (${nr}, ${nc})...`,
-                                log: `${pad}    -> Valid land! Recursing...`
-                            });
+                    if (inB) {
+                        const v = GRID[nr][nc], vis = visited[nr][nc];
+                        steps.push(snap({
+                            code: [4], active: [r, c], neighbor: [nr, nc], dir: key, phase: 'Phase 1',
+                            panel: `Look <b>${DIRWORD[key]}</b> at neighbour <code>(${nr}, ${nc})</code>: value <code>${v}</code>, safe <code>${vis}</code>.`,
+                            log: `dfs(${r},${c})  look ${DIRWORD[key]} &#8594; (${nr},${nc})=${v}`
+                        }));
+                        if (v === 1 && !vis) {
+                            steps.push(snap({
+                                code: [4], active: [r, c], neighbor: [nr, nc], dir: key, phase: 'Phase 1',
+                                panel: `Neighbour <code>(${nr}, ${nc})</code> is <span class="safe">unvisited land</span> &#8594; recurse <code>dfs(${nr}, ${nc})</code> to extend the escape route.`,
+                                log: `dfs(${r},${c})  recurse &#8594; dfs(${nr},${nc})`
+                            }));
                             dfs(nr, nc, depth + 1);
-                            
-                            steps.push({
-                                type: 'dfs_backtrack', visited: deepCopy(visited), enclaves: deepCopy(enclaves), count: count,
-                                scan: null, active: {r: cr, c: cc}, neighbor: null, phase: 'Phase 1: DFS',
-                                panel: `Returned from recursive call back to <code>(${cr}, ${cc})</code>.<br>Continuing to check remaining neighbors...`,
-                                statusText: `Backtracked to (${cr}, ${cc}).`,
-                                log: `${pad}  <- Backtracked to (${cr}, ${cc}).`
-                            });
-
+                            steps.push(snap({
+                                code: [4], active: [r, c], phase: 'Phase 1',
+                                panel: `Returned to <code>(${r}, ${c})</code>; continue with its remaining neighbours.`,
+                                log: `dfs(${r},${c})  backtrack`
+                            }));
                         } else {
-                            steps.push({
-                                type: 'dfs_skip', visited: deepCopy(visited), enclaves: deepCopy(enclaves), count: count,
-                                scan: null, active: {r: cr, c: cc}, neighbor: {r: nr, c: nc}, phase: 'Phase 1: DFS',
-                                panel: `Neighbor is either water (<code>0</code>) or already safe. <b style="color:var(--text-dim)">Skip.</b>`,
-                                statusText: `Skipping neighbor.`,
-                                log: `${pad}    -> Skip (water or already safe).`
-                            });
+                            steps.push(snap({
+                                code: [2], active: [r, c], neighbor: [nr, nc], dir: key, phase: 'Phase 1',
+                                panel: `Neighbour <code>(${nr}, ${nc})</code> is water (<code>0</code>) or already safe &#8594; skip.`,
+                                log: `dfs(${r},${c})  skip ${DIRWORD[key]} (water/visited)`
+                            }));
                         }
+                    } else {
+                        steps.push(snap({
+                            code: [2], active: [r, c], dir: key, phase: 'Phase 1',
+                            panel: `Looking <b>${DIRWORD[key]}</b> falls outside the grid &#8594; skip.`,
+                            log: `dfs(${r},${c})  ${DIRWORD[key]} out of bounds &#8594; skip`
+                        }));
                     }
                 }
+                stack.pop();
             }
 
-            // Phase 1: Perimeter Scan
+            // Phase 1: boundary scan
             for (let r = 0; r < R; r++) {
                 for (let c = 0; c < C; c++) {
                     if (r === 0 || r === R - 1 || c === 0 || c === C - 1) {
-                        
-                        let val = grid[r][c];
-                        
-                        if (val === 1 && !visited[r][c]) {
-                            steps.push({
-                                type: 'scan_found', visited: deepCopy(visited), enclaves: deepCopy(enclaves), count: count,
-                                scan: {r, c}, active: null, neighbor: null, phase: 'Phase 1: Perimeter Scan',
-                                panel: `<b>Perimeter Scan:</b> Found boundary land at <code>(${r}, ${c})</code>!<br>Starting DFS to mark all land connected to this exit as safe.`,
-                                statusText: `Boundary land found. Starting DFS.`,
-                                log: `\nScanning boundary (${r}, ${c}). Found land. Starting DFS.`
-                            });
-                            
-                            dfs(r, c, 1);
-
+                        const v = GRID[r][c];
+                        if (v === 1 && !visited[r][c]) {
+                            steps.push(snap({
+                                code: [6, 7], scan: [r, c], phase: 'Phase 1',
+                                panel: `<b>Perimeter scan</b> reaches boundary land at <code>(${r}, ${c})</code> &#8594; launch <code>dfs</code> to mark every connected <span class="safe">land cell safe</span>.`,
+                                log: `scan (${r},${c})  boundary land &#8594; start dfs`
+                            }));
+                            dfs(r, c, 0);
                         } else {
-                            // Only log occasionally to avoid huge step counts for large grids, but we will visualize it
-                            steps.push({
-                                type: 'scan_skip', visited: deepCopy(visited), enclaves: deepCopy(enclaves), count: count,
-                                scan: {r, c}, active: null, neighbor: null, phase: 'Phase 1: Perimeter Scan',
-                                panel: `<b>Perimeter Scan:</b> Checking <code>(${r}, ${c})</code>.<br>It is water (<code>0</code>) or already safe. Skipping.`,
-                                statusText: `Scanning boundary...`,
-                                log: `Scan boundary (${r}, ${c}): Skip.`
-                            });
+                            steps.push(snap({
+                                code: [6], scan: [r, c], phase: 'Phase 1',
+                                panel: `<b>Perimeter scan</b> at <code>(${r}, ${c})</code>: it is water (<code>0</code>) or already safe &#8594; skip.`,
+                                log: `scan (${r},${c})  ${v === 1 ? 'already safe' : 'water'} &#8594; skip`
+                            }));
                         }
                     }
                 }
             }
 
-            steps.push({
-                type: 'phase_2_init', visited: deepCopy(visited), enclaves: deepCopy(enclaves), count: count,
-                scan: null, active: null, neighbor: null, phase: 'Phase 2: Inner Scan',
-                panel: `<b>Phase 2: Inner Scan</b><br>All boundary-connected land is now marked Safe.<br>We now scan the interior of the grid. Any remaining unvisited land (<code>1</code>) is a trapped <b style="color:var(--accent-red)">Enclave</b>.`,
-                statusText: `Phase 1 complete. Starting Phase 2.`,
-                log: `\nPerimeter Scan Complete. Starting Inner Scan for Enclaves.`
-            });
+            // Phase 2 intro
+            steps.push(snap({
+                code: [8, 9], phase: 'Phase 2',
+                panel: `<b>Phase 2</b> &#8212; every land cell reachable from the border is now <span class="safe">safe</span>. Scan the interior: any remaining unvisited land is a <span class="trap">trapped enclave</span>.`,
+                log: `phase 2  scan interior for trapped land`
+            }));
 
-            // Phase 2: Inner Scan
+            // Phase 2: interior scan
             for (let r = 1; r < R - 1; r++) {
                 for (let c = 1; c < C - 1; c++) {
-                    let val = grid[r][c];
-                    
-                    if (val === 1 && !visited[r][c]) {
-                        enclaves[r][c] = true;
-                        count++;
-
-                        steps.push({
-                            type: 'enclave_found', visited: deepCopy(visited), enclaves: deepCopy(enclaves), count: count,
-                            scan: {r, c}, active: null, neighbor: null, phase: 'Phase 2: Inner Scan',
-                            panel: `<b>Inner Scan:</b> Found unvisited land at <code>(${r}, ${c})</code>!<br>It cannot reach the boundary. Mark as an <b style="color:var(--accent-red)">Enclave</b> and increment count to <b>${count}</b>.`,
-                            statusText: `Enclave found at (${r}, ${c})!`,
-                            log: `Inner scan (${r}, ${c}): Trapped! Count = ${count}.`,
-                            logColor: 'var(--accent-red)'
-                        });
+                    const v = GRID[r][c];
+                    if (v === 1 && !visited[r][c]) {
+                        enclave[r][c] = true; count++;
+                        steps.push(snap({
+                            code: [10], scan: [r, c], phase: 'Phase 2',
+                            panel: `Interior <code>(${r}, ${c})</code> is land but never reached the border &#8594; <span class="trap">trapped enclave</span>. Increment count to <b>${count}</b>.`,
+                            log: `inner (${r},${c})  trapped enclave! count=${count}`
+                        }));
                     } else {
-                        steps.push({
-                            type: 'inner_skip', visited: deepCopy(visited), enclaves: deepCopy(enclaves), count: count,
-                            scan: {r, c}, active: null, neighbor: null, phase: 'Phase 2: Inner Scan',
-                            panel: `<b>Inner Scan:</b> Checking <code>(${r}, ${c})</code>.<br>It is water or Safe land. Skipping.`,
-                            statusText: `Scanning interior...`,
-                            log: `Inner scan (${r}, ${c}): Skip.`
-                        });
+                        steps.push(snap({
+                            code: [9], scan: [r, c], phase: 'Phase 2',
+                            panel: `Interior <code>(${r}, ${c})</code> is water or already <span class="safe">safe</span> &#8594; skip.`,
+                            log: `inner (${r},${c})  ${v === 1 ? 'safe' : 'water'} &#8594; skip`
+                        }));
                     }
                 }
             }
 
-            steps.push({
-                type: 'final', visited: deepCopy(visited), enclaves: deepCopy(enclaves), count: count,
-                scan: null, active: null, neighbor: null, phase: 'Complete',
-                panel: `<b>Algorithm Complete!</b><br>We've mapped all safe zones and found all trapped land.<br>Total number of Enclave cells is <b style="color:var(--accent-red); font-size:18px;">${count}</b>.`,
-                complete: true, result: count,
-                statusText: `Finished.`,
-                log: `\nAlgorithm Complete. Total Enclaves = ${count}`,
-                logColor: 'var(--accent-red)'
-            });
+            // FINAL
+            steps.push(snap({
+                code: [11], phase: 'Complete', complete: true,
+                panel: `Done &#8212; <b>${count}</b> land cell${count === 1 ? '' : 's'} cannot reach the boundary. <b>numEnclaves = <span class="trap">${count}</span></b>.`,
+                log: `done  total enclaves = ${count}`
+            }));
         }
 
+        // --------- render (persistent DOM) ---------
         function renderStep(idx) {
-            const step = steps[idx];
-            if (!step) return;
+            stepIdx = idx; const step = steps[idx]; if (!step) return;
+            const grid = document.getElementById('dp-grid');
+            const rows = step.R + 1, cols = step.C + 1;       // +1 header row & header col
+            grid.style.gridTemplateColumns = `repeat(${cols}, 46px)`;
 
-            // Render Grid Nodes
-            for(let r=0; r<R; r++){
-                for(let c=0; c<C; c++){
-                    let cell = document.getElementById(`cell-${r}-${c}`);
-                    if(!cell) continue;
+            const scan = step.scan, active = step.active, neighbor = step.neighbor;
+            const used = new Set();
 
-                    let val = grid[r][c];
-                    let isSafe = step.visited[r][c];
-                    let isEnclave = step.enclaves[r][c];
-                    
-                    cell.className = 'grid-cell';
-                    if (val === 0) {
-                        cell.classList.add('cell-water');
+            for (let gr = 0; gr < rows; gr++) {
+                for (let gc = 0; gc < cols; gc++) {
+                    const key = gr + ',' + gc; used.add(key);
+                    let el = cellEls[key];
+                    if (!el) { el = document.createElement('div'); el.className = 'cell'; cellEls[key] = el; }
+                    let cls = 'cell', txt = '', dirMark = '', isData = false;
+
+                    if (gr === 0 && gc === 0) { cls += ' corner'; }
+                    else if (gr === 0) {
+                        cls += ' head';
+                        const dc = gc - 1; txt = 'c' + dc;
+                        if (active && active[1] === dc) cls += ' litC';
+                        else if (scan && scan[1] === dc) cls += ' litC';
+                    } else if (gc === 0) {
+                        cls += ' head';
+                        const dr = gr - 1; txt = 'r' + dr;
+                        if (active && active[0] === dr) cls += ' litR';
+                        else if (scan && scan[0] === dr) cls += ' litR';
                     } else {
-                        if (isEnclave) cell.classList.add('cell-enclave');
-                        else if (isSafe) cell.classList.add('cell-safe');
-                        else cell.classList.add('cell-land');
+                        isData = true;
+                        const dr = gr - 1, dc = gc - 1;
+                        const v = step.board[dr][dc];
+                        txt = String(v);
+
+                        // base layer: water / safe / enclave / unvisited land
+                        if (v === 0) cls += ' water';
+                        else if (step.enclave[dr][dc]) cls += ' enclave';
+                        else if (step.visited[dr][dc]) cls += ' safe';
+                        else cls += ' land';
+
+                        const isActive = active && active[0] === dr && active[1] === dc;
+                        const isNbr = neighbor && neighbor[0] === dr && neighbor[1] === dc;
+                        const isScan = scan && scan[0] === dr && scan[1] === dc;
+
+                        // overlays
+                        if (isScan) cls += ' scanning';
+                        if (isNbr) cls += ' neighbor';
+                        if (isActive) cls += ' active';
+
+                        if (isActive && step.dir) dirMark = DIRMARK[step.dir] || '';
                     }
 
-                    cell.innerText = val;
-
-                    // Action overlays
-                    if (step.scan && step.scan.r === r && step.scan.c === c) {
-                        cell.classList.add('scanning');
-                    }
-                    if (step.active && step.active.r === r && step.active.c === c) {
-                        cell.classList.add('active-node');
-                    }
-                    if (step.neighbor && step.neighbor.r === r && step.neighbor.c === c) {
-                        cell.classList.add('neighbor-node');
-                    }
+                    const wasMissing = el.dataset.born !== '1';
+                    el.className = cls;
+                    el.innerHTML = (dirMark ? `<span class="dir">${dirMark}</span>` : '') + txt;
+                    if (isData && wasMissing) { el.dataset.born = '1'; Motion.pop(el); }
+                    grid.appendChild(el);
                 }
             }
+            Object.keys(cellEls).forEach(k => { if (!used.has(k)) { cellEls[k].remove(); delete cellEls[k]; } });
 
-            // Update Stats
-            document.getElementById('stat-phase').innerText = step.phase;
-            
-            let phaseColor = 'var(--text-dim)';
-            if (step.phase.includes('Phase 1')) phaseColor = 'var(--accent-green)';
-            if (step.phase.includes('Phase 2')) phaseColor = 'var(--accent-red)';
-            if (step.phase.includes('Complete')) phaseColor = 'var(--accent-blue)';
-            document.getElementById('stat-phase').style.color = phaseColor;
-
-            const statCount = document.getElementById('stat-count');
-            if (statCount.innerText !== step.count.toString()) {
-                statCount.style.animation = 'none';
-                statCount.offsetHeight; /* trigger reflow */
-                statCount.style.animation = 'popAnim 0.5s ease';
-            }
-            statCount.innerText = step.count;
-
-            // Update Info Panel
-            document.getElementById('main-panel').innerHTML = step.panel;
-            
-            document.getElementById('val-scan').innerText = step.scan !== null ? `(${step.scan.r}, ${step.scan.c})` : '—';
-            document.getElementById('val-u').innerText = step.active !== null ? `(${step.active.r}, ${step.active.c})` : '—';
-            document.getElementById('val-v').innerText = step.neighbor !== null ? `(${step.neighbor.r}, ${step.neighbor.c})` : '—';
-
-            const resVal = document.getElementById('res-val');
-            resVal.innerText = step.count;
-            if (step.complete) {
-                resVal.classList.add('pop');
+            // --- DFS call-stack column (persistent, keyed by depth+pos) ---
+            const stackCol = document.getElementById('stack-col');
+            const usedFrames = new Set();
+            const st = step.stack || [];
+            if (st.length === 0) {
+                Object.keys(frameEls).forEach(k => { frameEls[k].remove(); delete frameEls[k]; });
+                if (!stackCol.querySelector('.stack-empty')) {
+                    stackCol.innerHTML = '<div class="stack-empty">(empty)</div>';
+                }
             } else {
-                resVal.classList.remove('pop');
+                const emptyEl = stackCol.querySelector('.stack-empty'); if (emptyEl) emptyEl.remove();
+                st.forEach((fr, depth) => {
+                    const fkey = depth + ':' + fr[0] + ',' + fr[1];
+                    usedFrames.add(fkey);
+                    let fe = frameEls[fkey];
+                    const fresh = !fe;
+                    if (fresh) { fe = document.createElement('div'); fe.className = 'frame'; frameEls[fkey] = fe; }
+                    fe.textContent = `dfs(${fr[0]}, ${fr[1]})`;
+                    fe.classList.toggle('top', depth === st.length - 1);
+                    stackCol.appendChild(fe);
+                    if (fresh) Motion.enter(fe);
+                });
+                Object.keys(frameEls).forEach(k => { if (!usedFrames.has(k)) { frameEls[k].remove(); delete frameEls[k]; } });
             }
 
-            document.getElementById('status-text').innerText = step.statusText;
+            const mp = document.getElementById('main-panel');
+            mp.innerHTML = step.panel || '&mdash;';
+            mp.classList.toggle('done', !!step.complete);
+            highlightCode(step.code);
 
-            // Update Log
-            const logPanel = document.getElementById('log');
-            logPanel.innerHTML = '';
-            for (let k = 0; k <= idx; k++) {
-                if (steps[k].log) {
-                    const line = document.createElement('div');
-                    line.style.marginBottom = '2px';
-                    line.style.whiteSpace = 'pre-wrap';
-                    if (steps[k].logColor) line.style.color = steps[k].logColor;
-                    line.innerText = steps[k].log;
-                    logPanel.appendChild(line);
-                }
-            }
-            logPanel.scrollTop = logPanel.scrollHeight;
+            // state pills
+            const fmt = (p) => p ? `(${p[0]},${p[1]})` : '—';
+            document.getElementById('st-phase').textContent = step.phase;
+            document.getElementById('st-scan').textContent = fmt(scan);
+            document.getElementById('st-u').textContent = fmt(active);
+            document.getElementById('st-v').textContent = fmt(neighbor);
+            document.getElementById('st-safe').textContent = step.safe;
+            document.getElementById('st-count').textContent = step.count;
+
+            document.getElementById('step-badge').textContent = `Step ${idx + 1} / ${steps.length}`;
+            document.getElementById('progress-fill').style.width = `${(idx / Math.max(1, steps.length - 1)) * 100}%`;
+
+            const logEl = document.getElementById('log');
+            logEl.innerHTML = steps.slice(0, idx + 1).map(s => `<div style="margin:3px 0;white-space:pre-wrap;">${s.log}</div>`).join('');
+            logEl.scrollTop = logEl.scrollHeight;
         }
 
-        function next() {
-            if (stepIndex < steps.length - 1) {
-                stepIndex++;
-                renderStep(stepIndex);
-            } else pause();
-        }
-
-        function back() {
-            if (stepIndex > 0) {
-                stepIndex--;
-                renderStep(stepIndex);
-            }
-        }
-
-        function reset() {
-            pause();
-            stepIndex = 0;
-            renderStep(0);
-        }
-
+        // --------- controls ---------
+        function nextStep() { if (stepIdx < steps.length - 1) renderStep(stepIdx + 1); else pause(); }
+        function prevStep() { if (stepIdx > 0) renderStep(stepIdx - 1); }
+        function resetSim() { pause(); renderStep(0); }
         function togglePlay() {
             const btn = document.getElementById('play-btn');
-            if (timer) pause();
-            else {
-                btn.innerText = 'Pause';
-                if (stepIndex >= steps.length - 1) stepIndex = 0;
-                timer = setInterval(next, delays[document.getElementById('speed-slider').value]);
+            if (timer) { pause(); return; }
+            btn.textContent = 'Pause';
+            if (stepIdx >= steps.length - 1) renderStep(0);
+            timer = setInterval(() => { if (stepIdx < steps.length - 1) nextStep(); else pause(); }, delays[document.getElementById('speed').value]);
+        }
+        function pause() { clearInterval(timer); timer = null; document.getElementById('play-btn').textContent = 'Play'; }
+
+        function clearDom() {
+            Object.keys(cellEls).forEach(k => { cellEls[k].remove(); delete cellEls[k]; });
+            Object.keys(frameEls).forEach(k => { frameEls[k].remove(); delete frameEls[k]; });
+            document.getElementById('stack-col').innerHTML = '';
+        }
+        function loadData(g) { pause(); GRID = g; R = g.length; C = g[0].length; clearDom(); generateSteps(); renderStep(0); }
+
+        function loadCustom() {
+            try {
+                const g = JSON.parse(document.getElementById('g-input').value);
+                if (!Array.isArray(g) || !Array.isArray(g[0])) throw 0;
+                const w = g[0].length;
+                if (!g.every(row => Array.isArray(row) && row.length === w && row.every(x => x === 0 || x === 1))) throw 0;
+                loadData(g.map(r => r.slice()));
+            } catch (e) {
+                alert('Invalid format. Expected a rectangular 2D array of 0/1, e.g. [[0,0],[1,1]].');
             }
         }
 
-        function pause() {
-            clearInterval(timer);
-            timer = null;
-            document.getElementById('play-btn').innerText = 'Play';
+        // preserve the original file's examples & default
+        const EXAMPLES = [
+            [[0,0,0,0],[1,0,1,0],[0,1,1,0],[0,0,0,0]],
+            [[0,1,1,0],[0,0,1,0],[0,0,0,0],[0,0,0,0]],
+        ];
+        function loadExample(i) {
+            const g = EXAMPLES[i];
+            document.getElementById('g-input').value = JSON.stringify(g);
+            loadData(g.map(r => r.slice()));
         }
 
-        window.onload = () => { setTimeout(init, 100); };
+        document.addEventListener('keydown', (e) => {
+            const tag = (e.target.tagName || '').toLowerCase(); if (tag === 'input' || tag === 'textarea') return;
+            if (e.key === 'ArrowRight') { e.preventDefault(); pause(); nextStep(); }
+            else if (e.key === 'ArrowLeft') { e.preventDefault(); pause(); prevStep(); }
+            else if (e.key === ' ') { e.preventDefault(); togglePlay(); }
+        });
+        document.getElementById('g-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') loadCustom(); });
+        window.addEventListener('resize', () => { if (steps.length) renderStep(stepIdx); });
+
+        buildCodePanel();
+        window.onload = () => loadExample(0);
     </script>
 </body>
 </html>
