@@ -9,7 +9,7 @@ import { ToastProvider, useToast } from './components/Toast';
 import Layout from './components/Layout';
 import JobBoardGuard from './components/JobBoardGuard';
 
-import { loadAllTopics } from './utils/topicsLoader';
+import { loadAllTopics, loadProblemRaw } from './utils/topicsLoader';
 
 // Lazy Load Pages
 const LandingPage = React.lazy(() => import('./pages/LandingPage'));
@@ -122,15 +122,21 @@ function IDEWrapper() {
     const [loading, setLoading] = React.useState(true);
 
     React.useEffect(() => {
-        loadAllTopics().then(topics => {
+        let cancelled = false;
+        loadAllTopics().then(async topics => {
             const flat = topicId
                 ? (topics.find(t => t.id === topicId)?.problems || [])
                 : topics.flatMap(t => t.problems);
-            setAllProblems(flat);
             const found = flat.find(p => String(p.id) === id);
-            setProblem(found ? { ...found._raw, _vizFile: found._vizFile, _topicKey: found._topicKey } : null);
+            // Manifest entries are list metadata only — fetch this problem's
+            // full JSON (statement, examples, solutions) on demand.
+            const raw = found ? await loadProblemRaw(found._topicKey, found._vizFile) : null;
+            if (cancelled) return;
+            setAllProblems(flat);
+            setProblem(raw ? { ...raw, _vizFile: found._vizFile, _topicKey: found._topicKey } : null);
             setLoading(false);
-        }).catch(() => setLoading(false));
+        }).catch(() => { if (!cancelled) setLoading(false); });
+        return () => { cancelled = true; };
     }, [id, topicId]);
 
     const handleNext = () => {
