@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
+import { motion as Motion, AnimatePresence } from 'framer-motion';
 import { ArrowRight, User, Mail, Lock, X, Github, Globe } from 'lucide-react';
 import { getFirebaseAuth } from '../lib/firebase';
 import AuthVisual from '../components/AuthVisual';
+import { staggerParent, fadeUp, notice } from '../lib/motion';
 
 const API = import.meta.env.VITE_API_URL;
 
@@ -61,12 +63,6 @@ export default function Signup({ onLogin, onSignupSuccess }) {
             setPasswordError('A parent/guardian email and consent are required for users under 18.');
             return;
         }
-
-        const payload = {
-            username: formData.name.trim().replace(/\s+/g, '_'),  // Replace spaces with underscores
-            email: formData.email,
-            password: formData.password,
-        };
 
         try {
             // Ensure username meets backend requirements: 3-50 chars, letters/numbers/underscore
@@ -195,16 +191,21 @@ export default function Signup({ onLogin, onSignupSuccess }) {
         <div className="min-h-[calc(100vh-64px)] flex text-foreground bg-background">
             <div className="flex-1 flex flex-col justify-center py-12 px-6 sm:px-10 lg:flex-none lg:px-16 xl:px-24 relative z-10 w-full lg:w-1/2 max-w-[580px]">
 
-                <div className="mx-auto w-full max-w-sm lg:w-96 relative">
-                    <div className="mb-8">
+                <Motion.div
+                    variants={staggerParent}
+                    initial="hidden"
+                    animate="visible"
+                    className="mx-auto w-full max-w-sm lg:w-96 relative"
+                >
+                    <Motion.div variants={fadeUp} className="mb-8">
                         <h2 className="text-[2rem] font-extrabold tracking-[-0.02em] mb-2 text-foreground">Create an account</h2>
                         <p className="text-muted-foreground text-[0.95rem]">
                             Join the community of top-tier developers.
                         </p>
-                    </div>
+                    </Motion.div>
 
                     <form className="space-y-4" onSubmit={handleSubmit}>
-                        <div>
+                        <Motion.div variants={fadeUp}>
                             <label className={labelCls}>Full Name</label>
                             <div className="relative">
                                 <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
@@ -220,9 +221,9 @@ export default function Signup({ onLogin, onSignupSuccess }) {
                                     placeholder="Your Name"
                                 />
                             </div>
-                        </div>
+                        </Motion.div>
 
-                        <div>
+                        <Motion.div variants={fadeUp}>
                             <label className={labelCls}>Email address</label>
                             <div className="relative">
                                 <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
@@ -238,9 +239,9 @@ export default function Signup({ onLogin, onSignupSuccess }) {
                                     placeholder="you@company.com"
                                 />
                             </div>
-                        </div>
+                        </Motion.div>
 
-                        <div>
+                        <Motion.div variants={fadeUp}>
                             <label className={labelCls}>Password</label>
                             <div className="relative">
                                 <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
@@ -257,8 +258,15 @@ export default function Signup({ onLogin, onSignupSuccess }) {
                                 />
                             </div>
                             {/* Password Strength Indicator */}
+                            <AnimatePresence>
                             {formData.password && (
-                                <div className="mt-2.5 p-3 rounded-xl border bg-muted/50 border-border">
+                                <Motion.div
+                                    variants={notice}
+                                    initial="hidden"
+                                    animate="visible"
+                                    exit="exit"
+                                    className="mt-2.5 p-3 rounded-xl glass-card"
+                                >
                                     <div className="flex items-center gap-1 mb-2">
                                         <div className={`h-1 flex-1 rounded-full transition-all duration-500 ${passwordStrength >= 1 ? strengthColor() : 'bg-border'}`}></div>
                                         <div className={`h-1 flex-1 rounded-full transition-all duration-500 ${passwordStrength >= 2 ? strengthColor() : 'bg-border'}`}></div>
@@ -271,11 +279,12 @@ export default function Signup({ onLogin, onSignupSuccess }) {
                                         </span>
                                         <span className="font-mono text-[10px] text-muted-foreground">Min 8 chars, 1 num & sym</span>
                                     </div>
-                                </div>
+                                </Motion.div>
                             )}
-                        </div>
+                            </AnimatePresence>
+                        </Motion.div>
 
-                        <div>
+                        <Motion.div variants={fadeUp}>
                             <label className={labelCls}>Confirm Password</label>
                             <div className="relative">
                                 <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
@@ -291,9 +300,9 @@ export default function Signup({ onLogin, onSignupSuccess }) {
                                     placeholder="••••••••"
                                 />
                             </div>
-                        </div>
+                        </Motion.div>
 
-                        <div>
+                        <Motion.div variants={fadeUp}>
                             <label className={labelCls}>Date of birth</label>
                             <div className="relative">
                                 <input
@@ -306,10 +315,17 @@ export default function Signup({ onLogin, onSignupSuccess }) {
                                     className="block w-full rounded-xl border py-3 px-4 text-sm transition-all duration-150 focus:border-primary focus:ring-2 focus:ring-primary/20 focus:outline-none border-border bg-card text-foreground hover:border-primary/40"
                                 />
                             </div>
-                        </div>
+                        </Motion.div>
 
+                        <AnimatePresence>
                         {isMinor && (
-                            <div className="rounded-xl border border-border bg-muted/40 p-4 space-y-3">
+                            <Motion.div
+                                variants={notice}
+                                initial="hidden"
+                                animate="visible"
+                                exit="exit"
+                                className="rounded-xl glass-card p-4 space-y-3"
+                            >
                                 <p className="text-sm text-muted-foreground">
                                     Since you're under 18, a parent or guardian must provide their email and consent.
                                 </p>
@@ -339,30 +355,38 @@ export default function Signup({ onLogin, onSignupSuccess }) {
                                     />
                                     <span>My parent/guardian consents to my creating this account and to Marevlo processing my data.</span>
                                 </label>
-                            </div>
+                            </Motion.div>
                         )}
+                        </AnimatePresence>
 
+                        <AnimatePresence>
                         {passwordError && (
-                            <div className="rounded-xl bg-red-500/10 p-3 text-red-500 text-sm flex items-center gap-2 border border-red-500/25">
+                            <Motion.div
+                                variants={notice}
+                                initial="hidden"
+                                animate="visible"
+                                exit="exit"
+                                className="rounded-xl bg-red-500/10 p-3 text-red-500 text-sm flex items-center gap-2 border border-red-500/25"
+                            >
                                 <X size={15} className="flex-shrink-0" /> {passwordError}
-                            </div>
+                            </Motion.div>
                         )}
+                        </AnimatePresence>
 
-                        <div className="pt-1">
+                        <Motion.div variants={fadeUp} className="pt-1">
                             <button
                                 type="submit"
-                                className="flex w-full justify-center items-center gap-2 rounded-xl px-4 py-3 text-sm font-bold text-primary-foreground transition-all duration-150 hover:-translate-y-0.5 active:scale-[0.98] active:translate-y-0"
+                                className="glass-glow flex w-full justify-center items-center gap-2 rounded-xl px-4 py-3 text-sm font-bold text-primary-foreground transition-all duration-150 hover:-translate-y-0.5 active:scale-[0.98] active:translate-y-0"
                                 style={{
                                     background: 'linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%)',
-                                    boxShadow: '0 4px 16px rgba(var(--primary-rgb),0.3), 0 1px 0 rgba(255,255,255,0.15) inset',
                                 }}
                             >
                                 Create Account <ArrowRight size={15} />
                             </button>
-                        </div>
+                        </Motion.div>
                     </form>
 
-                    <div className="mt-7">
+                    <Motion.div variants={fadeUp} className="mt-7">
                         <div className="relative flex items-center gap-3">
                             <div className="flex-1 border-t border-border" />
                             <span className="text-[12px] font-medium text-muted-foreground whitespace-nowrap px-1">or sign up with</span>
@@ -387,15 +411,15 @@ export default function Signup({ onLogin, onSignupSuccess }) {
                                 {googleLoading ? 'Signing up…' : 'Google'}
                             </button>
                         </div>
-                    </div>
+                    </Motion.div>
 
-                    <p className="mt-8 text-center text-[13px] text-muted-foreground">
+                    <Motion.p variants={fadeUp} className="mt-8 text-center text-[13px] text-muted-foreground">
                         Already have an account?{' '}
                         <button onClick={onLogin} className="font-bold text-primary hover:text-primary/80 transition-colors">
                             Sign in
                         </button>
-                    </p>
-                </div>
+                    </Motion.p>
+                </Motion.div>
             </div>
 
             {/* Right Side - Visuals */}

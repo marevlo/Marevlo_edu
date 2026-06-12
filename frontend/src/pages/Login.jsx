@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
+import { motion as Motion, AnimatePresence } from 'framer-motion';
 import { ArrowRight, Github, Globe, X, Mail, Lock } from 'lucide-react';
 import { getFirebaseAuth } from '../lib/firebase';
 import AuthVisual from '../components/AuthVisual';
+import { staggerParent, fadeUp, notice, backdrop, modalPanel } from '../lib/motion';
 
 const API = import.meta.env.VITE_API_URL;
 
@@ -200,7 +202,7 @@ export default function Login({ onLogin, onSignup }) {
     const inputCls = 'block w-full rounded-xl border py-3 pl-11 pr-4 text-sm transition-all duration-150 focus:border-primary focus:ring-2 focus:ring-primary/20 focus:outline-none border-border bg-card text-foreground placeholder:text-muted-foreground hover:border-primary/40';
     const iconCls = 'text-muted-foreground';
     const socialBtnCls = 'flex w-full items-center justify-center gap-2.5 rounded-xl px-3 py-2.5 border transition-all duration-150 bg-card text-foreground hover:bg-muted border-border hover:border-primary/30 text-sm font-semibold';
-    const modalPanelCls = 'w-full max-w-md rounded-2xl border shadow-2xl relative overflow-hidden bg-card border-border';
+    const modalPanelCls = 'w-full max-w-md rounded-2xl relative overflow-hidden glass-card';
     const modalDividerCls = 'border-border';
     const modalTitleCls = 'text-lg font-bold flex items-center gap-2 text-foreground';
     const modalCloseCls = 'p-2 rounded-lg transition-colors hover:bg-muted text-muted-foreground hover:text-foreground';
@@ -211,22 +213,35 @@ export default function Login({ onLogin, onSignup }) {
     return (
         <div className="min-h-[calc(100vh-64px)] flex text-foreground bg-background">
             <div className="flex-1 flex flex-col justify-center py-12 px-6 sm:px-10 lg:flex-none lg:px-16 xl:px-24 relative z-10 w-full lg:w-1/2 max-w-[580px]">
-                <div className="mx-auto w-full max-w-sm lg:w-96 relative">
-                    <div className="mb-9">
+                <Motion.div
+                    variants={staggerParent}
+                    initial="hidden"
+                    animate="visible"
+                    className="mx-auto w-full max-w-sm lg:w-96 relative"
+                >
+                    <Motion.div variants={fadeUp} className="mb-9">
                         <h2 className="text-[2rem] font-extrabold tracking-[-0.02em] mb-2 text-foreground">Welcome back</h2>
                         <p className="text-muted-foreground text-[0.95rem]">
                             Sign in to continue your coding streak.
                         </p>
-                    </div>
+                    </Motion.div>
 
+                    <AnimatePresence>
                     {error && (
-                        <div className="mb-6 p-3.5 rounded-xl bg-red-500/10 border border-red-500/25 text-red-500 text-sm font-medium flex items-center gap-2">
+                        <Motion.div
+                            variants={notice}
+                            initial="hidden"
+                            animate="visible"
+                            exit="exit"
+                            className="mb-6 p-3.5 rounded-xl bg-red-500/10 border border-red-500/25 text-red-500 text-sm font-medium flex items-center gap-2"
+                        >
                             <X size={15} className="flex-shrink-0" /> {error}
-                        </div>
+                        </Motion.div>
                     )}
+                    </AnimatePresence>
 
                     <form action="#" className="space-y-5" onSubmit={handleSubmit}>
-                        <div>
+                        <Motion.div variants={fadeUp}>
                             <label htmlFor="email" className={labelCls}>Email address</label>
                             <div className="relative">
                                 <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
@@ -244,9 +259,9 @@ export default function Login({ onLogin, onSignup }) {
                                     placeholder="you@example.com"
                                 />
                             </div>
-                        </div>
+                        </Motion.div>
 
-                        <div>
+                        <Motion.div variants={fadeUp}>
                             <div className="flex items-center justify-between mb-1.5">
                                 <label htmlFor="password" className={labelCls} style={{ margin: 0 }}>Password</label>
                                 <button
@@ -273,23 +288,22 @@ export default function Login({ onLogin, onSignup }) {
                                     placeholder="••••••••"
                                 />
                             </div>
-                        </div>
+                        </Motion.div>
 
-                        <div className="pt-1">
+                        <Motion.div variants={fadeUp} className="pt-1">
                             <button
                                 type="submit"
-                                className="flex w-full justify-center items-center gap-2 rounded-xl px-4 py-3 text-sm font-bold text-primary-foreground transition-all duration-150 hover:-translate-y-0.5 active:scale-[0.98] active:translate-y-0"
+                                className="glass-glow flex w-full justify-center items-center gap-2 rounded-xl px-4 py-3 text-sm font-bold text-primary-foreground transition-all duration-150 hover:-translate-y-0.5 active:scale-[0.98] active:translate-y-0"
                                 style={{
                                     background: 'linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%)',
-                                    boxShadow: '0 4px 16px rgba(var(--primary-rgb),0.3), 0 1px 0 rgba(255,255,255,0.15) inset',
                                 }}
                             >
                                 Sign in <ArrowRight size={15} />
                             </button>
-                        </div>
+                        </Motion.div>
                     </form>
 
-                    <div className="mt-7">
+                    <Motion.div variants={fadeUp} className="mt-7">
                         <div className="relative flex items-center gap-3">
                             <div className="flex-1 border-t border-border" />
                             <span className="text-[12px] font-medium text-muted-foreground whitespace-nowrap px-1">or continue with</span>
@@ -311,25 +325,38 @@ export default function Login({ onLogin, onSignup }) {
                                 {googleLoading ? 'Signing in…' : 'Google'}
                             </button>
                         </div>
-                    </div>
+                    </Motion.div>
 
-                    <p className="mt-9 text-center text-[13px] text-muted-foreground">
+                    <Motion.p variants={fadeUp} className="mt-9 text-center text-[13px] text-muted-foreground">
                         Don't have an account?{' '}
                         <button onClick={onSignup} className="font-bold text-primary hover:text-primary/80 transition-colors">
                             Sign up
                         </button>
-                    </p>
-                </div>
+                    </Motion.p>
+                </Motion.div>
             </div>
 
             <AuthVisual />
 
+            <AnimatePresence>
             {forgotOpen && (
-                <div
-                    className="fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-md"
-                    style={{ backgroundColor: 'rgba(0,0,0,0.6)' }}
-                >
-                    <div className={modalPanelCls}>
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+                    <Motion.div
+                        variants={backdrop}
+                        initial="hidden"
+                        animate="visible"
+                        exit="exit"
+                        className="absolute inset-0 backdrop-blur-md"
+                        style={{ backgroundColor: 'rgba(0,0,0,0.6)' }}
+                        onClick={() => { setForgotOpen(false); resetForgotState(); }}
+                    />
+                    <Motion.div
+                        variants={modalPanel}
+                        initial="hidden"
+                        animate="visible"
+                        exit="exit"
+                        className={modalPanelCls}
+                    >
                         <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-violet-600 to-cyan-500" />
 
                         <div className={`p-6 border-b flex items-center justify-between ${modalDividerCls}`}>
@@ -426,9 +453,10 @@ export default function Login({ onLogin, onSignup }) {
                                 </button>
                             )}
                         </div>
-                    </div>
+                    </Motion.div>
                 </div>
             )}
+            </AnimatePresence>
         </div>
     );
 }
