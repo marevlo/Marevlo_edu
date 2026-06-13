@@ -73,7 +73,11 @@ resource "aws_iam_role_policy_attachment" "task_exec" {
   role       = aws_iam_role.task_exec.name
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
 }
-# Allow the execution role to read the app secret (injected as env).
+data "aws_secretsmanager_secret" "firebase" {
+  name = "marevlo-prod-firebase"
+}
+
+# Allow the execution role to read the app secret and firebase secret (injected as env).
 resource "aws_iam_role_policy" "read_secret" {
   role = aws_iam_role.task_exec.id
   policy = jsonencode({
@@ -81,7 +85,10 @@ resource "aws_iam_role_policy" "read_secret" {
     Statement = [{
       Effect   = "Allow"
       Action   = ["secretsmanager:GetSecretValue"]
-      Resource = [aws_secretsmanager_secret.app.arn]
+      Resource = [
+        aws_secretsmanager_secret.app.arn,
+        data.aws_secretsmanager_secret.firebase.arn
+      ]
     }]
   })
 }
@@ -119,8 +126,12 @@ resource "aws_cloudwatch_log_group" "runner" {
 
 # helper: secret env mapping
 locals {
-  secret_keys = ["JWT_SECRET", "DATABASE_URL", "REDIS_URL", "FIREBASE_CREDENTIALS_JSON", "SMTP_HOST", "SMTP_USER", "SMTP_PASS", "SMTP_FROM"]
-  api_secrets = [for k in local.secret_keys : { name = k, valueFrom = "${aws_secretsmanager_secret.app.arn}:${k}::" }]
+  secret_keys = ["JWT_SECRET", "DATABASE_URL", "REDIS_URL", "SMTP_HOST", "SMTP_USER", "SMTP_PASS", "SMTP_FROM"]
+  app_secrets = [for k in local.secret_keys : { name = k, valueFrom = "${aws_secretsmanager_secret.app.arn}:${k}::" }]
+  api_secrets = concat(
+    local.app_secrets,
+    [{ name = "FIREBASE_CREDENTIALS_JSON", valueFrom = data.aws_secretsmanager_secret.firebase.arn }]
+  )
 }
 
 # ── runner task + service (internal, isolated) ───────────────────────────────
