@@ -27,11 +27,17 @@ export default function Navigation() {
     const [scrolled, setScrolled] = useState(false);
     const profileMenuRef = useRef(null);
 
-    // Detect scroll to add elevated shadow to nav
+    // Detect scroll to add elevated shadow to nav.
+    // Layout.jsx puts overflow-auto on <main>, not on window — so
+    // window.scrollY stays 0 forever. We listen on the actual scroller.
     useEffect(() => {
-        const onScroll = () => setScrolled(window.scrollY > 8);
-        window.addEventListener('scroll', onScroll, { passive: true });
-        return () => window.removeEventListener('scroll', onScroll);
+        const scroller = document.getElementById('main-scroll') || window;
+        const onScroll = () => {
+            const top = scroller === window ? window.scrollY : scroller.scrollTop;
+            setScrolled(top > 8);
+        };
+        scroller.addEventListener('scroll', onScroll, { passive: true });
+        return () => scroller.removeEventListener('scroll', onScroll);
     }, []);
 
     const heardFromOptions = [

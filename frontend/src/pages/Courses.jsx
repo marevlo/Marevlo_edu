@@ -314,6 +314,72 @@ export default function Courses() {
 
             <div className="page-container relative z-10 py-8 sm:py-12">
 
+                {/* Search bar + Level filter — always visible at the top */}
+                <div className="mb-8 flex flex-col sm:flex-row gap-3 items-stretch sm:items-center">
+                    {/* Search input */}
+                    <div className="relative flex-1">
+                        <Search size={15} style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: 'var(--muted-foreground)', pointerEvents: 'none' }} />
+                        <input
+                            ref={searchRef}
+                            type="text"
+                            placeholder="Search courses… (Ctrl+K)"
+                            value={search}
+                            onChange={e => setSearch(e.target.value)}
+                            className="search-focus"
+                            style={{
+                                width: '100%',
+                                paddingLeft: 38, paddingRight: search ? 36 : 14,
+                                paddingTop: 10, paddingBottom: 10,
+                                borderRadius: 12,
+                                border: '1px solid var(--border)',
+                                background: 'var(--card)',
+                                color: 'var(--foreground)',
+                                fontSize: '0.875rem',
+                                outline: 'none',
+                                transition: 'border-color 0.2s, box-shadow 0.2s',
+                            }}
+                            onFocus={e => { e.target.style.borderColor = 'rgba(102,114,224,0.5)'; e.target.style.boxShadow = '0 0 0 3px rgba(102,114,224,0.12)'; }}
+                            onBlur={e => { e.target.style.borderColor = 'var(--border)'; e.target.style.boxShadow = 'none'; }}
+                        />
+                        {search && (
+                            <button
+                                onClick={() => setSearch('')}
+                                style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--muted-foreground)', background: 'transparent', border: 'none', padding: 4, cursor: 'pointer', display: 'flex' }}
+                                aria-label="Clear search"
+                            >
+                                <X size={14} />
+                            </button>
+                        )}
+                    </div>
+                    {/* Level filter pills */}
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                        {['Beginner', 'Intermediate', 'Advanced', 'Expert'].map(lvl => {
+                            const cfg = LEVEL_COLORS[lvl] ?? LEVEL_COLORS['Intermediate'];
+                            const isOn = activeLevels.includes(lvl);
+                            return (
+                                <button
+                                    key={lvl}
+                                    onClick={() => setActiveLevels(prev => isOn ? prev.filter(l => l !== lvl) : [...prev, lvl])}
+                                    className="px-3 py-1.5 rounded-full text-xs font-bold transition-all duration-200"
+                                    style={{
+                                        background: isOn ? cfg.bg : 'var(--card)',
+                                        color: isOn ? cfg.color : 'var(--muted-foreground)',
+                                        border: `1px solid ${isOn ? cfg.color + '60' : 'var(--border)'}`,
+                                        transform: isOn ? 'scale(1.05)' : 'scale(1)',
+                                    }}
+                                >
+                                    {lvl}
+                                </button>
+                            );
+                        })}
+                        {activeLevels.length > 0 && (
+                            <button onClick={() => setActiveLevels([])} className="px-2 py-1.5 rounded-full text-xs font-semibold transition-all" style={{ color: 'var(--muted-foreground)', background: 'transparent', border: 'none' }}>
+                                Clear
+                            </button>
+                        )}
+                    </div>
+                </div>
+
                 {/* Breadcrumb (when inside a folder and not searching) */}
                 {pathIds.length > 0 && !filteredResults && (
                     <Breadcrumb path={breadcrumbs} onNavigate={handleNavigate} />

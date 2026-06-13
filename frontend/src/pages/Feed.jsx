@@ -719,7 +719,7 @@ export default function Feed() {
                 <div
                     role="status"
                     aria-live="polite"
-                    className="fixed bottom-6 left-6 right-6 sm:left-auto sm:right-6 sm:w-80 z-50"
+                    className="fixed bottom-6 left-6 right-6 sm:right-auto sm:w-80 z-50"
                     style={{
                         background: toast.type === 'error'
                             ? 'linear-gradient(135deg,#e06661,#f43f5e)'

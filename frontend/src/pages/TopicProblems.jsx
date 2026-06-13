@@ -5,9 +5,9 @@ import { loadAllTopics } from '../utils/topicsLoader';
 import { useTheme } from '../context/ThemeContext';
 
 const difficultyConfig = {
-    Easy:   { label: 'Easy',   classes: 'bg-green-100 text-green-700 border border-green-200' },
-    Medium: { label: 'Medium', classes: 'bg-amber-100 text-amber-700 border border-amber-200' },
-    Hard:   { label: 'Hard',   classes: 'bg-red-100   text-red-700   border border-red-200'   },
+    Easy:   { label: 'Easy',   color: '#41bd78', bg: 'rgba(65,189,120,0.12)',  border: 'rgba(65,189,120,0.35)'  },
+    Medium: { label: 'Medium', color: '#e0a050', bg: 'rgba(224,160,80,0.12)', border: 'rgba(224,160,80,0.35)' },
+    Hard:   { label: 'Hard',   color: '#e06661', bg: 'rgba(224,102,97,0.12)', border: 'rgba(224,102,97,0.35)'  },
 };
 
 const DIFFICULTY_ORDER = { Easy: 0, Medium: 1, Hard: 2 };
@@ -254,7 +254,14 @@ export default function TopicProblems() {
                                         </span>
 
                                         {/* Difficulty */}
-                                        <span className={`text-xs px-2.5 py-0.5 rounded-full font-semibold w-fit ${dc.classes}`}>
+                                        <span
+                                            className="text-xs px-2.5 py-0.5 rounded-full font-semibold w-fit"
+                                            style={{
+                                                background: dc.bg,
+                                                color: dc.color,
+                                                border: `1px solid ${dc.border}`,
+                                            }}
+                                        >
                                             {dc.label}
                                         </span>
 

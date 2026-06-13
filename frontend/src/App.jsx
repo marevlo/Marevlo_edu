@@ -7,6 +7,7 @@ import { MotionConfig } from 'framer-motion';
 import { ToastProvider, useToast } from './components/Toast';
 
 import Layout from './components/Layout';
+import LogoLoader from './components/LogoLoader';
 import JobBoardGuard from './components/JobBoardGuard';
 import CourseAccessGate from './components/CourseAccessGate';
 
@@ -172,7 +173,7 @@ function IDEWrapper() {
     }, [problem]);
 
     if (loading) {
-        return <div className="text-muted-foreground" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>Loading problem…</div>;
+        return <LogoLoader label="Loading problem…" />;
     }
 
     return <IDE
