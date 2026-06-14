@@ -130,6 +130,47 @@ services:
           memory: 768M
     networks: [marevlo, runner_isolated]
 
+  # Reels enhancement worker — consumes the SQS queue and runs HLS transcode
+  # + Whisper auto-captions for published reels. Reels are already live when a
+  # job lands here, so this is best-effort: restarts lose no published content.
+  # For local dev without SQS, set REELS_WORKER_INLINE=true on `api` instead
+  # and this service can stay down.
+  reels-worker:
+    build:
+      context: ./Backend
+      dockerfile: Dockerfile
+    command: ["python", "-m", "app.reels.worker"]
+    # The shared image bakes an HTTP healthcheck (curl :8000/health); the worker
+    # has no web server, so disable it here or it would read "unhealthy".
+    healthcheck:
+      disable: true
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      ENV: ${ENV:-prod}
+      DEBUG: ${DEBUG:-false}
+      DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
+      JWT_SECRET: ${JWT_SECRET}
+      LOG_FORMAT: ${LOG_FORMAT:-json}
+      AWS_REGION: ${AWS_REGION:-ap-south-1}
+      S3_BUCKET: ${S3_BUCKET:-}
+      REELS_SQS_QUEUE_URL: ${REELS_SQS_QUEUE_URL:-}
+      MEDIACONVERT_ROLE_ARN: ${MEDIACONVERT_ROLE_ARN:-}
+      MEDIACONVERT_ENDPOINT_URL: ${MEDIACONVERT_ENDPOINT_URL:-}
+      MEDIACONVERT_QUEUE_ARN: ${MEDIACONVERT_QUEUE_ARN:-}
+      REELS_CDN_BASE_URL: ${REELS_CDN_BASE_URL:-}
+      WHISPER_MODEL: ${WHISPER_MODEL:-base}
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+    networks: [marevlo]
+
   runner:
     build:
       context: ./runner
@@ -166,7 +207,7 @@ services:
       JWT_SECRET: ${JWT_SECRET}
       JWT_ALGORITHM: ${JWT_ALGORITHM:-HS256}
       HUB_CONNECT_IP: jupyterhub
-      DOCKER_NETWORK_NAME: marevlo_net
+      DOCKER_NETWORK_NAME: marevlo_edu_net
       NOTEBOOK_USER_IMAGE: marevlo-notebook-user:latest
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
@@ -200,11 +241,14 @@ volumes:
   jupyterhub_data:
 
 networks:
+  # Project-scoped names so this stack never collides with a sibling project
+  # (e.g. Marevlo-V1) that also runs from another folder. Sharing a fixed
+  # network name across projects causes "network not found" on up/recreate.
   marevlo:
-    name: marevlo_net
+    name: marevlo_edu_net
     driver: bridge
   # Carries ONLY api <-> runner traffic. No data stores are attached, so
   # untrusted code in the runner has nothing on-network to reach.
   runner_isolated:
-    name: marevlo_runner_isolated
+    name: marevlo_edu_runner_isolated
     driver: bridge

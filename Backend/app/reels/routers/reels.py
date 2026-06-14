@@ -191,8 +191,15 @@ def my_reels(user: User = Depends(get_current_user), db: Session = Depends(get_d
 def toggle_like(reel_id: int, user: User = Depends(get_current_user),
                 db: Session = Depends(get_db)):
     from app.reels.models.reel import ReelLike
-    return reel_service.toggle(db, ReelLike, "like_count",
-                               reel_id=reel_id, user_id=user.id)
+    result = reel_service.toggle(db, ReelLike, "like_count",
+                                 reel_id=reel_id, user_id=user.id)
+    if result.get("on"):  # only on a new like — check for a milestone
+        try:
+            from app.reels.services.notification_service import notify_like_milestone
+            notify_like_milestone(db, reel=reel_service.get(db, reel_id))
+        except Exception:  # noqa: BLE001
+            pass
+    return result
 
 
 @reels_router.post("/{reel_id}/save")

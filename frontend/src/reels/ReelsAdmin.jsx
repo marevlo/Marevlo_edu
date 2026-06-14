@@ -180,6 +180,15 @@ function Btn({ icon: Icon, label, tone, onClick }) {
    CreatorStudio — the creator's own reels + transparent status.
      <Route path="/reels/studio" element={<CreatorStudio />} />
    ════════════════════════════════════════════════════════════════ */
+// Direct-publish: reels go live immediately, so "approved" reads as "Live".
+const STATUS_LABEL = {
+    approved: 'Live',
+    pending: 'In review',
+    processing: 'Processing',
+    rejected: 'Rejected',
+    hidden: 'Hidden',
+};
+
 export function CreatorStudio({ onUploadClick }) {
     const [reels, setReels] = useState(null);
     useEffect(() => { reelsApi.mine().then((d) => setReels(d.reels)).catch(() => setReels([])); }, []);
@@ -228,7 +237,7 @@ export function CreatorStudio({ onUploadClick }) {
                             </p>
                         </div>
                         <span className={`text-[11px] font-semibold px-2.5 py-1 rounded-full ${badge(r.status)}`}>
-                            {r.status === 'pending' ? 'In review' : r.status}
+                            {STATUS_LABEL[r.status] || r.status}
                         </span>
                         {r.status === 'approved' && (
                             <a href={`/reels/${r.slug}`} className="text-xs font-semibold text-indigo-600">View ↗</a>

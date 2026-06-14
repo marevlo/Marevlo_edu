@@ -95,6 +95,24 @@ class Settings(BaseSettings):
     S3_PRESIGN_TTL_GET_SECONDS: int = 3600
     S3_PRESIGN_CACHE_SIZE: int = 5000
 
+    # ── Reels processing pipeline ────────────────────────────────────────
+    # Reels publish immediately on upload (direct-publish policy). HLS +
+    # Whisper run asynchronously AFTER the reel is already live, purely to
+    # enhance it. Everything here is optional: with nothing configured the
+    # pipeline degrades to an in-process background thread (dev) or a no-op.
+    REELS_SQS_QUEUE_URL: Optional[str] = None          # SQS task queue (prod worker)
+    REELS_WORKER_INLINE: bool = False                  # run pipeline in-process (dev)
+    REELS_UPLOADS_PER_DAY: int = 5                     # per-user publish rate cap
+    # HLS transcoding (AWS MediaConvert)
+    MEDIACONVERT_ROLE_ARN: Optional[str] = None
+    MEDIACONVERT_ENDPOINT_URL: Optional[str] = None    # account-specific MC endpoint
+    MEDIACONVERT_QUEUE_ARN: Optional[str] = None
+    REELS_CDN_BASE_URL: Optional[str] = None           # CloudFront domain serving HLS
+    # Auto-transcription (faster-whisper)
+    WHISPER_MODEL: str = "base"                         # tiny|base|small|medium
+    WHISPER_DEVICE: str = "cpu"
+    WHISPER_COMPUTE_TYPE: str = "int8"
+
     # ── Email (SES via SMTP) ─────────────────────────────────────────────
     SMTP_HOST: Optional[str] = None
     SMTP_PORT: int = 587

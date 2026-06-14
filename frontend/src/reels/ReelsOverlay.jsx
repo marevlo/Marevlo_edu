@@ -2,9 +2,12 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import {
     X, Heart, Bookmark, Share2, Flag, Play, ChevronUp, ChevronDown,
-    Captions, Loader2, Film, Lock, Sparkles,
+    Captions, Loader2, Film, Lock, Sparkles, MessageCircle, UserPlus, UserCheck,
 } from 'lucide-react';
 import { reelsApi, shareReel } from './reelsApi';
+import ReelComments from './ReelComments';
+
+const isAuthed = () => !!localStorage.getItem('access_token');
 
 // ReelsPill moved to ReelsBrowser.jsx (the pill now opens the 3-section
 // browser panel, not a raw feed). Re-exported here so existing imports —
@@ -119,6 +122,9 @@ function ReelPlayer({ reel, source, onClose, onEnded, onUpdate }) {
     const [liked, setLiked] = useState(reel.likedByMe);
     const [saved, setSaved] = useState(reel.savedByMe);
     const [likes, setLikes] = useState(reel.likes);
+    const [showComments, setShowComments] = useState(false);
+    const [commentCount, setCommentCount] = useState(reel.commentCount ?? null);
+    const [following, setFollowing] = useState(!!reel.followedByMe);
     const [progress, setProgress] = useState(0);
     const maxWatched = useRef(0);
     const viewSent = useRef(false);
@@ -171,6 +177,12 @@ function ReelPlayer({ reel, source, onClose, onEnded, onUpdate }) {
     const doSave = async () => {
         setSaved((v) => !v);
         try { const d = await reelsApi.save(reel.id); setSaved(d.on); onUpdate({ savedByMe: d.on }); } catch { /* noop */ }
+    };
+    const doFollow = async () => {
+        if (!isAuthed()) { window.location.href = `/signup?from=reel&slug=${reel.slug}`; return; }
+        setFollowing((v) => !v);  // optimistic
+        try { const d = await reelsApi.followCreator(reel.authorId); setFollowing(d.following); onUpdate({ followedByMe: d.following }); }
+        catch { setFollowing((v) => !v); } // revert on error (e.g. self-follow)
     };
     const doCTA = async () => {
         reelsApi.ctaClick(reel.id, source).catch(() => {});
@@ -255,6 +267,10 @@ function ReelPlayer({ reel, source, onClose, onEnded, onUpdate }) {
                         <Heart className={`w-7 h-7 ${liked ? 'fill-rose-500 text-rose-500' : ''}`} />
                         <span className="text-[11px]">{likes}</span>
                     </button>
+                    <button onClick={(e) => { e.stopPropagation(); setShowComments(true); }} aria-label="Comments" className="flex flex-col items-center gap-0.5">
+                        <MessageCircle className="w-6 h-6" />
+                        <span className="text-[11px]">{commentCount ?? 'Comment'}</span>
+                    </button>
                     <button onClick={(e) => { e.stopPropagation(); doSave(); }} aria-label="Save for revision" className="flex flex-col items-center gap-0.5">
                         <Bookmark className={`w-6 h-6 ${saved ? 'fill-emerald-400 text-emerald-400' : ''}`} />
                         <span className="text-[11px]">Save</span>
@@ -274,6 +290,11 @@ function ReelPlayer({ reel, source, onClose, onEnded, onUpdate }) {
                             {(reel.author || '?')[0].toUpperCase()}
                         </span>
                         <span className="text-[13px] font-semibold">@{reel.author}</span>
+                        <button onClick={(e) => { e.stopPropagation(); doFollow(); }}
+                            className={`inline-flex items-center gap-1 text-[11px] font-semibold rounded-full px-2.5 py-0.5 transition-colors
+                                        ${following ? 'bg-white/15 text-white/90' : 'bg-white text-gray-900 hover:bg-gray-100'}`}>
+                            {following ? <><UserCheck className="w-3 h-3" /> Following</> : <><UserPlus className="w-3 h-3" /> Follow</>}
+                        </button>
                         <span className="text-[11px] text-white/55">{reel.time}</span>
                     </div>
                     <p className="text-[15px] font-semibold leading-snug">{reel.title}</p>
@@ -303,6 +324,11 @@ function ReelPlayer({ reel, source, onClose, onEnded, onUpdate }) {
                     <p className="text-center text-[10.5px] text-white/35 mt-1.5">resolver: {reel.cta.why}</p>
                 )}
             </div>
+
+            {showComments && (
+                <ReelComments reelId={reel.id} onClose={() => setShowComments(false)}
+                    onCountChange={setCommentCount} />
+            )}
         </div>
     );
 }

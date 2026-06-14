@@ -124,6 +124,13 @@ class ReelService:
                     declared_rights: bool, transcript_text: str | None) -> Reel:
         if not declared_rights:
             raise ValidationError("You must confirm you have the right to upload this content")
+        # Direct-publish means uploads go live with no human gate, so the only
+        # backstop against flooding the feed is a per-user daily publish cap.
+        from app.core.config import get_settings
+        from app.core.rate_guard import rate_guard
+        cap = get_settings().REELS_UPLOADS_PER_DAY
+        if cap > 0:
+            rate_guard.check(key=f"reel_publish:{user_id}", limit=cap, window_seconds=86400)
         if not (MIN_DURATION <= duration_seconds <= MAX_DURATION):
             raise ValidationError(f"Reels must be {MIN_DURATION}s–{MAX_DURATION // 60} min")
         if reel_type not in REEL_TYPES:
@@ -159,7 +166,9 @@ class ReelService:
             reel_type=reel_type, difficulty=difficulty, language=language,
             video_object_key=video_object_key, thumbnail_object_key=thumbnail_object_key,
             duration_seconds=duration_seconds, size_bytes=size, content_type=ctype,
-            status="pending", creator_declared_rights=True,
+            status="approved",  # direct-publish: live the moment validation passes
+            published_at=datetime.now(tz=timezone.utc),
+            creator_declared_rights=True,
         )
         db.add(reel)
         db.flush()
@@ -172,11 +181,12 @@ class ReelService:
         if transcript_text:
             db.add(ReelTranscript(reel_id=reel.id, transcript_text=transcript_text.strip(),
                                   language=language, generated_by="manual"))
-        db.add(ReelModerationAction(reel_id=reel.id, reviewer_id=None, action="enqueue",
-                                    reason="submitted by creator"))
+        db.add(ReelModerationAction(reel_id=reel.id, reviewer_id=None, action="auto_published",
+                                    reason="direct-publish: validation passed"))
         db.commit()
         db.refresh(reel)
-        # Hook for the async pipeline (HLS transcode + Whisper). No-ops until wired.
+        # Reel is already live. The async pipeline (HLS transcode + Whisper)
+        # only enhances it afterwards — it never gates publication.
         from app.reels.services.pipeline import enqueue_processing
         enqueue_processing(reel.id)
         return reel
@@ -339,6 +349,7 @@ class ReelService:
             "thumbnailUrl": storage.resolve_url(reel.thumbnail_object_key),
             "author": getattr(author, "username", "unknown"),
             "authorId": reel.user_id,
+            "followedByMe": self._follows_author(db, user, reel.user_id),
             "status": reel.status,
             "likes": reel.like_count, "saves": reel.save_count, "views": reel.view_count,
             "avgCompletion": reel.avg_completion,
@@ -356,6 +367,13 @@ class ReelService:
         if include_transcript and reel.transcript:
             out["transcript"] = reel.transcript.transcript_text
         return out
+
+    def _follows_author(self, db: Session, user, author_id: int) -> bool:
+        uid = getattr(user, "id", None)
+        if not uid or uid == author_id:
+            return False
+        from app.reels.services.social_service import social_service
+        return social_service.is_following(db, follower_id=uid, following_id=author_id)
 
     def bulk_flags(self, db: Session, reel_ids: list[int], user_id: int | None):
         if not user_id or not reel_ids:

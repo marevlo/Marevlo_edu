@@ -51,7 +51,8 @@ export function AuthProvider({ children }) {
                 try {
                     const r = await fetch(`${API_BASE}/auth/refresh`, {
                         method: 'POST',
-                        headers: { Authorization: `Bearer ${refreshToken}` },
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ refresh_token: refreshToken }),
                     });
                     if (r.ok) {
                         const data = await r.json();
@@ -134,7 +135,8 @@ export function AuthProvider({ children }) {
             try {
                 const r = await fetch(`${API_BASE}/auth/refresh`, {
                     method: 'POST',
-                    headers: { Authorization: `Bearer ${refreshToken}` },
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ refresh_token: refreshToken }),
                 });
                 if (r.ok) {
                     const data = await r.json();

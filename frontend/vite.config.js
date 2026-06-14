@@ -41,7 +41,11 @@ export default defineConfig(({ mode }) => ({
     server: {
         proxy: {
             '/api': {
-                target: 'http://localhost:8000',
+                // 127.0.0.1, not localhost: Docker publishes the API on IPv4
+                // (0.0.0.0:8000), but Node 17+ resolves "localhost" to IPv6
+                // (::1) first, so a "localhost" target fails to connect and the
+                // proxy surfaces a 500 (e.g. "Google login failed").
+                target: 'http://127.0.0.1:8000',
                 changeOrigin: true,
                 secure: false,
                 ws: true,

@@ -60,6 +60,12 @@ from app.reels.routers.reels import (
     public_router as reels_public_router,
     reels_router,
 )
+from app.reels.routers.comments import (
+    comments_admin_router,
+    comments_public_router,
+    comments_router,
+)
+from app.reels.routers.social import social_router
 
 # Import the registry so all models are loaded into Base.metadata.
 from app import models_registry  # noqa: F401
@@ -169,6 +175,10 @@ def create_app() -> FastAPI:
     app.include_router(reels_public_router)
     app.include_router(reels_router)
     app.include_router(reels_admin_router)
+    app.include_router(comments_public_router)
+    app.include_router(comments_router)
+    app.include_router(comments_admin_router)
+    app.include_router(social_router)
 
     # ── Health ──────────────────────────────────────────────────────────
     @app.get("/", tags=["meta"])

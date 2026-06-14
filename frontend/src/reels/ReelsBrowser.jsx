@@ -2,11 +2,14 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import {
     X, ChevronLeft, ChevronRight, Play, Code2, Network, Layers,
-    Loader2, Upload,
+    Loader2, Upload, Film,
 } from 'lucide-react';
 import { reelsApi } from './reelsApi';
 import ReelsOverlay from './ReelsOverlay';
 import ReelUploadModal from './ReelUploadModal';
+import { CreatorStudio } from './ReelsAdmin';
+
+const isAuthed = () => !!localStorage.getItem('access_token');
 
 /* ════════════════════════════════════════════════════════════════
    ReelsBrowser — the floater experience.
@@ -83,6 +86,9 @@ export default function ReelsBrowser({ onClose }) {
     const [loadingTopic, setLoadingTopic] = useState(null);
     const [player, setPlayer] = useState(null);          // {reels, name}
     const [uploadFor, setUploadFor] = useState(null);    // {slug,name,kind}
+    const [uploadOpen, setUploadOpen] = useState(false); // footer "Upload a reel" (no preset anchor)
+    const [authHint, setAuthHint] = useState(false);
+    const [studioKey, setStudioKey] = useState(0);       // bump to force CreatorStudio refetch
     const [lastWatch, setLastWatch] = useState(() => {
         try { return JSON.parse(localStorage.getItem(LAST_KEY)) || null; } catch { return null; }
     });
@@ -121,6 +127,12 @@ export default function ReelsBrowser({ onClose }) {
         }
     };
 
+    const openUpload = () => {
+        setAuthHint(false);
+        if (!isAuthed()) { setAuthHint(true); return; }
+        setUploadOpen(true);
+    };
+
     const resumeTopic = () => {
         if (!lastWatch || !topics) return;
         const t = topics.find((x) => x.slug === lastWatch.slug);
@@ -139,7 +151,7 @@ export default function ReelsBrowser({ onClose }) {
             >
                 {/* header */}
                 <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-100 dark:border-zinc-800">
-                    {view === 'topics' ? (
+                    {view !== 'sections' ? (
                         <button onClick={() => { setView('sections'); setEmptyTopic(null); }} aria-label="Back"
                             className="w-8 h-8 rounded-full flex items-center justify-center text-gray-500
                                        hover:bg-gray-100 dark:hover:bg-zinc-800">
@@ -148,7 +160,8 @@ export default function ReelsBrowser({ onClose }) {
                     ) : <span className="w-8" />}
                     <h2 className="flex-1 font-bold text-[15px] text-gray-900 dark:text-white">
                         {view === 'sections' ? 'Reels'
-                            : <>{S.short} <span className="text-[11px] font-semibold text-gray-400">· pick a topic</span></>}
+                            : view === 'studio' ? 'Your reels'
+                                : <>{S.short} <span className="text-[11px] font-semibold text-gray-400">· pick a topic</span></>}
                     </h2>
                     <button onClick={onClose} aria-label="Close"
                         className="w-8 h-8 rounded-full flex items-center justify-center text-gray-500
@@ -266,7 +279,35 @@ export default function ReelsBrowser({ onClose }) {
                             </div>
                         </>
                     )}
+
+                    {topics && view === 'studio' && (
+                        <CreatorStudio key={studioKey} onUploadClick={() => openUpload()} />
+                    )}
                 </div>
+
+                {/* persistent create bar */}
+                <div className="border-t border-gray-100 dark:border-zinc-800 px-3 py-2.5 flex items-center gap-2">
+                    <button
+                        onClick={() => openUpload()}
+                        className="flex-1 inline-flex items-center justify-center gap-2 bg-indigo-600 text-white
+                                   text-[13px] font-semibold rounded-xl px-3.5 py-2.5 hover:bg-indigo-700 transition-colors">
+                        <Upload className="w-4 h-4" /> Upload a reel
+                    </button>
+                    <button
+                        onClick={() => { if (!isAuthed()) { setAuthHint(true); return; } setView('studio'); }}
+                        className="inline-flex items-center justify-center gap-1.5 text-[13px] font-semibold rounded-xl
+                                   px-3.5 py-2.5 border border-gray-200 dark:border-zinc-700 text-gray-700 dark:text-gray-200
+                                   hover:bg-gray-50 dark:hover:bg-zinc-800 transition-colors">
+                        <Film className="w-4 h-4" /> Your reels
+                    </button>
+                </div>
+                {authHint && (
+                    <div className="px-3 pb-2.5 -mt-1">
+                        <p className="text-[11.5px] text-amber-600 dark:text-amber-400 text-center">
+                            Please sign in to upload or manage your reels.
+                        </p>
+                    </div>
+                )}
             </div>
 
             {player && (
@@ -283,6 +324,17 @@ export default function ReelsBrowser({ onClose }) {
                     onUploaded={() => {
                         setUploadFor(null); setEmptyTopic(null);
                         reelsApi.topics().then(setTopics).catch(() => {});
+                    }}
+                />
+            )}
+            {uploadOpen && (
+                <ReelUploadModal
+                    onClose={() => setUploadOpen(false)}
+                    onUploaded={() => {
+                        setUploadOpen(false);
+                        reelsApi.topics().then(setTopics).catch(() => {});
+                        setStudioKey((k) => k + 1);  // force CreatorStudio to refetch
+                        setView('studio');           // land the creator on their reels
                     }}
                 />
             )}

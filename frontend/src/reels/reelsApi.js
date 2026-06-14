@@ -44,6 +44,17 @@ export const reelsApi = {
     report: (id, reason, description) =>
         req(`/reels/${id}/report`, { method: 'POST', body: JSON.stringify({ reason, description }) }),
 
+    // ── comments (Phase 2) ──
+    comments: (reelId, page = 1) => req(`/reels/${reelId}/comments?page=${page}`),
+    postComment: (reelId, body, parentId = null) =>
+        req(`/reels/${reelId}/comments`, { method: 'POST', body: JSON.stringify({ body, parent_id: parentId }) }),
+    likeComment: (commentId) => req(`/reels/comments/${commentId}/like`, { method: 'POST' }),
+    deleteComment: (commentId) => req(`/reels/comments/${commentId}`, { method: 'DELETE' }),
+
+    // ── social (Phase 2) ──
+    followCreator: (userId) => req(`/reels/creators/${userId}/follow`, { method: 'POST' }),
+    followingFeed: (page = 1, limit = 10) => req(`/reels/following/feed?page=${page}&limit=${limit}`),
+
     admin: {
         queues: () => req('/reels/admin/queues'),
         queue: (status, page = 1) => req(`/reels/admin/queue/${status}?page=${page}`),

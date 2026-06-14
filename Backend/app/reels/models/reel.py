@@ -95,6 +95,13 @@ class Reel(Base):
     view_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
     avg_completion: Mapped[float] = mapped_column(Float, default=0.0, server_default="0", nullable=False)
 
+    # Async processing state. The reel is already LIVE when these are set —
+    # they track the non-blocking HLS transcode + Whisper transcription that
+    # enhance the reel after publish, not a gate before it.
+    processing_started_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    processing_completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    processing_error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
     deleted_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True, index=True
     )
@@ -219,7 +226,7 @@ class ReelModerationAction(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     reel_id: Mapped[int] = mapped_column(Integer, ForeignKey("reels.id", ondelete="CASCADE"), nullable=False)
     reviewer_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
-    action: Mapped[str] = mapped_column(String(30), nullable=False)  # approve|reject|hide|restore|anchor_edit|enqueue|auto_hide|takedown
+    action: Mapped[str] = mapped_column(String(30), nullable=False)  # auto_published|approve|reject|hide|restore|anchor_edit|enqueue|auto_hide|takedown
     reason: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)

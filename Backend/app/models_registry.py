@@ -58,3 +58,4 @@ from app.reels.models.reel import (  # noqa: F401
     ReelTranscript,
     ReelView,
 )
+from app.reels.models.comment import ReelComment, ReelCommentLike  # noqa: F401

@@ -83,8 +83,8 @@ resource "aws_iam_role_policy" "read_secret" {
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
-      Effect   = "Allow"
-      Action   = ["secretsmanager:GetSecretValue"]
+      Effect = "Allow"
+      Action = ["secretsmanager:GetSecretValue"]
       Resource = [
         aws_secretsmanager_secret.app.arn,
         data.aws_secretsmanager_secret.firebase.arn
@@ -203,9 +203,14 @@ resource "aws_ecs_task_definition" "api" {
   execution_role_arn       = aws_iam_role.task_exec.arn
   task_role_arn            = aws_iam_role.api_task.arn
   container_definitions = jsonencode([{
-    name         = "api"
-    image        = var.api_image
-    essential    = true
+    name      = "api"
+    image     = var.api_image
+    essential = true
+    # Apply DB migrations (advisory-locked so replicas don't race) before
+    # starting gunicorn. Lets every deploy self-migrate — no manual one-off task.
+    command = ["sh", "-c",
+      "python /app/scripts/run_migrations.py && exec gunicorn app.main:app -k uvicorn.workers.UvicornWorker -w 2 --bind 0.0.0.0:8000 --access-logfile - --error-logfile - --timeout 60 --graceful-timeout 30 --keep-alive 5"
+    ]
     portMappings = [{ containerPort = 8000 }]
     environment = [
       { name = "ENV", value = var.env },
@@ -213,6 +218,9 @@ resource "aws_ecs_task_definition" "api" {
       { name = "LOG_FORMAT", value = "json" },
       { name = "AWS_REGION", value = var.region },
       { name = "S3_BUCKET", value = aws_s3_bucket.uploads.bucket },
+      # Reels direct-publish: the API enqueues HLS/Whisper jobs here after a
+      # reel goes live. Consumed by the reels-worker service (see reels.tf).
+      { name = "REELS_SQS_QUEUE_URL", value = aws_sqs_queue.reels.url },
       { name = "CORS_ORIGINS", value = "https://${var.domain},https://www.${var.domain}" },
       { name = "TRUSTED_PROXIES", value = var.vpc_cidr },
       # Runner reachable via Cloud Map private DNS on the API SG path:
@@ -243,6 +251,8 @@ resource "aws_ecs_service" "api" {
   task_definition = aws_ecs_task_definition.api.arn
   desired_count   = var.api_desired_count
   launch_type     = "FARGATE"
+  # Give the task time to migrate + boot before the ALB starts failing it.
+  health_check_grace_period_seconds = 120
   network_configuration {
     subnets         = aws_subnet.private[*].id
     security_groups = [aws_security_group.api.id]

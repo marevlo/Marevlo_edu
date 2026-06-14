@@ -23,3 +23,8 @@ output "rds_endpoint" {
   sensitive = true
 }
 output "app_secret_arn" { value = aws_secretsmanager_secret.app.arn }
+
+# Used to run one-off tasks (e.g. `alembic upgrade head`) via `aws ecs run-task`.
+output "private_subnet_ids" { value = aws_subnet.private[*].id }
+output "api_security_group_id" { value = aws_security_group.api.id }
+output "ecs_cluster" { value = aws_ecs_cluster.main.name }
