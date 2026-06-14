@@ -210,7 +210,9 @@ export default function NotificationBell() {
                     // Tailwind's `absolute` (unlayered CSS wins over utilities)
                     // and un-anchors the panel. Hairline drawn inline below.
                     className="absolute right-0 top-12 w-[min(380px,calc(100vw-2rem))] max-sm:fixed max-sm:left-4 max-sm:right-4 max-sm:top-20 max-sm:w-auto rounded-2xl shadow-2xl z-50 overflow-hidden glass-card"
-                    style={{ transformOrigin: 'top right' }}
+                    // Solid --popover fill: nested backdrop-filters inside the nav
+                    // don't blur, so the glass fill would show content bleeding through.
+                    style={{ transformOrigin: 'top right', background: 'var(--popover)' }}
                 >
                     {/* Gradient hairline (the .glass-edge look) */}
                     <div
