@@ -41,6 +41,9 @@ const RefundPolicy = React.lazy(() => import('./pages/legal/RefundPolicy'));
 const CookiePolicy = React.lazy(() => import('./pages/legal/CookiePolicy'));
 const Settings = React.lazy(() => import('./pages/Settings'));
 const VerifyEmail = React.lazy(() => import('./pages/VerifyEmail'));
+const PublicReelPage = React.lazy(() => import('./reels/PublicReelPage'));
+const CreatorStudio = React.lazy(() => import('./reels/ReelsAdmin').then(m => ({ default: m.CreatorStudio })));
+const ReelsModerationDashboard = React.lazy(() => import('./reels/ReelsAdmin').then(m => ({ default: m.ReelsModerationDashboard })));
 
 export default function App() {
     return (
@@ -79,6 +82,9 @@ export default function App() {
                                 <Route path="/legal/cookies" element={<CookiePolicy />} />
                                 <Route path="/settings" element={<Settings />} />
                                 <Route path="/verify-email" element={<VerifyEmail />} />
+                                <Route path="/reels/:slug" element={<PublicReelPage />} />
+                                <Route path="/reels/studio" element={<CreatorStudio />} />
+                                <Route path="/admin/reels" element={<ReelsModerationDashboard />} />
                             </Route>
                         </Routes>
                     </Router>

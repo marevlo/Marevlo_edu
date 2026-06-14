@@ -5,6 +5,7 @@ import ErrorBoundary from './ErrorBoundary';
 import MiraWidget from './mira/MiraWidget';
 import CookieConsent from './CookieConsent';
 import LogoLoader from './LogoLoader';
+import { ReelsPill } from '../reels/ReelsBrowser';
 
 export default function Layout() {
     // Key the outlet on the top-level section (/courses, /feed, …) so route
@@ -27,6 +28,7 @@ export default function Layout() {
                 </ErrorBoundary>
             </main>
             <MiraWidget />
+            <ReelsPill />
             <CookieConsent />
         </div>
     );

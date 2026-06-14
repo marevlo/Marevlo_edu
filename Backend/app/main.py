@@ -55,6 +55,11 @@ from app.unlock.router import router as unlock_router
 from app.entitlements.routers.entitlement import router as entitlements_router
 from app.entitlements.routers.admin import router as entitlements_admin_router
 from app.mira.routers.mira import router as mira_router
+from app.reels.routers.reels import (
+    admin_router as reels_admin_router,
+    public_router as reels_public_router,
+    reels_router,
+)
 
 # Import the registry so all models are loaded into Base.metadata.
 from app import models_registry  # noqa: F401
@@ -161,6 +166,9 @@ def create_app() -> FastAPI:
     app.include_router(entitlements_admin_router)
     app.include_router(mira_router)
     app.include_router(bug_reports_router)
+    app.include_router(reels_public_router)
+    app.include_router(reels_router)
+    app.include_router(reels_admin_router)
 
     # ── Health ──────────────────────────────────────────────────────────
     @app.get("/", tags=["meta"])

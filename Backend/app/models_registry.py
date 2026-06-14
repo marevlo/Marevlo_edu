@@ -45,3 +45,16 @@ from app.mira.models.mira import (  # noqa: F401
     MiraUserState,
 )
 from app.mira.models.db_models import MiraConceptLattice  # noqa: F401
+from app.reels.models.reel import (  # noqa: F401
+    Reel,
+    ReelAnchor,
+    ReelCtaEvent,
+    ReelLike,
+    ReelModerationAction,
+    ReelProblemUnlock,
+    ReelReport,
+    ReelSave,
+    ReelTopic,
+    ReelTranscript,
+    ReelView,
+)
