@@ -40,6 +40,19 @@ export const staggerParent = {
     visible: { transition: { staggerChildren: 0.07, delayChildren: 0.05 } },
 };
 
+// Menu list: quickly cascades its items in (dropdowns, context menus).
+// Faster/tighter than staggerParent — tuned for compact menus.
+export const menuList = {
+    hidden: {},
+    visible: { transition: { staggerChildren: 0.035, delayChildren: 0.06 } },
+};
+
+// A single menu row: small fade + slide, snappy enough not to feel laggy
+export const menuItem = {
+    hidden: { opacity: 0, y: 5 },
+    visible: { opacity: 1, y: 0, transition: { duration: 0.22, ease: easeOutExpo } },
+};
+
 // Dropdown / popover: scales from its anchor corner (set transformOrigin on the element)
 export const popover = {
     hidden: { opacity: 0, scale: 0.92, y: -6 },
