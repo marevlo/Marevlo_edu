@@ -7,7 +7,9 @@ is configured.
 
 Supports:
   - send_otp: password-reset OTP (existing).
+  - send_verify_otp: email-verification OTP.
   - send_password_changed: confirms a successful password reset.
+  - send_account_deleted: confirms an account deletion.
   - send_suspicious_login: alerts the user that we saw a login from a new
     IP / user-agent.
   - send: generic helper for any subject/body.
@@ -87,6 +89,50 @@ class EmailService:
   <p style="font-size:28px;letter-spacing:4px;font-weight:700;background:#f5f3ff;padding:12px 16px;border-radius:8px;display:inline-block">{otp}</p>
   <p>This code expires in <strong>10 minutes</strong>.</p>
   <p style="color:#666">If you didn't request a password reset, ignore this email.</p>
+</body></html>""",
+        )
+
+    def send_verify_otp(self, *, to_email: str, otp: str) -> None:
+        """Email-verification code (signup / verify-email flow)."""
+        self._send(
+            to_email=to_email,
+            subject="Verify your Marevlo email",
+            text_body=(
+                f"Verify your Marevlo email\n\n"
+                f"Your verification code is: {otp}\n\n"
+                f"This code expires in 10 minutes. If you didn't create a Marevlo "
+                f"account, you can safely ignore this email.\n\n"
+                f"— The Marevlo team\n"
+            ),
+            html_body=f"""\
+<html><body style="font-family:system-ui,sans-serif">
+  <h2 style="color:#7c3aed">Verify your email</h2>
+  <p>Your verification code is:</p>
+  <p style="font-size:28px;letter-spacing:4px;font-weight:700;background:#f5f3ff;padding:12px 16px;border-radius:8px;display:inline-block">{otp}</p>
+  <p>This code expires in <strong>10 minutes</strong>.</p>
+  <p style="color:#666">If you didn't create a Marevlo account, ignore this email.</p>
+</body></html>""",
+        )
+
+    def send_account_deleted(self, *, to_email: str) -> None:
+        """Confirm to the user that their account was deleted."""
+        self._send(
+            to_email=to_email,
+            subject="Your Marevlo account has been deleted",
+            text_body=(
+                "Hello,\n\n"
+                "This is a confirmation that your Marevlo account has been deleted. "
+                "Your personal data has been removed from our systems.\n\n"
+                "If you didn't request this, contact support@marevlo.com immediately.\n\n"
+                "— The Marevlo team\n"
+            ),
+            html_body="""\
+<html><body style="font-family:system-ui,sans-serif">
+  <h2 style="color:#7c3aed">Account deleted</h2>
+  <p>This is a confirmation that your Marevlo account has been deleted.
+  Your personal data has been removed from our systems.</p>
+  <p style="color:#dc2626"><strong>If you didn't request this</strong>, contact
+  <a href="mailto:support@marevlo.com">support@marevlo.com</a> immediately.</p>
 </body></html>""",
         )
 

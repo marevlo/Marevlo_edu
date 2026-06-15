@@ -84,7 +84,37 @@ single NAT (as configured) is the compromise; for true HA you'd run one per AZ.
 
 ---
 
-## 5. Honest status / caveats
+## 5. Database migrations on ECS (read before first deploy)
+
+Compose runs `alembic upgrade head` in the api service `command:` override, but
+the ECS task definition uses the Dockerfile CMD (gunicorn only) — **migrations
+never run automatically on AWS**. Apply them as an explicit pre-deploy step so
+two api tasks never race the same migration:
+
+```bash
+# One-off migration task using the freshly pushed image (same task-def, override CMD):
+aws ecs run-task \
+  --cluster marevlo-prod \
+  --launch-type FARGATE \
+  --task-definition marevlo-api \
+  --network-configuration "awsvpcConfiguration={subnets=[<private-subnet-ids>],securityGroups=[<api-sg-id>],assignPublicIp=DISABLED}" \
+  --overrides '{"containerOverrides":[{"name":"api","command":["alembic","upgrade","head"]}]}'
+# Wait for it to exit 0 (aws ecs describe-tasks) before rolling the service.
+```
+
+Current head after this change set: `compliance_001_verify_tos_prefs`
+(adds users.email_verified_at / tos_accepted_at / tos_version,
+email_otps.purpose, and the user_notification_prefs table; backfills existing
+users as email-verified so nobody is locked out).
+
+New env vars (already in the Terraform task def, compose, and `.env.example`):
+`REQUIRE_TOS_ACCEPT` (default true), `TOS_VERSION` (bump when legal pages
+change materially), and `REQUIRE_EMAIL_VERIFICATION` — leave **false** until
+SES has production access and SMTP secrets are filled, then flip to true.
+
+---
+
+## 5b. Honest status / caveats
 
 - **Not `terraform plan`-tested.** This was authored without access to your AWS
   account and without the Terraform binary available in the build environment.

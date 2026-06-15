@@ -1,5 +1,7 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { motion as Motion } from 'framer-motion';
+import { fadeUp } from '../lib/motion';
 import {
     ChevronRight, Play, BookOpen, Layers, Brain,
     Database, FileText, Search, Zap, Globe, Code2,
@@ -10,6 +12,7 @@ import {
 } from 'lucide-react';
 import { COURSE_TREE as RAW_COURSE_TREE } from '../data/courseCatalog';
 import ShowcaseCard from '../components/ShowcaseCard';
+import PageHero from '../components/PageHero';
 
 //  COURSE DATA TREE
 //  isLeaf = true → navigates to course content
@@ -62,6 +65,27 @@ function countLeaves(node) {
     if (node.isLeaf) return 1;
     if (!node.children) return 0;
     return node.children.reduce((s, c) => s + countLeaves(c), 0);
+}
+
+// Recursive search across the course tree (pure — lives at module scope)
+function findMatches(nodes, query, levels) {
+    let results = [];
+    for (const node of nodes) {
+        const matchesQuery = query === '' ||
+            node.label.toLowerCase().includes(query) ||
+            (node.description && node.description.toLowerCase().includes(query)) ||
+            (node.tag && node.tag.toLowerCase().includes(query));
+
+        const matchesLevel = levels.length === 0 || levels.includes(node.level);
+
+        if (matchesQuery && matchesLevel && node.isLeaf) {
+            results.push(node);
+        }
+        if (node.children) {
+            results = [...results, ...findMatches(node.children, query, levels)];
+        }
+    }
+    return results;
 }
 
 // Walk path of ids to find a node
@@ -124,7 +148,11 @@ function RootCategoryHero({ node }) {
     const Icon = node.icon ?? Brain;
     const totalLessons = countLeaves(node);
     return (
-        <div className="relative rounded-2xl overflow-hidden mb-6 p-6"
+        <Motion.div
+            variants={fadeUp}
+            initial="hidden"
+            animate="visible"
+            className="relative rounded-2xl overflow-hidden mb-6 p-6"
             style={{ background: node.gradient || 'linear-gradient(135deg,#6672e0,#9180e8)', boxShadow: `0 8px 32px ${node.shadow || 'rgba(102,114,224,0.3)'}` }}>
             <div style={{ position: 'absolute', top: -30, right: -30, width: 140, height: 140, borderRadius: '50%', background: 'rgba(255,255,255,0.1)' }} />
             <div style={{ position: 'absolute', bottom: -20, left: '25%', width: 80, height: 80, borderRadius: '50%', background: 'rgba(255,255,255,0.07)' }} />
@@ -142,7 +170,7 @@ function RootCategoryHero({ node }) {
                     </p>
                 </div>
             </div>
-        </div>
+        </Motion.div>
     );
 }
 
@@ -187,27 +215,18 @@ function Breadcrumb({ path, onNavigate }) {
 export default function Courses() {
     const navigate = useNavigate();
     const location = useLocation();
-    // pathIds = array of node IDs from root to current folder
-    const [pathIds, setPathIds] = useState(location.state?.pathIds || []);
     const [search, setSearch] = useState('');
     const [activeLevels, setActiveLevels] = useState([]);
-    const [showLevelFilters, setShowLevelFilters] = useState(false);
     const searchRef = useRef(null);
 
-    const urlPathIds = React.useMemo(() => {
+    // pathIds = array of node IDs from root to current folder.
+    // Derived straight from the URL (with router state as fallback) — no
+    // effect/state sync, so navigation renders exactly once.
+    const pathIds = React.useMemo(() => {
         const segments = location.pathname.split('/').filter(Boolean);
-        if (segments[0] !== 'courses' || segments.length < 2) return [];
-        return segments.slice(1);
-    }, [location.pathname]);
-
-    useEffect(() => {
-        if (urlPathIds.length > 0) {
-            setPathIds(urlPathIds);
-            return;
-        }
-
-        setPathIds(location.state?.pathIds || []);
-    }, [location.pathname, location.state, urlPathIds]);
+        if (segments[0] === 'courses' && segments.length >= 2) return segments.slice(1);
+        return location.state?.pathIds || [];
+    }, [location.pathname, location.state]);
 
     // Keyboard shortcut: Cmd/Ctrl+K → focus search
     React.useEffect(() => {
@@ -220,33 +239,6 @@ export default function Courses() {
         window.addEventListener('keydown', handler);
         return () => window.removeEventListener('keydown', handler);
     }, []);
-
-    const toggleLevel = level => {
-        setActiveLevels(prev =>
-            prev.includes(level) ? prev.filter(l => l !== level) : [...prev, level]
-        );
-    };
-
-    // Recursive search in COURSE_TREE
-    const findMatches = (nodes, query, levels) => {
-        let results = [];
-        for (const node of nodes) {
-            const matchesQuery = query === '' ||
-                node.label.toLowerCase().includes(query) ||
-                (node.description && node.description.toLowerCase().includes(query)) ||
-                (node.tag && node.tag.toLowerCase().includes(query));
-
-            const matchesLevel = levels.length === 0 || levels.includes(node.level);
-
-            if (matchesQuery && matchesLevel && node.isLeaf) {
-                results.push(node);
-            }
-            if (node.children) {
-                results = [...results, ...findMatches(node.children, query, levels)];
-            }
-        }
-        return results;
-    };
 
     const filteredResults = React.useMemo(() => {
         if (!search.trim() && activeLevels.length === 0) return null;
@@ -283,14 +275,11 @@ export default function Courses() {
     };
 
     const handleDrillDown = (node) => {
-        const nextIds = [...pathIds, node.id];
-        setPathIds(nextIds);
-        syncCourseUrl(nextIds);
+        syncCourseUrl([...pathIds, node.id]);
         window.scrollTo({ top: 0, behavior: 'smooth' });
     };
 
     const handleNavigate = (ids) => {
-        setPathIds(ids);
         syncCourseUrl(ids);
         window.scrollTo({ top: 0, behavior: 'smooth' });
     };
@@ -307,46 +296,89 @@ export default function Courses() {
         <div className="min-h-screen w-full overflow-y-auto custom-scrollbar"
             style={{ backgroundColor: 'var(--background)', color: 'var(--foreground)' }}>
 
-            {/* Hero Section — full-width, outside container */}
+            {/* Hero Section — shared PageHero keeps sizing identical across catalog pages */}
             {!pathIds.length && (
-                <div className="relative overflow-hidden border-b bg-card dark:bg-background border-black/[0.06] dark:border-white/[0.06]" style={{minHeight:'340px'}}>
-                    {/* Subtle grid backdrop (matches the landing hero — calm, no glow) */}
-                    <div className="absolute inset-0 pointer-events-none" aria-hidden="true" style={{backgroundImage:'linear-gradient(rgba(148,163,184,0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(148,163,184,0.05) 1px, transparent 1px)',backgroundSize:'44px 44px',maskImage:'radial-gradient(circle at center, black 20%, transparent 90%)'}} />
-
-                    <div className="relative z-10 text-center px-6 pt-12 pb-10 max-w-4xl mx-auto">
-                        {/* Pill badge */}
-                        <div className="page-hero-badge">
-                            <GraduationCap size={10} style={{ color: '#3fa9c9' }} />
-                            Structured Curriculum
-                        </div>
-
-                        <h1 className="text-5xl md:text-[3.75rem] font-black tracking-tight leading-none courses-hero-title-grad mb-3">
-                            Course Library
-                        </h1>
-
-                        <p className="page-hero-sub">
-                            Explore structured learning paths — from Python basics to production AI systems.
-                        </p>
-
-                        {/* Stat chips */}
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, flexWrap: 'wrap' }}>
-                            {[
-                                { icon: <Layers size={13} />,    label: `${COURSE_TREE.length} Categories` },
-                                { icon: <BookOpen size={13} />,  label: `${totalAllLessons} Lessons` },
-                                { icon: <Sparkles size={13} />,  label: 'All Levels' },
-                                { icon: <Zap size={13} />,       label: 'New Courses Weekly' },
-                            ].map(({ icon, label }) => (
-                                <div key={label} className="page-hero-chip">
-                                    <span>{icon}</span>
-                                    {label}
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                </div>
+                <PageHero
+                    badgeIcon={GraduationCap}
+                    badgeLabel="Structured Curriculum"
+                    title="Course Library"
+                    subtitle="Explore structured learning paths — from Python basics to production AI systems."
+                    chips={[
+                        { icon: Layers,   label: `${COURSE_TREE.length} Categories` },
+                        { icon: BookOpen, label: `${totalAllLessons} Lessons` },
+                        { icon: Sparkles, label: 'All Levels' },
+                        { icon: Zap,      label: 'New Courses Weekly' },
+                    ]}
+                />
             )}
 
             <div className="page-container relative z-10 py-8 sm:py-12">
+
+                {/* Search bar + Level filter — always visible at the top */}
+                <div className="mb-8 flex flex-col sm:flex-row gap-3 items-stretch sm:items-center">
+                    {/* Search input */}
+                    <div className="relative flex-1">
+                        <Search size={15} style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: 'var(--muted-foreground)', pointerEvents: 'none' }} />
+                        <input
+                            ref={searchRef}
+                            type="text"
+                            placeholder="Search courses… (Ctrl+K)"
+                            value={search}
+                            onChange={e => setSearch(e.target.value)}
+                            className="search-focus"
+                            style={{
+                                width: '100%',
+                                paddingLeft: 38, paddingRight: search ? 36 : 14,
+                                paddingTop: 10, paddingBottom: 10,
+                                borderRadius: 12,
+                                border: '1px solid var(--border)',
+                                background: 'var(--card)',
+                                color: 'var(--foreground)',
+                                fontSize: '0.875rem',
+                                outline: 'none',
+                                transition: 'border-color 0.2s, box-shadow 0.2s',
+                            }}
+                            onFocus={e => { e.target.style.borderColor = 'rgba(102,114,224,0.5)'; e.target.style.boxShadow = '0 0 0 3px rgba(102,114,224,0.12)'; }}
+                            onBlur={e => { e.target.style.borderColor = 'var(--border)'; e.target.style.boxShadow = 'none'; }}
+                        />
+                        {search && (
+                            <button
+                                onClick={() => setSearch('')}
+                                style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--muted-foreground)', background: 'transparent', border: 'none', padding: 4, cursor: 'pointer', display: 'flex' }}
+                                aria-label="Clear search"
+                            >
+                                <X size={14} />
+                            </button>
+                        )}
+                    </div>
+                    {/* Level filter pills */}
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                        {['Beginner', 'Intermediate', 'Advanced', 'Expert'].map(lvl => {
+                            const cfg = LEVEL_COLORS[lvl] ?? LEVEL_COLORS['Intermediate'];
+                            const isOn = activeLevels.includes(lvl);
+                            return (
+                                <button
+                                    key={lvl}
+                                    onClick={() => setActiveLevels(prev => isOn ? prev.filter(l => l !== lvl) : [...prev, lvl])}
+                                    className="px-3 py-1.5 rounded-full text-xs font-bold transition-all duration-200"
+                                    style={{
+                                        background: isOn ? cfg.bg : 'var(--card)',
+                                        color: isOn ? cfg.color : 'var(--muted-foreground)',
+                                        border: `1px solid ${isOn ? cfg.color + '60' : 'var(--border)'}`,
+                                        transform: isOn ? 'scale(1.05)' : 'scale(1)',
+                                    }}
+                                >
+                                    {lvl}
+                                </button>
+                            );
+                        })}
+                        {activeLevels.length > 0 && (
+                            <button onClick={() => setActiveLevels([])} className="px-2 py-1.5 rounded-full text-xs font-semibold transition-all" style={{ color: 'var(--muted-foreground)', background: 'transparent', border: 'none' }}>
+                                Clear
+                            </button>
+                        )}
+                    </div>
+                </div>
 
                 {/* Breadcrumb (when inside a folder and not searching) */}
                 {pathIds.length > 0 && !filteredResults && (
@@ -394,13 +426,13 @@ export default function Courses() {
                             </button>
                         </div>
                         {filteredResults.length === 0 ? (
-                            <div className="text-center py-20 rounded-2xl" style={{ border: '1px dashed var(--border)', background: 'rgba(102,114,224,0.03)' }}>
+                            <Motion.div variants={fadeUp} initial="hidden" animate="visible" className="text-center py-20 rounded-2xl glass-card">
                                 <div style={{ width: 64, height: 64, borderRadius: '50%', margin: '0 auto 16px', background: 'var(--muted)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                                     <Search size={28} className="text-muted-text" />
                                 </div>
                                 <h3 className="text-xl font-bold mb-2">No matches found</h3>
                                 <p style={{ color: 'var(--muted-foreground)', fontSize: '0.9rem' }}>Try different keywords or check your level filters.</p>
-                            </div>
+                            </Motion.div>
                         ) : (
                             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
                                 {filteredResults.map((node, i) => (
@@ -417,13 +449,13 @@ export default function Courses() {
                         )}
                     </div>
                 ) : currentItems.length === 0 ? (
-                    <div className="text-center py-20 rounded-2xl" style={{ border: '1px dashed var(--border)', background: 'rgba(102,114,224,0.03)' }}>
+                    <Motion.div variants={fadeUp} initial="hidden" animate="visible" className="text-center py-20 rounded-2xl glass-card">
                         <div style={{ width: 64, height: 64, borderRadius: '50%', margin: '0 auto 16px', background: 'linear-gradient(135deg,#6672e0,#9180e8)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 8px 24px rgba(102,114,224,0.35)' }}>
                             <BookOpen size={28} color="#fff" />
                         </div>
                         <h3 className="text-xl font-bold mb-2" style={{ color: 'var(--foreground)' }}>No courses yet</h3>
                         <p style={{ color: 'var(--muted-foreground)', fontSize: '0.9rem' }}>Courses are being added. Check back soon!</p>
-                    </div>
+                    </Motion.div>
                 ) : (
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
                         {currentItems.map((node, i) => (

@@ -48,6 +48,17 @@ class User(Base):
         DateTime(timezone=True), nullable=True
     )
 
+    # Compliance: email verification + ToS/Privacy consent. Google accounts
+    # are pre-verified (Google verifies emails). tos_version records which
+    # document version the user accepted.
+    email_verified_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    tos_accepted_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    tos_version: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -105,6 +116,11 @@ class EmailOTP(Base):
         Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
     )
     code_hash: Mapped[str] = mapped_column(String(128), nullable=False)
+    # What the OTP is for: 'password_reset' | 'email_verify'. Keeps the two
+    # flows from crossing — a reset code can never verify an email.
+    purpose: Mapped[str] = mapped_column(
+        String(32), default="password_reset", server_default="password_reset", nullable=False
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

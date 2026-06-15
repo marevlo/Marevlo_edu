@@ -3,541 +3,583 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Daily Temperatures - Brute Force Visualization</title>
+    <title>Daily Temperatures (Monotonic Stack) - Visualization</title>
     <style>
         :root {
-            --bg-page: #000000;
-            --bg-surface: #161b22;
-            --bg-input: #000000;
-            --border-main: #30363d;
-            --btn-bg: #21262d;
-            --btn-hover: #2d333b;
-            --text-main: #c9d1d9;
-            --text-dim: #8b949e;
-            --text-log: #58a6ff;
-            --accent-orange: #e3b341;
-            --accent-blue: #388bfd;
-            --accent-green: #3fb950;
-            --accent-red: #f85149;
+            --bg-page: #070b14;
+            --bg-surface: rgba(255, 255, 255, 0.045);
+            --bg-input: rgba(255, 255, 255, 0.04);
+            --border-main: rgba(255, 255, 255, 0.10);
+            --btn-bg: rgba(255, 255, 255, 0.05);
+            --btn-hover: rgba(255, 255, 255, 0.10);
+            --text-main: #e8eefb;
+            --text-dim: #8b98b3;
+            --accent-orange: #f5a524;   /* last resolved / answer accent     */
+            --accent-blue:   #06b6d4;   /* waiting in stack / chrome          */
+            --accent-green:  #22c55e;   /* resolved (popped) day              */
+            --accent-red:    #f43f5e;   /* unresolved at end (answer 0)       */
+            --accent-purple: #a855f7;   /* current scan pointer i             */
+            --mono: ui-monospace, 'SF Mono', 'Cascadia Code', 'Courier New', monospace;
+            --sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+            --shell: 900px;
         }
 
         * { box-sizing: border-box; }
-
+        html, body { overflow-x: hidden; }
         body {
-            background-color: var(--bg-page);
-            color: var(--text-main);
-            font-family: system-ui, -apple-system, sans-serif;
-            margin: 0;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            min-height: 100vh;
-            padding-bottom: 40px;
+            background:
+                radial-gradient(1100px 600px at 15% -10%, rgba(168, 85, 247, 0.10), transparent 60%),
+                radial-gradient(900px 600px at 100% 10%, rgba(6, 182, 212, 0.10), transparent 55%),
+                linear-gradient(160deg, #070b14 0%, #0b1120 55%, #0a0f1c 100%);
+            background-attachment: fixed;
+            color: var(--text-main); font-family: var(--sans); margin: 0;
+            display: flex; flex-direction: column; align-items: center; min-height: 100vh;
+            padding-bottom: 48px; -webkit-font-smoothing: antialiased;
         }
+        body::before, body::after { content: ''; position: fixed; border-radius: 50%; filter: blur(70px); pointer-events: none; z-index: 0; opacity: 0.45; }
+        body::before { width: 380px; height: 380px; top: 8%; left: -120px; background: radial-gradient(circle, rgba(168,85,247,0.30), transparent 70%); }
+        body::after  { width: 420px; height: 420px; bottom: 4%; right: -140px; background: radial-gradient(circle, rgba(6,182,212,0.22), transparent 70%); }
+        body > * { position: relative; z-index: 1; }
 
-        /* ROW 1: INPUT BAR */
         .input-bar {
-            width: 100%;
-            background-color: var(--bg-surface);
-            padding: 12px 16px;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            gap: 8px;
-            border-bottom: 1px solid var(--border-main);
+            width: 100%; background: rgba(10, 15, 28, 0.55);
+            backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+            padding: 14px 16px; display: flex; justify-content: center; align-items: center; gap: 10px;
+            border-bottom: 1px solid var(--border-main); flex-wrap: wrap; position: sticky; top: 0; z-index: 50;
         }
-
-        label.array-label {
-            font-family: 'Courier New', monospace;
-            font-size: 14px;
-            color: var(--text-dim);
-        }
-
+        label.ui-label, .ui-label { font-family: var(--mono); font-size: 13px; color: var(--text-dim); letter-spacing: 0.2px; }
         input[type="text"] {
-            background: var(--bg-input);
-            border: 1px solid var(--border-main);
-            color: var(--text-main);
-            height: 32px;
-            border-radius: 6px;
-            padding: 0 10px;
-            width: 280px;
-            font-size: 14px;
+            background: var(--bg-input); border: 1px solid var(--border-main); color: var(--text-main);
+            height: 34px; border-radius: 9px; padding: 0 12px; font-size: 13px; font-family: var(--mono); width: 260px;
+            transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
         }
+        input[type="text"]:focus { outline: none; border-color: var(--accent-purple); box-shadow: 0 0 0 3px rgba(168, 85, 247, 0.18); background: rgba(168, 85, 247, 0.06); }
 
         button {
-            height: 32px;
-            border-radius: 6px;
-            padding: 0 14px;
-            background: var(--btn-bg);
-            border: 1px solid var(--border-main);
-            color: var(--text-main);
-            font-size: 13px;
-            cursor: pointer;
-            transition: background 0.2s ease;
+            height: 34px; border-radius: 9px; padding: 0 14px; background: var(--btn-bg);
+            border: 1px solid var(--border-main); color: var(--text-main); font-size: 13px; font-weight: 600; cursor: pointer;
+            transition: transform 0.15s ease, background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
         }
+        button:hover { background: var(--btn-hover); border-color: rgba(6, 182, 212, 0.5); box-shadow: 0 0 18px rgba(6, 182, 212, 0.18); transform: translateY(-1px); }
+        button:active { transform: translateY(0); }
+        #play-btn { background: linear-gradient(135deg, rgba(6,182,212,0.22), rgba(6,182,212,0.10)); border-color: rgba(6, 182, 212, 0.45); color: #a5f3fc; min-width: 80px; }
 
-        button:hover { background: var(--btn-hover); }
+        .shell { width: var(--shell); max-width: 95%; margin: 24px auto 0; display: flex; flex-direction: column; gap: 16px; }
 
-        /* ROW 2: ARRAY TILES */
-        .array-container {
-            margin-top: 20px;
-            display: flex;
-            align-items: center;
-            gap: 12px;
+        .title-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+        .title-row h1 { font-size: 18px; font-weight: 800; margin: 0; letter-spacing: 0.2px; }
+        .title-row .sub { color: var(--text-dim); font-weight: 500; font-size: 13px; }
+        .step-badge { font-family: var(--mono); font-size: 12px; font-weight: 700; color: #a5f3fc; background: rgba(6,182,212,0.12); border: 1px solid rgba(6,182,212,0.3); padding: 4px 10px; border-radius: 999px; white-space: nowrap; }
+        .progress-track { height: 4px; width: 100%; background: rgba(255,255,255,0.07); border-radius: 999px; overflow: hidden; margin-top: -6px; }
+        .progress-fill { height: 100%; width: 0%; border-radius: 999px; background: linear-gradient(90deg, var(--accent-blue), var(--accent-purple)); box-shadow: 0 0 12px rgba(6,182,212,0.5); transition: width 0.45s cubic-bezier(0.34,1.1,0.64,1); }
+
+        .narration { background: var(--bg-surface); border: 1px solid rgba(6,182,212,0.22); border-radius: 12px; padding: 12px 18px; font-family: var(--mono); font-size: 14px; line-height: 1.5; color: #cfe9f5; min-height: 48px; display: flex; align-items: center; gap: 10px; transition: border-color 0.3s, background 0.3s; }
+        .narration::before { content: '\25B8'; color: var(--accent-blue); font-size: 13px; }
+        .narration.done { border-color: rgba(34,197,94,0.4); background: rgba(34,197,94,0.06); }
+        .narration.done::before { content: '\2713'; color: var(--accent-green); }
+        .narration.pop { border-color: rgba(34,197,94,0.4); background: rgba(34,197,94,0.06); }
+        .narration.pop::before { content: '\2713'; color: var(--accent-green); }
+        .narration.push { border-color: rgba(6,182,212,0.4); background: rgba(6,182,212,0.06); }
+        .narration code { background: rgba(6,182,212,0.14); color: #7dd3fc; padding: 1px 6px; border-radius: 5px; font-size: 12.5px; }
+        .narration b { color: #fff; }
+
+        .stage-card { background: var(--bg-surface); border: 1px solid var(--border-main); border-radius: 18px; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); box-shadow: 0 12px 38px rgba(0,0,0,0.4); overflow: hidden; }
+        .stage-screen { position: relative; margin: 14px; border-radius: 14px; background: radial-gradient(700px 300px at 50% -10%, rgba(6,182,212,0.08), transparent 70%), #090d18; border: 1px solid rgba(255,255,255,0.06); }
+        .array-stage { position: relative; width: 100%; overflow: auto; scrollbar-width: thin; padding: 30px 22px 24px; display: flex; flex-direction: column; align-items: center; gap: 22px; }
+        .array-stage::-webkit-scrollbar { height: 8px; width: 8px; }
+        .array-stage::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 8px; }
+
+        /* The signature monotonic-stack idiom: ONE row of tiles + index labels */
+        .scan-board { position: relative; display: inline-flex; flex-direction: column; gap: 0; }
+        .row-label { font-family: var(--mono); font-size: 11px; letter-spacing: 1px; text-transform: uppercase; color: var(--text-dim); margin-bottom: 8px; }
+        .cell-row { display: flex; gap: 10px; }
+        .col { display: flex; flex-direction: column; align-items: center; }
+
+        .cell {
+            position: relative;
+            display: flex; align-items: center; justify-content: center;
+            border-radius: 10px; font-family: var(--mono); font-weight: 800; font-size: 18px;
+            border: 2px solid var(--border-main); background: rgba(255,255,255,0.04); color: var(--text-main);
+            width: 52px; height: 52px; will-change: transform;
+            transition: background 0.35s, border-color 0.35s, color 0.35s, box-shadow 0.35s, transform 0.3s;
         }
+        .idx-label { font-family: var(--mono); font-size: 11px; color: var(--text-dim); margin-top: 6px; transition: color 0.3s; }
+        .idx-label.lit { color: var(--accent-purple); }
 
-        .tiles-wrapper {
-            display: flex;
-            gap: 6px;
+        /* tiles still waiting in the monotonic stack */
+        .num-cell.instack { border-color: var(--accent-blue); background: rgba(6,182,212,0.12); color: #a5f3fc; box-shadow: 0 0 12px rgba(6,182,212,0.28); }
+        /* the scan pointer (current index i) */
+        .num-cell.current  { border-color: var(--accent-purple); background: rgba(168,85,247,0.16); color: #e9d5ff; box-shadow: 0 0 20px rgba(168,85,247,0.55), inset 0 0 12px rgba(168,85,247,0.12); transform: scale(1.08); z-index: 2; }
+        /* a tile just resolved (popped) by the current day */
+        .num-cell.resolved { border-color: var(--accent-green); background: rgba(34,197,94,0.16); color: #bbf7d0; box-shadow: 0 0 22px rgba(34,197,94,0.55); transform: scale(1.08); z-index: 2; }
+        /* finished tiles that never got a warmer day (answer 0) */
+        .num-cell.unresolved { border-color: var(--accent-red); background: rgba(244,63,94,0.12); color: #fecdd3; box-shadow: 0 0 12px rgba(244,63,94,0.3); }
+        .num-cell.dim      { opacity: 0.4; color: var(--text-dim); }
+
+        /* a small pointer triangle that sits above the current tile */
+        .scan-arrow { position: absolute; top: -22px; left: 50%; transform: translateX(-50%); color: var(--accent-purple); font-size: 14px; opacity: 0; transition: opacity 0.25s; pointer-events: none; }
+        .num-cell.current  .scan-arrow { opacity: 1; }
+        .num-cell.resolved .scan-arrow { opacity: 0; }
+
+        /* the monotonic stack panel, beside / under the row */
+        .stack-board { position: relative; display: inline-flex; flex-direction: column; align-items: center; gap: 8px; min-width: 220px; }
+        .stack-rail { display: flex; gap: 8px; align-items: center; justify-content: center; min-height: 56px; padding: 6px 12px; border-radius: 12px; border: 1px dashed rgba(255,255,255,0.12); background: rgba(255,255,255,0.02); }
+        .stack-rail .base-tag { font-family: var(--mono); font-size: 10px; letter-spacing: 1px; text-transform: uppercase; color: var(--text-dim); align-self: center; padding-right: 4px; }
+        .stack-item {
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            width: 46px; height: 46px; border-radius: 9px; font-family: var(--mono);
+            border: 2px solid var(--accent-blue); background: rgba(6,182,212,0.14); color: #a5f3fc;
+            box-shadow: 0 0 12px rgba(6,182,212,0.25); will-change: transform;
         }
+        .stack-item .si-val { font-size: 15px; font-weight: 800; line-height: 1; }
+        .stack-item .si-idx { font-size: 9px; color: var(--text-dim); margin-top: 3px; }
+        .stack-item.top { border-color: var(--accent-orange); background: rgba(245,165,36,0.16); color: #ffd591; box-shadow: 0 0 16px rgba(245,165,36,0.4); }
+        .stack-empty { font-family: var(--mono); font-size: 12px; color: var(--text-dim); opacity: 0.7; }
 
-        .tile-unit {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 4px;
-        }
+        .action-stage { position: relative; min-height: 92px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; }
+        .answer-track { display: flex; gap: 6px; align-items: center; min-height: 40px; flex-wrap: wrap; justify-content: center; }
+        .ans-tile { min-width: 36px; height: 44px; padding: 0 8px; border-radius: 9px; display: flex; flex-direction: column; align-items: center; justify-content: center; font-family: var(--mono); border: 2px solid var(--border-main); background: rgba(255,255,255,0.04); color: var(--text-dim); transition: all 0.3s; }
+        .ans-tile .av { font-size: 18px; font-weight: 800; line-height: 1; }
+        .ans-tile .ai { font-size: 8px; color: var(--text-dim); margin-top: 2px; }
+        .ans-tile.set { border-color: var(--accent-green); background: rgba(34,197,94,0.16); color: #bbf7d0; box-shadow: 0 0 12px rgba(34,197,94,0.3); }
+        .ans-tile.zero { border-color: var(--accent-red); background: rgba(244,63,94,0.10); color: #fecdd3; }
+        .ans-tile.flash { transform: scale(1.14); }
+        .action-word { font-family: var(--mono); font-weight: 800; font-size: 18px; letter-spacing: 0.4px; min-height: 22px; text-align: center; transition: color 0.3s; }
+        #confetti { position: absolute; inset: 0; overflow: visible; pointer-events: none; }
+        .confetti-piece { position: absolute; top: 0; left: 50%; width: 8px; height: 13px; border-radius: 2px; opacity: 0; animation: confettiFall ease-out forwards; }
 
-        .tile {
-            min-width: 44px;
-            height: 44px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            border-radius: 6px;
-            font-size: 15px;
-            font-weight: 600;
-            font-family: 'Courier New', monospace;
-            transition: all 0.25s ease;
-            background: #21262d;
-            border: 1px solid var(--border-main);
-            color: var(--text-main);
-        }
+        .controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: center; }
+        .controls .kbd-hint { font-size: 11px; color: var(--text-dim); font-family: var(--mono); margin-left: 4px; }
+        .kbd { background: rgba(255,255,255,0.07); border: 1px solid var(--border-main); border-radius: 5px; padding: 1px 6px; font-size: 10px; }
+        input[type="range"] { accent-color: var(--accent-blue); width: 110px; cursor: pointer; }
 
-        .tile-index {
-            font-size: 9px;
-            color: var(--text-dim);
-            font-family: monospace;
-        }
+        .details-toggle { align-self: center; height: 32px; padding: 0 16px; border-radius: 999px; cursor: pointer; background: rgba(255,255,255,0.04); border: 1px solid var(--border-main); color: var(--text-dim); font-family: var(--mono); font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; gap: 8px; transition: color 0.2s, border-color 0.2s, background 0.2s; }
+        .details-toggle:hover { color: var(--text-main); border-color: rgba(6,182,212,0.4); background: rgba(6,182,212,0.06); }
+        .details-toggle .chev { transition: transform 0.3s ease; }
+        .details-wrap.open .details-toggle .chev { transform: rotate(180deg); }
+        .details-body { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.4s ease; }
+        .details-wrap.open .details-body { grid-template-rows: 1fr; }
+        .details-inner { overflow: hidden; min-height: 0; }
+        .details-grid { display: flex; flex-direction: column; gap: 14px; padding-top: 14px; }
 
-        .tile.idle { color: var(--text-dim); }
-        .tile.candidate { 
-            background: #2a1600; 
-            border: 2px solid var(--accent-orange); 
-            color: var(--accent-orange); 
-            transform: scale(1.12); 
-            z-index: 2; 
-        }
-        .tile.past { opacity: 0.3; }
-        .tile.found { border: 3px solid var(--accent-green); transform: scale(1.15); }
+        .panel-card { background: var(--bg-surface); border: 1px solid var(--border-main); border-radius: 16px; backdrop-filter: blur(10px); box-shadow: 0 8px 30px rgba(0,0,0,0.35); }
+        .panel-head { display: flex; align-items: center; gap: 8px; padding: 11px 16px; border-bottom: 1px solid var(--border-main); font-size: 11px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; color: var(--text-dim); }
+        .panel-head .pip { width: 7px; height: 7px; border-radius: 50%; background: var(--accent-blue); box-shadow: 0 0 8px var(--accent-blue); }
+        .code-body { padding: 12px 6px 14px; font-family: var(--mono); font-size: 12.5px; line-height: 1.7; }
+        .code-line { display: flex; gap: 12px; padding: 1px 16px; border-left: 2px solid transparent; transition: background 0.3s, border-color 0.3s; white-space: pre; }
+        .code-line .lno { color: #4b5772; width: 16px; text-align: right; user-select: none; }
+        .code-line .src { color: #c4cee0; }
+        .code-line .kw { color: #c792ea; }
+        .code-line .fn { color: #82aaff; }
+        .code-line.active { background: rgba(6,182,212,0.12); border-left-color: var(--accent-blue); }
+        .code-line.active .src, .code-line.active .lno { color: #e8eefb; }
 
-        /* ROW 3: SCAN PANEL */
-        .sum-panel {
-            margin-top: 14px;
-            background: var(--bg-surface);
-            border: 1px solid var(--border-main);
-            border-radius: 6px;
-            padding: 12px 18px;
-            min-width: 460px;
-            text-align: center;
-            font-family: monospace;
-            font-size: 14px;
-        }
+        .state-strip { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 0 2px; }
+        .pill { display: inline-flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 12px; color: var(--text-dim); background: rgba(255,255,255,0.04); border: 1px solid var(--border-main); border-radius: 999px; padding: 4px 11px; }
+        .pill b { color: var(--text-main); font-weight: 800; }
+        .pill.c b { color: var(--accent-purple); } .pill.v b { color: var(--accent-blue); } .pill.s b { color: var(--accent-orange); } .pill.d b { color: var(--accent-green); }
 
-        /* ROW 4: INFO PANEL */
-        .info-panel {
-            margin-top: 10px;
-            display: flex;
-            gap: 10px;
-        }
+        .log-panel { border-radius: 14px; padding: 12px 16px; height: 110px; overflow-y: auto; font-family: var(--mono); font-size: 12.5px; line-height: 1.5; background: var(--bg-surface); border: 1px solid var(--border-main); }
+        .log-panel::-webkit-scrollbar { width: 8px; }
+        .log-panel::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 8px; }
 
-        .info-cell {
-            background: var(--bg-surface);
-            border: 1px solid var(--border-main);
-            border-radius: 6px;
-            padding: 8px 14px;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            min-width: 110px;
-            gap: 4px;
-        }
-
-        .info-label { font-size: 11px; color: var(--text-dim); }
-        .info-value { font-family: monospace; font-size: 16px; font-weight: 700; }
-
-        /* ROW 5: RESULT DISPLAY */
-        .result-display {
-            margin-top: 10px;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-        }
-        #res-label { font-size: 12px; color: var(--text-dim); margin-bottom: 4px; }
-        #res-val { font-family: monospace; font-size: 16px; color: var(--text-dim); }
-        .pop { 
-            animation: popAnim 400ms ease; 
-            color: var(--accent-green) !important; 
-            font-size: 26px !important; 
-            font-weight: 700;
-            text-shadow: 0 0 16px var(--accent-green);
-        }
-
-        @keyframes popAnim {
-            0%{transform:scale(1)} 50%{transform:scale(1.28)} 100%{transform:scale(1)}
-        }
-
-        /* ROW 6: STATUS BAR */
-        .status-bar { margin-top: 8px; font-size: 13px; color: var(--text-dim); height: 1.2em; text-align: center; }
-
-        /* ROW 7: CONTROLS */
-        .controls {
-            margin-top: 24px;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        .speed-control {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            margin-left: 12px;
-        }
-        .speed-label { font-size: 11px; color: var(--text-dim); }
-        input[type="range"] { accent-color: var(--accent-blue); width: 100px; }
-
-        /* ROW 8: LEGEND */
-        .legend {
-            margin-top: 12px;
-            display: flex;
-            gap: 16px;
-            flex-wrap: wrap;
-            justify-content: center;
-        }
-        .legend-item { display: flex; align-items: center; font-size: 12px; color: var(--text-dim); }
-        .dot { width: 8px; height: 8px; border-radius: 50%; margin-right: 4px; }
-
-        /* ROW 9: LOG PANEL */
-        .log-panel {
-            margin-top: 12px;
-            background: var(--bg-page);
-            border: 1px solid var(--border-main);
-            border-radius: 6px;
-            padding: 12px 16px;
-            width: 680px;
-            max-width: 90%;
-            height: 130px;
-            overflow-y: auto;
-            font-family: 'Courier New', monospace;
-            font-size: 13px;
-        }
-        .log-line { margin-bottom: 2px; }
+        @keyframes confettiFall { 0%{ opacity:1; transform: translate(-50%, 0) rotate(0deg); } 100%{ opacity:0; transform: translate(calc(-50% + var(--x)), 220px) rotate(var(--rot)); } }
+        @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; } }
     </style>
 </head>
 <body>
 
     <div class="input-bar">
-        <label class="array-label">temperatures =</label>
-        <input type="text" id="array-input" placeholder="73,74,75,71,69,72,76,73" style="width: 280px;">
+        <label class="ui-label">temperatures =</label>
+        <input type="text" id="nums-input" value="[73,74,75,71,69,72,76,73]" maxlength="60">
         <button onclick="loadCustom()">Load</button>
-        <button onclick="loadExample([73,74,75,71,69,72,76,73])">Example 1</button>
-        <button onclick="loadExample([30,40,50,60])">Example 2</button>
+        <span class="ui-label" style="opacity:.5">|</span>
+        <button onclick="loadExample(0)">[73,74,75,71,&hellip;]</button>
+        <button onclick="loadExample(1)">[30,40,50,60]</button>
     </div>
 
-    <div class="array-container">
-        <div class="array-label" style="font-size: 12px;">temperatures =</div>
-        <div class="tiles-wrapper" id="tiles-container"></div>
-    </div>
-
-    <div class="sum-panel" id="sum-panel">—</div>
-
-    <div class="info-panel">
-        <div class="info-cell">
-            <div class="info-label">day i</div>
-            <div class="info-value" id="val-i" style="color: var(--accent-orange);">—</div>
+    <div class="shell">
+        <div class="title-row">
+            <h1>Daily Temperatures <span class="sub">&middot; Monotonic Stack &middot; while a[i] &gt; a[top]: pop &amp; resolve &middot; O(n)</span></h1>
+            <span class="step-badge" id="step-badge">Step 1 / 1</span>
         </div>
-        <div class="info-cell">
-            <div class="info-label">day j</div>
-            <div class="info-value" id="val-j" style="color: var(--accent-orange);">—</div>
+        <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+
+        <div class="narration" id="main-panel">&mdash;</div>
+
+        <div class="stage-card">
+            <div class="stage-screen">
+                <div class="array-stage" id="array-stage">
+                    <div class="scan-board" id="scan-board">
+                        <div class="row-label">temperatures[i] &middot; scan left &rarr; right</div>
+                        <div class="cell-row" id="num-row"></div>
+                    </div>
+                    <div class="stack-board">
+                        <div class="row-label">monotonic stack (indices waiting for a warmer day)</div>
+                        <div class="stack-rail" id="stack-rail"></div>
+                    </div>
+                </div>
+            </div>
         </div>
-        <div class="info-cell">
-            <div class="info-label">temp[i]</div>
-            <div class="info-value" id="val-tempi" style="color: var(--accent-green);">—</div>
+
+        <div class="action-stage">
+            <div id="confetti"></div>
+            <div class="answer-track" id="answer-track"></div>
+            <div class="action-word" id="action-word"></div>
         </div>
-        <div class="info-cell">
-            <div class="info-label">days to warmer</div>
-            <div class="info-value" id="val-days" style="color: var(--accent-blue);">—</div>
+
+        <div class="controls">
+            <button onclick="resetSim()">&#8634; Reset</button>
+            <button onclick="prevStep()">&#8592; Back</button>
+            <button onclick="togglePlay()" id="play-btn">Play</button>
+            <button onclick="nextStep()">Next &#8594;</button>
+            <span class="ui-label" style="margin-left:6px; font-size:11px">Speed</span>
+            <input type="range" id="speed" min="0" max="2" value="1">
+            <span class="kbd-hint"><span class="kbd">&#8592;</span> <span class="kbd">&#8594;</span> step &middot; <span class="kbd">space</span> play</span>
+        </div>
+
+        <div class="details-wrap" id="details-wrap">
+            <button class="details-toggle" onclick="toggleDetails()" aria-expanded="false">
+                <span id="details-label">Show code, state &amp; log</span> <span class="chev">&#9662;</span>
+            </button>
+            <div class="details-body">
+                <div class="details-inner">
+                    <div class="details-grid">
+                        <div class="state-strip">
+                            <span class="pill c">index i <b id="st-i">&mdash;</b></span>
+                            <span class="pill v">temp[i] <b id="st-v">&mdash;</b></span>
+                            <span class="pill s">stack <b id="st-stack">&mdash;</b></span>
+                            <span class="pill d">last resolved <b id="st-res">&mdash;</b></span>
+                        </div>
+                        <div class="panel-card">
+                            <div class="panel-head"><span class="pip"></span> Algorithm</div>
+                            <div class="code-body" id="code-panel"></div>
+                        </div>
+                        <div class="log-panel" id="log"></div>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
-
-    <div class="result-display">
-        <div id="res-label">answer (days until warmer) =</div>
-        <div id="res-val">—</div>
-    </div>
-
-    <div class="status-bar" id="status-text">...</div>
-
-    <div class="controls">
-        <button onclick="reset()">↺ Reset</button>
-        <button onclick="back()">← Back</button>
-        <button onclick="togglePlay()" id="play-btn" style="min-width: 80px;">Play</button>
-        <button onclick="next()">Next →</button>
-        <div class="speed-control">
-            <span class="speed-label">Speed</span>
-            <input type="range" id="speed-slider" min="0" max="2" step="1" value="1">
-        </div>
-    </div>
-
-    <div class="legend">
-        <div class="legend-item"><div class="dot" style="background: var(--accent-orange);"></div> Current scanning [i → j]</div>
-        <div class="legend-item"><div class="dot" style="background: var(--text-dim);"></div> Previous / idle</div>
-        <div class="legend-item"><div class="dot" style="background: var(--accent-green);"></div> Warmer day found</div>
-        <div class="legend-item"><div class="dot" style="background: var(--accent-blue);"></div> Final answer</div>
-    </div>
-
-    <div class="log-panel" id="log"></div>
 
     <script>
-        let currentArray = [73,74,75,71,69,72,76,73];
-        let steps = [];
-        let stepIndex = 0;
-        let timer = null;
-        let isPlaying = false;
+        'use strict';
 
-        const delays = [1800, 900, 450];
-
-        function init() {
-            loadExample([73,74,75,71,69,72,76,73]);
+        // ───────── Motion engine (spring pop, zero deps) ─────────
+        const REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        const FRAME = 1000 / 60;
+        function sampleSpring(stiffness, damping, mass) {
+            const dt = 1 / 60; let x = 1, v = 0; const out = [];
+            for (let i = 0; i < 240; i++) { const a = (-stiffness * x - damping * v) / mass; v += a * dt; x += v * dt; out.push(1 - x); if (Math.abs(x) < 0.0015 && Math.abs(v) < 0.0015) break; }
+            out.push(1); return out;
         }
-
-        function loadExample(arr) {
-            currentArray = arr.slice(0, 12);
-            document.getElementById('array-input').value = currentArray.join(', ');
-            generateSteps();
-            reset();
-        }
-
-        function loadCustom() {
-            const val = document.getElementById('array-input').value;
-            const arr = val.split(',').map(x => parseInt(x.trim())).filter(x => !isNaN(x));
-            if (arr.length > 0) {
-                currentArray = arr;
-                generateSteps();
-                reset();
-            }
-        }
-
-        function generateSteps() {
-            steps = [];
-            const n = currentArray.length;
-            let answer = new Array(n).fill(0);
-
-            // INIT
-            steps.push({
-                type: 'init',
-                i: null,
-                j: null,
-                answer: answer.slice(),
-                tileStates: Array(n).fill('idle'),
-                scanText: '—',
-                status: `temperatures = [${currentArray}] n=${n}. Starting brute-force O(n²) search for warmer days.`,
-                log: `Starting Daily Temperatures — Brute Force (nested loops)`
-            });
-
-            for (let i = 0; i < n; i++) {
-                // Start new day i
-                let tileStates = Array(n).fill(0).map((_, idx) => idx < i ? 'past' : 'idle');
-                steps.push({
-                    type: 'start_i',
-                    i: i,
-                    j: null,
-                    answer: answer.slice(),
-                    tileStates: tileStates,
-                    scanText: `Day ${i} (temp = ${currentArray[i]}) — looking for first warmer day after ${i}`,
-                    status: `Processing day ${i} (${currentArray[i]}°), searching j > ${i}`,
-                    log: `i=${i}: temp=${currentArray[i]}, start scanning forward`
-                });
-
-                let found = false;
-                for (let j = i + 1; j < n; j++) {
-                    let tileStatesCheck = Array(n).fill(0).map((_, idx) => {
-                        if (idx < i) return 'past';
-                        if (idx > j) return 'idle';
-                        return (idx === j) ? 'candidate' : 'idle';
-                    });
-
-                    const isWarmer = currentArray[j] > currentArray[i];
-
-                    steps.push({
-                        type: 'check_j',
-                        i: i,
-                        j: j,
-                        answer: answer.slice(),
-                        tileStates: tileStatesCheck,
-                        scanText: `Comparing day ${j} (${currentArray[j]}°) &gt; day ${i} (${currentArray[i]}°)? <span style="color:${isWarmer?'var(--accent-green)':'var(--text-dim)'}">${isWarmer ? 'YES ✓' : 'NO'}</span>`,
-                        status: `j=${j}: ${currentArray[j]}° ${isWarmer ? '>' : '≤'} ${currentArray[i]}°`,
-                        log: `i=${i} j=${j}: ${currentArray[j]} > ${currentArray[i]} → ${isWarmer ? 'found warmer' : 'continue'}`
-                    });
-
-                    if (isWarmer) {
-                        answer[i] = j - i;
-                        steps.push({
-                            type: 'update',
-                            i: i,
-                            j: j,
-                            answer: answer.slice(),
-                            tileStates: tileStatesCheck,
-                            scanText: `✓ Found warmer day at j=${j} → days = ${j-i}`,
-                            status: `✓ Updated answer[${i}] = ${j-i} (warmer at day ${j})`,
-                            log: `answer[${i}] = ${j-i}`,
-                            logColor: 'var(--accent-green)'
-                        });
-                        found = true;
-                        break;
-                    }
-                }
-
-                if (!found) {
-                    let tileStatesDone = Array(n).fill(0).map((_, idx) => idx <= i ? 'past' : 'idle');
-                    steps.push({
-                        type: 'no_update',
-                        i: i,
-                        j: null,
-                        answer: answer.slice(),
-                        tileStates: tileStatesDone,
-                        scanText: `No warmer day found after day ${i}. answer[${i}] remains 0`,
-                        status: `No warmer day for day ${i} (${currentArray[i]}°) → answer[${i}]=0`,
-                        log: `i=${i}: no warmer day → answer[${i}]=0`
-                    });
-                }
-            }
-
-            // FINAL
-            steps.push({
-                type: 'final',
-                i: null,
-                j: null,
-                answer: answer.slice(),
-                tileStates: Array(n).fill('past'),
-                scanText: '—',
-                status: `Complete. Final answer = [${answer}]`,
-                log: `Final result: [${answer.join(', ')}]`,
-                logColor: 'var(--accent-blue)',
-                bold: true,
-                result: answer.join(', ')
-            });
-        }
-
-        function renderStep(idx) {
-            const step = steps[idx];
-            if (!step) return;
-
-            const container = document.getElementById('tiles-container');
-            container.innerHTML = '';
-            currentArray.forEach((val, i) => {
-                const wrapper = document.createElement('div');
-                wrapper.className = 'tile-unit';
-                const tile = document.createElement('div');
-                tile.className = `tile ${step.tileStates[i]}`;
-                tile.innerText = val;
-                const index = document.createElement('div');
-                index.className = 'tile-index';
-                index.innerText = `[${i}]`;
-                wrapper.appendChild(tile);
-                wrapper.appendChild(index);
-                container.appendChild(wrapper);
-            });
-
-            // Scan Panel
-            const scanPanel = document.getElementById('sum-panel');
-            scanPanel.innerHTML = step.scanText !== '—' 
-                ? `<div style="font-size:13px;color:var(--text-dim);">Day ${step.i !== null ? step.i : '—'}</div>${step.scanText}` 
-                : '—';
-
-            // Info Panel
-            document.getElementById('val-i').innerText = step.i !== null ? step.i : '—';
-            document.getElementById('val-j').innerText = step.j !== null ? step.j : '—';
-            document.getElementById('val-tempi').innerText = (step.i !== null) ? currentArray[step.i] : '—';
-            document.getElementById('val-days').innerText = (step.answer && step.i !== null) ? step.answer[step.i] : '—';
-
-            // Result
-            const resVal = document.getElementById('res-val');
-            if (step.result !== undefined) {
-                resVal.innerText = `[${step.result}]`;
-                resVal.classList.add('pop');
-            } else {
-                resVal.innerText = '—';
-                resVal.classList.remove('pop');
-            }
-
-            // Status
-            document.getElementById('status-text').innerText = step.status;
-
-            // Log
-            const log = document.getElementById('log');
-            log.innerHTML = '';
-            for (let k = 0; k <= idx; k++) {
-                if (steps[k].log) {
-                    const line = document.createElement('div');
-                    line.className = 'log-line';
-                    if (steps[k].logColor) line.style.color = steps[k].logColor;
-                    if (steps[k].bold) line.style.fontWeight = 'bold';
-                    line.innerText = steps[k].log;
-                    log.appendChild(line);
-                }
-            }
-            log.scrollTop = log.scrollHeight;
-        }
-
-        function next() {
-            if (stepIndex < steps.length - 1) {
-                stepIndex++;
-                renderStep(stepIndex);
-            } else {
-                pause();
-            }
-        }
-
-        function back() {
-            if (stepIndex > 0) {
-                stepIndex--;
-                renderStep(stepIndex);
-            }
-        }
-
-        function reset() {
-            pause();
-            stepIndex = 0;
-            renderStep(0);
-        }
-
-        function togglePlay() {
-            if (isPlaying) pause();
-            else play();
-        }
-
-        function play() {
-            if (stepIndex >= steps.length - 1) stepIndex = 0;
-            isPlaying = true;
-            document.getElementById('play-btn').innerText = 'Pause';
-            timer = setInterval(next, delays[document.getElementById('speed-slider').value]);
-        }
-
-        function pause() {
-            isPlaying = false;
-            document.getElementById('play-btn').innerText = 'Play';
-            clearInterval(timer);
-        }
-
-        document.getElementById('speed-slider').oninput = function() {
-            if (isPlaying) {
-                pause();
-                play();
-            }
+        const SPRING_POP = sampleSpring(520, 17, 1);
+        const durOf = (a) => a.length * FRAME;
+        const Motion = {
+            pop(el) {
+                if (REDUCED || !el) return;
+                const kf = SPRING_POP.map(p => ({ transform: `scale(${(0.55 + 0.55 * p).toFixed(3)})` }));
+                el.animate(kf, { duration: durOf(SPRING_POP), easing: 'linear' });
+            },
         };
 
-        window.onload = init;
+        // ───────── State ─────────
+        let nums = [73, 74, 75, 71, 69, 72, 76, 73];
+        let steps = [];
+        let stepIdx = 0;
+        let timer = null;
+        let confettiArmed = true;
+        const delays = [1450, 720, 330];
+        const numEls = [];   // index -> tile element
+        const idxEls = [];   // index -> index-label element
+
+        const CODE = [
+            [['kw','def '],['fn','dailyTemperatures'],['src','(a):']],
+            [['src','  res = [0] * n']],
+            [['src','  stack = []                  # indices, decreasing temps']],
+            [['kw','  for '],['src','i in 0..n-1:']],
+            [['kw','    while '],['src','stack and a[i] > a[stack[-1]]:']],
+            [['src','      top = stack.pop()        # resolved by day i']],
+            [['src','      res[top] = i - top']],
+            [['src','    stack.append(i)            # wait for warmer day']],
+            [['kw','  return '],['src','res']],
+        ];
+        function buildCodePanel() {
+            const panel = document.getElementById('code-panel'); panel.innerHTML = '';
+            CODE.forEach((tokens, i) => {
+                const line = document.createElement('div'); line.className = 'code-line'; line.dataset.line = i;
+                const lno = document.createElement('span'); lno.className = 'lno'; lno.textContent = i + 1; line.appendChild(lno);
+                const src = document.createElement('span');
+                tokens.forEach(([cls, txt]) => { const s = document.createElement('span'); s.className = cls; s.textContent = txt; src.appendChild(s); });
+                line.appendChild(src); panel.appendChild(line);
+            });
+        }
+        function highlightCode(arr) { document.querySelectorAll('.code-line').forEach(el => el.classList.toggle('active', arr && arr.includes(+el.dataset.line))); }
+        function toggleDetails() {
+            const wrap = document.getElementById('details-wrap'); const open = wrap.classList.toggle('open');
+            wrap.querySelector('.details-toggle').setAttribute('aria-expanded', open ? 'true' : 'false');
+            document.getElementById('details-label').textContent = open ? 'Hide code, state & log' : 'Show code, state & log';
+        }
+
+        // ───────── step generation (immutable snapshots) ─────────
+        function generateSteps() {
+            steps = [];
+            const n = nums.length;
+
+            // base snapshot shape: every step carries a full, immutable view of state
+            const snap = (extra) => Object.assign({
+                i: null,                 // current scan pointer
+                stack: [],               // indices currently in the monotonic stack
+                res: new Array(n).fill(null),  // result so far (null = not yet computed)
+                resolvedIdx: null,       // tile index just popped/resolved this step
+                lastResolved: null,      // text for the "last resolved" pill
+                phase: null,             // 'push' | 'pop' | null
+                complete: false, confetti: false, answer: null
+            }, extra);
+
+            const res = new Array(n).fill(0);
+            const resKnown = new Array(n).fill(false);  // becomes true when day is resolved (popped) or finalized
+            const stack = [];
+
+            steps.push(snap({
+                code: [0, 1, 2], action: 'MONOTONIC STACK', actionColor: 'var(--accent-blue)',
+                panel: `For each day, how many days until a warmer temperature? <code>temps = [${nums.join(', ')}]</code>. Keep a stack of days still <b>waiting</b> for a warmer day; the pointer <code>i</code> scans left &#8594; right, popping &amp; resolving any day it is warmer than.`,
+                log: `init  temps = [${nums.join(',')}]  (n=${n})`,
+                stack: [], res: res.slice().map((v, k) => resKnown[k] ? v : null)
+            }));
+
+            for (let i = 0; i < n; i++) {
+                // arrival of pointer i (before any pops)
+                steps.push(snap({
+                    i, stack: stack.slice(),
+                    res: res.map((v, k) => resKnown[k] ? v : null),
+                    phase: 'arrive', code: [3, 4],
+                    lastResolved: lastResText(res, resKnown),
+                    action: `SCAN i = ${i}`, actionColor: 'var(--accent-purple)',
+                    panel: `Day <b>i = ${i}</b> with temperature <code>${nums[i]}&deg;</code>. Compare against the top of the stack &mdash; while today is warmer, those waiting days get resolved.`,
+                    log: `i=${i}  temp=${nums[i]}  stack=[${stack.join(',')}]`
+                }));
+
+                // pop & resolve loop
+                while (stack.length && nums[i] > nums[stack[stack.length - 1]]) {
+                    const top = stack.pop();
+                    res[top] = i - top;
+                    resKnown[top] = true;
+                    steps.push(snap({
+                        i, stack: stack.slice(),
+                        res: res.map((v, k) => resKnown[k] ? v : null),
+                        resolvedIdx: top, phase: 'pop', code: [4, 5, 6],
+                        lastResolved: `day ${top} &rarr; ${i - top}`,
+                        action: `POP & RESOLVE`, actionColor: 'var(--accent-green)',
+                        panel: `<code>${nums[i]}&deg; &gt; ${nums[top]}&deg;</code> (day ${top} on top): day <b>${top}</b> is resolved. <code>res[${top}] = i - top = ${i} - ${top} = ${i - top}</code>. Pop it off the stack.`,
+                        log: `pop  resolve day ${top}: res[${top}] = ${i} - ${top} = ${i - top}`
+                    }));
+                }
+
+                // push i
+                stack.push(i);
+                steps.push(snap({
+                    i, stack: stack.slice(),
+                    res: res.map((v, k) => resKnown[k] ? v : null),
+                    phase: 'push', code: [7],
+                    lastResolved: lastResText(res, resKnown),
+                    action: `PUSH ${i}`, actionColor: 'var(--accent-blue)',
+                    panel: `Stack top is now no warmer than today (or stack empty), so stop popping. Push day <b>${i}</b> &mdash; it now <b>waits</b> for its own warmer day. Stack = <code>[${stack.join(', ')}]</code>.`,
+                    log: `push  i=${i}  stack=[${stack.join(',')}]`
+                }));
+            }
+
+            // finalize: anything left in the stack never sees a warmer day -> 0
+            const leftover = stack.slice();
+            for (const k of leftover) resKnown[k] = true; // res[k] already 0
+            steps.push(snap({
+                i: null, stack: [],
+                res: res.slice(),
+                phase: 'final', complete: true, confetti: true, code: [8],
+                answer: `[${res.join(', ')}]`,
+                leftover,
+                lastResolved: leftover.length ? `days [${leftover.join(',')}] &rarr; 0` : lastResText(res, resKnown),
+                action: `✓ DONE`, actionColor: 'var(--accent-green)',
+                panel: leftover.length
+                    ? `Done. Days still in the stack &mdash; <code>[${leftover.join(', ')}]</code> &mdash; never get a warmer day, so they stay <b>0</b>. Final answer: <code><b>[${res.join(', ')}]</b></code>.`
+                    : `Done. Every day was resolved. Final answer: <code><b>[${res.join(', ')}]</b></code>.`,
+                log: `done  res = [${res.join(',')}]`
+            }));
+        }
+
+        function lastResText(res, resKnown) {
+            for (let k = res.length - 1; k >= 0; k--) if (resKnown[k]) return `day ${k} &rarr; ${res[k]}`;
+            return null;
+        }
+        // ───────── build persistent DOM skeleton (once per input load) ─────────
+        function buildBoard() {
+            const numRow = document.getElementById('num-row');
+            numRow.innerHTML = '';
+            numEls.length = 0; idxEls.length = 0;
+
+            nums.forEach((v, i) => {
+                const col = document.createElement('div'); col.className = 'col';
+                const cell = document.createElement('div'); cell.className = 'cell num-cell';
+                const arrow = document.createElement('span'); arrow.className = 'scan-arrow'; arrow.textContent = '▼';
+                const valSpan = document.createElement('span'); valSpan.textContent = String(v);
+                cell.appendChild(arrow); cell.appendChild(valSpan);
+                const lab = document.createElement('div'); lab.className = 'idx-label'; lab.textContent = i;
+                col.appendChild(cell); col.appendChild(lab); numRow.appendChild(col);
+                numEls.push(cell); idxEls.push(lab);
+            });
+        }
+
+        // ───────── render (pure function of steps[idx], persistent DOM) ─────────
+        function renderStep(idx) {
+            stepIdx = idx; const step = steps[idx]; if (!step) return;
+            const inStackSet = new Set(step.stack);
+
+            for (let i = 0; i < nums.length; i++) {
+                let cls = 'cell num-cell';
+                const prevResolved = numEls[i].classList.contains('resolved');
+                const prevCur = numEls[i].classList.contains('current');
+
+                if (step.resolvedIdx === i) {
+                    cls += ' resolved';
+                } else if (step.i === i && step.phase !== 'final') {
+                    cls += ' current';
+                } else if (inStackSet.has(i)) {
+                    cls += ' instack';
+                } else if (step.complete) {
+                    // finished: resolved days dimmed-neutral, leftover days marked red (answer 0)
+                    if (step.leftover && step.leftover.includes(i)) cls += ' unresolved';
+                    else cls += ' dim';
+                } else if (step.i != null && i > step.i) {
+                    cls += ' dim';
+                }
+
+                numEls[i].className = cls;
+                idxEls[i].className = 'idx-label' + (step.i === i && step.phase !== 'final' ? ' lit' : '');
+
+                const nowResolved = numEls[i].classList.contains('resolved');
+                const nowCur = numEls[i].classList.contains('current');
+                if (nowResolved && !prevResolved) Motion.pop(numEls[i]);
+                if (nowCur && !prevCur) Motion.pop(numEls[i]);
+            }
+
+            // ── monotonic stack panel (re-rendered each step; NOT the array row) ──
+            const rail = document.getElementById('stack-rail');
+            rail.innerHTML = '';
+            const base = document.createElement('span'); base.className = 'base-tag'; base.textContent = 'base';
+            rail.appendChild(base);
+            if (step.stack.length === 0) {
+                const e = document.createElement('span'); e.className = 'stack-empty'; e.textContent = '(empty)';
+                rail.appendChild(e);
+            } else {
+                step.stack.forEach((si, pos) => {
+                    const it = document.createElement('div');
+                    it.className = 'stack-item' + (pos === step.stack.length - 1 ? ' top' : '');
+                    const val = document.createElement('div'); val.className = 'si-val'; val.textContent = nums[si];
+                    const ix = document.createElement('div'); ix.className = 'si-idx'; ix.textContent = '[' + si + ']';
+                    it.appendChild(val); it.appendChild(ix); rail.appendChild(it);
+                    if (pos === step.stack.length - 1 && step.phase === 'push') Motion.pop(it);
+                });
+            }
+
+            // ── answer track: result tiles building up ──
+            const at = document.getElementById('answer-track'); at.innerHTML = '';
+            for (let i = 0; i < nums.length; i++) {
+                const t = document.createElement('div'); t.className = 'ans-tile';
+                const known = step.res[i] != null;
+                const av = document.createElement('div'); av.className = 'av';
+                const ai = document.createElement('div'); ai.className = 'ai'; ai.textContent = '[' + i + ']';
+                if (known) {
+                    av.textContent = step.res[i];
+                    t.classList.add(step.complete && step.res[i] === 0 ? 'zero' : 'set');
+                    if (step.resolvedIdx === i) { t.classList.add('flash'); Motion.pop(t); }
+                } else {
+                    av.textContent = '·';
+                }
+                t.appendChild(av); t.appendChild(ai); at.appendChild(t);
+            }
+
+            const mp = document.getElementById('main-panel');
+            mp.innerHTML = step.panel || '&mdash;';
+            mp.classList.toggle('done', !!step.complete);
+            mp.classList.toggle('pop', step.phase === 'pop' && !step.complete);
+            mp.classList.toggle('push', step.phase === 'push' && !step.complete);
+            const aw = document.getElementById('action-word'); aw.textContent = step.action || ''; aw.style.color = step.actionColor || 'var(--text-dim)';
+            highlightCode(step.code);
+
+            if (step.confetti) { if (confettiArmed) { fireConfetti(); confettiArmed = false; } } else confettiArmed = true;
+
+            document.getElementById('st-i').textContent = step.i != null ? step.i : '—';
+            document.getElementById('st-v').textContent = step.i != null ? nums[step.i] : '—';
+            document.getElementById('st-stack').textContent = step.stack.length ? '[' + step.stack.join(',') + ']' : '[]';
+            document.getElementById('st-res').innerHTML = step.lastResolved || '—';
+
+            document.getElementById('step-badge').textContent = `Step ${idx + 1} / ${steps.length}`;
+            document.getElementById('progress-fill').style.width = `${(idx / Math.max(1, steps.length - 1)) * 100}%`;
+
+            const logEl = document.getElementById('log');
+            logEl.innerHTML = steps.slice(0, idx + 1).map(s => `<div style="margin:3px 0;white-space:pre-wrap;">${s.log}</div>`).join('');
+            logEl.scrollTop = logEl.scrollHeight;
+        }
+
+        function fireConfetti() {
+            const host = document.getElementById('confetti'); if (!host || REDUCED) return;
+            const colors = ['#22c55e', '#06b6d4', '#a855f7', '#f5a524', '#f43f5e'];
+            for (let i = 0; i < 38; i++) {
+                const p = document.createElement('div'); p.className = 'confetti-piece';
+                p.style.setProperty('--x', ((Math.random() * 2 - 1) * 220) + 'px');
+                p.style.setProperty('--rot', ((Math.random() * 720 - 360)) + 'deg');
+                p.style.background = colors[i % colors.length];
+                p.style.animationDuration = (0.9 + Math.random() * 0.8) + 's';
+                p.style.animationDelay = (Math.random() * 0.15) + 's';
+                host.appendChild(p); setTimeout(() => p.remove(), 1900);
+            }
+        }
+
+        // ───────── controls ─────────
+        function nextStep() { if (stepIdx < steps.length - 1) renderStep(stepIdx + 1); else pause(); }
+        function prevStep() { if (stepIdx > 0) renderStep(stepIdx - 1); }
+        function resetSim() { pause(); renderStep(0); }
+        function togglePlay() {
+            const btn = document.getElementById('play-btn');
+            if (timer) { pause(); return; }
+            btn.textContent = 'Pause';
+            if (stepIdx >= steps.length - 1) renderStep(0);
+            timer = setInterval(() => { if (stepIdx < steps.length - 1) nextStep(); else pause(); }, delays[document.getElementById('speed').value]);
+        }
+        function pause() { clearInterval(timer); timer = null; document.getElementById('play-btn').textContent = 'Play'; }
+
+        function loadArr(arr) {
+            pause(); nums = arr.slice(); confettiArmed = true;
+            buildBoard(); generateSteps(); renderStep(0);
+        }
+        function loadCustom() {
+            const raw = document.getElementById('nums-input').value;
+            let parsed;
+            try { parsed = JSON.parse(raw); }
+            catch (e) {
+                // tolerate bare comma lists like  73, 74, 75
+                parsed = raw.split(',').map(x => parseInt(x.trim(), 10)).filter(x => !isNaN(x));
+            }
+            if (Array.isArray(parsed) && parsed.length > 0 && parsed.every(x => typeof x === 'number' && isFinite(x)) && parsed.length <= 14) {
+                loadArr(parsed);
+            }
+        }
+        function loadExample(n) {
+            const ex = [[73, 74, 75, 71, 69, 72, 76, 73], [30, 40, 50, 60]][n];
+            document.getElementById('nums-input').value = JSON.stringify(ex);
+            loadArr(ex);
+        }
+
+        document.addEventListener('keydown', (e) => {
+            const tag = (e.target.tagName || '').toLowerCase(); if (tag === 'input' || tag === 'textarea') return;
+            if (e.key === 'ArrowRight') { e.preventDefault(); pause(); nextStep(); }
+            else if (e.key === 'ArrowLeft') { e.preventDefault(); pause(); prevStep(); }
+            else if (e.key === ' ') { e.preventDefault(); togglePlay(); }
+        });
+        document.getElementById('nums-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') loadCustom(); });
+
+        buildCodePanel();
+        window.onload = () => loadExample(0);
     </script>
 </body>
 </html>

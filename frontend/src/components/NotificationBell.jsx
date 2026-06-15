@@ -1,8 +1,20 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { motion as Motion, AnimatePresence } from 'framer-motion';
 import { Bell, CheckCheck, Megaphone, X } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { useTheme } from '../context/ThemeContext';
+import { popover, springSnappy, easeOutExpo } from '../lib/motion';
+
+// Per-row entrance — smaller travel than the shared fadeUp so a 20-item list
+// settles quickly while still reading as a cascade.
+const listRow = {
+    hidden: { opacity: 0, y: 10 },
+    visible: { opacity: 1, y: 0, transition: { duration: 0.3, ease: easeOutExpo } },
+};
+const listStagger = {
+    hidden: {},
+    visible: { transition: { staggerChildren: 0.035 } },
+};
 
 const POLL_INTERVAL = 30_000;
 
@@ -27,7 +39,6 @@ function NotifIcon({ type }) {
 
 export default function NotificationBell() {
     const { user, apiCall } = useAuth();
-    const { isDark } = useTheme();
     const navigate = useNavigate();
 
     const [count, setCount]               = useState(0);
@@ -166,25 +177,49 @@ export default function NotificationBell() {
                 }}
             >
                 <Bell size={20} />
-                {count > 0 && (
-                    <span
-                        aria-live="polite"
-                        aria-atomic="true"
-                        className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 flex items-center justify-center rounded-full text-[10px] font-bold text-white leading-none pointer-events-none"
-                        style={{ backgroundColor: '#e06661' }}
-                    >
-                        {count > 99 ? '99+' : count}
-                    </span>
-                )}
+                <AnimatePresence>
+                    {count > 0 && (
+                        <Motion.span
+                            key={count > 99 ? '99+' : count}
+                            initial={{ scale: 0.4, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            exit={{ scale: 0.4, opacity: 0, transition: { duration: 0.12 } }}
+                            transition={springSnappy}
+                            aria-live="polite"
+                            aria-atomic="true"
+                            className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 flex items-center justify-center rounded-full text-[10px] font-bold text-white leading-none pointer-events-none"
+                            style={{ backgroundColor: '#e06661', boxShadow: '0 2px 8px rgba(224,102,97,0.5)' }}
+                        >
+                            {count > 99 ? '99+' : count}
+                        </Motion.span>
+                    )}
+                </AnimatePresence>
             </button>
 
             {/* ── Dropdown panel ──────────────────────────────────────────── */}
+            <AnimatePresence>
             {open && (
-                <div
+                <Motion.div
+                    variants={popover}
+                    initial="hidden"
+                    animate="visible"
+                    exit="exit"
                     role="dialog"
                     aria-label="Notifications"
-                    className="absolute right-0 top-12 w-[340px] rounded-xl shadow-2xl z-50 overflow-hidden bg-card border border-border"
+                    // NOT .glass-edge — it sets position:relative, which beats
+                    // Tailwind's `absolute` (unlayered CSS wins over utilities)
+                    // and un-anchors the panel. Hairline drawn inline below.
+                    className="absolute right-0 top-12 w-[min(380px,calc(100vw-2rem))] max-sm:fixed max-sm:left-4 max-sm:right-4 max-sm:top-20 max-sm:w-auto rounded-2xl shadow-2xl z-50 overflow-hidden glass-card"
+                    // Solid --popover fill: nested backdrop-filters inside the nav
+                    // don't blur, so the glass fill would show content bleeding through.
+                    style={{ transformOrigin: 'top right', background: 'var(--popover)' }}
                 >
+                    {/* Gradient hairline (the .glass-edge look) */}
+                    <div
+                        aria-hidden="true"
+                        className="absolute top-0 left-0 right-0 h-px pointer-events-none"
+                        style={{ background: 'linear-gradient(90deg, transparent, rgba(var(--primary-rgb), 0.55), rgba(var(--secondary-rgb), 0.45), transparent)' }}
+                    />
                     {/* Header */}
                     <div
                         className="flex items-center justify-between px-4 py-3 border-b border-border"
@@ -206,9 +241,8 @@ export default function NotificationBell() {
                                 <button
                                     onClick={markAll}
                                     title="Mark all as read"
-                                    className="flex items-center gap-1 text-xs px-2 py-1 rounded-lg transition-colors text-muted-foreground"
-                                    onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'var(--color-surface-hover)'; }}
-                                    onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
+                                    className="flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1 rounded-full transition-all hover:-translate-y-px"
+                                    style={{ color: iconColor, backgroundColor: unreadBg, border: '1px solid color-mix(in srgb, var(--primary) 25%, transparent)' }}
                                 >
                                     <CheckCheck size={13} />
                                     All read
@@ -227,12 +261,12 @@ export default function NotificationBell() {
                     </div>
 
                     {/* Body */}
-                    <div className="max-h-[380px] overflow-y-auto">
+                    <div className="max-h-[min(420px,60vh)] overflow-y-auto overscroll-contain">
                         {loading ? (
                             /* Skeleton */
                             <div className="flex flex-col gap-0">
                                 {[1, 2, 3].map(i => (
-                                    <div key={i} className="flex gap-3 items-start px-4 py-3 border-b border-border">
+                                    <div key={i} className="flex gap-3 items-start px-4 py-3 border-b border-border last:border-b-0">
                                         <div className="w-8 h-8 rounded-full shrink-0 animate-pulse" style={{ backgroundColor: 'var(--border)' }} />
                                         <div className="flex-1 space-y-2 animate-pulse">
                                             <div className="h-3 rounded w-3/4" style={{ backgroundColor: 'var(--border)' }} />
@@ -259,26 +293,38 @@ export default function NotificationBell() {
                             </div>
                         ) : notifications.length === 0 ? (
                             /* Empty state */
-                            <div className="flex flex-col items-center justify-center py-14 gap-2">
-                                <div
-                                    className="w-12 h-12 rounded-full flex items-center justify-center mb-1"
-                                    style={{ backgroundColor: 'var(--color-surface-hover)' }}
-                                >
-                                    <Bell size={22} style={{ color: 'var(--color-border)' }} />
+                            <div className="flex flex-col items-center justify-center py-14 px-6 gap-1 text-center">
+                                <div className="relative mb-3">
+                                    {/* Soft expanding ring behind the bell — global `ping` keyframes */}
+                                    <div
+                                        className="absolute inset-0 rounded-full"
+                                        style={{ backgroundColor: 'rgba(var(--primary-rgb),0.25)', animation: 'ping 3s ease-out infinite' }}
+                                    />
+                                    <div
+                                        className="relative w-14 h-14 rounded-full flex items-center justify-center"
+                                        style={{
+                                            background: 'linear-gradient(145deg, rgba(var(--primary-rgb),0.16), rgba(var(--secondary-rgb),0.10))',
+                                            border: '1px solid rgba(var(--primary-rgb),0.25)',
+                                        }}
+                                    >
+                                        <Bell size={22} style={{ color: 'var(--primary)' }} />
+                                    </div>
                                 </div>
-                                <p className="text-sm font-medium text-foreground">You're all caught up</p>
-                                <p className="text-xs text-muted-foreground">New notifications will appear here</p>
+                                <p className="text-sm font-semibold text-foreground">You're all caught up</p>
+                                <p className="text-xs text-muted-foreground leading-relaxed">New notifications will appear here</p>
                             </div>
                         ) : (
-                            /* Notification list */
-                            notifications.map(n => {
+                            /* Notification list — rows cascade in */
+                            <Motion.div variants={listStagger} initial="hidden" animate="visible">
+                            {notifications.map(n => {
                                 const isUnread = !n.read_at;
                                 return (
-                                    <div
+                                    <Motion.div
                                         key={n.id}
+                                        variants={listRow}
                                         role="button"
                                         tabIndex={0}
-                                        className="flex gap-3 items-start px-4 py-3 cursor-pointer transition-colors outline-none border-b border-border"
+                                        className="flex gap-3 items-start px-4 py-3 cursor-pointer transition-colors outline-none border-b border-border last:border-b-0"
                                         style={{
                                             backgroundColor: isUnread ? unreadBg : 'transparent',
                                         }}
@@ -327,16 +373,18 @@ export default function NotificationBell() {
                                         {isUnread && (
                                             <div
                                                 className="w-2 h-2 rounded-full shrink-0 mt-1.5"
-                                                style={{ backgroundColor: '#e06661' }}
+                                                style={{ backgroundColor: '#e06661', boxShadow: '0 0 6px rgba(224,102,97,0.6)' }}
                                             />
                                         )}
-                                    </div>
+                                    </Motion.div>
                                 );
-                            })
+                            })}
+                            </Motion.div>
                         )}
                     </div>
-                </div>
+                </Motion.div>
             )}
+            </AnimatePresence>
         </div>
     );
 }

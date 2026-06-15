@@ -16,6 +16,29 @@ import { useToast } from '../components/Toast';
 
 const CHECK = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='m5 12 5 5 9-10' fill='none' stroke='%23000' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E";
 
+/*
+ * Multi-currency pricing.
+ *
+ * All base prices stay defined in INR. For every other currency the INR
+ * amount is converted at `inrPerUnit` and then multiplied by `markup`
+ * (1.6 = international prices are 60% higher than the plain conversion).
+ * Update `inrPerUnit` here when exchange rates drift.
+ */
+const CURRENCIES = {
+    INR: { symbol: '₹',   name: 'Indian Rupee',      inrPerUnit: 1,   markup: 1 },
+    USD: { symbol: '$',   name: 'US Dollar',         inrPerUnit: 88,  markup: 1.6 },
+    GBP: { symbol: '£',   name: 'British Pound',     inrPerUnit: 115, markup: 1.6 },
+    AUD: { symbol: 'A$',  name: 'Australian Dollar', inrPerUnit: 57,  markup: 1.6 },
+    SGD: { symbol: 'S$',  name: 'Singapore Dollar',  inrPerUnit: 67,  markup: 1.6 },
+    AED: { symbol: 'AED', name: 'UAE Dirham',        inrPerUnit: 24,  markup: 1.6 },
+};
+
+function convertFromINR(inrAmount, code) {
+    const c = CURRENCIES[code];
+    if (code === 'INR') return inrAmount;
+    return Math.round((inrAmount / c.inrPerUnit) * c.markup);
+}
+
 const CSS = `
 .mv-plan{
   --mv-line: rgba(15,23,42,.09);
@@ -64,8 +87,9 @@ const CSS = `
 .mv-plan .lede{margin:0 auto;max-width:520px;font-size:.95rem;line-height:1.7;color:#475569}
 .dark .mv-plan .lede{color:rgba(255,255,255,.62)}
 
-/* ── billing toggle (theme-aware) ──────────────────────────── */
-.mv-plan .toggle{display:inline-flex;align-items:center;margin:26px auto 0;position:relative;
+/* ── billing toggle + currency selector (theme-aware) ──────────────────────────── */
+.mv-plan .controls{display:flex;align-items:center;justify-content:center;gap:12px;flex-wrap:wrap;margin:26px auto 0}
+.mv-plan .toggle{display:inline-flex;align-items:center;position:relative;
   background:var(--muted);border:1px solid var(--mv-line);border-radius:999px;padding:5px}
 .mv-plan .toggle button{position:relative;z-index:2;border:0;background:transparent;cursor:pointer;font-family:inherit;
   font-weight:600;font-size:14px;color:var(--muted-foreground);padding:9px 22px;border-radius:999px;transition:color .25s}
@@ -79,6 +103,17 @@ const CSS = `
   background:color-mix(in srgb,var(--secondary) 14%,transparent);border:1px solid color-mix(in srgb,var(--secondary) 32%,transparent);
   border-radius:999px;padding:5px 12px}
 .mv-plan.is-annual .save-tag.annual-only{display:inline-block}
+
+/* ── currency selector ──────────────────────────── */
+.mv-plan .cur-wrap{position:relative;display:inline-flex}
+.mv-plan .cur-select{appearance:none;-webkit-appearance:none;font-family:inherit;font-weight:600;font-size:14px;
+  color:var(--foreground);background:var(--muted);border:1px solid var(--mv-line);border-radius:999px;
+  padding:11px 38px 11px 18px;cursor:pointer;outline:none;transition:border-color .2s,box-shadow .2s}
+.mv-plan .cur-select:hover,.mv-plan .cur-select:focus{border-color:color-mix(in srgb,var(--primary) 45%,transparent)}
+.mv-plan .cur-select:focus-visible{box-shadow:0 0 0 3px color-mix(in srgb,var(--primary) 22%,transparent)}
+.mv-plan .cur-wrap::after{content:"";position:absolute;right:17px;top:50%;width:7px;height:7px;margin-top:-5px;
+  border-right:1.8px solid var(--muted-foreground);border-bottom:1.8px solid var(--muted-foreground);
+  transform:rotate(45deg);pointer-events:none}
 
 /* ── section heads ──────────────────────────── */
 .mv-plan section{margin-top:56px}
@@ -193,7 +228,14 @@ const CSS = `
 
 export default function Plan() {
     const [annual, setAnnual] = useState(false);
+    const [currency, setCurrency] = useState('INR');
     const showToast = useToast();
+
+    const sym = CURRENCIES[currency].symbol;
+    // GST only applies to Indian billing; other regions see tax-exclusive prices.
+    const tax = currency === 'INR' ? ' + GST' : '';
+    const fmt = (inrAmount) =>
+        convertFromINR(inrAmount, currency).toLocaleString(currency === 'INR' ? 'en-IN' : 'en-US');
 
     // Wire this to the PayU checkout. `sku` matches the backend entitlement
     // product / order item; `period` follows the billing toggle. Example:
@@ -218,20 +260,34 @@ export default function Plan() {
                     <h1 className="reveal" style={{ animationDelay: '.12s' }}>Learn the craft.<br /><em>Build</em> with MIRA.</h1>
                     <p className="lede reveal" style={{ animationDelay: '.2s' }}>Courses unlock the curriculum. MIRA — your AI tutor — is a separate add-on you can pick up whenever you want. Mix and match.</p>
 
-                    <div className="toggle reveal" role="tablist" aria-label="Billing period" style={{ animationDelay: '.28s' }}>
-                        <span className="slider" aria-hidden="true" />
-                        <button
-                            className={annual ? '' : 'active'}
-                            role="tab"
-                            aria-selected={!annual}
-                            onClick={() => setAnnual(false)}
-                        >Monthly</button>
-                        <button
-                            className={annual ? 'active' : ''}
-                            role="tab"
-                            aria-selected={annual}
-                            onClick={() => setAnnual(true)}
-                        >Annual</button>
+                    <div className="controls reveal" style={{ animationDelay: '.28s' }}>
+                        <div className="toggle" role="tablist" aria-label="Billing period">
+                            <span className="slider" aria-hidden="true" />
+                            <button
+                                className={annual ? '' : 'active'}
+                                role="tab"
+                                aria-selected={!annual}
+                                onClick={() => setAnnual(false)}
+                            >Monthly</button>
+                            <button
+                                className={annual ? 'active' : ''}
+                                role="tab"
+                                aria-selected={annual}
+                                onClick={() => setAnnual(true)}
+                            >Annual</button>
+                        </div>
+                        <span className="cur-wrap">
+                            <select
+                                className="cur-select"
+                                value={currency}
+                                aria-label="Currency"
+                                onChange={(e) => setCurrency(e.target.value)}
+                            >
+                                {Object.entries(CURRENCIES).map(([code, c]) => (
+                                    <option key={code} value={code}>{c.symbol} {code} — {c.name}</option>
+                                ))}
+                            </select>
+                        </span>
                     </div>
                     <div className="save-row reveal" style={{ animationDelay: '.28s' }}>
                         <span className="save-tag annual-only">Annual = up to 2 months free</span>
@@ -253,8 +309,8 @@ export default function Plan() {
                         <div className="card">
                             <div className="tier">DSA</div>
                             <div className="blurb">Data Structures &amp; Algorithms — interview-ready, end to end.</div>
-                            <div className="price"><span className="cur">₹</span><span className="amt">{annual ? '1,399' : '1,999'}</span></div>
-                            <div className="sub">{annual ? '/mo · billed ₹16,788/yr + GST' : 'per month + GST'}</div>
+                            <div className="price"><span className="cur">{sym}</span><span className="amt">{annual ? fmt(1399) : fmt(1999)}</span></div>
+                            <div className="sub">{annual ? `/mo · billed ${sym}${fmt(16788)}/yr${tax}` : `per month${tax}`}</div>
                             <ul className="feat">
                                 <li>All DSA modules &amp; structured tracks</li>
                                 <li>Curated problem practice</li>
@@ -267,8 +323,8 @@ export default function Plan() {
                         <div className="card">
                             <div className="tier">Data Science + DSA</div>
                             <div className="blurb">The full combination — data science and algorithms together.</div>
-                            <div className="price"><span className="cur">₹</span><span className="amt">{annual ? '2,299' : '2,999'}</span></div>
-                            <div className="sub">{annual ? '/mo · billed ₹27,588/yr + GST' : 'per month + GST'}</div>
+                            <div className="price"><span className="cur">{sym}</span><span className="amt">{annual ? fmt(2299) : fmt(2999)}</span></div>
+                            <div className="sub">{annual ? `/mo · billed ${sym}${fmt(27588)}/yr${tax}` : `per month${tax}`}</div>
                             <ul className="feat">
                                 <li>Everything in DSA</li>
                                 <li>Complete Data Science track</li>
@@ -293,7 +349,7 @@ export default function Plan() {
                         <div className="card">
                             <div className="tier">Free</div>
                             <div className="blurb">Try the tutor, no commitment.</div>
-                            <div className="price"><span className="cur">₹</span><span className="amt">0</span></div>
+                            <div className="price"><span className="cur">{sym}</span><span className="amt">0</span></div>
                             <div className="sub">forever</div>
                             <ul className="feat">
                                 <li>~15 questions / week</li>
@@ -306,7 +362,7 @@ export default function Plan() {
                         <div className="card">
                             <div className="tier">Day-pass</div>
                             <div className="blurb">A focused day of help before a test or deadline.</div>
-                            <div className="price"><span className="cur">₹</span><span className="amt">99</span></div>
+                            <div className="price"><span className="cur">{sym}</span><span className="amt">{fmt(99)}</span></div>
                             <div className="sub">one day · 40 questions</div>
                             <ul className="feat">
                                 <li>40 questions for 24 hours</li>
@@ -320,8 +376,8 @@ export default function Plan() {
                             <span className="badge">Most popular</span>
                             <div className="tier">Plus</div>
                             <div className="blurb">For steady, everyday learning.</div>
-                            <div className="price"><span className="cur">₹</span><span className="amt">{annual ? '666' : '799'}</span></div>
-                            <div className="sub">{annual ? '/mo · billed ₹7,990/yr + GST' : 'per month + GST'}</div>
+                            <div className="price"><span className="cur">{sym}</span><span className="amt">{annual ? fmt(666) : fmt(799)}</span></div>
+                            <div className="sub">{annual ? `/mo · billed ${sym}${fmt(7990)}/yr${tax}` : `per month${tax}`}</div>
                             <ul className="feat">
                                 <li>500 questions / month</li>
                                 <li>Walkthroughs + memory + history</li>
@@ -334,8 +390,8 @@ export default function Plan() {
                         <div className="card">
                             <div className="tier">Pro</div>
                             <div className="blurb">Heavier learning + more building room.</div>
-                            <div className="price"><span className="cur">₹</span><span className="amt">{annual ? '1,249' : '1,499'}</span></div>
-                            <div className="sub">{annual ? '/mo · billed ₹14,990/yr + GST' : 'per month + GST'}</div>
+                            <div className="price"><span className="cur">{sym}</span><span className="amt">{annual ? fmt(1249) : fmt(1499)}</span></div>
+                            <div className="sub">{annual ? `/mo · billed ${sym}${fmt(14990)}/yr${tax}` : `per month${tax}`}</div>
                             <ul className="feat">
                                 <li>1,250 questions / month</li>
                                 <li>Everything in Plus</li>
@@ -365,9 +421,15 @@ export default function Plan() {
                             <p>Build credits power MIRA's heavy work — generating and debugging full projects, scaffolding apps, longer coding sessions. Made for builders who push hard. Stacks on any plan, and you can top up credits whenever you run low.</p>
                         </div>
                         <div className="right">
+<<<<<<< HEAD
                             <div className="price"><span className="cur">₹</span><span className="amt">4,999</span></div>
                             <div className="sub">one-time · 700 build credits + GST</div>
                             <button type="button" className="cta" onClick={() => selectPlan('build_pack_700')}>Buy the build pack</button>
+=======
+                            <div className="price"><span className="cur">{sym}</span><span className="amt">{fmt(4999)}</span></div>
+                            <div className="sub">{`one-time · 700 build credits${tax}`}</div>
+                            <button type="button" className="cta" onClick={() => selectPlan('mira_pack_large')}>Buy the build pack</button>
+>>>>>>> 6ce3cd66b0f4389f97dbcd403f032dfa23390624
                         </div>
                     </div>
                 </section>
@@ -386,8 +448,13 @@ export default function Plan() {
                                 <div className="d">For Plus &amp; Pro plans · added instantly</div>
                             </div>
                             <div className="buy">
+<<<<<<< HEAD
                                 <span className="p">₹399</span>
                                 <button type="button" onClick={() => selectPlan('topup_questions_250')}>Add questions →</button>
+=======
+                                <span className="p">{sym}{fmt(399)}</span>
+                                <button type="button" onClick={() => selectPlan('mira_topup_questions')}>Add questions →</button>
+>>>>>>> 6ce3cd66b0f4389f97dbcd403f032dfa23390624
                             </div>
                         </div>
                         <div className="topup">
@@ -396,15 +463,22 @@ export default function Plan() {
                                 <div className="d">For the build pack &amp; heavy builders</div>
                             </div>
                             <div className="buy">
+<<<<<<< HEAD
                                 <span className="p">₹699</span>
                                 <button type="button" onClick={() => selectPlan('topup_credits_100')}>Add credits →</button>
+=======
+                                <span className="p">{sym}{fmt(699)}</span>
+                                <button type="button" onClick={() => selectPlan('mira_topup_credits')}>Add credits →</button>
+>>>>>>> 6ce3cd66b0f4389f97dbcd403f032dfa23390624
                             </div>
                         </div>
                     </div>
                 </section>
 
                 <footer>
-                    All prices exclude 18% GST. Courses and MIRA are billed separately.<br />
+                    {currency === 'INR'
+                        ? 'All prices exclude 18% GST. Courses and MIRA are billed separately.'
+                        : `Prices shown in ${currency} (${CURRENCIES[currency].name}) exclude applicable taxes. Courses and MIRA are billed separately.`}<br />
                     <span className="pay">
                         <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M12 2 4 5v6c0 5 3.4 8.5 8 10 4.6-1.5 8-5 8-10V5l-8-3Z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /><path d="m9 12 2 2 4-4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /></svg>
                         Secure payments via PayU

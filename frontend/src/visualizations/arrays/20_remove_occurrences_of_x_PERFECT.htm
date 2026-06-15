@@ -3,408 +3,550 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Remove Occurrences of X - Visualization</title>
+    <title>Remove Occurrences of X - Two Pointers Visualization</title>
     <style>
         :root {
-            --bg-page: #000000;
-            --bg-surface: #161b22;
-            --bg-input: #000000;
-            --border-main: #30363d;
-            --btn-bg: #21262d;
-            --btn-hover: #2d333b;
-            --text-main: #c9d1d9;
-            --text-dim: #8b949e;
-            --text-log: #58a6ff;
-            --accent-orange: #e3b341;
-            --accent-blue: #388bfd;
-            --accent-green: #3fb950;
-            --accent-red: #f85149;
-            --accent-purple: #a371f7;
+            --bg-page: #070b14;
+            --bg-surface: rgba(255, 255, 255, 0.045);
+            --bg-input: rgba(255, 255, 255, 0.04);
+            --border-main: rgba(255, 255, 255, 0.10);
+            --btn-bg: rgba(255, 255, 255, 0.05);
+            --btn-hover: rgba(255, 255, 255, 0.10);
+            --text-main: #e8eefb;
+            --text-dim: #8b98b3;
+            --accent-orange: #f5a524;   /* FAST read pointer (F)          */
+            --accent-blue:   #06b6d4;   /* SLOW write pointer (W) / chrome */
+            --accent-green:  #22c55e;   /* kept / finalized               */
+            --accent-red:    #f43f5e;   /* matches x &middot; skipped     */
+            --accent-purple: #a855f7;   /* write/copy highlight           */
+            --mono: ui-monospace, 'SF Mono', 'Cascadia Code', 'Courier New', monospace;
+            --sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+            --shell: 900px;
         }
 
         * { box-sizing: border-box; }
+        html, body { overflow-x: hidden; }
         body {
-            background-color: var(--bg-page);
-            color: var(--text-main);
-            font-family: system-ui, -apple-system, sans-serif;
-            margin: 0;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            min-height: 100vh;
-            padding-bottom: 40px;
+            background:
+                radial-gradient(1100px 600px at 15% -10%, rgba(168, 85, 247, 0.10), transparent 60%),
+                radial-gradient(900px 600px at 100% 10%, rgba(6, 182, 212, 0.10), transparent 55%),
+                linear-gradient(160deg, #070b14 0%, #0b1120 55%, #0a0f1c 100%);
+            background-attachment: fixed;
+            color: var(--text-main); font-family: var(--sans); margin: 0;
+            display: flex; flex-direction: column; align-items: center; min-height: 100vh;
+            padding-bottom: 48px; -webkit-font-smoothing: antialiased;
         }
+        body::before, body::after { content: ''; position: fixed; border-radius: 50%; filter: blur(70px); pointer-events: none; z-index: 0; opacity: 0.45; }
+        body::before { width: 380px; height: 380px; top: 8%; left: -120px; background: radial-gradient(circle, rgba(168,85,247,0.30), transparent 70%); }
+        body::after  { width: 420px; height: 420px; bottom: 4%; right: -140px; background: radial-gradient(circle, rgba(6,182,212,0.22), transparent 70%); }
+        body > * { position: relative; z-index: 1; }
 
-        /* ROW 1: INPUT BAR */
         .input-bar {
-            width: 100%;
-            background-color: var(--bg-surface);
-            padding: 12px 16px;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            gap: 8px;
-            border-bottom: 1px solid var(--border-main);
+            width: 100%; background: rgba(10, 15, 28, 0.55);
+            backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+            padding: 14px 16px; display: flex; justify-content: center; align-items: center; gap: 10px;
+            border-bottom: 1px solid var(--border-main); flex-wrap: wrap; position: sticky; top: 0; z-index: 50;
         }
-        label.ui-label { font-family: 'Courier New', monospace; font-size: 13px; color: var(--text-dim); }
+        label.ui-label, .ui-label { font-family: var(--mono); font-size: 13px; color: var(--text-dim); letter-spacing: 0.2px; }
         input[type="text"], input[type="number"] {
-            background: var(--bg-input);
-            border: 1px solid var(--border-main);
-            color: var(--text-main);
-            height: 32px;
-            border-radius: 6px;
-            padding: 0 10px;
-            font-size: 13px;
+            background: var(--bg-input); border: 1px solid var(--border-main); color: var(--text-main);
+            height: 34px; border-radius: 9px; padding: 0 12px; font-size: 13px; font-family: var(--mono);
+            transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
         }
-        .arr-input { width: 240px; }
-        .x-input { width: 60px; }
+        .arr-input { width: 180px; }
+        .x-input { width: 64px; }
+        input:focus { outline: none; border-color: var(--accent-purple); box-shadow: 0 0 0 3px rgba(168, 85, 247, 0.18); background: rgba(168, 85, 247, 0.06); }
 
         button {
-            height: 32px; border-radius: 6px; padding: 0 14px; background: var(--btn-bg);
-            border: 1px solid var(--border-main); color: var(--text-main); font-size: 13px; cursor: pointer;
-            transition: background 0.2s ease;
+            height: 34px; border-radius: 9px; padding: 0 14px; background: var(--btn-bg);
+            border: 1px solid var(--border-main); color: var(--text-main); font-size: 13px; font-weight: 600; cursor: pointer;
+            transition: transform 0.15s ease, background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
         }
-        button:hover { background: var(--btn-hover); }
+        button:hover { background: var(--btn-hover); border-color: rgba(6, 182, 212, 0.5); box-shadow: 0 0 18px rgba(6, 182, 212, 0.18); transform: translateY(-1px); }
+        button:active { transform: translateY(0); }
+        #play-btn { background: linear-gradient(135deg, rgba(6,182,212,0.22), rgba(6,182,212,0.10)); border-color: rgba(6, 182, 212, 0.45); color: #a5f3fc; min-width: 80px; }
 
-        /* ROW 2: ARRAY TILES */
-        .array-container { margin-top: 20px; display: flex; align-items: center; gap: 12px; }
-        .tiles-wrapper { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; max-width: 800px; }
-        .tile-unit { display: flex; flex-direction: column; align-items: center; gap: 4px; }
-        .tile {
-            min-width: 44px; height: 44px; display: flex; align-items: center; justify-content: center;
-            border-radius: 6px; font-size: 15px; font-weight: 600; font-family: 'Courier New', monospace;
-            transition: all 0.25s ease; background: #21262d; border: 1px solid var(--border-main);
-            color: var(--text-main);
+        .shell { width: var(--shell); max-width: 95%; margin: 24px auto 0; display: flex; flex-direction: column; gap: 16px; }
+
+        .title-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+        .title-row h1 { font-size: 18px; font-weight: 800; margin: 0; letter-spacing: 0.2px; }
+        .title-row .sub { color: var(--text-dim); font-weight: 500; font-size: 13px; }
+        .step-badge { font-family: var(--mono); font-size: 12px; font-weight: 700; color: #a5f3fc; background: rgba(6,182,212,0.12); border: 1px solid rgba(6,182,212,0.3); padding: 4px 10px; border-radius: 999px; white-space: nowrap; }
+        .progress-track { height: 4px; width: 100%; background: rgba(255,255,255,0.07); border-radius: 999px; overflow: hidden; margin-top: -6px; }
+        .progress-fill { height: 100%; width: 0%; border-radius: 999px; background: linear-gradient(90deg, var(--accent-blue), var(--accent-purple)); box-shadow: 0 0 12px rgba(6,182,212,0.5); transition: width 0.45s cubic-bezier(0.34,1.1,0.64,1); }
+
+        .narration { background: var(--bg-surface); border: 1px solid rgba(6,182,212,0.22); border-radius: 12px; padding: 12px 18px; font-family: var(--mono); font-size: 14px; line-height: 1.5; color: #cfe9f5; min-height: 48px; display: flex; align-items: center; gap: 10px; transition: border-color 0.3s, background 0.3s; }
+        .narration::before { content: '\25B8'; color: var(--accent-blue); font-size: 13px; }
+        .narration.done { border-color: rgba(34,197,94,0.4); background: rgba(34,197,94,0.06); }
+        .narration.done::before { content: '\2713'; color: var(--accent-green); }
+        .narration code { background: rgba(6,182,212,0.14); color: #7dd3fc; padding: 1px 6px; border-radius: 5px; font-size: 12.5px; }
+        .narration b { color: #fff; }
+
+        .stage-card { background: var(--bg-surface); border: 1px solid var(--border-main); border-radius: 18px; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); box-shadow: 0 12px 38px rgba(0,0,0,0.4); overflow: hidden; }
+        .stage-screen { position: relative; margin: 14px; border-radius: 14px; background: radial-gradient(700px 300px at 50% -10%, rgba(6,182,212,0.08), transparent 70%), #090d18; border: 1px solid rgba(255,255,255,0.06); }
+        .array-stage { position: relative; width: 100%; overflow: auto; scrollbar-width: thin; padding: 38px 22px 24px; display: flex; justify-content: center; }
+        .array-stage::-webkit-scrollbar { height: 8px; width: 8px; }
+        .array-stage::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 8px; }
+
+        /* The signature TWO-POINTER idiom: one horizontal row of tiles + W (slow write) / F (fast read) flags */
+        .tp-board { position: relative; display: inline-flex; flex-direction: column; gap: 0; }
+        .row-label { font-family: var(--mono); font-size: 11px; letter-spacing: 1px; text-transform: uppercase; color: var(--text-dim); margin-bottom: 14px; text-align: center; }
+        .tile-row { display: flex; gap: 12px; }
+        .col { position: relative; display: flex; flex-direction: column; align-items: center; }
+
+        /* pointer flags float ABOVE the tile they index */
+        .ptr-flag {
+            position: absolute; top: -28px; left: 50%; transform: translateX(-50%) translateY(6px);
+            font-family: var(--mono); font-weight: 800; font-size: 12px; letter-spacing: 0.5px;
+            padding: 2px 9px; border-radius: 999px; opacity: 0; pointer-events: none;
+            transition: opacity 0.3s, transform 0.35s cubic-bezier(0.34,1.3,0.64,1), left 0.35s, color 0.3s, background 0.3s;
+            white-space: nowrap;
         }
-        .tile-index { font-size: 9px; color: var(--text-dim); font-family: monospace; }
-        
-        .tile.candidate { background: #2a1600; border: 2px solid var(--accent-orange); color: var(--accent-orange); transform: scale(1.12); z-index: 2; }
-        .tile.winning { background: #0f2a1a; border: 2px solid var(--accent-green); color: var(--accent-green); transform: scale(1.08); z-index: 2; }
-        .tile.defeated { background: #2a0d0d; border: 2px solid var(--accent-red); color: var(--accent-red); transform: scale(1.08); z-index: 2; }
-        .tile.comparing { background: #0d2244; border: 2px solid var(--accent-blue); color: var(--accent-blue); transform: scale(1.05); z-index: 1; }
-        .tile.past { opacity: 0.3; background: #161b22; color: var(--text-dim); }
-        .tile.idle { opacity: 0.7; }
+        .ptr-flag.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+        .ptr-flag.ptr-w { color: #a5f3fc; background: rgba(6,182,212,0.16); border: 1px solid rgba(6,182,212,0.5); box-shadow: 0 0 12px rgba(6,182,212,0.3); }
+        .ptr-flag.ptr-f { color: #ffd591; background: rgba(245,165,36,0.16); border: 1px solid rgba(245,165,36,0.5); box-shadow: 0 0 12px rgba(245,165,36,0.3); }
+        .ptr-flag.dual { top: -28px; }
+        .ptr-flag .arrow { font-size: 10px; }
 
-        /* ROW 3: PANEL */
-        .action-panel {
-            margin-top: 14px; background: var(--bg-surface); border: 1px solid var(--border-main);
-            border-radius: 6px; padding: 10px 18px; width: 550px; text-align: center; font-family: monospace; min-height: 60px;
-            display: flex; flex-direction: column; justify-content: center; font-size: 14px;
+        .cell {
+            display: flex; align-items: center; justify-content: center;
+            border-radius: 10px; font-family: var(--mono); font-weight: 800; font-size: 18px;
+            border: 2px solid var(--border-main); background: rgba(255,255,255,0.04); color: var(--text-main);
+            width: 52px; height: 52px; will-change: transform;
+            transition: background 0.35s, border-color 0.35s, color 0.35s, box-shadow 0.35s, transform 0.3s, opacity 0.35s;
         }
+        .idx-label { font-family: var(--mono); font-size: 11px; color: var(--text-dim); margin-top: 5px; transition: color 0.3s; }
+        .idx-label.lit { color: var(--accent-purple); }
 
-        /* ROW 4: INFO PANEL */
-        .info-panel { margin-top: 10px; display: flex; gap: 10px; }
-        .info-cell {
-            background: var(--bg-surface); border: 1px solid var(--border-main); border-radius: 6px;
-            padding: 8px 14px; display: flex; flex-direction: column; align-items: center; min-width: 110px; gap: 4px;
-        }
-        .info-label { font-size: 11px; color: var(--text-dim); }
-        .info-value { font-family: monospace; font-size: 16px; font-weight: 700; }
+        /* pointer-targeted tiles */
+        .cell.ptr-w { border-color: var(--accent-blue); background: rgba(6,182,212,0.12); color: #a5f3fc; box-shadow: 0 0 16px rgba(6,182,212,0.45); }
+        .cell.ptr-f { border-color: var(--accent-orange); background: rgba(245,165,36,0.14); color: #ffd591; box-shadow: 0 0 16px rgba(245,165,36,0.45); }
+        .cell.match { border-color: var(--accent-red); background: rgba(244,63,94,0.16); color: #fda4af; box-shadow: 0 0 18px rgba(244,63,94,0.45); }
+        .cell.writing { border-color: var(--accent-purple); background: rgba(168,85,247,0.18); color: #e9d5ff; box-shadow: 0 0 22px rgba(168,85,247,0.55), inset 0 0 12px rgba(168,85,247,0.12); transform: scale(1.08); z-index: 2; }
+        .cell.kept { border-color: var(--accent-green); background: linear-gradient(180deg, rgba(47,224,143,0.85), rgba(33,194,117,0.85)); color: #06251a; box-shadow: 0 0 16px rgba(34,197,94,0.45); }
+        .cell.stale { opacity: 0.28; border-color: rgba(255,255,255,0.08); color: var(--text-dim); }
 
-        /* ROW 5: RESULT DISPLAY */
-        .result-display { margin-top: 10px; display: flex; flex-direction: column; align-items: center; }
-        #res-val { font-size: 16px; color: var(--text-dim); font-family: monospace; transition: all 0.3s; }
-        .pop { animation: popAnim 400ms ease; color: var(--accent-green) !important; font-size: 26px !important; text-shadow: 0 0 12px var(--accent-green); }
+        .action-stage { position: relative; min-height: 92px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; }
+        .answer-track { display: flex; gap: 6px; align-items: center; min-height: 40px; flex-wrap: wrap; justify-content: center; }
+        .ans-tile { min-width: 44px; height: 44px; padding: 0 8px; border-radius: 9px; display: flex; align-items: center; justify-content: center; font-family: var(--mono); font-size: 20px; font-weight: 800; border: 2px solid var(--accent-green); background: rgba(34,197,94,0.16); color: #bbf7d0; box-shadow: 0 0 12px rgba(34,197,94,0.35); }
+        .action-word { font-family: var(--mono); font-weight: 800; font-size: 18px; letter-spacing: 0.4px; min-height: 22px; text-align: center; transition: color 0.3s; }
+        #confetti { position: absolute; inset: 0; overflow: visible; pointer-events: none; }
+        .confetti-piece { position: absolute; top: 0; left: 50%; width: 8px; height: 13px; border-radius: 2px; opacity: 0; animation: confettiFall ease-out forwards; }
 
-        @keyframes popAnim { 0%{transform:scale(1)} 50%{transform:scale(1.28)} 100%{transform:scale(1)} }
+        .controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: center; }
+        .controls .kbd-hint { font-size: 11px; color: var(--text-dim); font-family: var(--mono); margin-left: 4px; }
+        .kbd { background: rgba(255,255,255,0.07); border: 1px solid var(--border-main); border-radius: 5px; padding: 1px 6px; font-size: 10px; }
+        input[type="range"] { accent-color: var(--accent-blue); width: 110px; cursor: pointer; }
 
-        /* ROW 6: STATUS BAR */
-        .status-bar { margin-top: 8px; font-size: 13px; color: var(--text-dim); height: 1.2em; text-align: center; width: 600px;}
+        .details-toggle { align-self: center; height: 32px; padding: 0 16px; border-radius: 999px; cursor: pointer; background: rgba(255,255,255,0.04); border: 1px solid var(--border-main); color: var(--text-dim); font-family: var(--mono); font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; gap: 8px; transition: color 0.2s, border-color 0.2s, background 0.2s; }
+        .details-toggle:hover { color: var(--text-main); border-color: rgba(6,182,212,0.4); background: rgba(6,182,212,0.06); }
+        .details-toggle .chev { transition: transform 0.3s ease; }
+        .details-wrap.open .details-toggle .chev { transform: rotate(180deg); }
+        .details-body { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.4s ease; }
+        .details-wrap.open .details-body { grid-template-rows: 1fr; }
+        .details-inner { overflow: hidden; min-height: 0; }
+        .details-grid { display: flex; flex-direction: column; gap: 14px; padding-top: 14px; }
 
-        /* ROW 7: CONTROLS */
-        .controls { margin-top: 24px; display: flex; align-items: center; gap: 8px; }
-        input[type="range"] { accent-color: var(--accent-blue); width: 100px; cursor: pointer; }
+        .panel-card { background: var(--bg-surface); border: 1px solid var(--border-main); border-radius: 16px; backdrop-filter: blur(10px); box-shadow: 0 8px 30px rgba(0,0,0,0.35); }
+        .panel-head { display: flex; align-items: center; gap: 8px; padding: 11px 16px; border-bottom: 1px solid var(--border-main); font-size: 11px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; color: var(--text-dim); }
+        .panel-head .pip { width: 7px; height: 7px; border-radius: 50%; background: var(--accent-blue); box-shadow: 0 0 8px var(--accent-blue); }
+        .code-body { padding: 12px 6px 14px; font-family: var(--mono); font-size: 12.5px; line-height: 1.7; }
+        .code-line { display: flex; gap: 12px; padding: 1px 16px; border-left: 2px solid transparent; transition: background 0.3s, border-color 0.3s; white-space: pre; }
+        .code-line .lno { color: #4b5772; width: 16px; text-align: right; user-select: none; }
+        .code-line .src { color: #c4cee0; }
+        .code-line .kw { color: #c792ea; }
+        .code-line .fn { color: #82aaff; }
+        .code-line.active { background: rgba(6,182,212,0.12); border-left-color: var(--accent-blue); }
+        .code-line.active .src, .code-line.active .lno { color: #e8eefb; }
 
-        /* ROW 8: LEGEND */
-        .legend { margin-top: 12px; display: flex; gap: 16px; flex-wrap: wrap; justify-content: center; max-width: 600px; }
-        .legend-item { display: flex; align-items: center; font-size: 12px; color: var(--text-dim); }
-        .dot { width: 8px; height: 8px; border-radius: 50%; margin-right: 4px; display: inline-block; }
+        .state-strip { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 0 2px; }
+        .pill { display: inline-flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 12px; color: var(--text-dim); background: rgba(255,255,255,0.04); border: 1px solid var(--border-main); border-radius: 999px; padding: 4px 11px; }
+        .pill b { color: var(--text-main); font-weight: 800; }
+        .pill.w b { color: var(--accent-blue); } .pill.f b { color: var(--accent-orange); } .pill.x b { color: var(--accent-purple); } .pill.k b { color: var(--accent-green); }
 
-        /* ROW 9: LOG PANEL */
-        .log-panel {
-            margin-top: 12px; background: var(--bg-page); border: 1px solid var(--border-main);
-            border-radius: 6px; padding: 12px 16px; width: 650px; max-width: 90%; height: 120px;
-            overflow-y: auto; font-family: 'Courier New', monospace; font-size: 13px;
-        }
+        .log-panel { border-radius: 14px; padding: 12px 16px; height: 110px; overflow-y: auto; font-family: var(--mono); font-size: 12.5px; line-height: 1.5; background: var(--bg-surface); border: 1px solid var(--border-main); }
+        .log-panel::-webkit-scrollbar { width: 8px; }
+        .log-panel::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 8px; }
+
+        @keyframes confettiFall { 0%{ opacity:1; transform: translate(-50%, 0) rotate(0deg); } 100%{ opacity:0; transform: translate(calc(-50% + var(--x)), 220px) rotate(var(--rot)); } }
+        @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; } }
     </style>
 </head>
 <body>
 
     <div class="input-bar">
         <label class="ui-label">array =</label>
-        <input type="text" id="arr-input" class="arr-input" placeholder="3, 2, 2, 3">
+        <input type="text" id="arr-input" class="arr-input" value="[3,2,2,3]" maxlength="40">
         <label class="ui-label">x =</label>
-        <input type="number" id="x-input" class="x-input" placeholder="3">
+        <input type="number" id="x-input" class="x-input" value="3">
         <button onclick="loadCustom()">Load</button>
-        <button onclick="loadExample([3, 2, 2, 3], 3)">Ex 1</button>
-        <button onclick="loadExample([0, 1, 2, 2, 3, 0, 4, 2], 2)">Ex 2</button>
+        <span class="ui-label" style="opacity:.5">|</span>
+        <button onclick="loadExample(0)">[3,2,2,3] x=3 &rarr; len 2</button>
+        <button onclick="loadExample(1)">[0,1,2,2,3,0,4,2] x=2 &rarr; len 5</button>
     </div>
 
-    <div class="array-container">
-        <div class="ui-label" style="font-size: 12px; white-space: nowrap;">array =</div>
-        <div class="tiles-wrapper" id="tiles-container"></div>
-    </div>
-
-    <div class="action-panel" id="main-panel">—</div>
-
-    <div class="info-panel">
-        <div class="info-cell">
-            <span class="info-label">Index i</span>
-            <span class="info-value" id="val-i" style="color: var(--accent-orange);">—</span>
+    <div class="shell">
+        <div class="title-row">
+            <h1>Remove Occurrences of X <span class="sub">&middot; Two Pointers &middot; slow WRITE + fast READ &middot; O(n) time, O(1) space</span></h1>
+            <span class="step-badge" id="step-badge">Step 1 / 1</span>
         </div>
-        <div class="info-cell">
-            <span class="info-label">array[i]</span>
-            <span class="info-value" id="val-arr" style="color: var(--accent-orange);">—</span>
+        <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+
+        <div class="narration" id="main-panel">&mdash;</div>
+
+        <div class="stage-card">
+            <div class="stage-screen">
+                <div class="array-stage" id="array-stage">
+                    <div class="tp-board" id="tp-board">
+                        <div class="row-label">array &middot; fast reads, slow writes the keepers</div>
+                        <div class="tile-row" id="tile-row"></div>
+                    </div>
+                </div>
+            </div>
         </div>
-        <div class="info-cell">
-            <span class="info-label">Target (x)</span>
-            <span class="info-value" id="val-x" style="color: var(--accent-blue);">—</span>
+
+        <div class="action-stage">
+            <div id="confetti"></div>
+            <div class="answer-track" id="answer-track"></div>
+            <div class="action-word" id="action-word"></div>
         </div>
-        <div class="info-cell">
-            <span class="info-label">Length (n)</span>
-            <span class="info-value" id="val-n" style="color: var(--text-main);">0</span>
+
+        <div class="controls">
+            <button onclick="resetSim()">&#8634; Reset</button>
+            <button onclick="prevStep()">&#8592; Back</button>
+            <button onclick="togglePlay()" id="play-btn">Play</button>
+            <button onclick="nextStep()">Next &#8594;</button>
+            <span class="ui-label" style="margin-left:6px; font-size:11px">Speed</span>
+            <input type="range" id="speed" min="0" max="2" value="1">
+            <span class="kbd-hint"><span class="kbd">&#8592;</span> <span class="kbd">&#8594;</span> step &middot; <span class="kbd">space</span> play</span>
+        </div>
+
+        <div class="details-wrap" id="details-wrap">
+            <button class="details-toggle" onclick="toggleDetails()" aria-expanded="false">
+                <span id="details-label">Show code, state &amp; log</span> <span class="chev">&#9662;</span>
+            </button>
+            <div class="details-body">
+                <div class="details-inner">
+                    <div class="details-grid">
+                        <div class="state-strip">
+                            <span class="pill w">slow (write) <b id="st-w">&mdash;</b></span>
+                            <span class="pill f">fast (read) <b id="st-f">&mdash;</b></span>
+                            <span class="pill x">x <b id="st-x">&mdash;</b></span>
+                            <span class="pill k">kept <b id="st-k">&mdash;</b></span>
+                        </div>
+                        <div class="panel-card">
+                            <div class="panel-head"><span class="pip"></span> Algorithm</div>
+                            <div class="code-body" id="code-panel"></div>
+                        </div>
+                        <div class="log-panel" id="log"></div>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
-
-    <div class="result-display">
-        <span class="ui-label" style="margin-bottom: 4px;">new length =</span>
-        <span id="res-val">—</span>
-    </div>
-
-    <div class="status-bar" id="status-text"></div>
-
-    <div class="controls">
-        <button onclick="reset()">↺ Reset</button>
-        <button onclick="back()">← Back</button>
-        <button onclick="togglePlay()" id="play-btn">Play</button>
-        <button onclick="next()">Next →</button>
-        <div class="controls" style="margin-top:0">
-            <span class="ui-label" style="margin-right:4px; font-size:11px">Speed</span>
-            <input type="range" id="speed-slider" min="0" max="2" value="1">
-        </div>
-    </div>
-
-    <div class="legend">
-        <div class="legend-item"><span class="dot" style="background:var(--accent-orange)"></span> Checking (i)</div>
-        <div class="legend-item"><span class="dot" style="background:var(--accent-red)"></span> Target Found (== x)</div>
-        <div class="legend-item"><span class="dot" style="background:var(--accent-blue)"></span> Shifting Left</div>
-        <div class="legend-item"><span class="dot" style="background:var(--accent-green)"></span> Kept (!= x)</div>
-        <div class="legend-item"><span class="dot" style="background:var(--text-dim); opacity:0.3"></span> Discarded / Out of Bounds</div>
-    </div>
-
-    <div class="log-panel" id="log"></div>
 
     <script>
-        let arr = [3, 2, 2, 3];
+        'use strict';
+
+        // ───────── Motion engine (spring pop, zero deps) ─────────
+        const REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        const FRAME = 1000 / 60;
+        function sampleSpring(stiffness, damping, mass) {
+            const dt = 1 / 60; let x = 1, v = 0; const out = [];
+            for (let i = 0; i < 240; i++) { const a = (-stiffness * x - damping * v) / mass; v += a * dt; x += v * dt; out.push(1 - x); if (Math.abs(x) < 0.0015 && Math.abs(v) < 0.0015) break; }
+            out.push(1); return out;
+        }
+        const SPRING_POP = sampleSpring(520, 17, 1);
+        const durOf = (a) => a.length * FRAME;
+        const Motion = {
+            pop(el) {
+                if (REDUCED) return;
+                const kf = SPRING_POP.map(p => ({ transform: `scale(${(0.78 + 0.30 * p).toFixed(3)})` }));
+                el.animate(kf, { duration: durOf(SPRING_POP), easing: 'linear' });
+            },
+        };
+
+        // ───────── State ─────────
+        let nums = [3, 2, 2, 3];
         let targetX = 3;
         let steps = [];
-        let stepIndex = 0;
+        let stepIdx = 0;
         let timer = null;
-        const delays = [1800, 900, 450];
+        let confettiArmed = true;
+        const delays = [1450, 720, 330];
+        const cellEls = [];  // index -> tile cell element
+        const idxEls = [];   // index -> index label element
+        const flagEls = [];  // index -> pointer flag element
 
-        function init() { loadExample([3, 2, 2, 3], 3); }
-
-        function loadExample(newArr, newX) {
-            arr = [...newArr];
-            targetX = parseInt(newX);
-            document.getElementById('arr-input').value = arr.join(', ');
-            document.getElementById('x-input').value = targetX;
-            generateSteps();
-            reset();
+        const CODE = [
+            [['kw','def '],['fn','removeElement'],['src','(a, x):']],
+            [['src','  slow = 0']],
+            [['kw','  for '],['src','fast '],['kw','in '],['fn','range'],['src','(len(a)):']],
+            [['kw','    if '],['src','a[fast] != x:']],
+            [['src','      a[slow] = a[fast]']],
+            [['src','      slow += 1']],
+            [['kw','  return '],['src','slow']],
+        ];
+        function buildCodePanel() {
+            const panel = document.getElementById('code-panel'); panel.innerHTML = '';
+            CODE.forEach((tokens, i) => {
+                const line = document.createElement('div'); line.className = 'code-line'; line.dataset.line = i;
+                const lno = document.createElement('span'); lno.className = 'lno'; lno.textContent = i + 1; line.appendChild(lno);
+                const src = document.createElement('span');
+                tokens.forEach(([cls, txt]) => { const s = document.createElement('span'); s.className = cls; s.textContent = txt; src.appendChild(s); });
+                line.appendChild(src); panel.appendChild(line);
+            });
+        }
+        function highlightCode(arr) { document.querySelectorAll('.code-line').forEach(el => el.classList.toggle('active', arr && arr.includes(+el.dataset.line))); }
+        function toggleDetails() {
+            const wrap = document.getElementById('details-wrap'); const open = wrap.classList.toggle('open');
+            wrap.querySelector('.details-toggle').setAttribute('aria-expanded', open ? 'true' : 'false');
+            document.getElementById('details-label').textContent = open ? 'Hide code, state & log' : 'Show code, state & log';
         }
 
-        function loadCustom() {
-            const valArr = document.getElementById('arr-input').value;
-            const parsedArr = valArr.split(',').map(x => parseInt(x.trim())).filter(x => !isNaN(x));
-            const parsedX = parseInt(document.getElementById('x-input').value);
-            if (parsedArr.length > 0 && !isNaN(parsedX)) {
-                loadExample(parsedArr, parsedX);
-            }
-        }
-
+        // ───────── step generation (immutable snapshots) ─────────
         function generateSteps() {
             steps = [];
-            let n = arr.length;
-            let currentArr = [...arr];
-            let activeN = n;
-            let i = 0;
+            const n = nums.length;
+            const a = nums.slice();   // mutated live as we copy keepers forward
+            const x = targetX;
 
-            steps.push({
-                type: 'init', i: '—', val: '—', nVal: activeN,
-                tiles: currentArr.map((v, idx) => ({val: v, state: idx < activeN ? 'idle' : 'past'})),
-                panel: '—',
-                statusText: `array=[${currentArr.join(', ')}] x=${targetX}. Click Play to begin.`,
-                log: `n=${n}, x=${targetX}. Starting in-place removal.`,
-                logColor: 'var(--text-dim)'
-            });
+            // keptSet = indices < slow that hold finalized kept values
+            const snap = (extra) => Object.assign({
+                arr: a.slice(), n, x,
+                slow: null, fast: null, writing: false, match: false,
+                keptSet: null, kept: 0, complete: false
+            }, extra);
 
-            while (i < activeN) {
-                let val = currentArr[i];
+            let slow = 0, kept = 0;
+            const keptIdx = new Set();
 
-                // STEP A: Evaluate
-                steps.push({
-                    type: 'eval', i: i, val: val, nVal: activeN,
-                    tiles: currentArr.map((v, idx) => ({
-                        val: v,
-                        state: idx === i ? 'candidate' : (idx >= activeN ? 'past' : 'idle')
-                    })),
-                    panel: `Checking if array[${i}] == ${targetX}`,
-                    statusText: `Evaluating element at index ${i}: ${val}`,
-                    log: `i=${i}: Processing element ${val}`,
-                    logColor: 'var(--text-main)'
-                });
+            steps.push(snap({
+                slow: 0, fast: 0, code: [0, 1],
+                action: 'TWO POINTERS', actionColor: 'var(--accent-blue)',
+                keptSet: new Set(keptIdx),
+                panel: `Remove every <code>${x}</code> from <code>array = [${nums.join(', ')}]</code> in place. <b>fast</b> scans every element; <b>slow</b> writes the keepers and lags behind.`,
+                log: `init  array = [${nums.join(',')}]  x=${x}  (n=${n})  slow=0  fast=0`
+            }));
 
-                if (val === targetX) {
-                    // Match found
-                    steps.push({
-                        type: 'found', i: i, val: val, nVal: activeN,
-                        tiles: currentArr.map((v, idx) => ({
-                            val: v,
-                            state: idx === i ? 'defeated' : (idx > i && idx < activeN ? 'comparing' : (idx >= activeN ? 'past' : 'idle'))
-                        })),
-                        panel: `<span style="color:var(--accent-red)">${val} == ${targetX} → Remove and shift left</span>`,
-                        statusText: `Match found! Shifting elements left.`,
-                        log: `i=${i}: ${val} == ${targetX} → Removing element`,
-                        logColor: 'var(--accent-red)'
-                    });
+            for (let fast = 0; fast < n; fast++) {
+                const val = a[fast];
 
-                    // Perform shift
-                    for (let j = i + 1; j < activeN; j++) {
-                        currentArr[j - 1] = currentArr[j];
-                    }
-                    activeN--;
+                // 1) fast points at this element, compare with x
+                steps.push(snap({
+                    slow, fast, code: [2, 3],
+                    action: `a[${fast}] = ${val}  &middot;  x = ${x}`, actionColor: 'var(--accent-orange)',
+                    keptSet: new Set(keptIdx),
+                    panel: `<b>fast=${fast}</b>: is <code>a[${fast}]=${val}</code> equal to <code>x=${x}</code>?`,
+                    log: `read  fast=${fast}  a[fast]=${val}  (slow=${slow})`
+                }));
 
-                    steps.push({
-                        type: 'shifted', i: i, val: currentArr[i] !== undefined ? currentArr[i] : '—', nVal: activeN,
-                        tiles: currentArr.map((v, idx) => ({
-                            val: v,
-                            state: idx === i && idx < activeN ? 'candidate' : (idx >= activeN ? 'past' : 'idle')
-                        })),
-                        panel: `Elements shifted. New length n = ${activeN}. i stays at ${i}.`,
-                        statusText: `Array updated. Re-checking index ${i}.`,
-                        log: `Shift complete. New length n = ${activeN}.`,
-                        logColor: 'var(--accent-blue)'
-                    });
+                if (val === x) {
+                    // match: skip, fast advances, slow stays
+                    steps.push(snap({
+                        slow, fast, match: true, code: [3],
+                        action: `${val} == ${x}  &rarr; skip`, actionColor: 'var(--accent-red)',
+                        keptSet: new Set(keptIdx),
+                        panel: `<code>${val} == ${x}</code> &#8594; this is an occurrence of <b>x</b>. Skip it: do not write, leave <code>slow=${slow}</code> where it is.`,
+                        log: `skip  a[${fast}]=${val} == x  (slow stays ${slow})`
+                    }));
                 } else {
-                    // Keep element
-                    steps.push({
-                        type: 'keep', i: i, val: val, nVal: activeN,
-                        tiles: currentArr.map((v, idx) => ({
-                            val: v,
-                            state: idx === i ? 'winning' : (idx >= activeN ? 'past' : 'idle')
-                        })),
-                        panel: `<span style="color:var(--accent-green)">${val} != ${targetX} → Keep element</span>`,
-                        statusText: `Element kept. Incrementing i to ${i + 1}.`,
-                        log: `i=${i}: ${val} != ${targetX} ✓ → kept`,
-                        logColor: 'var(--accent-green)'
-                    });
-                    i++;
+                    // keep: write a[slow] = a[fast], advance slow
+                    const before = a[slow];
+                    a[slow] = val; kept++;
+                    keptIdx.add(slow);
+                    const sameCell = (slow === fast);
+                    steps.push(snap({
+                        slow, fast, writing: true, code: [4, 5], kept,
+                        action: `keep ${val}  &rarr; write a[${slow}]`, actionColor: 'var(--accent-purple)',
+                        keptSet: new Set(keptIdx),
+                        panel: sameCell
+                            ? `<code>${val} != ${x}</code> &#8594; keep it. Write <code>a[${slow}] = ${val}</code> (in place, slow caught up to fast), then advance <code>slow &#8594; ${slow + 1}</code>.`
+                            : `<code>${val} != ${x}</code> &#8594; keep it. Copy it back: <code>a[${slow}] = ${val}</code> (was ${before}), then advance <code>slow &#8594; ${slow + 1}</code>.`,
+                        log: `keep  a[${slow}] = a[${fast}] = ${val}  slow -> ${slow + 1}  kept=${kept}`
+                    }));
+                    slow++;
                 }
             }
 
-            // FINAL STEP
-            steps.push({
-                type: 'final', i: '—', val: '—', nVal: activeN,
-                tiles: currentArr.map((v, idx) => ({
-                    val: v,
-                    state: idx < activeN ? 'winning' : 'past'
-                })),
-                panel: 'Array Traversal Complete',
-                complete: true,
-                statusText: `Done. Final length is ${activeN}.`,
-                log: `Final result: new length = ${activeN}`,
-                logColor: 'var(--accent-blue)', bold: true
+            // FINAL
+            const result = a.slice(0, slow);
+            steps.push(snap({
+                complete: true, confetti: true, code: [6], kept,
+                slow, fast: null, answer: result.slice(),
+                keptSet: new Set(result.map((_, i) => i)),
+                action: `&#10003; new length = ${slow}`, actionColor: 'var(--accent-green)',
+                panel: `Done. <b>fast</b> scanned all ${n} elements; <b>slow</b> wrote <b>${slow}</b> keeper${slow === 1 ? '' : 's'}. The first <code>${slow}</code> cells are the result: <code>[${result.join(', ')}]</code>. <b>new length = ${slow}</b>.`,
+                log: `done  result = [${result.join(',')}]  new length = ${slow}`
+            }));
+        }
+
+        // ───────── build persistent DOM skeleton (once per input load) ─────────
+        function buildBoard() {
+            const row = document.getElementById('tile-row');
+            row.innerHTML = '';
+            cellEls.length = 0; idxEls.length = 0; flagEls.length = 0;
+
+            nums.forEach((v, i) => {
+                const col = document.createElement('div'); col.className = 'col';
+
+                const flag = document.createElement('div'); flag.className = 'ptr-flag';
+                col.appendChild(flag); flagEls.push(flag);
+
+                const cell = document.createElement('div'); cell.className = 'cell'; cell.textContent = String(v);
+                const lab = document.createElement('div'); lab.className = 'idx-label'; lab.textContent = i;
+                col.appendChild(cell); col.appendChild(lab); row.appendChild(col);
+                cellEls.push(cell); idxEls.push(lab);
             });
         }
 
+        // ───────── render (pure function of steps[idx], persistent DOM) ─────────
         function renderStep(idx) {
-            const step = steps[idx];
-            if (!step) return;
+            stepIdx = idx; const step = steps[idx]; if (!step) return;
+            const kept = step.keptSet;
 
-            const container = document.getElementById('tiles-container');
-            container.innerHTML = '';
-            step.tiles.forEach((t, i) => {
-                const wrapper = document.createElement('div');
-                wrapper.className = 'tile-unit';
-                const tile = document.createElement('div');
-                tile.className = `tile ${t.state}`;
-                tile.innerText = t.val;
-                const idxLabel = document.createElement('div');
-                idxLabel.className = 'tile-index';
-                idxLabel.innerText = `[${i}]`;
-                wrapper.append(tile, idxLabel);
-                container.appendChild(wrapper);
-            });
+            for (let i = 0; i < nums.length; i++) {
+                const cell = cellEls[i];
+                let cls = 'cell';
+                const isW = step.slow === i, isF = step.fast === i;
 
-            document.getElementById('main-panel').innerHTML = step.panel;
-            document.getElementById('val-i').innerText = step.i;
-            document.getElementById('val-arr').innerText = step.val;
-            document.getElementById('val-x').innerText = targetX;
-            document.getElementById('val-n').innerText = step.nVal;
+                if (step.complete) {
+                    // result cells (< slow) are kept-green; trailing cells are stale
+                    if (i < step.slow) cls += ' kept';
+                    else cls += ' stale';
+                } else if (step.writing && isW) {
+                    cls += ' writing';
+                } else if (step.match && isF) {
+                    cls += ' match';
+                } else if (isF) {
+                    cls += ' ptr-f';
+                } else if (isW) {
+                    cls += ' ptr-w';
+                } else if (kept && kept.has(i) && i < step.slow) {
+                    cls += ' kept';
+                }
 
-            const resVal = document.getElementById('res-val');
-            resVal.innerText = (step.complete || idx > 0) ? step.nVal : '—';
-            
-            if (step.complete) {
-                resVal.classList.add('pop');
-            } else {
-                resVal.classList.remove('pop');
-            }
+                const newVal = String(step.arr[i]);
+                const changed = cell.textContent !== newVal;
+                cell.className = cls;
+                cell.textContent = newVal;
+                if (changed && !REDUCED) Motion.pop(cell);
 
-            document.getElementById('status-text').innerText = step.statusText;
+                idxEls[i].className = 'idx-label' + (isW || isF ? ' lit' : '');
 
-            const logPanel = document.getElementById('log');
-            logPanel.innerHTML = '';
-            for (let k = 0; k <= idx; k++) {
-                if (steps[k].log) {
-                    const line = document.createElement('div');
-                    line.style.marginBottom = '2px';
-                    if (steps[k].logColor) line.style.color = steps[k].logColor;
-                    if (steps[k].bold) line.style.fontWeight = 'bold';
-                    line.innerText = steps[k].log;
-                    logPanel.appendChild(line);
+                // pointer flags: show W (slow) and F (fast); when on same cell, stack the labels
+                const flag = flagEls[i];
+                if (!step.complete && isW && isF) {
+                    flag.className = 'ptr-flag ptr-f show dual';
+                    flag.innerHTML = 'W=F <span class="arrow">&#8595;</span>';
+                } else if (!step.complete && isF) {
+                    flag.className = 'ptr-flag ptr-f show';
+                    flag.innerHTML = 'F <span class="arrow">&#8595;</span>';
+                } else if (!step.complete && isW) {
+                    flag.className = 'ptr-flag ptr-w show';
+                    flag.innerHTML = 'W <span class="arrow">&#8595;</span>';
+                } else {
+                    flag.className = 'ptr-flag';
+                    flag.innerHTML = '';
                 }
             }
-            logPanel.scrollTop = logPanel.scrollHeight;
+
+            // answer track (compacted result on completion)
+            const at = document.getElementById('answer-track'); at.innerHTML = '';
+            if (step.complete && step.answer) {
+                if (step.answer.length === 0) {
+                    const t = document.createElement('div'); t.className = 'ans-tile'; t.style.minWidth = 'auto'; t.style.padding = '0 14px'; t.textContent = '[ ]'; at.appendChild(t);
+                } else {
+                    step.answer.forEach(v => {
+                        const t = document.createElement('div'); t.className = 'ans-tile'; t.textContent = v; at.appendChild(t);
+                    });
+                }
+            }
+
+            const mp = document.getElementById('main-panel');
+            mp.innerHTML = step.panel || '&mdash;';
+            mp.classList.toggle('done', !!step.complete);
+            const aw = document.getElementById('action-word'); aw.innerHTML = step.action || ''; aw.style.color = step.actionColor || 'var(--text-dim)';
+            highlightCode(step.code);
+
+            if (step.confetti) { if (confettiArmed) { fireConfetti(); confettiArmed = false; } } else confettiArmed = true;
+
+            document.getElementById('st-w').textContent = step.slow != null ? step.slow : '—';
+            document.getElementById('st-f').textContent = step.fast != null ? step.fast : '—';
+            document.getElementById('st-x').textContent = step.x != null ? step.x : '—';
+            document.getElementById('st-k').textContent = step.kept != null ? step.kept : '—';
+
+            document.getElementById('step-badge').textContent = `Step ${idx + 1} / ${steps.length}`;
+            document.getElementById('progress-fill').style.width = `${(idx / Math.max(1, steps.length - 1)) * 100}%`;
+
+            const logEl = document.getElementById('log');
+            logEl.innerHTML = steps.slice(0, idx + 1).map(s => `<div style="margin:3px 0;white-space:pre-wrap;">${s.log}</div>`).join('');
+            logEl.scrollTop = logEl.scrollHeight;
         }
 
-        function next() {
-            if (stepIndex < steps.length - 1) {
-                stepIndex++;
-                renderStep(stepIndex);
-            } else pause();
-        }
-
-        function back() {
-            if (stepIndex > 0) {
-                stepIndex--;
-                renderStep(stepIndex);
+        function fireConfetti() {
+            const host = document.getElementById('confetti'); if (!host || REDUCED) return;
+            const colors = ['#22c55e', '#06b6d4', '#a855f7', '#f5a524', '#f43f5e'];
+            for (let i = 0; i < 38; i++) {
+                const p = document.createElement('div'); p.className = 'confetti-piece';
+                p.style.setProperty('--x', ((Math.random() * 2 - 1) * 220) + 'px');
+                p.style.setProperty('--rot', ((Math.random() * 720 - 360)) + 'deg');
+                p.style.background = colors[i % colors.length];
+                p.style.animationDuration = (0.9 + Math.random() * 0.8) + 's';
+                p.style.animationDelay = (Math.random() * 0.15) + 's';
+                host.appendChild(p); setTimeout(() => p.remove(), 1900);
             }
         }
 
-        function reset() {
-            pause();
-            stepIndex = 0;
-            renderStep(0);
-        }
-
+        // ───────── controls ─────────
+        function nextStep() { if (stepIdx < steps.length - 1) renderStep(stepIdx + 1); else pause(); }
+        function prevStep() { if (stepIdx > 0) renderStep(stepIdx - 1); }
+        function resetSim() { pause(); renderStep(0); }
         function togglePlay() {
             const btn = document.getElementById('play-btn');
-            if (timer) pause();
-            else {
-                btn.innerText = 'Pause';
-                if (stepIndex >= steps.length - 1) stepIndex = 0;
-                timer = setInterval(next, delays[document.getElementById('speed-slider').value]);
+            if (timer) { pause(); return; }
+            btn.textContent = 'Pause';
+            if (stepIdx >= steps.length - 1) renderStep(0);
+            timer = setInterval(() => { if (stepIdx < steps.length - 1) nextStep(); else pause(); }, delays[document.getElementById('speed').value]);
+        }
+        function pause() { clearInterval(timer); timer = null; document.getElementById('play-btn').textContent = 'Play'; }
+
+        function loadData(arr, x) {
+            pause(); nums = arr.slice(); targetX = x; confettiArmed = true;
+            buildBoard(); generateSteps(); renderStep(0);
+        }
+        function loadCustom() {
+            let parsed;
+            const raw = document.getElementById('arr-input').value.trim();
+            try {
+                parsed = JSON.parse(raw.startsWith('[') ? raw : '[' + raw + ']');
+            } catch (e) { return; }
+            const x = parseInt(document.getElementById('x-input').value, 10);
+            if (Array.isArray(parsed) && parsed.every(v => typeof v === 'number' && isFinite(v)) && parsed.length >= 1 && parsed.length <= 12 && isFinite(x)) {
+                loadData(parsed, x);
             }
         }
-
-        function pause() {
-            clearInterval(timer);
-            timer = null;
-            document.getElementById('play-btn').innerText = 'Play';
+        function loadExample(n) {
+            const ex = [
+                { a: [3, 2, 2, 3], x: 3 },
+                { a: [0, 1, 2, 2, 3, 0, 4, 2], x: 2 },
+            ][n];
+            document.getElementById('arr-input').value = JSON.stringify(ex.a);
+            document.getElementById('x-input').value = ex.x;
+            loadData(ex.a, ex.x);
         }
 
-        window.onload = init;
+        document.addEventListener('keydown', (e) => {
+            const tag = (e.target.tagName || '').toLowerCase(); if (tag === 'input' || tag === 'textarea') return;
+            if (e.key === 'ArrowRight') { e.preventDefault(); pause(); nextStep(); }
+            else if (e.key === 'ArrowLeft') { e.preventDefault(); pause(); prevStep(); }
+            else if (e.key === ' ') { e.preventDefault(); togglePlay(); }
+        });
+        document.getElementById('arr-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') loadCustom(); });
+        document.getElementById('x-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') loadCustom(); });
+
+        buildCodePanel();
+        window.onload = () => loadExample(0);
     </script>
 </body>
 </html>

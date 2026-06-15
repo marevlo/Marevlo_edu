@@ -44,6 +44,13 @@ class Settings(BaseSettings):
     MINORS_MODE: str = "consent"
     REQUIRE_DOB: bool = True  # require date of birth at signup (off in tests)
 
+    # Compliance: email verification + ToS consent. REQUIRE_EMAIL_VERIFICATION
+    # blocks password logins until the email is verified (Google accounts are
+    # pre-verified). TOS_VERSION is stamped onto users at acceptance time.
+    REQUIRE_EMAIL_VERIFICATION: bool = False
+    REQUIRE_TOS_ACCEPT: bool = True
+    TOS_VERSION: str = "1.0"
+
     # ── Database ─────────────────────────────────────────────────────────
     DATABASE_URL: str = (
         "postgresql+psycopg2://marevlo:marevlo@localhost:5432/marevlo_dev"
@@ -89,6 +96,24 @@ class Settings(BaseSettings):
     S3_PRESIGN_TTL_PUT_SECONDS: int = 600
     S3_PRESIGN_TTL_GET_SECONDS: int = 3600
     S3_PRESIGN_CACHE_SIZE: int = 5000
+
+    # ── Reels processing pipeline ────────────────────────────────────────
+    # Reels publish immediately on upload (direct-publish policy). HLS +
+    # Whisper run asynchronously AFTER the reel is already live, purely to
+    # enhance it. Everything here is optional: with nothing configured the
+    # pipeline degrades to an in-process background thread (dev) or a no-op.
+    REELS_SQS_QUEUE_URL: Optional[str] = None          # SQS task queue (prod worker)
+    REELS_WORKER_INLINE: bool = False                  # run pipeline in-process (dev)
+    REELS_UPLOADS_PER_DAY: int = 5                     # per-user publish rate cap
+    # HLS transcoding (AWS MediaConvert)
+    MEDIACONVERT_ROLE_ARN: Optional[str] = None
+    MEDIACONVERT_ENDPOINT_URL: Optional[str] = None    # account-specific MC endpoint
+    MEDIACONVERT_QUEUE_ARN: Optional[str] = None
+    REELS_CDN_BASE_URL: Optional[str] = None           # CloudFront domain serving HLS
+    # Auto-transcription (faster-whisper)
+    WHISPER_MODEL: str = "base"                         # tiny|base|small|medium
+    WHISPER_DEVICE: str = "cpu"
+    WHISPER_COMPUTE_TYPE: str = "int8"
 
     # ── Email (SES via SMTP) ─────────────────────────────────────────────
     SMTP_HOST: Optional[str] = None

@@ -1,6 +1,8 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { useLocation } from 'react-router-dom';
-import { X, Send, History, UserRound, Plus, ChevronDown, ChevronRight, ArrowLeft, Trash2 } from 'lucide-react';
+import { AnimatePresence, motion as Motion, useMotionValue } from 'framer-motion';
+import { X, Send, History, UserRound, Plus, ChevronDown, ChevronRight, ArrowLeft, Trash2, Copy, Check } from 'lucide-react';
+import { springSnappy, springSoft, easeOutExpo } from '../../lib/motion';
 import { useAuth } from '../../context/AuthContext';
 import { getMiraPageContext } from './miraPageContext';
 
@@ -23,137 +25,197 @@ import { getMiraPageContext } from './miraPageContext';
 
 // ---------- scoped styles (mira- prefixed so they never collide with the app) ----------
 const MIRA_CSS = `
-.mira-root{--m-ink:#1a1a1a;--m-muted:#6b7280;--m-faint:#9ca3af;--m-line:#e5e7eb;
-  --m-line2:#d8dae0;--m-shell:#fbfbfa;--m-primary:#4f46e5;--m-blue:#2563eb;
-  --m-purple:#7c6df2;--m-purple-bg:#efeefe;--m-green:#16a34a;--m-green-bg:#e9f7ee;
-  --m-green-line:#a7e3bf;--m-red:#b91c1c;--m-red-bg:#fdeeee;--m-panel:#f6f5f2;
+.mira-root{--m-ink:#f8fafc;--m-muted:#94a3b8;--m-faint:#475569;--m-line:#1e293b;
+  --m-line2:#334155;--m-shell:#0a0c14;--m-card:#0f1119;--m-hover:#1e1b4b;
+  --m-primary:#6366f1;--m-primary-soft:rgba(99,102,241,0.15);--m-primary-line:rgba(99,102,241,0.4);
+  --m-blue:#22d3ee;--m-purple:#a78bfa;--m-purple-bg:rgba(139,92,246,0.15);--m-purple-line:rgba(139,92,246,0.3);
+  --m-green:#34d399;--m-green-bg:rgba(52,211,153,0.1);--m-green-line:rgba(52,211,153,0.25);
+  --m-red:#f87171;--m-red-bg:rgba(248,113,113,0.1);--m-red-line:rgba(248,113,113,0.25);
+  --m-panel:#0a0c14;--m-glow:rgba(34,211,238,0.4);
   font-family:'Geist',system-ui,-apple-system,sans-serif;}
-.mira-launch{position:fixed;right:22px;bottom:22px;width:54px;height:54px;border-radius:16px;
-  background:#0c0e14;border:0;cursor:pointer;display:flex;align-items:center;justify-content:center;
-  box-shadow:0 10px 30px rgba(0,0,0,.28);z-index:2147483000;transition:transform .15s ease}
-.mira-launch:hover{transform:translateY(-2px) scale(1.04)}
-.mira-launch .logo{width:30px;height:30px}
-.mira-badge{position:absolute;top:-3px;right:-3px;width:13px;height:13px;border-radius:50%;
-  background:#22d3ee;border:2px solid #0c0e14}
-.mira-panel{position:fixed;right:22px;bottom:88px;width:400px;max-width:calc(100vw - 28px);
-  height:min(640px,calc(100vh - 120px));background:var(--m-shell);border:1px solid var(--m-line);
-  border-radius:18px;box-shadow:0 18px 60px rgba(0,0,0,.22);z-index:2147483000;display:flex;
-  flex-direction:column;overflow:hidden;color:var(--m-ink)}
-.mira-head{display:flex;align-items:center;gap:11px;padding:13px 14px;border-bottom:1px solid var(--m-line);background:#fff}
-.mira-mark{width:30px;height:30px;border-radius:9px;background:#0c0e14;display:flex;align-items:center;justify-content:center}
-.mira-mark .logo{width:20px;height:20px}
-.mira-who{flex:1;min-width:0}.mira-who .name{font-weight:700;font-size:15px;display:flex;gap:7px;align-items:center}
-.mira-dot{width:6px;height:6px;border-radius:50%;background:var(--m-green)}
-.mira-who .sub{font-size:11.5px;color:var(--m-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.mira-chip{font-size:11px;font-weight:600;color:var(--m-blue);background:#eef2ff;border:1px solid #dfe4ff;padding:3px 9px;border-radius:999px;flex:0 0 auto}
-.mira-head-actions{display:flex;align-items:center;gap:1px;flex:0 0 auto}
-.mira-iconbtn{border:0;background:transparent;cursor:pointer;color:var(--m-muted);padding:6px;border-radius:8px;display:flex}
-.mira-iconbtn:hover{background:#f0f0ef;color:var(--m-ink)}
-.mira-iconbtn.on{background:#eef2ff;color:var(--m-primary)}
-.mira-x{border:0;background:transparent;cursor:pointer;color:var(--m-muted);padding:4px;border-radius:8px;display:flex}
-.mira-x:hover{background:#f0f0ef;color:var(--m-ink)}
-.mira-scroll{flex:1;overflow-y:auto;padding:16px 14px;display:flex;flex-direction:column;gap:13px;background:var(--m-shell)}
-.mira-empty{margin:auto;text-align:center;color:var(--m-muted);font-size:13px;line-height:1.6;padding:0 18px}
-.mira-empty b{color:var(--m-ink)}
-.mira-suggest{display:flex;flex-wrap:wrap;gap:7px;justify-content:center;margin-top:14px}
-.mira-msg-user{align-self:flex-end;max-width:82%;background:var(--m-primary);color:#fff;font-weight:500;padding:9px 13px;border-radius:14px 14px 4px 14px;font-size:14px;line-height:1.45}
-.mira-row{display:flex;gap:9px;align-items:flex-start}
-.mira-av{width:25px;height:25px;border-radius:8px;background:#0c0e14;display:flex;align-items:center;justify-content:center;flex:0 0 auto;margin-top:2px}
-.mira-av .logo{width:16px;height:16px}
-.mira-grow{min-width:0;flex:1;display:flex;flex-direction:column;gap:10px}
-.mira-voice{font-size:14px;line-height:1.55;color:var(--m-ink)}
-.mira-think{font-size:13.5px;color:var(--m-muted);display:flex;align-items:center;gap:7px}
-.mira-think .blink{width:7px;height:7px;border-radius:50%;background:var(--m-primary);animation:mira-pulse 1s infinite}
-@keyframes mira-pulse{0%,100%{opacity:.3}50%{opacity:1}}
 
-.mira-callout{border:1px solid var(--m-line2);border-radius:12px;padding:11px 13px;background:#fff}
-.mira-callout .ct{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;margin-bottom:5px;color:var(--m-blue)}
-.mira-callout .cc{font-size:13.5px;line-height:1.55}
-.mira-callout.def{border-color:#cfc9f7;background:var(--m-purple-bg)}.mira-callout.def .ct{color:var(--m-purple)}
-.mira-callout.gotcha,.mira-callout.warning{border-color:#f3c9c9;background:var(--m-red-bg)}.mira-callout.gotcha .ct,.mira-callout.warning .ct{color:var(--m-red)}
+/* The widget is strictly dark-mode styled for a premium feel */
+.mira-launch{position:fixed;right:22px;bottom:22px;width:60px;height:60px;border-radius:50%;
+  background:radial-gradient(circle at 30% 30%, #1a1040, #0c0e14);
+  border:1px solid rgba(34,211,238,0.3);cursor:grab;display:flex;align-items:center;justify-content:center;
+  box-shadow:0 8px 32px rgba(0,0,0,0.4), 0 0 15px rgba(34,211,238,0.15);
+  z-index:2147483000;transition:all 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);touch-action:none;
+  user-select:none;-webkit-user-select:none;-webkit-user-drag:none}
 
-.mira-code{background:#0c0e14;border-radius:12px;padding:12px 13px;overflow-x:auto}
-.mira-code pre{margin:0;font-family:'Geist Mono',ui-monospace,monospace;font-size:12.5px;line-height:1.55;color:#e6e6e6;white-space:pre}
-.mira-code .lang{font-size:10.5px;color:#8b8fa3;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px}
+.mira-launch *{pointer-events:none}
+.mira-launch:active{cursor:grabbing;transform:scale(0.92)}
+.mira-launch:hover{box-shadow:0 12px 40px rgba(0,0,0,0.5), 0 0 25px rgba(34,211,238,0.3); transform:translateY(-2px)}
+.mira-launch .logo{width:38px;height:auto;transition:transform .15s ease; filter:drop-shadow(0 0 5px rgba(34,211,238,0.55))}
+.mira-launch:hover .logo{transform:scale(1.08)}
 
-.mira-chips{display:flex;flex-wrap:wrap;gap:7px}
-.mira-chip-btn{font:inherit;font-size:12px;color:var(--m-blue);background:#fff;border:1px solid var(--m-line2);border-radius:8px;padding:6px 11px;cursor:pointer;text-align:left}
-.mira-chip-btn:hover{border-color:var(--m-blue);background:#f7f8ff}
+.mira-panel{position:fixed;right:22px;bottom:94px;width:400px;max-width:calc(100vw - 28px);
+  height:min(640px,calc(100vh - 120px));background:rgba(10,12,20,0.85);backdrop-filter:blur(16px);
+  -webkit-backdrop-filter:blur(16px);border:1px solid rgba(255,255,255,0.08);
+  border-radius:20px;box-shadow:0 24px 80px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.1);
+  z-index:2147483000;display:flex;flex-direction:column;overflow:hidden;color:var(--m-ink)}
+  
+.mira-view{flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden}
 
-.mira-wt{border:1px solid var(--m-line2);border-radius:14px;background:#fff;overflow:hidden}
-.mira-wt-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:11px 13px 0}
-.mira-wt-step{font-size:12px;font-weight:600}
-.mira-wt-title{font-size:12px;font-weight:600;color:var(--m-blue);text-align:right}
-.mira-wt-bar{display:flex;gap:4px;padding:8px 13px 12px}
-.mira-seg{height:3px;flex:1;border-radius:2px;background:var(--m-line)}
-.mira-seg.done{background:var(--m-ink)}.mira-seg.cur{background:var(--m-primary)}
-.mira-wt-body{padding:0 13px}
-.mira-lead{font-size:13.5px;line-height:1.6;margin:0 0 10px}.mira-lead b{font-weight:700}.mira-lead i{color:#444}
-.mira-eq{border:1px solid var(--m-line2);border-radius:10px;padding:9px 11px;margin-top:9px;background:#fff}
+.mira-resize { position: absolute; z-index: 10; touch-action: none; }
+.mira-resize.t { top: -4px; left: 10px; right: 10px; height: 8px; cursor: ns-resize; }
+.mira-resize.b { bottom: -4px; left: 10px; right: 10px; height: 8px; cursor: ns-resize; }
+.mira-resize.l { left: -4px; top: 10px; bottom: 10px; width: 8px; cursor: ew-resize; }
+.mira-resize.r { right: -4px; top: 10px; bottom: 10px; width: 8px; cursor: ew-resize; }
+.mira-resize.tl { top: -6px; left: -6px; width: 16px; height: 16px; cursor: nwse-resize; }
+.mira-resize.tr { top: -6px; right: -6px; width: 16px; height: 16px; cursor: nesw-resize; }
+.mira-resize.bl { bottom: -6px; left: -6px; width: 16px; height: 16px; cursor: nesw-resize; }
+.mira-resize.br { bottom: -6px; right: -6px; width: 16px; height: 16px; cursor: nwse-resize; }
+
+.mira-head{display:flex;align-items:center;gap:12px;padding:16px;background:rgba(15,17,25,0.9);
+  cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none;position:relative}
+.mira-head:active{cursor:grabbing}
+.mira-mark{width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg, rgba(255,255,255,0.05), rgba(255,255,255,0));
+  border:1px solid rgba(255,255,255,0.1);display:flex;align-items:center;justify-content:center}
+.mira-mark .logo{width:24px;height:auto}
+.mira-who{flex:1;min-width:0}
+.mira-who .name{font-weight:700;font-size:16px;display:flex;gap:8px;align-items:center;letter-spacing:-0.01em}
+.mira-dot{width:8px;height:8px;border-radius:50%;background:var(--m-green);box-shadow:0 0 8px var(--m-green)}
+.mira-who .sub{font-size:12px;color:var(--m-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:2px}
+.mira-chip{font-size:11px;font-weight:600;color:var(--m-blue);background:var(--m-primary-soft);border:1px solid var(--m-primary-line);padding:4px 10px;border-radius:999px;flex:0 0 auto;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mira-head-actions{display:flex;align-items:center;gap:2px;flex:0 0 auto}
+.mira-iconbtn, .mira-x{border:0;background:transparent;cursor:pointer;color:var(--m-muted);padding:8px;border-radius:10px;display:flex;transition:all .2s ease}
+.mira-iconbtn:hover, .mira-x:hover{background:rgba(255,255,255,0.1);color:#fff}
+.mira-iconbtn.on{background:var(--m-primary-soft);color:var(--m-primary)}
+
+.mira-scroll{flex:1;overflow-y:auto;padding:20px 16px;display:flex;flex-direction:column;gap:16px}
+.mira-scroll,.mira-hist,.mira-prof{scrollbar-width:thin;scrollbar-color:rgba(255,255,255,0.1) transparent}
+.mira-scroll::-webkit-scrollbar,.mira-hist::-webkit-scrollbar,.mira-prof::-webkit-scrollbar{width:6px}
+.mira-scroll::-webkit-scrollbar-thumb,.mira-hist::-webkit-scrollbar-thumb,.mira-prof::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.15);border-radius:3px}
+
+.mira-empty{margin:auto;display:flex;flex-direction:column;align-items:center;padding:14px 6px;
+  animation:mira-empty-in .5s cubic-bezier(.22,1,.36,1) both}
+@keyframes mira-empty-in{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+/* grounded shadow in the mark's own blue, not a neon halo; gentle float */
+.mira-empty-logo{width:74px;height:auto;margin-bottom:18px;
+  filter:drop-shadow(0 8px 18px rgba(16,137,207,.32)) drop-shadow(0 0 10px rgba(34,211,238,.22));animation:mira-float 5s ease-in-out infinite}
+@keyframes mira-float{0%,100%{transform:translateY(0)}50%{transform:translateY(-5px)}}
+.mira-empty-title{color:var(--m-ink);font-size:21px;font-weight:700;margin-bottom:7px;letter-spacing:-.02em;text-align:center}
+.mira-empty-title b{font-weight:800}
+.mira-empty-sub{color:var(--m-muted);font-size:13.5px;margin-bottom:26px;text-align:center}
+.mira-suggest{display:grid;grid-template-columns:1fr 1fr;gap:9px;width:100%}
+/* token-driven against the widget's (always-dark) shell. shared by
+   suggestion + follow-up chips. */
+.mira-chip-btn{font:inherit;font-size:12px;font-weight:500;color:var(--m-ink);background:var(--m-card);
+  border:1px solid var(--m-line2);border-radius:11px;padding:10px 12px;cursor:pointer;text-align:left;
+  transition:border-color .18s ease,background .18s ease,transform .18s ease,box-shadow .18s ease;
+  display:flex;align-items:center;gap:8px}
+.mira-chip-btn:hover{border-color:var(--m-primary-line);background:var(--m-primary-soft);transform:translateY(-1px);box-shadow:0 4px 14px rgba(0,0,0,.32)}
+.mira-chip-btn .ic{font-size:14px;opacity:.9;flex:0 0 auto}
+
+.mira-msg-user{align-self:flex-end;max-width:85%;background:linear-gradient(135deg, #6366f1, #8b5cf6);
+  color:#fff;font-weight:500;padding:12px 16px;border-radius:18px 18px 4px 18px;font-size:14px;line-height:1.5;
+  box-shadow:0 4px 12px rgba(99,102,241,0.2)}
+.mira-row{display:flex;gap:12px;align-items:flex-start}
+.mira-msg-user,.mira-row{animation:mira-in .4s cubic-bezier(.16,1,.3,1) both}
+@keyframes mira-in{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+.mira-av{width:28px;height:28px;border-radius:50%;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);display:flex;align-items:center;justify-content:center;flex:0 0 auto;margin-top:2px}
+.mira-av .logo{width:21px;height:auto}
+.mira-grow{min-width:0;flex:1;display:flex;flex-direction:column;gap:12px}
+
+.mira-voice{font-size:14.5px;line-height:1.6;color:#e2e8f0;overflow-wrap:break-word}
+.mira-think{font-size:14px;color:var(--m-blue);display:flex;align-items:center;gap:10px;font-weight:500}
+.mira-wave{display:flex;gap:4px;align-items:center}
+.mira-wave i{width:4px;height:4px;border-radius:50%;background:currentColor;animation:mira-wave 1.2s ease-in-out infinite}
+.mira-wave i:nth-child(2){animation-delay:0.15s}
+.mira-wave i:nth-child(3){animation-delay:0.3s}
+@keyframes mira-wave{0%,100%{transform:translateY(0);opacity:0.4}50%{transform:translateY(-4px);opacity:1}}
+
+.mira-callout{border:1px solid var(--m-line2);border-radius:14px;padding:14px 16px;background:rgba(255,255,255,0.03)}
+.mira-callout .ct{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;color:var(--m-blue)}
+.mira-callout .cc{font-size:14px;line-height:1.6;color:#cbd5e1}
+.mira-callout.def{border-color:var(--m-purple-line);background:var(--m-purple-bg)}.mira-callout.def .ct{color:var(--m-purple)}
+.mira-callout.gotcha,.mira-callout.warning{border-color:var(--m-red-line);background:var(--m-red-bg)}.mira-callout.gotcha .ct,.mira-callout.warning .ct{color:var(--m-red)}
+
+.mira-code{position:relative;background:#0c0e14;border:1px solid rgba(255,255,255,0.1);border-radius:14px;padding:16px;overflow-x:auto}
+.mira-code pre{margin:0;font-family:'Geist Mono',ui-monospace,monospace;font-size:13px;line-height:1.6;color:#f1f5f9;white-space:pre}
+.mira-code .lang{font-size:11px;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px;font-weight:600}
+.mira-copy{position:absolute;top:10px;right:10px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.05);
+  color:#cbd5e1;border-radius:8px;padding:6px;cursor:pointer;display:flex;opacity:0;transition:all .2s ease}
+.mira-code:hover .mira-copy,.mira-copy:focus-visible{opacity:1}
+.mira-copy:hover{background:rgba(255,255,255,.15);color:#fff}
+.mira-copy.ok{opacity:1;color:var(--m-green);border-color:var(--m-green-line);background:var(--m-green-bg)}
+
+.mira-wt{border:1px solid var(--m-line2);border-radius:16px;background:rgba(255,255,255,0.02);overflow:hidden}
+.mira-wt-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:14px 16px 0}
+.mira-wt-step{font-size:13px;font-weight:600;color:#fff}
+.mira-wt-title{font-size:13px;font-weight:600;color:var(--m-blue);text-align:right}
+.mira-wt-bar{display:flex;gap:4px;padding:10px 16px 14px}
+.mira-seg{height:4px;flex:1;border-radius:2px;background:rgba(255,255,255,0.1);transition:background .3s ease}
+.mira-seg.done{background:rgba(255,255,255,0.8)}.mira-seg.cur{background:var(--m-primary)}
+.mira-wt-body{padding:0 16px;animation:mira-step .3s cubic-bezier(.16,1,.3,1)}
+@keyframes mira-step{from{opacity:0;transform:translateX(10px)}to{opacity:1;transform:translateX(0)}}
+.mira-lead{font-size:14.5px;line-height:1.6;margin:0 0 12px;color:#e2e8f0}.mira-lead b{font-weight:700;color:#fff}.mira-lead i{color:#94a3b8}
+
+.mira-eq{border:1px solid var(--m-line2);border-radius:10px;padding:9px 11px;margin-top:9px;background:var(--m-card)}
 .mira-eq .lab{font-size:10.5px;color:var(--m-faint);margin-bottom:4px}
 .mira-eq .f{font-size:13.5px}.mira-eq .f .mono{font-family:'Geist Mono',ui-monospace,monospace;font-size:12.5px}
 .mira-vis{background:var(--m-panel);border:1px solid var(--m-line);border-radius:10px;padding:14px 12px;margin-top:11px;display:flex;flex-direction:column;align-items:center;gap:10px}
 .mira-cap{font-size:11.5px;color:var(--m-muted);text-align:center}
 .mira-cc{display:flex;gap:8px;width:100%}
-.mira-cc .card{flex:1;border:1px solid var(--m-line2);background:#fff;border-radius:9px;padding:8px}
+.mira-cc .card{flex:1;border:1px solid var(--m-line2);background:var(--m-card);border-radius:9px;padding:8px}
 .mira-cc .card h4{margin:0 0 4px;font-size:11.5px}.mira-cc .card p{margin:0;font-size:10.5px;color:var(--m-muted);line-height:1.4}
-.mira-cc .bad{background:var(--m-red-bg);border-color:#f3c9c9}.mira-cc .good{background:var(--m-green-bg);border-color:var(--m-green-line)}
+.mira-cc .bad{background:var(--m-red-bg);border-color:var(--m-red-line)}.mira-cc .good{background:var(--m-green-bg);border-color:var(--m-green-line)}
 .mira-p3{display:flex;flex-direction:column;gap:6px;width:100%}
-.mira-p3 .st{display:flex;gap:8px;align-items:center;border:1px solid var(--m-line2);background:#fff;border-radius:9px;padding:7px 9px;font-size:11.5px}
+.mira-p3 .st{display:flex;gap:8px;align-items:center;border:1px solid var(--m-line2);background:var(--m-card);border-radius:9px;padding:7px 9px;font-size:11.5px}
 .mira-p3 .n{width:16px;height:16px;border-radius:50%;background:var(--m-purple-bg);color:var(--m-purple);font-size:9.5px;font-weight:700;display:flex;align-items:center;justify-content:center;flex:0 0 auto}
 .mira-flow{display:flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:center}
-.mira-node{border:1px solid var(--m-line2);background:#fff;border-radius:9px;padding:7px 9px;text-align:center;min-width:48px}
+.mira-node{border:1px solid var(--m-line2);background:var(--m-card);border-radius:9px;padding:7px 9px;text-align:center;min-width:48px}
 .mira-node .l{font-size:12px;font-weight:600}.mira-node .s{font-size:9.5px;color:var(--m-muted)}
-.mira-node.hl{background:var(--m-purple-bg);border-color:#cfc9f7}.mira-node.hl .l{color:var(--m-purple)}
+.mira-node.hl{background:var(--m-purple-bg);border-color:var(--m-purple-line)}.mira-node.hl .l{color:var(--m-purple)}
 .mira-arrow{color:var(--m-faint)}
-.mira-headline{background:var(--m-purple-bg);border:1px solid #cfc9f7;border-radius:9px;padding:7px 12px;text-align:center;width:100%}
+.mira-headline{background:var(--m-purple-bg);border:1px solid var(--m-purple-line);border-radius:9px;padding:7px 12px;text-align:center;width:100%}
 .mira-headline .t{font-size:12.5px;font-weight:700;color:var(--m-purple)}
 .mira-wt-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:13px 13px 0;padding:11px 0 0;border-top:1px solid var(--m-line)}
 .mira-sum{font-size:11.5px;font-style:italic;color:var(--m-muted);line-height:1.4}
 .mira-nav{display:flex;gap:6px;flex:0 0 auto}
-.mira-nbtn{font:inherit;font-size:12px;border:1px solid var(--m-line2);background:#fff;border-radius:8px;padding:5px 11px;cursor:pointer}
+.mira-nbtn{font:inherit;font-size:12px;border:1px solid var(--m-line2);background:var(--m-card);color:var(--m-ink);border-radius:8px;padding:5px 11px;cursor:pointer;
+  transition:background .15s ease,border-color .15s ease,filter .15s ease}
+.mira-nbtn:hover:not(:disabled){background:var(--m-hover);border-color:var(--m-faint)}
 .mira-nbtn:disabled{opacity:.4;cursor:default}.mira-nbtn.primary{background:var(--m-primary);border-color:var(--m-primary);color:#fff}
+.mira-nbtn.primary:hover:not(:disabled){background:var(--m-primary);filter:brightness(1.1)}
 .mira-wt-chips{display:flex;flex-wrap:wrap;gap:6px;padding:11px 13px 13px}
 
-.mira-composer{border-top:1px solid var(--m-line);padding:11px 12px;background:#fff}
-.mira-inrow{display:flex;align-items:flex-end;gap:8px;background:transparent;border:1px solid var(--m-line2);border-radius:11px;padding:7px 8px 7px 12px}
-.mira-inrow:focus-within{border-color:var(--m-primary)}
-/* High-specificity + !important so the app's global ".dark textarea" rule
-   (background-color:#1a1a1a !important) can't paint a black box over the
-   widget's light, transparent input. */
-.mira-root .mira-inrow textarea{flex:1;background:transparent !important;border:0 !important;outline:0;resize:none;color:var(--m-ink) !important;font:inherit;font-size:14px;max-height:90px;line-height:1.45;box-shadow:none !important}
+.mira-composer{padding:16px;background:rgba(10,12,20,0.95);border-top:1px solid rgba(255,255,255,0.08)}
+.mira-inrow{display:flex;align-items:flex-end;gap:10px;background:rgba(255,255,255,0.05);
+  border:1px solid rgba(255,255,255,0.1);border-radius:24px;padding:8px 8px 8px 16px;
+  transition:all .2s ease;box-shadow:inset 0 1px 2px rgba(0,0,0,0.2)}
+.mira-inrow:focus-within{border-color:var(--m-primary);box-shadow:0 0 0 2px rgba(99,102,241,0.2), inset 0 1px 2px rgba(0,0,0,0.2);background:rgba(255,255,255,0.08)}
+/* High-specificity (.mira-root prefix) + !important so the app's global
+   ".dark textarea" rule (background-color:#1a1a1a !important) can't paint a
+   black box over the widget's transparent input — independent of CSS order. */
+.mira-root .mira-inrow textarea{flex:1;background:transparent !important;border:0 !important;outline:0;resize:none;color:#fff !important;font:inherit;font-size:14px;max-height:100px;line-height:1.5;box-shadow:none !important;padding:4px 0}
 .mira-root .mira-inrow textarea::placeholder{color:var(--m-faint) !important}
-.mira-send{width:32px;height:32px;border-radius:8px;border:0;cursor:pointer;background:var(--m-primary);color:#fff;display:flex;align-items:center;justify-content:center;flex:0 0 auto}
-.mira-send:disabled{opacity:.4;cursor:default}
-.mira-quota{font-size:10.5px;color:var(--m-faint);text-align:center;margin-top:6px}
+.mira-send{width:36px;height:36px;border-radius:18px;border:0;cursor:pointer;
+  background:linear-gradient(135deg, #6366f1, #8b5cf6);color:#fff;display:flex;align-items:center;justify-content:center;flex:0 0 auto;
+  transition:all .2s ease;box-shadow:0 2px 8px rgba(99,102,241,0.4)}
+.mira-send:not(:disabled):hover{transform:translateY(-1px);box-shadow:0 4px 12px rgba(99,102,241,0.5);filter:brightness(1.1)}
+.mira-send:not(:disabled):active{transform:translateY(0) scale(0.95)}
+.mira-send:disabled{opacity:0.4;cursor:default;background:rgba(255,255,255,0.1);box-shadow:none;color:var(--m-muted)}
+.mira-quota{font-size:11px;color:var(--m-faint);text-align:center;margin-top:10px}
 
-/* history view */
-.mira-hist{flex:1;overflow-y:auto;padding:10px 10px;background:var(--m-shell)}
-.mira-hist-empty{color:var(--m-muted);font-size:13px;text-align:center;margin-top:40px;line-height:1.6}
-.mira-hgroup{margin-bottom:4px}
-.mira-htopic{display:flex;align-items:center;gap:6px;width:100%;border:0;background:transparent;cursor:pointer;font:inherit;font-size:13px;font-weight:700;color:var(--m-ink);padding:8px 6px}
-.mira-htopic:hover{background:#f0f0ef;border-radius:8px}
-.mira-htopic .cnt{margin-left:auto;font-size:11px;font-weight:600;color:var(--m-faint)}
+/* other panels */
+.mira-hist, .mira-prof{flex:1;overflow-y:auto;padding:16px;background:rgba(10,12,20,0.5)}
+.mira-htopic{display:flex;align-items:center;gap:8px;width:100%;border:0;background:transparent;cursor:pointer;font:inherit;font-size:14px;font-weight:700;color:#fff;padding:10px 8px;border-radius:10px;transition:background .2s ease}
+.mira-htopic:hover{background:rgba(255,255,255,0.05)}
+.mira-hitem{display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:12px;cursor:pointer;font-size:13.5px;color:#cbd5e1;transition:all .2s ease;margin-bottom:2px}
+.mira-hitem:hover{background:rgba(255,255,255,0.05);color:#fff}
+.mira-hitem.active{background:rgba(99,102,241,0.15);color:#fff;border:1px solid rgba(99,102,241,0.3)}
 .mira-hsubwrap{padding-left:12px;margin-bottom:4px}
 .mira-hsub{font-size:10.5px;font-weight:700;color:var(--m-purple);text-transform:uppercase;letter-spacing:.04em;padding:7px 6px 3px}
-.mira-hitem{display:flex;align-items:center;gap:8px;padding:7px 9px;border-radius:9px;cursor:pointer;font-size:13px;color:var(--m-ink)}
-.mira-hitem:hover{background:#f0f0ef}
-.mira-hitem.active{background:#eef2ff}
-.mira-hitem .txt{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.mira-hitem .del{opacity:0;border:0;background:transparent;cursor:pointer;color:var(--m-faint);padding:2px;display:flex;flex:0 0 auto}
-.mira-hitem:hover .del{opacity:1}
-.mira-hitem .del:hover{color:var(--m-red)}
 
-/* profile view */
-.mira-prof{flex:1;overflow-y:auto;padding:16px 14px;background:var(--m-shell);display:flex;flex-direction:column;gap:14px}
-.mira-prof-card{border:1px solid var(--m-line2);border-radius:12px;background:#fff;padding:14px}
+.mira-prof-card{border:1px solid rgba(255,255,255,0.1);border-radius:16px;background:rgba(255,255,255,0.03);padding:16px;margin-bottom:16px}
 .mira-prof-top{display:flex;align-items:center;gap:11px}
-.mira-prof-top .mira-mark{width:34px;height:34px}.mira-prof-top .mira-mark .logo{width:22px;height:22px}
+.mira-prof-top .mira-mark{width:34px;height:34px}.mira-prof-top .mira-mark .logo{width:26px;height:auto}
 .mira-prof-name{flex:1;min-width:0}.mira-prof-name .n{font-size:14px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .mira-prof-name .e{font-size:11.5px;color:var(--m-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .mira-tier{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;padding:4px 10px;border-radius:999px;flex:0 0 auto}
-.mira-tier.free{background:#f0f0ef;color:var(--m-muted)}
-.mira-tier.plus{background:#eef2ff;color:var(--m-blue)}
+.mira-tier.free{background:var(--m-hover);color:var(--m-muted)}
+.mira-tier.plus{background:var(--m-primary-soft);color:var(--m-blue)}
 .mira-tier.pro{background:var(--m-purple-bg);color:var(--m-purple)}
 .mira-prof-h{font-size:12px;font-weight:700;color:var(--m-ink);margin-bottom:11px;text-transform:uppercase;letter-spacing:.03em}
 .mira-meter{margin-bottom:13px}.mira-meter:last-child{margin-bottom:0}
@@ -166,24 +228,124 @@ const MIRA_CSS = `
 .mira-credits .big{font-size:26px;font-weight:800;color:var(--m-ink);line-height:1}
 .mira-credits .sub{font-size:11.5px;color:var(--m-muted)}
 .mira-prof-load{margin:auto;color:var(--m-muted);font-size:13px}
-`;
+
+.mira-root button:focus-visible{outline:2px solid var(--m-primary);outline-offset:2px}
+
+@media (max-width:520px){
+  .mira-panel{right:10px;left:10px;bottom:94px;width:auto;max-width:none;height:min(620px,calc(100dvh - 110px))}
+  .mira-launch{right:16px;bottom:calc(16px + env(safe-area-inset-bottom))}
+  .mira-composer{padding-bottom:max(16px,env(safe-area-inset-bottom))}
+}
+@media (prefers-reduced-motion:reduce){
+  .mira-root *,.mira-root *::after{animation-duration:.01ms !important;animation-iteration-count:1 !important;transition-duration:.01ms !important}
+  .mira-logo-stage, .mira-logo-breathe { animation: none !important; opacity: 1; transform: none; }
+  .mira-logo-shine { display: none; }
+}
+
+/* ---- Marevlo cinematic mark: materialise → breathe → specular sweep ---- */
+.mira-logo { overflow: visible; }
+.mira-logo-stage { animation: mira-logo-in .95s cubic-bezier(.22,1,.36,1) both; transform-box: fill-box; transform-origin: 50% 58%; }
+@keyframes mira-logo-in {
+  0%   { opacity: 0; transform: translateY(9%) scale(.62); filter: blur(4px); }
+  55%  { opacity: 1; filter: blur(0); }
+  100% { opacity: 1; transform: translateY(0) scale(1); filter: blur(0); }
+}
+.mira-logo-breathe { animation: mira-breathe 5.4s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
+@keyframes mira-breathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.035); } }
+/* specular sheen — only rendered on the full (launcher / hero) variant */
+.mira-logo-shine { opacity: 0; mix-blend-mode: screen; animation: mira-shine-in .5s 1.05s forwards; }
+@keyframes mira-shine-in { to { opacity: 1; } }
+/* click-to-replay: drop the animations for one frame so they restart from 0 */
+.mira-logo.replay .mira-logo-stage,
+.mira-logo.replay .mira-logo-breathe,
+.mira-logo.replay .mira-logo-shine { animation: none; }
+`;;
 
 // ---------- brand logo ----------
-function Logo({ className = 'logo' }) {
+// The official Marevlo mark (mirrors /logo/logo marevlo.svg) inlined as SVG so
+// it stays crisp at every size and can carry a self-contained "ignition"
+// animation: it materialises (fade + scale + de-blur), idles with a soft
+// breath, and — on the full variant (launcher / hero) — a specular highlight
+// sweeps its silhouette. Click to replay. Honors prefers-reduced-motion.
+//   variant="mark"  -> base mark (header, avatars, profile — small & repeated)
+//   variant="full"  -> base mark + sheen sweep (the brand moments)
+const BRAND_PATHS = [
+  { d: 'M774.755 723.734C774.755 723.734 857.845 602.995 886.755 560.234C918.993 512.549 1041.33 307.63 1113.26 187.734C1187.18 64.5011 1288.25 23.8469 1427.75 4.23373C1351.46 -4.48987 1181.64 48.5481 1146.75 71.7337C1046.49 117.51 997.755 233.234 959.255 297.234L774.755 576.734L698.349 469.206L618.85 343.206L536.35 211.734C536.35 211.734 473.04 114.509 385.85 68.7337C298.66 22.9589 157.482 -2.57103 118.243 0.232475C79.0049 3.03598 323.007 32.4516 392.762 132.734C415.497 165.417 774.755 723.734 774.755 723.734Z', fill: 'url(#mira-g0)' },
+  { d: 'M774.632 723.649C774.714 723.705 774.796 723.762 774.879 723.819C811.536 670.489 848.23 617.174 884.66 563.569C885.426 562.438 886.162 561.35 886.866 560.309C964.993 437.922 1038.38 312.159 1113.34 187.786C1174.9 73.7738 1303.54 17.7892 1427.77 4.3098L1427.76 4.15741C1330.61 2.00254 1233.93 30.3433 1146.72 71.6836C1053.62 114.687 1007.69 212.288 959.216 297.21C897.722 390.378 836.226 483.548 774.729 576.717L774.781 576.716C749.311 540.874 723.841 505.033 698.371 469.191C671.87 427.193 645.369 385.194 618.868 343.195C591.366 299.372 563.865 255.548 536.364 211.725C496.6 154.792 447.522 102.05 385.855 68.7237C302.64 28.2111 210.649 4.05644 118.243 0.226693C199.393 29.678 326.774 48.3799 392.761 132.735C462.511 238.674 531.467 346.396 600.604 453.391C623.641 489.114 646.564 524.924 669.566 560.655C671.045 562.953 672.516 565.237 673.978 567.506C707.693 619.837 741.246 671.941 774.629 723.815C774.713 723.761 774.797 723.707 774.881 723.653C741.498 671.779 707.945 619.675 674.23 567.344C672.768 565.074 671.297 562.791 669.816 560.494C646.786 524.781 623.641 489.114 600.604 453.391C531.467 346.396 462.512 238.674 392.764 132.733C326.776 48.3823 199.397 29.6449 118.244 0.238258C210.644 4.07072 302.637 28.2295 385.844 68.7438C447.505 102.07 496.578 154.813 536.336 211.743C563.834 255.568 591.333 299.393 618.831 343.218C645.33 385.219 671.829 427.22 698.327 469.22C723.795 505.065 749.263 540.908 774.73 576.752L774.756 576.789L774.781 576.751C836.285 483.587 897.789 390.423 959.293 297.259C1007.78 212.328 1053.72 114.76 1146.78 71.7885C1233.94 30.4798 1330.68 2.14033 1427.75 4.31005L1427.74 4.15766C1303.51 17.6175 1174.77 73.6225 1113.17 187.682C1038.19 312.042 964.777 437.806 886.644 560.159C885.94 561.2 885.204 562.288 884.438 563.418C848.001 617.016 811.297 670.326 774.632 723.649ZM774.879 723.819L774.632 723.649L774.881 723.653L774.629 723.815L774.751 724.004L774.879 723.819Z', fill: '#05070f' },
+  { d: 'M222.047 1166.25L260.833 1138.24L260.832 614.242C260.832 572.453 263.032 503.569 256.833 462.242C237.215 331.458 167.913 289.769 161.352 283.203C110.274 232.091 2.2301 211.295 0.050354 215.638C-2.12939 219.981 64.3818 214.76 150.453 307.207C209.306 370.42 222.047 418.742 222.047 571.173V1166.25Z', fill: 'url(#mira-g1)' },
+  { d: 'M427.288 1035.24L470.34 1001.74V567.242L427.288 459.789V1035.24Z', fill: 'url(#mira-g2)' },
+  { d: 'M774.498 646.018C774.498 646.018 851.539 526.018 861.002 512.518C870.465 499.018 999.911 299.827 1077.5 183.518C1156 65.8451 1282.5 23.63 1422 4.01677C1345.71 -4.70684 1175.89 50.8321 1141 74.0177C1060 121.518 1027.5 184.018 993.502 234.018L774.502 577.018L679.137 438.116L608.134 326.116L548.003 232.02C548.003 232.02 518.433 186.309 499 163.52C468.729 128.02 449.487 99.0234 367 60.019C284.512 21.0146 132.499 -3.98283 114 0.523319C95.4996 5.02946 355.003 36.5198 433.504 135.52C524.162 249.85 774.498 646.018 774.498 646.018Z', fill: 'url(#mira-g3)' },
+  { d: 'M863.177 801.788L815.223 769.092C815.223 769.092 937.289 605.611 1007.04 492.263C1076.79 378.916 1116.03 283.007 1207.58 169.66C1299.43 55.9336 1558.52 43.2344 1558.52 43.2344C1558.52 43.2344 1317.48 92.6626 1235.91 208.896C1148.72 333.141 1102.95 446.489 1050.64 531.499C998.322 616.509 863.177 801.788 863.177 801.788Z', fill: 'url(#mira-g4)' },
+  { d: 'M695.342 801.577L743.297 768.881C743.297 768.881 621.231 605.4 551.479 492.053C481.727 378.705 442.491 282.796 350.941 169.449C259.085 55.7226 0.00115967 43.0234 0.00115967 43.0234C0.00115967 43.0234 241.038 92.4516 322.605 208.685C409.795 332.931 455.57 446.278 507.884 531.288C560.198 616.298 695.342 801.577 695.342 801.577Z', fill: 'url(#mira-g5)' },
+  { d: 'M1229.28 1098.23L1185.46 1072.02C1185.46 1072.02 1181.6 837.015 1185.46 628.022C1186.23 586.24 1185.45 502.323 1187.87 462.522C1195.99 328.555 1260.48 260.024 1305.58 226.312C1398.5 156.855 1540 127.019 1553 125.522C1565.99 124.026 1432 149.523 1325.19 248.132C1261.74 306.721 1231.47 395.382 1231.47 564.522C1231.47 806.475 1229.28 1098.23 1229.28 1098.23Z', fill: 'url(#mira-g6)' },
+  { d: 'M326.592 1097.79L370.414 1071.58C370.414 1071.58 374.28 836.578 370.416 627.585C369.644 585.803 370.422 501.886 368.007 462.085C359.881 328.117 295.398 259.586 250.298 225.874C157.379 156.417 15.875 126.581 2.87891 125.085C-10.1172 123.588 123.879 149.086 230.68 247.694C294.138 306.284 324.41 394.945 324.41 564.085C324.41 806.038 326.592 1097.79 326.592 1097.79Z', fill: 'url(#mira-g7)' },
+  { d: 'M1334.25 1166.03L1295.47 1138.02L1295.47 614.023C1295.47 572.234 1293.27 503.35 1299.47 462.023C1319.09 331.239 1388.39 289.551 1394.95 282.985C1446.03 231.872 1554.07 211.076 1556.25 215.419C1558.43 219.762 1491.92 214.541 1405.85 306.988C1346.99 370.201 1334.25 418.523 1334.25 570.955V1166.03Z', fill: 'url(#mira-g8)' },
+  { d: 'M1129.01 1035.03L1085.96 1001.52V567.023L1129.01 459.57V1035.03Z', fill: 'url(#mira-g9)' },
+];
+
+// brand gradients (mira- prefixed; reused across every instance, like the shell tokens)
+const BRAND_GRADS = [
+  { id: 'mira-g0', x1: 772.963, y1: 13.2344, x2: 772.963, y2: 726.98, stops: [['0.144231', '#062176'], ['0.504808', '#0E8CC9'], ['0.927885', '#064491']] },
+  { id: 'mira-g1', x1: 137.349, y1: 215.078, x2: 137.349, y2: 1166.24, stops: [['0.0817308', '#37C3FF'], ['0.3125', '#27C9F4'], ['0.876896', '#081269']] },
+  { id: 'mira-g2', x1: 452.355, y1: 459.789, x2: 452.398, y2: 1133.24, stops: [['0.225651', '#10A9E0'], ['0.790103', '#0B1B72']] },
+  { id: 'mira-g3', x1: 773.88, y1: -43.8749, x2: 771.023, y2: 585.523, stops: [['0.254808', '#062176'], ['0.610577', '#19B0E7'], ['1', '#1089CF']] },
+  { id: 'mira-g4', x1: 1186.87, y1: 43.2344, x2: 1186.87, y2: 801.788, stops: [['0.0576923', '#01236C'], ['0.485577', '#3AB2EC'], ['1', '#032C78']] },
+  { id: 'mira-g5', x1: 371.649, y1: 43.0234, x2: 371.649, y2: 801.577, stops: [['0.0576923', '#01236C'], ['0.485577', '#3AB2EC'], ['1', '#032C78']] },
+  { id: 'mira-g6', x1: 1362.06, y1: 123.648, x2: 1362.06, y2: 1098.23, stops: [['0.0336538', '#1ABCEF'], ['0.344848', '#1FAFE8'], ['0.907092', '#031C6F']] },
+  { id: 'mira-g7', x1: 193.811, y1: 123.211, x2: 193.811, y2: 1097.79, stops: [['0.0336538', '#1ABCEF'], ['0.344848', '#1FAFE8'], ['0.907092', '#031C6F']] },
+  { id: 'mira-g8', x1: 1418.95, y1: 214.859, x2: 1418.95, y2: 1166.03, stops: [['0.0817308', '#37C3FF'], ['0.3125', '#27C9F4'], ['0.876896', '#081269']] },
+  { id: 'mira-g9', x1: 1103.95, y1: 459.57, x2: 1103.9, y2: 1133.02, stops: [['0.225651', '#10A9E0'], ['0.790103', '#0B1B72']] },
+];
+
+function Logo({ className = 'logo', variant = 'mark' }) {
+  const full = variant === 'full';
   return (
-    <svg className={className} viewBox="0 0 120 100" aria-hidden="true">
+    <svg
+      className={`${className} mira-logo`}
+      viewBox="0 0 1559 1167"
+      preserveAspectRatio="xMidYMid meet"
+      role="img"
+      aria-label="Marevlo"
+      xmlns="http://www.w3.org/2000/svg"
+      onClick={(e) => {
+        const svg = e.currentTarget;
+        svg.classList.add('replay');
+        void svg.offsetWidth; // force reflow
+        svg.classList.remove('replay');
+      }}
+    >
       <defs>
-        <linearGradient id="mira-mg" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stopColor="#67e8f9" /><stop offset="45%" stopColor="#22d3ee" />
-          <stop offset="75%" stopColor="#3b82f6" /><stop offset="100%" stopColor="#4f46e5" />
-        </linearGradient>
+        {BRAND_GRADS.map((g) => (
+          <linearGradient key={g.id} id={g.id} x1={g.x1} y1={g.y1} x2={g.x2} y2={g.y2} gradientUnits="userSpaceOnUse">
+            {g.stops.map(([off, c]) => <stop key={off} offset={off} stopColor={c} />)}
+          </linearGradient>
+        ))}
+        {/* sheen: a narrow white band swept diagonally across the whole mark
+            (userSpaceOnUse so it reads as ONE sweep, not a glint per blade) */}
+        {full && (
+          <linearGradient id="mira-shine" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="1559" y2="1167">
+            <stop offset="0" stopColor="#fff" stopOpacity="0" />
+            <stop offset="0.42" stopColor="#fff" stopOpacity="0" />
+            <stop offset="0.5" stopColor="#fff" stopOpacity="0.85" />
+            <stop offset="0.58" stopColor="#fff" stopOpacity="0" />
+            <stop offset="1" stopColor="#fff" stopOpacity="0" />
+            <animateTransform attributeName="gradientTransform" type="translate"
+              from="-1559 0" to="1559 0" dur="4.6s" begin="1.05s" repeatCount="indefinite" />
+          </linearGradient>
+        )}
       </defs>
-      <g fill="none" stroke="url(#mira-mg)" strokeLinecap="round">
-        <path d="M12 96 V44 C12 22 24 12 40 10" strokeWidth="6" />
-        <path d="M24 96 V46 C24 30 32 22 46 19" strokeWidth="5" />
-        <path d="M108 96 V44 C108 22 96 12 80 10" strokeWidth="6" />
-        <path d="M96 96 V46 C96 30 88 22 74 19" strokeWidth="5" />
-        <path d="M30 18 L60 78 L90 18" strokeWidth="7" />
+
+      <g className="mira-logo-stage">
+        <g className="mira-logo-breathe">
+          {BRAND_PATHS.map((p, i) => <path key={i} d={p.d} fill={p.fill} />)}
+          {full && (
+            <g className="mira-logo-shine">
+              {BRAND_PATHS.filter((p) => p.fill.startsWith('url')).map((p, i) => (
+                <path key={i} d={p.d} fill="url(#mira-shine)" />
+              ))}
+            </g>
+          )}
+        </g>
       </g>
     </svg>
   );
@@ -265,7 +427,8 @@ function Walkthrough({ block, onFollow }) {
       <div className="mira-wt-bar">
         {steps.map((_, k) => <div key={k} className={`mira-seg ${k < i ? 'done' : k === i ? 'cur' : ''}`} />)}
       </div>
-      <div className="mira-wt-body">
+      {/* keyed by step so the body re-mounts and plays its entrance per step */}
+      <div className="mira-wt-body" key={i}>
         <Text className="mira-lead" text={s.explanation} />
         {(s.equations || []).map((e, k) => (
           <div key={k} className="mira-eq">
@@ -295,6 +458,29 @@ function Walkthrough({ block, onFollow }) {
   );
 }
 
+// ---------- code block with copy-to-clipboard ----------
+function CodeBlock({ block }) {
+  const [copied, setCopied] = useState(false);
+  const timerRef = useRef(null);
+  useEffect(() => () => clearTimeout(timerRef.current), []);
+  const copy = () => {
+    navigator.clipboard?.writeText(block.content || '').then(() => {
+      setCopied(true);
+      clearTimeout(timerRef.current);
+      timerRef.current = setTimeout(() => setCopied(false), 1600);
+    }).catch(() => { /* clipboard unavailable (http / permissions) — stay quiet */ });
+  };
+  return (
+    <div className="mira-code">
+      {block.language && <div className="lang">{block.language}</div>}
+      <button className={`mira-copy ${copied ? 'ok' : ''}`} onClick={copy} aria-label="Copy code">
+        {copied ? <Check size={13} /> : <Copy size={13} />}
+      </button>
+      <pre>{block.content}</pre>
+    </div>
+  );
+}
+
 // ---------- generic block dispatcher ----------
 function Block({ block, onFollow }) {
   const t = block.type;
@@ -309,14 +495,7 @@ function Block({ block, onFollow }) {
       </div>
     );
   }
-  if (t === 'code') {
-    return (
-      <div className="mira-code">
-        {block.language && <div className="lang">{block.language}</div>}
-        <pre>{block.content}</pre>
-      </div>
-    );
-  }
+  if (t === 'code') return <CodeBlock block={block} />;
   if (t === 'text') return <Text className="mira-voice" text={block.content} />;
   if (t === '_follow_ups' || t === '_scope_questions') {
     return (
@@ -351,7 +530,14 @@ function Block({ block, onFollow }) {
   return null;
 }
 
-const SUGGESTIONS = ['Explain gradient descent', 'How does a hash map work?', 'What is Big-O notation?'];
+const SUGGESTIONS = [
+  { text: 'Explain an Algorithm', icon: '🧠' },
+  { text: 'Debug my Code', icon: '🐛' },
+  { text: 'Time Complexity', icon: '⏱️' },
+  { text: 'Walk me through this', icon: '👣' },
+  { text: 'Compare approaches', icon: '⚖️' },
+  { text: 'Give me a hint', icon: '💡' }
+];
 
 // ---------- route -> context (chip + course_id / problem_id passed to the backend) ----------
 function deriveContext(pathname) {
@@ -383,6 +569,20 @@ function buildPageContext(page) {
   if (page.code && page.code.trim()) parts.push(`Their current code:\n${page.code.slice(0, 4000)}`);
   const text = parts.join('\n\n').trim();
   return text ? text.slice(0, 7500) : null;
+}
+
+// ---------- draggable launcher: device-level position, persisted ----------
+// x/y are offsets from the launcher's bottom-right home (so they're ≤ 0).
+const POS_KEY = 'mira:pos';
+const LAUNCH_SIZE = 60; // must match .mira-launch width/height in MIRA_CSS
+
+function loadPos() {
+  try {
+    const p = JSON.parse(localStorage.getItem(POS_KEY) || 'null');
+    return p && Number.isFinite(p.x) && Number.isFinite(p.y)
+      ? { x: Math.min(0, p.x), y: Math.min(0, p.y) }
+      : { x: 0, y: 0 };
+  } catch { return { x: 0, y: 0 }; }
 }
 
 // ---------- localStorage-backed conversation history (per user) ----------
@@ -559,6 +759,18 @@ export default function MiraWidget() {
   const taRef = useRef(null);
   const abortRef = useRef(null); // cancels the in-flight /mira/chat request
 
+  // drag state — launcher offset from its home corner, panel session offset
+  const [initPos] = useState(loadPos);
+  const x = useMotionValue(initPos.x);
+  const y = useMotionValue(initPos.y);
+  const px = useMotionValue(0);
+  const py = useMotionValue(0);
+  const launchDrag = useRef(null); // active launcher gesture: press origin + base offsets
+  const panelDrag = useRef(null); // active header-drag gesture
+  const [anchor, setAnchor] = useState(null); // panel placement for the launcher's position
+  const [vp, setVp] = useState(() => ({ w: window.innerWidth, h: window.innerHeight }));
+  const [customSize, setCustomSize] = useState(null);
+
   const ctx = deriveContext(location.pathname);
   const uid = user?.id;
 
@@ -580,12 +792,180 @@ export default function MiraWidget() {
     if (uid != null) persistThreads(uid, threads);
   }, [uid, threads]);
 
-  // keep the chat scrolled to the latest message
+  // keep the chat scrolled to the latest message. Jump instantly while a
+  // response is streaming (loading) — smooth-scrolling on every token stacks
+  // animations and stutters; smooth only for the settled/new-message case.
   useEffect(() => {
     if (view === 'chat' && scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+      scrollRef.current.scrollTo({ top: scrollRef.current.scrollHeight, behavior: loading ? 'auto' : 'smooth' });
     }
   }, [messages, loading, open, view]);
+
+  // Esc closes the panel
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e) => { if (e.key === 'Escape') setOpen(false); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open]);
+
+  // put the cursor in the composer whenever the chat view is shown
+  useEffect(() => {
+    if (open && view === 'chat') taRef.current?.focus();
+  }, [open, view]);
+
+  // Popover-style placement for wherever the bubble sits, clamped on-screen:
+  //  - vertical: above the bubble when there's room and it sits low, below
+  //    when it sits high; if NEITHER fits (bubble at mid-height), open BESIDE
+  //    it, vertically centered, so the panel never swallows the bubble
+  //  - horizontal: screen thirds — left third aligns left edges, right third
+  //    aligns right edges, middle third centers the panel on the bubble
+  // The transform origin is the bubble's center in panel-local px, so the
+  // open/close scale animation grows out of — and shrinks back into — it.
+  const computeAnchor = useCallback(() => {
+    const vw = window.innerWidth, vh = window.innerHeight;
+    const mobile = vw <= 520;
+    const w = mobile ? vw - 20 : Math.min(400, vw - 28);
+    const h = mobile ? Math.min(620, vh - 104) : Math.min(640, vh - 120);
+    const gap = 12, m = 10;
+    // launcher rect: fixed right/bottom 22 plus the (≤0) drag offsets
+    const lLeft = vw - 22 - LAUNCH_SIZE + x.get();
+    const lTop = vh - 22 - LAUNCH_SIZE + y.get();
+    const lCx = lLeft + LAUNCH_SIZE / 2, lCy = lTop + LAUNCH_SIZE / 2;
+    let left, top;
+    if (mobile) {
+      left = m;
+      top = lCy > vh / 2 ? lTop - gap - h : lTop + LAUNCH_SIZE + gap;
+    } else {
+      const above = lTop - gap - m;
+      const below = vh - (lTop + LAUNCH_SIZE) - gap - m;
+      if (above >= h || below >= h) {
+        top = (above >= h && (lCy >= vh / 2 || below < h))
+          ? lTop - gap - h
+          : lTop + LAUNCH_SIZE + gap;
+        if (lCx < vw / 3) left = lLeft;
+        else if (lCx > (2 * vw) / 3) left = lLeft + LAUNCH_SIZE - w;
+        else left = lCx - w / 2;
+      } else {
+        left = lCx <= vw / 2 ? lLeft + LAUNCH_SIZE + gap : lLeft - gap - w;
+        top = lCy - h / 2;
+      }
+    }
+    left = Math.max(m, Math.min(left, vw - w - m));
+    top = Math.max(m, Math.min(top, vh - h - m));
+    const ox = Math.max(0, Math.min(w, lCx - left));
+    const oy = Math.max(0, Math.min(h, lCy - top));
+    return { left, top, w, h, origin: `${ox}px ${oy}px` };
+  }, [x, y]);
+
+  useEffect(() => {
+    const onResize = () => setVp({ w: window.innerWidth, h: window.innerHeight });
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
+  // keep the launcher (and an open panel) on-screen when the viewport changes
+  useEffect(() => {
+    x.set(Math.max(-(vp.w - LAUNCH_SIZE - 34), Math.min(0, x.get())));
+    y.set(Math.max(-(vp.h - LAUNCH_SIZE - 34), Math.min(0, y.get())));
+    if (open) setAnchor(computeAnchor());
+  }, [vp, open, x, y, computeAnchor]);
+
+  const launchBounds = useMemo(() => ({
+    left: -(vp.w - LAUNCH_SIZE - 34), right: 0,
+    top: -(vp.h - LAUNCH_SIZE - 34), bottom: 0,
+  }), [vp]);
+
+  const panelBounds = useMemo(() => anchor && {
+    left: -(anchor.left - 10),
+    right: vp.w - anchor.left - anchor.w - 10,
+    top: -(anchor.top - 10),
+    bottom: vp.h - anchor.top - anchor.h - 10,
+  }, [anchor, vp]);
+
+  const openPanel = useCallback(() => {
+    px.set(0); py.set(0);
+    setCustomSize(null);
+    setAnchor(computeAnchor());
+    setOpen(true);
+  }, [computeAnchor, px, py]);
+
+  // Hand-rolled drag + tap for the launcher (chat-heads pattern). Framer's
+  // drag gesture left a stale transform-origin on the element after edge
+  // drags; the whileHover/whileTap SCALE then pivoted around that bogus
+  // origin and shifted the bubble out from under the pointer mid-click, so
+  // pointerup landed on the page and the tap never fired. Owning the pointer
+  // pipeline (capture → move → release) keeps the transform translate-only —
+  // origin-independent — and makes tap simply "released within 8px".
+  const onLaunchDown = useCallback((e) => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    // without this, Chromium can start a native drag/selection on the inner
+    // SVG mid-gesture and fire pointercancel, killing the drag after one move
+    e.preventDefault();
+    e.currentTarget.setPointerCapture(e.pointerId);
+    launchDrag.current = { sx: e.clientX, sy: e.clientY, bx: x.get(), by: y.get(), moved: false, wasDrag: false };
+  }, [x, y]);
+
+  const onLaunchMove = useCallback((e) => {
+    const d = launchDrag.current;
+    if (!d) return;
+    const dx = e.clientX - d.sx, dy = e.clientY - d.sy;
+    // Use a relaxed 6px dead-zone (was 12px) — reduces false drag-detection
+    // from micro-jitter at screen edges and on trackpads
+    if (!d.moved && Math.hypot(dx, dy) <= 6) return;
+    d.moved = true;
+    d.wasDrag = true;
+    x.set(Math.max(launchBounds.left, Math.min(0, d.bx + dx)));
+    y.set(Math.max(launchBounds.top, Math.min(0, d.by + dy)));
+  }, [x, y, launchBounds]);
+
+  const onLaunchUp = useCallback(() => {
+    const d = launchDrag.current;
+    launchDrag.current = null;
+    if (!d) return;
+    if (!d.wasDrag) {
+      // This was a tap — open the panel.  onClick below handles the same path
+      // as a fallback in case setPointerCapture mis-fires near screen edges.
+      openPanel();
+      return;
+    }
+    // Actual drag ended — persist the new launcher position
+    try { localStorage.setItem(POS_KEY, JSON.stringify({ x: x.get(), y: y.get() })); } catch { /* private mode */ }
+  }, [openPanel, x, y]);
+
+  const onLaunchCancel = useCallback(() => { launchDrag.current = null; }, []);
+
+  // header drag for the open panel — same hand-rolled pipeline
+  const onHeadDown = useCallback((e) => {
+    if (e.target.closest('button') || !panelBounds) return; // header buttons stay clickable
+    e.preventDefault(); // block native drag/selection takeover (→ pointercancel)
+    e.currentTarget.setPointerCapture(e.pointerId);
+    panelDrag.current = { sx: e.clientX, sy: e.clientY, bx: px.get(), by: py.get() };
+  }, [panelBounds, px, py]);
+
+  const onHeadMove = useCallback((e) => {
+    const d = panelDrag.current;
+    if (!d || !panelBounds) return;
+    px.set(Math.max(panelBounds.left, Math.min(panelBounds.right, d.bx + e.clientX - d.sx)));
+    py.set(Math.max(panelBounds.top, Math.min(panelBounds.bottom, d.by + e.clientY - d.sy)));
+  }, [panelBounds, px, py]);
+
+  const onHeadUp = useCallback(() => { panelDrag.current = null; }, []);
+
+  // Ctrl+. (Cmd+. on mac) toggles MIRA from anywhere — incl. while typing in
+  // the IDE, since the listener is on window and the combo never inserts text
+  useEffect(() => {
+    if (!user) return;
+    const onKey = (e) => {
+      if (e.key === '.' && (e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey) {
+        e.preventDefault();
+        if (open) setOpen(false);
+        else openPanel();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [user, open, openPanel]);
 
   // fetch the profile lazily when its view is opened
   useEffect(() => {
@@ -695,20 +1075,115 @@ export default function MiraWidget() {
     : view === 'profile' ? 'Your plan & usage'
     : 'Adaptive tutor';
 
+  const activeW = customSize?.w || anchor?.w;
+  const activeH = customSize?.h || anchor?.h;
+  const activeL = customSize?.left || anchor?.left;
+  const activeT = customSize?.top || anchor?.top;
+
+  const startResize = (dir) => (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const startX = e.clientX, startY = e.clientY;
+    const startW = activeW, startH = activeH;
+    const startL = activeL, startT = activeT;
+
+    const onMove = (me) => {
+      const dx = me.clientX - startX;
+      const dy = me.clientY - startY;
+      let newW = startW, newH = startH, newL = startL, newT = startT;
+
+      if (dir.includes('l')) {
+        newW = Math.max(300, Math.min(window.innerWidth - 40, startW - dx));
+        newL = startL + (startW - newW);
+      } else if (dir.includes('r')) {
+        newW = Math.max(300, Math.min(window.innerWidth - startL - 20, startW + dx));
+      }
+
+      if (dir.includes('t')) {
+        newH = Math.max(400, Math.min(window.innerHeight - 80, startH - dy));
+        newT = startT + (startH - newH);
+      } else if (dir.includes('b')) {
+        newH = Math.max(400, Math.min(window.innerHeight - startT - 20, startH + dy));
+      }
+      setCustomSize({ w: newW, h: newH, left: newL, top: newT });
+    };
+
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      document.body.style.userSelect = '';
+    };
+    document.body.style.userSelect = 'none';
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+  };
+
   return (
     <div className="mira-root">
       <style>{MIRA_CSS}</style>
 
+      <AnimatePresence>
       {!open && (
-        <button className="mira-launch" onClick={() => setOpen(true)} aria-label="Open MIRA tutor">
-          <Logo />
-          <span className="mira-badge" />
-        </button>
+        <Motion.button
+          key="mira-launch"
+          className="mira-launch"
+          onPointerDown={onLaunchDown}
+          onPointerMove={onLaunchMove}
+          onPointerUp={onLaunchUp}
+          onPointerCancel={onLaunchCancel}
+          onClick={(e) => {
+            // Fallback for cases where onPointerUp didn't fire (e.g. near screen
+            // edges on some browsers). Only open if this click was NOT a drag.
+            // Keyboard-generated clicks (e.detail === 0) always open.
+            if (e.detail === 0 || !launchDrag.current?.wasDrag) openPanel();
+          }}
+          draggable={false}
+          aria-label="Open MIRA tutor"
+          title="MIRA — Ctrl+."
+          style={{ x, y }}
+          initial={{ opacity: 0, scale: 0.6 }}
+          animate={{ opacity: 1, scale: 1 }}
+          exit={{ opacity: 0, scale: 0.6, transition: { duration: 0.12, ease: 'easeIn' } }}
+          transition={springSnappy}
+        >
+          <Logo variant="full" />
+        </Motion.button>
       )}
 
       {open && (
-        <div className="mira-panel" role="dialog" aria-label="MIRA tutor">
-          <div className="mira-head">
+        <Motion.div
+          key="mira-panel"
+          className="mira-panel"
+          role="dialog"
+          aria-label="MIRA tutor"
+          style={{
+            x: px, y: py,
+            left: activeL, top: activeT,
+            width: activeW, height: activeH,
+            right: 'auto', bottom: 'auto',
+            transformOrigin: anchor?.origin || 'bottom right',
+          }}
+          initial={{ opacity: 0, scale: 0.5 }}
+          animate={{ opacity: 1, scale: 1 }}
+          exit={{ opacity: 0, scale: 0.55, transition: { duration: 0.16, ease: 'easeIn' } }}
+          transition={springSoft}
+        >
+          <div className="mira-resize tl" onPointerDown={startResize('tl')} />
+          <div className="mira-resize t" onPointerDown={startResize('t')} />
+          <div className="mira-resize tr" onPointerDown={startResize('tr')} />
+          <div className="mira-resize r" onPointerDown={startResize('r')} />
+          <div className="mira-resize br" onPointerDown={startResize('br')} />
+          <div className="mira-resize b" onPointerDown={startResize('b')} />
+          <div className="mira-resize bl" onPointerDown={startResize('bl')} />
+          <div className="mira-resize l" onPointerDown={startResize('l')} />
+
+          <div
+            className="mira-head"
+            onPointerDown={onHeadDown}
+            onPointerMove={onHeadMove}
+            onPointerUp={onHeadUp}
+            onPointerCancel={onHeadUp}
+          >
             {view !== 'chat' ? (
               <button className="mira-iconbtn" onClick={() => setView('chat')} aria-label="Back to chat"><ArrowLeft size={18} /></button>
             ) : (
@@ -727,6 +1202,15 @@ export default function MiraWidget() {
             </div>
           </div>
 
+          {/* keyed by view so switching chat/history/profile plays an entrance */}
+          <Motion.div
+            key={view}
+            className="mira-view"
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.22, ease: easeOutExpo }}
+          >
+
           {view === 'history' && (
             <HistoryView threads={threads} activeId={activeId} onOpen={openThread} onDelete={deleteThread} />
           )}
@@ -735,14 +1219,18 @@ export default function MiraWidget() {
 
           {view === 'chat' && (
             <>
-              <div className="mira-scroll" ref={scrollRef}>
+              <div className="mira-scroll" ref={scrollRef} aria-live="polite" aria-busy={loading}>
                 {messages.length === 0 && !loading && (
                   <div className="mira-empty">
-                    Hi, I'm <b>MIRA</b> — your AI tutor for CS, AI & coding.<br />
-                    Ask me anything and I'll walk you through it.
+
+
+                    <div className="mira-empty-title">Hi {user?.name?.split(' ')[0] || user?.username || 'Learner'}, I'm <b>MIRA</b></div>
+                    <div className="mira-empty-sub">Your AI tutor.</div>
                     <div className="mira-suggest">
                       {SUGGESTIONS.map((s) => (
-                        <button key={s} className="mira-chip-btn" onClick={() => send(s)}>{s}</button>
+                        <button key={s.text} className="mira-chip-btn" onClick={() => send(s.text)}>
+                          <span className="ic">{s.icon}</span> {s.text}
+                        </button>
                       ))}
                     </div>
                   </div>
@@ -765,7 +1253,7 @@ export default function MiraWidget() {
                   <div className="mira-row">
                     <div className="mira-av"><Logo /></div>
                     <div className="mira-grow">
-                      <div className="mira-think"><span className="blink" /> MIRA is thinking…</div>
+                      <div className="mira-think"><span className="mira-wave"><i /><i /><i /></span> Thinking…</div>
                     </div>
                   </div>
                 )}
@@ -799,8 +1287,11 @@ export default function MiraWidget() {
               </div>
             </>
           )}
-        </div>
+
+          </Motion.div>
+        </Motion.div>
       )}
+      </AnimatePresence>
     </div>
   );
 }

@@ -771,14 +771,14 @@ const ProblemPanel = memo(({ problem, onBack, onActiveLadderChange, solvedLadder
                     <div>
                         {/* Approach Selector */}
                         <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--color-border)' }}>
-                            <div style={{ display: 'flex', gap: 6, overflowX: 'auto' }} className="pp-scroll">
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                                 {approaches.map((a, i) => {
                                     const isA = selectedApproach === i;
                                     const c = getApproachColor(a.name);
                                     return (
                                         <button key={a.id} onClick={() => { setSelectedApproach(i); setActiveLadder(0); }}
                                             style={{ flex: '0 0 auto', padding: '8px 14px', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, transition: 'all 0.2s', background: isA ? `color-mix(in srgb, ${c} 10%, var(--color-surface))` : 'var(--color-surface-hover)', color: isA ? c : 'var(--color-muted-text)', border: isA ? `1.5px solid color-mix(in srgb, ${c} 35%, transparent)` : '1px solid var(--color-border)', boxShadow: isA ? `0 2px 10px color-mix(in srgb, ${c} 12%, transparent)` : 'none' }}>
-                                            {getApproachIcon(a.name)} {a.name}
+                                            {getApproachIcon(a.name)} {a.name.replace(/^Approach\s*\d+\s*:\s*/i, '').replace(/\s*O\([^)]+\)\s*$/, '')}
                                         </button>
                                     );
                                 })}

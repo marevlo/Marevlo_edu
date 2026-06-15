@@ -1,12 +1,14 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import {
     Zap, Newspaper, Image, Calendar, PenTool, X, Users, Sparkles, Flame,
-    Clock, CheckCircle2, AlertCircle, Info
+    Clock, CheckCircle2, AlertCircle, Info, Search, UserPlus
 } from 'lucide-react';
 import FeedPost from '../components/feed/FeedPost';
 import CreatePostWidget from '../components/feed/CreatePostWidget';
 import TrendingProblems from '../components/TrendingProblems';
 import MessengerWidget from '../components/feed/MessengerWidget';
+import FindPeopleModal from '../components/feed/FindPeopleModal';
 
 const INITIAL_POSTS = [];
 const API_BASE = import.meta.env.VITE_API_URL;
@@ -80,6 +82,7 @@ export default function Feed() {
     const [loading, setLoading] = useState(true);
     const [sortBy, setSortBy] = useState('latest');
     const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
+    const [isFindPeopleOpen, setIsFindPeopleOpen] = useState(false);
 
     // Article Modal State
     const [isArticleModalOpen, setIsArticleModalOpen] = useState(false);
@@ -136,6 +139,7 @@ export default function Feed() {
             if (e.key === 'Escape') {
                 setIsArticleModalOpen(false);
                 setIsEventModalOpen(false);
+                setIsFindPeopleOpen(false);
             }
         };
         window.addEventListener('keydown', onKey);
@@ -453,6 +457,29 @@ export default function Feed() {
                             </div>
                         </TiltCard>
 
+                        {/* Find People — the feed's discovery / search entry point */}
+                        <button
+                            onClick={() => setIsFindPeopleOpen(true)}
+                            className="w-full flex items-center gap-3 rounded-2xl px-4 py-3 text-left transition-all duration-200 bg-card"
+                            style={{ border: '1px solid var(--color-border)' }}
+                            onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(102,114,224,0.4)'; e.currentTarget.style.boxShadow = '0 4px 16px rgba(102,114,224,0.1)'; }}
+                            onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--color-border)'; e.currentTarget.style.boxShadow = 'none'; }}
+                            aria-label="Find and follow people"
+                        >
+                            <span style={{
+                                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                                width: 32, height: 32, borderRadius: '50%', flexShrink: 0,
+                                background: 'linear-gradient(135deg, #6672e0, #3fa9c9)', color: '#fff',
+                            }}>
+                                <Search size={15} />
+                            </span>
+                            <span className="flex-1 text-sm font-medium text-muted-foreground">Search people to follow…</span>
+                            <span className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-white"
+                                style={{ background: 'linear-gradient(135deg, #6672e0, #3fa9c9)' }}>
+                                <UserPlus size={13} /> Find People
+                            </span>
+                        </button>
+
                         {/* Create Post Widget */}
                         <div className="transition-all duration-300 hover:shadow-xl" style={{ borderRadius: '1rem' }}>
                             <CreatePostWidget
@@ -681,14 +708,30 @@ export default function Feed() {
 
                         {/* Footer Links */}
                         <div className="flex flex-wrap gap-x-3 gap-y-2 text-[11px] px-2">
-                            {['About', 'Accessibility', 'Help Center', 'Privacy & Terms'].map((link) => (
-                                <span
-                                    key={link}
-                                    className="cursor-pointer hover:underline transition-colors duration-200 text-muted-foreground"
-                                >
-                                    {link}
-                                </span>
-                            ))}
+                            <Link
+                                to="/about"
+                                className="cursor-pointer hover:underline transition-colors duration-200 text-muted-foreground"
+                            >
+                                About
+                            </Link>
+                            <a
+                                href="mailto:support@marevlo.com"
+                                className="cursor-pointer hover:underline transition-colors duration-200 text-muted-foreground"
+                            >
+                                Help Center
+                            </a>
+                            <Link
+                                to="/legal/privacy"
+                                className="cursor-pointer hover:underline transition-colors duration-200 text-muted-foreground"
+                            >
+                                Privacy
+                            </Link>
+                            <Link
+                                to="/legal/terms"
+                                className="cursor-pointer hover:underline transition-colors duration-200 text-muted-foreground"
+                            >
+                                Terms
+                            </Link>
                             <div className="text-[11px] text-muted-foreground" style={{ opacity: 0.6 }}>
                                 © 2026 Marevlo
                             </div>
@@ -702,7 +745,7 @@ export default function Feed() {
                 <div
                     role="status"
                     aria-live="polite"
-                    className="fixed bottom-6 left-6 right-6 sm:left-auto sm:right-6 sm:w-80 z-50"
+                    className="fixed bottom-6 left-6 right-6 sm:right-auto sm:w-80 z-50"
                     style={{
                         background: toast.type === 'error'
                             ? 'linear-gradient(135deg,#e06661,#f43f5e)'
@@ -993,6 +1036,13 @@ export default function Feed() {
                     </div>
                 </div>
             )}
+
+            {/* FIND PEOPLE MODAL */}
+            <FindPeopleModal
+                open={isFindPeopleOpen}
+                onClose={() => setIsFindPeopleOpen(false)}
+                onFollowChange={(u, nowFollowing) => showToast(nowFollowing ? `Following @${u.username}` : `Unfollowed @${u.username}`, nowFollowing ? 'success' : 'info')}
+            />
 
             <MessengerWidget />
         </div>

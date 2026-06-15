@@ -51,6 +51,12 @@ class AccountInactive(DomainError):
     detail = "Account is inactive, suspended, or deleted"
 
 
+class EmailNotVerified(DomainError):
+    code = "email_not_verified"
+    http_status = 403
+    detail = "Please verify your email address before logging in"
+
+
 # ── 404 Not Found ────────────────────────────────────────────────────────
 class NotFound(DomainError):
     code = "not_found"

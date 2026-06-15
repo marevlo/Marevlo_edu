@@ -73,15 +73,22 @@ resource "aws_iam_role_policy_attachment" "task_exec" {
   role       = aws_iam_role.task_exec.name
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
 }
-# Allow the execution role to read the app secret (injected as env).
+data "aws_secretsmanager_secret" "firebase" {
+  name = "marevlo-prod-firebase"
+}
+
+# Allow the execution role to read the app secret and firebase secret (injected as env).
 resource "aws_iam_role_policy" "read_secret" {
   role = aws_iam_role.task_exec.id
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
-      Effect   = "Allow"
-      Action   = ["secretsmanager:GetSecretValue"]
-      Resource = [aws_secretsmanager_secret.app.arn]
+      Effect = "Allow"
+      Action = ["secretsmanager:GetSecretValue"]
+      Resource = [
+        aws_secretsmanager_secret.app.arn,
+        data.aws_secretsmanager_secret.firebase.arn
+      ]
     }]
   })
 }
@@ -119,8 +126,12 @@ resource "aws_cloudwatch_log_group" "runner" {
 
 # helper: secret env mapping
 locals {
-  secret_keys = ["JWT_SECRET", "DATABASE_URL", "REDIS_URL", "FIREBASE_CREDENTIALS_JSON", "SMTP_HOST", "SMTP_USER", "SMTP_PASS", "SMTP_FROM"]
-  api_secrets = [for k in local.secret_keys : { name = k, valueFrom = "${aws_secretsmanager_secret.app.arn}:${k}::" }]
+  secret_keys = ["JWT_SECRET", "DATABASE_URL", "REDIS_URL", "SMTP_HOST", "SMTP_USER", "SMTP_PASS", "SMTP_FROM"]
+  app_secrets = [for k in local.secret_keys : { name = k, valueFrom = "${aws_secretsmanager_secret.app.arn}:${k}::" }]
+  api_secrets = concat(
+    local.app_secrets,
+    [{ name = "FIREBASE_CREDENTIALS_JSON", valueFrom = data.aws_secretsmanager_secret.firebase.arn }]
+  )
 }
 
 # ── runner task + service (internal, isolated) ───────────────────────────────
@@ -132,9 +143,9 @@ resource "aws_ecs_task_definition" "runner" {
   memory                   = var.runner_memory
   execution_role_arn       = aws_iam_role.task_exec.arn
   container_definitions = jsonencode([{
-    name      = "runner"
-    image     = var.runner_image
-    essential = true
+    name         = "runner"
+    image        = var.runner_image
+    essential    = true
     portMappings = [{ containerPort = 4002 }]
     environment = [
       { name = "PORT", value = "4002" },
@@ -160,7 +171,10 @@ resource "aws_service_discovery_service" "runner" {
   name = "runner"
   dns_config {
     namespace_id = aws_service_discovery_private_dns_namespace.internal.id
-    dns_records { ttl = 10, type = "A" }
+    dns_records {
+      ttl  = 10
+      type = "A"
+    }
     routing_policy = "MULTIVALUE"
   }
   health_check_custom_config { failure_threshold = 1 }
@@ -192,6 +206,11 @@ resource "aws_ecs_task_definition" "api" {
     name      = "api"
     image     = var.api_image
     essential = true
+    # Apply DB migrations (advisory-locked so replicas don't race) before
+    # starting gunicorn. Lets every deploy self-migrate — no manual one-off task.
+    command = ["sh", "-c",
+      "python /app/scripts/run_migrations.py && exec gunicorn app.main:app -k uvicorn.workers.UvicornWorker -w 2 --bind 0.0.0.0:8000 --access-logfile - --error-logfile - --timeout 60 --graceful-timeout 30 --keep-alive 5"
+    ]
     portMappings = [{ containerPort = 8000 }]
     environment = [
       { name = "ENV", value = var.env },
@@ -199,11 +218,20 @@ resource "aws_ecs_task_definition" "api" {
       { name = "LOG_FORMAT", value = "json" },
       { name = "AWS_REGION", value = var.region },
       { name = "S3_BUCKET", value = aws_s3_bucket.uploads.bucket },
+      # Reels direct-publish: the API enqueues HLS/Whisper jobs here after a
+      # reel goes live. Consumed by the reels-worker service (see reels.tf).
+      { name = "REELS_SQS_QUEUE_URL", value = aws_sqs_queue.reels.url },
       { name = "CORS_ORIGINS", value = "https://${var.domain},https://www.${var.domain}" },
       { name = "TRUSTED_PROXIES", value = var.vpc_cidr },
       # Runner reachable via Cloud Map private DNS on the API SG path:
       { name = "IDE_RUNNER_URL", value = "http://runner.marevlo.internal:4002" },
-      { name = "NOTEBOOK_BASE_URL", value = "https://${var.domain}/notebook" }
+      { name = "NOTEBOOK_BASE_URL", value = "https://${var.domain}/notebook" },
+      # Compliance gates. REQUIRE_EMAIL_VERIFICATION blocks password login for
+      # unverified emails — flip to "true" only after SES production access is
+      # granted and SMTP secrets are filled, or new signups cannot log in.
+      { name = "REQUIRE_EMAIL_VERIFICATION", value = "false" },
+      { name = "REQUIRE_TOS_ACCEPT", value = "true" },
+      { name = "TOS_VERSION", value = "1.0" }
     ]
     secrets = local.api_secrets
     logConfiguration = {
@@ -223,6 +251,8 @@ resource "aws_ecs_service" "api" {
   task_definition = aws_ecs_task_definition.api.arn
   desired_count   = var.api_desired_count
   launch_type     = "FARGATE"
+  # Give the task time to migrate + boot before the ALB starts failing it.
+  health_check_grace_period_seconds = 120
   network_configuration {
     subnets         = aws_subnet.private[*].id
     security_groups = [aws_security_group.api.id]

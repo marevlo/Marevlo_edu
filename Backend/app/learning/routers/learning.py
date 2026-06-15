@@ -5,11 +5,15 @@ from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 
 from app.auth.models.user import User
+from app.core.access import resolve_course_product
+from app.core.config import get_settings
 from app.core.dependencies import get_current_user, get_db
+from app.entitlements.services.entitlement_service import entitlement_service
 from app.learning.schemas.learning import (
     BookmarkCreate,
     BookmarkListOut,
     BookmarkOut,
+    CourseAccessOut,
     DashboardOut,
     EnrollmentListOut,
     EnrollmentOut,
@@ -43,6 +47,39 @@ def list_enrollments(
 ):
     items = learning_service.list_enrollments(db, user_id=user.id)
     return EnrollmentListOut(enrollments=[EnrollmentOut.model_validate(e) for e in items])
+
+
+# ── Course access ───────────────────────────────────────────────────────
+@router.get("/courses/{course_id}/access", response_model=CourseAccessOut)
+def course_access(
+    course_id: str,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Whether the current user may view `course_id`.
+
+    Mirrors app.core.access.enforce_course_access but never raises — the
+    frontend calls this before rendering to decide content vs. paywall.
+    """
+    s = get_settings()
+    product = resolve_course_product(course_id)
+    is_free = product is None
+    staff = getattr(user, "is_admin", False) or getattr(user, "role", "student") in (
+        "admin",
+        "staff",
+    )
+    has_access = (
+        not s.ENFORCE_COURSE_ACCESS
+        or is_free
+        or staff
+        or entitlement_service.has_active(db, user_id=user.id, product=product)
+    )
+    return CourseAccessOut(
+        course_id=course_id,
+        required_product=product,
+        is_free=is_free,
+        has_access=has_access,
+    )
 
 
 # ── Progress ────────────────────────────────────────────────────────────

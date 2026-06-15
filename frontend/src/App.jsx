@@ -1,5 +1,5 @@
 import React, { Suspense } from 'react';
-import { BrowserRouter as Router, Routes, Route, useNavigate, useParams, useLocation, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, useNavigate, useParams } from 'react-router-dom';
 
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ThemeProvider } from './context/ThemeContext';
@@ -7,9 +7,11 @@ import { MotionConfig } from 'framer-motion';
 import { ToastProvider, useToast } from './components/Toast';
 
 import Layout from './components/Layout';
+import LogoLoader from './components/LogoLoader';
 import JobBoardGuard from './components/JobBoardGuard';
+import CourseAccessGate from './components/CourseAccessGate';
 
-import { loadAllTopics } from './utils/topicsLoader';
+import { loadAllTopics, loadProblemRaw } from './utils/topicsLoader';
 
 // Lazy Load Pages
 const LandingPage = React.lazy(() => import('./pages/LandingPage'));
@@ -33,6 +35,15 @@ const ResearchCourseContent = React.lazy(() => import('./pages/ResearchCourseCon
 const ResearchPaperContent = React.lazy(() => import('./pages/ResearchPaperContent'));
 const T3TrackLanding = React.lazy(() => import('./pages/T3TrackLanding'));
 const TopicProblems = React.lazy(() => import('./pages/TopicProblems'));
+const PrivacyPolicy = React.lazy(() => import('./pages/legal/PrivacyPolicy'));
+const TermsOfService = React.lazy(() => import('./pages/legal/TermsOfService'));
+const RefundPolicy = React.lazy(() => import('./pages/legal/RefundPolicy'));
+const CookiePolicy = React.lazy(() => import('./pages/legal/CookiePolicy'));
+const Settings = React.lazy(() => import('./pages/Settings'));
+const VerifyEmail = React.lazy(() => import('./pages/VerifyEmail'));
+const PublicReelPage = React.lazy(() => import('./reels/PublicReelPage'));
+const CreatorStudio = React.lazy(() => import('./reels/ReelsAdmin').then(m => ({ default: m.CreatorStudio })));
+const ReelsModerationDashboard = React.lazy(() => import('./reels/ReelsAdmin').then(m => ({ default: m.ReelsModerationDashboard })));
 
 export default function App() {
     return (
@@ -54,7 +65,7 @@ export default function App() {
                                 <Route path="/messages" element={<MessagesWrapper />} />
                                 <Route path="/project" element={<Project />} />
                                 <Route path="/courses/*" element={<Courses />} />
-                                <Route path="/course/:id" element={<CourseContent />} />
+                                <Route path="/course/:id" element={<CourseAccessGate><CourseContent /></CourseAccessGate>} />
                                 <Route path="/jobs" element={<JobBoardGuard><JobBoard /></JobBoardGuard>} />
                                 <Route path="/plan" element={<Plan />} />
                                 <Route path="/profile" element={<Profile />} />
@@ -65,6 +76,15 @@ export default function App() {
                                 <Route path="/research/courses/*" element={<ResearchCourses />} />
                                 <Route path="/research/track/recommender-system" element={<T3TrackLanding />} />
                                 <Route path="/research/course/:id" element={<ResearchCourseContent />} />
+                                <Route path="/legal/privacy" element={<PrivacyPolicy />} />
+                                <Route path="/legal/terms" element={<TermsOfService />} />
+                                <Route path="/legal/refunds" element={<RefundPolicy />} />
+                                <Route path="/legal/cookies" element={<CookiePolicy />} />
+                                <Route path="/settings" element={<Settings />} />
+                                <Route path="/verify-email" element={<VerifyEmail />} />
+                                <Route path="/reels/:slug" element={<PublicReelPage />} />
+                                <Route path="/reels/studio" element={<CreatorStudio />} />
+                                <Route path="/admin/reels" element={<ReelsModerationDashboard />} />
                             </Route>
                         </Routes>
                     </Router>
@@ -93,7 +113,7 @@ function LoginWrapper() {
 function SignupWrapper() {
     const navigate = useNavigate();
     const showToast = useToast();
-    return <Signup onLogin={() => navigate('/login')} onSignupSuccess={() => { showToast('Account created! Please sign in.', 'success'); navigate('/login'); }} />;
+    return <Signup onLogin={() => navigate('/login')} onSignupSuccess={(u) => { showToast('Account created! Check your email for a verification code.', 'success'); navigate('/verify-email?email=' + encodeURIComponent(u?.email || '')); }} />;
 }
 
 function ProblemWrapper() {
@@ -122,15 +142,21 @@ function IDEWrapper() {
     const [loading, setLoading] = React.useState(true);
 
     React.useEffect(() => {
-        loadAllTopics().then(topics => {
+        let cancelled = false;
+        loadAllTopics().then(async topics => {
             const flat = topicId
                 ? (topics.find(t => t.id === topicId)?.problems || [])
                 : topics.flatMap(t => t.problems);
-            setAllProblems(flat);
             const found = flat.find(p => String(p.id) === id);
-            setProblem(found ? { ...found._raw, _vizFile: found._vizFile, _topicKey: found._topicKey } : null);
+            // Manifest entries are list metadata only — fetch this problem's
+            // full JSON (statement, examples, solutions) on demand.
+            const raw = found ? await loadProblemRaw(found._topicKey, found._vizFile) : null;
+            if (cancelled) return;
+            setAllProblems(flat);
+            setProblem(raw ? { ...raw, _vizFile: found._vizFile, _topicKey: found._topicKey } : null);
             setLoading(false);
-        }).catch(() => setLoading(false));
+        }).catch(() => { if (!cancelled) setLoading(false); });
+        return () => { cancelled = true; };
     }, [id, topicId]);
 
     const handleNext = () => {
@@ -153,7 +179,7 @@ function IDEWrapper() {
     }, [problem]);
 
     if (loading) {
-        return <div className="text-muted-foreground" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>Loading problem…</div>;
+        return <LogoLoader label="Loading problem…" />;
     }
 
     return <IDE

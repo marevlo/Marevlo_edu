@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, useReducedMotion, useMotionValue, useSpring, useTransform } from 'framer-motion';
 import { useScrollReveal, useActiveInView } from '../hooks/useScrollReveal';
+import RevealText from '../components/RevealText';
 import { ChevronRight, Layers, Users, Briefcase, Code, Terminal, Globe, ArrowUpRight, CheckCircle2, Zap, MessageSquare, Brain, Cpu, GitBranch, Film, Map, Puzzle, Lightbulb, TrendingUp, Target, Rocket, GraduationCap, Eye, Hammer, Wrench, Lock, Unlock, ListOrdered, Sparkles, Keyboard, Bot } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
+import Footer from '../components/Footer';
 
 // Animated Typing Terminal
 const CODE_SNIPPETS = [
@@ -11,7 +13,7 @@ const CODE_SNIPPETS = [
         file: 'best_time_to_buy_sell.py',
         color: '#41bd78',
         lines: [
-            { indent: 0, tokens: [{ t: 'comment', v: '# Best Time to Buy & Sell — one pass' }] },
+            { indent: 0, tokens: [{ t: 'comment', v: '# Best Time to Buy & Sell, one pass' }] },
             { indent: 0, tokens: [{ t: 'keyword', v: 'def' }, { t: 'plain', v: ' ' }, { t: 'fn', v: 'max_profit' }, { t: 'plain', v: '(prices):' }] },
             { indent: 1, tokens: [{ t: 'plain', v: 'low, best = prices[0], 0' }] },
             { indent: 1, tokens: [{ t: 'keyword', v: 'for' }, { t: 'plain', v: ' p ' }, { t: 'keyword', v: 'in' }, { t: 'plain', v: ' prices[1:]:' }] },
@@ -25,7 +27,7 @@ const CODE_SNIPPETS = [
         file: 'binary_tree.py',
         color: '#9180e8',
         lines: [
-            { indent: 0, tokens: [{ t: 'comment', v: '# Binary Tree — taught step by step' }] },
+            { indent: 0, tokens: [{ t: 'comment', v: '# Binary Tree, taught step by step' }] },
             { indent: 0, tokens: [{ t: 'keyword', v: 'class' }, { t: 'plain', v: ' ' }, { t: 'fn', v: 'TreeNode' }, { t: 'plain', v: ':' }] },
             { indent: 1, tokens: [{ t: 'keyword', v: 'def' }, { t: 'plain', v: ' ' }, { t: 'fn', v: '__init__' }, { t: 'plain', v: '(self, val=0):' }] },
             { indent: 2, tokens: [{ t: 'plain', v: 'self.val   = val' }] },
@@ -38,7 +40,7 @@ const CODE_SNIPPETS = [
         file: 'bfs_visualizer.py',
         color: '#3fa9c9',
         lines: [
-            { indent: 0, tokens: [{ t: 'comment', v: '# BFS — watch it run step by step' }] },
+            { indent: 0, tokens: [{ t: 'comment', v: '# BFS, watch it run step by step' }] },
             { indent: 0, tokens: [{ t: 'keyword', v: 'from' }, { t: 'plain', v: ' collections ' }, { t: 'keyword', v: 'import' }, { t: 'plain', v: ' deque' }] },
             { indent: 0, tokens: [{ t: 'keyword', v: 'def' }, { t: 'plain', v: ' ' }, { t: 'fn', v: 'bfs' }, { t: 'plain', v: '(graph, start):' }] },
             { indent: 1, tokens: [{ t: 'plain', v: 'queue, visited = ' }, { t: 'fn', v: 'deque' }, { t: 'plain', v: '([start]), {start}' }] },
@@ -560,11 +562,11 @@ const BFS_NODES = [
 ];
 const BFS_EDGES = [['A', 'B'], ['A', 'C'], ['B', 'D'], ['B', 'E'], ['C', 'E']];
 const BFS_STEPS = [
-    { current: null, visited: [], queue: ['A'], label: 'Start — enqueue A' },
+    { current: null, visited: [], queue: ['A'], label: 'Start: enqueue A' },
     { current: 'A', visited: ['A'], queue: ['B', 'C'], label: 'Visit A → enqueue B, C' },
     { current: 'B', visited: ['A', 'B'], queue: ['C', 'D', 'E'], label: 'Visit B → enqueue D, E' },
     { current: 'C', visited: ['A', 'B', 'C'], queue: ['D', 'E'], label: 'Visit C → E already queued' },
-    { current: 'D', visited: ['A', 'B', 'C', 'D'], queue: ['E'], label: 'Visit D — no new neighbours' },
+    { current: 'D', visited: ['A', 'B', 'C', 'D'], queue: ['E'], label: 'Visit D: no new neighbours' },
     { current: 'E', visited: ['A', 'B', 'C', 'D', 'E'], queue: [], label: '✅ BFS complete! All visited' },
 ];
 
@@ -596,7 +598,7 @@ function BFSVisualizer({ isDark = false }) {
     const nodeText = { current: '#fff', visited: '#fff', queued: '#fff', idle: 'rgba(255,255,255,0.35)' };
 
     return (
-        <div ref={rootRef} className="lg:col-span-5 rounded-3xl border overflow-hidden relative"
+        <div ref={rootRef} className="bento-reveal lg:col-span-5 rounded-3xl border overflow-hidden relative"
             style={{
                 background: isDark ? '#14161d' : 'linear-gradient(145deg, #1a2440, #263457)',
                 borderColor: isDark ? 'rgba(var(--secondary-rgb),0.35)' : 'rgba(93,142,222,0.28)'
@@ -619,7 +621,7 @@ function BFSVisualizer({ isDark = false }) {
                 {/* Title + step */}
                 <div className="flex items-center justify-between mb-3">
                     <div>
-                        <span className="text-sm font-extrabold text-white">BFS — Graph Traversal</span>
+                        <span className="text-sm font-extrabold text-white">BFS: Graph Traversal</span>
                         <span className="text-xs text-neutral-500 ml-2">Step {step + 1} / {BFS_STEPS.length}</span>
                     </div>
                 </div>
@@ -814,7 +816,7 @@ function ResearchCard({ isDark = false }) {
     const cur = RESEARCH_TRACKS[idx];
 
     return (
-        <div ref={rootRef} className="lg:col-span-3 rounded-3xl border overflow-hidden relative transition-all duration-500"
+        <div ref={rootRef} className="bento-reveal lg:col-span-3 rounded-3xl border overflow-hidden relative transition-all duration-500"
             style={{
                 background: isDark ? '#14161d' : 'linear-gradient(145deg, #1a2440, #263457)',
                 borderColor: `${cur.color}59`,
@@ -1003,7 +1005,7 @@ const APPROACHES = [
         spaceBar: 95,
         timeRating: 'Slow',
         spaceRating: 'Minimal',
-        desc: 'Try every pair of numbers. Simple to write but slow — checks all combinations until a match is found.',
+        desc: 'Try every pair of numbers. Simple to write but slow. It checks all combinations until a match is found.',
         when: 'Use as a baseline only. Always try to beat this.',
         code: [
             [{ t: 'keyword', v: 'for' }, { t: 'plain', v: ' i ' }, { t: 'keyword', v: 'in' }, { t: 'plain', v: ' range(len(nums)):' }],
@@ -1082,7 +1084,7 @@ function ApproachesCard({ isDark = false }) {
     const tokColor = (t) => ({ keyword: '#b39ae8', fn: '#8ed3e3', str: '#fcd34d', comment: '#4b5563', plain: '#e2e8f0' }[t] ?? '#e2e8f0');
 
     return (
-        <div ref={rootRef} className="lg:col-span-5 rounded-3xl relative overflow-hidden"
+        <div ref={rootRef} className="bento-reveal lg:col-span-5 rounded-3xl relative overflow-hidden"
             style={{
                 background: isDark ? '#14161d' : 'linear-gradient(145deg, #1a2440, #263457)',
                 border: '1px solid rgba(255,255,255,0.07)'
@@ -1249,7 +1251,7 @@ const LADDER_LEVELS = [
 
 const LADDER_EXAMPLE = [
     { level: 0, title: 'Represent the graph', hint: 'graph = {"A": [("B",1), ("C",4)]}', locked: false },
-    { level: 1, title: 'BFS — no weights', hint: 'queue = deque([src]); visited = {src}', locked: false },
+    { level: 1, title: 'BFS (no weights)', hint: 'queue = deque([src]); visited = {src}', locked: false },
     { level: 2, title: 'Add priority queue', hint: 'heap = [(0, src)]; dist = {src: 0}', locked: false },
     { level: 3, title: 'Relax each edge', hint: 'if d+w < dist.get(v, inf): update', locked: true },
     { level: 4, title: 'Full Dijkstra solution', hint: 'heapq.heappush(heap, (dist[v], v))', locked: true },
@@ -1279,7 +1281,7 @@ function LaddersCard({ isDark = false }) {
     const ex = LADDER_EXAMPLE[activeLevel];
 
     return (
-        <div ref={rootRef} className="lg:col-span-7 rounded-3xl relative overflow-hidden"
+        <div ref={rootRef} className="bento-reveal lg:col-span-7 rounded-3xl relative overflow-hidden"
             style={{
                 background: isDark ? '#14161d' : 'linear-gradient(145deg, #1a2440, #263457)',
                 border: '1px solid rgba(255,255,255,0.07)'
@@ -1302,7 +1304,7 @@ function LaddersCard({ isDark = false }) {
                         </div>
                     </div>
                     <p className="sm:ml-auto text-xs text-white/40 max-w-sm leading-relaxed">
-                        Each approach is broken into <strong className="text-white/70">6 progressive levels</strong>. Start from the simplest building block and climb up to the full solution — unlocking one step at a time.
+                        Each approach is broken into <strong className="text-white/70">6 progressive levels</strong>. Start from the simplest building block and climb up to the full solution, unlocking one step at a time.
                     </p>
                 </div>
 
@@ -1367,7 +1369,7 @@ function LaddersCard({ isDark = false }) {
                                         color: LADDER_LEVELS[unlocked].color,
                                         boxShadow: `0 4px 16px ${LADDER_LEVELS[unlocked].color}25`,
                                     }}>
-                                    <Unlock className="w-3.5 h-3.5" strokeWidth={2.2} /> Unlock L{unlocked} — {LADDER_LEVELS[unlocked].label}
+                                    <Unlock className="w-3.5 h-3.5" strokeWidth={2.2} /> Unlock L{unlocked}: {LADDER_LEVELS[unlocked].label}
                                 </button>
                             )}
                         </div>
@@ -1458,70 +1460,88 @@ function LaddersCard({ isDark = false }) {
 
 // ─── FeaturesSection ────────────────────────────────────────────────────────
 const FEATURES = [
-    { icon: Terminal, title: 'Interactive In-Browser IDE',    desc: 'Write, run, and debug Python, JS, C++ and more — zero setup. Instant feedback with syntax highlighting.', color: '#6672e0', tags: ['Multi-language', 'Real-time output', 'Auto-complete'] },
-    { icon: Film, title: 'Live Algorithm Visualizer',     desc: 'Watch BFS, DFS, sorting, and DP animate in real time — pause, step, rewind. Concepts click instantly.', color: '#3fa9c9', tags: ['Step-by-step', 'Interactive', '50+ algorithms'] },
+    { icon: Terminal, title: 'Interactive In-Browser IDE',    desc: 'Write, run, and debug Python, JS, C++ and more with zero setup. Instant feedback with syntax highlighting.', color: '#6672e0', tags: ['Multi-language', 'Real-time output', 'Auto-complete'] },
+    { icon: Film, title: 'Live Algorithm Visualizer',     desc: 'Watch BFS, DFS, sorting, and DP animate in real time. Pause, step, rewind. Concepts click instantly.', color: '#3fa9c9', tags: ['Step-by-step', 'Interactive', '50+ algorithms'] },
     { icon: Users, title: 'Community & Social Feed',       desc: 'Share solutions, get peer code reviews, follow top solvers, and celebrate milestones together.', color: '#6672e0', tags: ['Code reviews', 'Discussions', 'Leaderboard'] },
     { icon: Map, title: 'Structured Learning Paths',    desc: 'Follow expert-curated paths: DSA → System Design → ML. No more guessing what to study next.', color: '#3fa9c9', tags: ['Curated', 'Progressive', 'Certified'] },
     { icon: Briefcase, title: 'Job Board',                     desc: 'Exclusive listings for junior-to-mid developers. Your Marevlo profile IS your portfolio.', color: '#6672e0', tags: ['Junior-friendly', 'Portfolio', 'Direct apply'] },
 ];
 
-function FeaturesSection({ isDark }) {
+// Overshoot bezier — y-value past 1 makes entrances pop with a slight bounce.
+const POP_EASE = [0.33, 1.42, 0.05, 0.96];
+
+function FeatureCard({ feat, isDark, delay, className = '' }) {
+    return (
+        <motion.div
+            className={`group relative p-6 rounded-3xl border overflow-hidden cursor-default ${className}`}
+            style={{
+                background: isDark ? 'linear-gradient(145deg,#14161d,#1a1d27)' : 'var(--card)',
+                borderColor: isDark ? 'rgba(255,255,255,0.07)' : 'var(--border)',
+            }}
+            initial={{ opacity: 0, y: 40, scale: 0.92 }}
+            whileInView={{ opacity: 1, y: 0, scale: 1 }}
+            viewport={{ once: true, amount: 0.1 }}
+            whileHover={{ y: -8, transition: { type: 'spring', stiffness: 300, damping: 20 } }}
+            transition={{ duration: 0.65, ease: POP_EASE, delay }}
+            onMouseEnter={e => e.currentTarget.style.boxShadow = `0 20px 60px -10px ${feat.color}25`}
+            onMouseLeave={e => e.currentTarget.style.boxShadow = '0 0 0 transparent'}>
+            <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none rounded-3xl"
+                style={{ background: `radial-gradient(ellipse at top left, ${feat.color}10, transparent 60%)` }} />
+            <div className="absolute top-0 left-0 right-0 h-px opacity-0 group-hover:opacity-100 transition-opacity duration-500"
+                style={{ background: `linear-gradient(90deg, transparent, ${feat.color}, transparent)` }} />
+            <div className="w-12 h-12 rounded-2xl flex items-center justify-center mb-4 transition-transform duration-500 group-hover:scale-110 group-hover:rotate-3"
+                style={{ background: `${feat.color}15`, border: `1px solid ${feat.color}30` }}>
+                <feat.icon className="w-6 h-6" style={{ color: feat.color }} strokeWidth={2} />
+            </div>
+            <h3 className="text-lg font-bold mb-2 text-foreground">{feat.title}</h3>
+            <p className="text-sm leading-relaxed mb-4 text-muted-foreground">{feat.desc}</p>
+            <div className="flex flex-wrap gap-1.5">
+                {feat.tags.map(tag => (
+                    <span key={tag} className="text-[10px] font-bold px-2.5 py-1 rounded-full"
+                        style={{ background: `${feat.color}12`, color: feat.color, border: `1px solid ${feat.color}25` }}>
+                        {tag}
+                    </span>
+                ))}
+            </div>
+        </motion.div>
+    );
+}
+
+function FeaturesHeader() {
     const [ref, visible] = useScrollReveal(0.08);
     return (
-        <section ref={ref} className="py-24 px-4 relative overflow-hidden" style={{ background: isDark ? 'transparent' : 'var(--muted)' }}>
+        <div ref={ref} className="text-center mb-14"
+            style={{ opacity: visible ? 1 : 0, transform: visible ? 'translateY(0)' : 'translateY(30px)', transition: 'all 0.7s ease' }}>
+            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full border mb-5"
+                style={{ background: 'rgba(var(--primary-rgb),0.06)', borderColor: 'rgba(var(--primary-rgb),0.2)' }}>
+                <Zap className="w-3.5 h-3.5" style={{ color: 'var(--primary)' }} />
+                <span className="text-[11px] font-bold tracking-[0.14em] uppercase" style={{ color: 'var(--primary)' }}>Everything you need</span>
+            </div>
+            <h2 className="text-[2.5rem] md:text-[3.25rem] font-extrabold tracking-[-0.025em] mb-4 text-foreground">
+                <RevealText segments={[
+                    { text: 'Built for how' },
+                    {
+                        text: 'developers actually learn',
+                        style: { background: 'linear-gradient(135deg,var(--primary),var(--secondary))', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' },
+                    },
+                ]} />
+            </h2>
+            <p className="max-w-[520px] mx-auto text-[1.05rem] leading-relaxed text-muted-foreground">
+                Six tools, one platform. No tab-switching between YouTube, coding judges, Stack Overflow, and Discord.
+            </p>
+        </div>
+    );
+}
+
+function FeaturesSection({ isDark }) {
+    return (
+        <section className="py-24 px-4 relative overflow-hidden" style={{ background: isDark ? 'transparent' : 'var(--muted)' }}>
             <div className="absolute inset-0 pointer-events-none" style={{ background: `radial-gradient(ellipse 80% 50% at 50% 0%, ${isDark ? 'rgba(var(--primary-rgb),0.07)' : 'rgba(var(--primary-rgb),0.04)'}, transparent)` }} />
             <div className="max-w-7xl mx-auto relative z-10">
-                <div className="text-center mb-14"
-                    style={{ opacity: visible ? 1 : 0, transform: visible ? 'translateY(0)' : 'translateY(30px)', transition: 'all 0.7s ease' }}>
-                    <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full border mb-5"
-                        style={{ background: 'rgba(var(--primary-rgb),0.06)', borderColor: 'rgba(var(--primary-rgb),0.2)' }}>
-                        <Zap className="w-3.5 h-3.5" style={{ color: 'var(--primary)' }} />
-                        <span className="text-[11px] font-bold tracking-[0.14em] uppercase" style={{ color: 'var(--primary)' }}>Everything you need</span>
-                    </div>
-                    <h2 className="text-[2.5rem] md:text-[3.25rem] font-extrabold tracking-[-0.025em] mb-4 text-foreground">
-                        Built for how{' '}
-                        <span style={{ background: 'linear-gradient(135deg,var(--primary),var(--secondary))', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }}>
-                            developers actually learn
-                        </span>
-                    </h2>
-                    <p className="max-w-[520px] mx-auto text-[1.05rem] leading-relaxed text-muted-foreground">
-                        Six tools, one platform. No tab-switching between YouTube, coding judges, Stack Overflow, and Discord.
-                    </p>
-                </div>
+                <FeaturesHeader />
                 <div className="flex flex-wrap justify-center gap-5">
                     {FEATURES.map((feat, i) => (
-                        <motion.div key={feat.title}
-                            className="group relative p-6 rounded-3xl border overflow-hidden cursor-default w-full md:w-[calc(50%_-_10px)] lg:w-[calc(33.333%_-_13.34px)]"
-                            style={{
-                                background: isDark ? 'linear-gradient(145deg,#14161d,#1a1d27)' : 'var(--card)',
-                                borderColor: isDark ? 'rgba(255,255,255,0.07)' : 'var(--border)',
-                            }}
-                            initial={{ opacity: 0, y: 40 }}
-                            whileInView={{ opacity: 1, y: 0 }}
-                            viewport={{ once: true, amount: 0.1 }}
-                            whileHover={{ y: -8, transition: { type: 'spring', stiffness: 300, damping: 20 } }}
-                            transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1], delay: i * 0.09 }}
-                            onMouseEnter={e => e.currentTarget.style.boxShadow = `0 20px 60px -10px ${feat.color}25`}
-                            onMouseLeave={e => e.currentTarget.style.boxShadow = '0 0 0 transparent'}>
-                            <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none rounded-3xl"
-                                style={{ background: `radial-gradient(ellipse at top left, ${feat.color}10, transparent 60%)` }} />
-                            <div className="absolute top-0 left-0 right-0 h-px opacity-0 group-hover:opacity-100 transition-opacity duration-500"
-                                style={{ background: `linear-gradient(90deg, transparent, ${feat.color}, transparent)` }} />
-                            <div className="w-12 h-12 rounded-2xl flex items-center justify-center mb-4 transition-transform duration-500 group-hover:scale-110 group-hover:rotate-3"
-                                style={{ background: `${feat.color}15`, border: `1px solid ${feat.color}30` }}>
-                                <feat.icon className="w-6 h-6" style={{ color: feat.color }} strokeWidth={2} />
-                            </div>
-                            <h3 className="text-lg font-bold mb-2 text-foreground">{feat.title}</h3>
-                            <p className="text-sm leading-relaxed mb-4 text-muted-foreground">{feat.desc}</p>
-                            <div className="flex flex-wrap gap-1.5">
-                                {feat.tags.map(tag => (
-                                    <span key={tag} className="text-[10px] font-bold px-2.5 py-1 rounded-full"
-                                        style={{ background: `${feat.color}12`, color: feat.color, border: `1px solid ${feat.color}25` }}>
-                                        {tag}
-                                    </span>
-                                ))}
-                            </div>
-                        </motion.div>
+                        <FeatureCard key={feat.title} feat={feat} isDark={isDark} delay={i * 0.09} className="w-full md:w-[calc(50%_-_10px)] lg:w-[calc(33.333%_-_13.34px)]" />
                     ))}
                 </div>
             </div>
@@ -1531,7 +1551,7 @@ function FeaturesSection({ isDark }) {
 
 // ─── MiraSection ────────────────────────────────────────────────────────────
 const MIRA_POINTS = [
-    { icon: Puzzle,     title: 'Adapts to your level', desc: 'Beginner-friendly or expert-mode — MIRA detects where you are and adjusts instantly.' },
+    { icon: Puzzle,     title: 'Adapts to your level', desc: 'Beginner-friendly or expert mode. MIRA detects where you are and adjusts instantly.' },
     { icon: Lightbulb,  title: 'Hints, not answers',   desc: 'Builds genuine understanding so you can solve the next hard problem on your own.' },
     { icon: TrendingUp, title: 'Tracks your progress', desc: 'Identifies weak patterns and nudges you toward them before your next interview.' },
 ];
@@ -1595,7 +1615,7 @@ function MiraSection({ isDark }) {
                                 </div>
                                 <div className="rounded-2xl rounded-tl-sm px-3.5 py-2.5 text-[13px] max-w-[85%] leading-relaxed"
                                     style={{ background: 'rgba(145,128,232,0.15)', border: '1px solid rgba(145,128,232,0.3)', color: '#ede9fe' }}>
-                                    Of course! Think of recursion like Russian dolls 🪆 — each doll contains a smaller version of itself. A function that calls <em>itself</em> is the same idea. Want to see it with factorial?
+                                    Of course! Think of recursion like Russian dolls 🪆: each doll contains a smaller version of itself. A function that calls <em>itself</em> is the same idea. Want to see it with factorial?
                                 </div>
                             </div>
                             <div className="flex justify-end">
@@ -1635,7 +1655,7 @@ function MiraSection({ isDark }) {
                             </span>
                         </h2>
                         <p className="text-lg leading-relaxed mb-8 text-muted-foreground max-w-xl">
-                            MIRA doesn't just give answers — it guides you toward them. Using the Socratic method and cognitive learning science, it meets you at your level and adapts in real time.
+                            MIRA doesn't just give answers; it guides you toward them. Using the Socratic method and cognitive learning science, it meets you at your level and adapts in real time.
                         </p>
                     </div>
 
@@ -1670,7 +1690,9 @@ function MiraSection({ isDark }) {
 // ─── Main LandingPage ────────────────────────────────────────────────────────
 export default function LandingPage({ onStart, onExplore }) {
     const { isDark } = useTheme();
-
+    // One observer on the bento grid flips .bento-grid-visible; the cards'
+    // .bento-reveal CSS (index.css) handles the staggered pop-in from there.
+    const [bentoRef, bentoVisible] = useScrollReveal(0.08);
     return (
         <div className="overflow-y-auto h-full text-primary-text scroll-smooth bg-app-bg">
 
@@ -1689,21 +1711,24 @@ export default function LandingPage({ onStart, onExplore }) {
                             </div>
                         </motion.div>
 
-                        {/* Headline */}
-                        <motion.div initial={{ opacity: 0, y: 28 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1], delay: 0.12 }}>
+                        {/* Headline — masked word-by-word rise */}
+                        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.4, delay: 0.1 }}>
                             <h1 className="text-[3.5rem] md:text-[4.5rem] font-extrabold leading-[1.08] mb-6 tracking-[-0.03em] text-foreground">
-                                Learn. Solve.
-                                <br />
-                                <span style={{
-                                    background: 'linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%)',
-                                    backgroundSize: '200% 200%',
-                                    WebkitBackgroundClip: 'text',
-                                    WebkitTextFillColor: 'transparent',
-                                    backgroundClip: 'text',
-                                    animation: 'gradientShift 6s ease infinite',
-                                }}>
-                                    Actually understand it.
-                                </span>
+                                <RevealText mode="mount" delay={0.15} stagger={0.07} duration={0.7} segments={[
+                                    { text: 'Learn. Solve.' },
+                                    { br: true },
+                                    {
+                                        text: 'Actually understand it.',
+                                        style: {
+                                            background: 'linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%)',
+                                            backgroundSize: '200% 200%',
+                                            WebkitBackgroundClip: 'text',
+                                            WebkitTextFillColor: 'transparent',
+                                            backgroundClip: 'text',
+                                            animation: 'gradientShift 6s ease infinite',
+                                        },
+                                    },
+                                ]} />
                             </h1>
                         </motion.div>
 
@@ -1716,7 +1741,7 @@ export default function LandingPage({ onStart, onExplore }) {
                                 <span className="font-semibold text-foreground">tools</span>
                                 , and the{' '}
                                 <span className="font-semibold" style={{ color: 'var(--primary)' }}>community</span>
-                                {' '}to go from beginner to confident problem solver — one concept at a time.
+                                {' '}to go from beginner to confident problem solver, one concept at a time.
                             </p>
                         </motion.div>
 
@@ -1784,27 +1809,38 @@ export default function LandingPage({ onStart, onExplore }) {
             <section className="relative pt-24 pb-32 px-4 overflow-hidden" style={{ background: isDark ? 'transparent' : 'var(--muted)' }}>
                 <div className="max-w-7xl mx-auto px-4 relative z-10">
 
-                    {/* Header */}
-                    <div className="text-center mb-14" style={{ animation: 'heroFadeUp 0.7s ease both', animationPlayState: 'running' }}>
+                    {/* Header — reveals when scrolled into view, not on page mount */}
+                    <motion.div
+                        className="text-center mb-14"
+                        initial={{ opacity: 0, y: 28 }}
+                        whileInView={{ opacity: 1, y: 0 }}
+                        viewport={{ once: true, amount: 0.3 }}
+                        transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
+                    >
                         <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full border mb-5"
                             style={{ background: 'rgba(var(--primary-rgb),0.06)', borderColor: 'rgba(var(--primary-rgb),0.2)' }}>
                             <Layers className="w-3.5 h-3.5" style={{ color: 'var(--primary)' }} />
                             <span className="text-[11px] font-bold tracking-[0.14em] uppercase" style={{ color: 'var(--primary)' }}>Platform in Action</span>
                         </div>
                         <h2 className="text-[2.75rem] md:text-[3.5rem] font-extrabold tracking-[-0.025em] mb-4 text-foreground">
-                            Everything you need,{' '}
-                            <span style={{
-                                background: 'linear-gradient(135deg, var(--primary), var(--secondary))',
-                                WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text',
-                            }}>built inside one platform</span>
+                            <RevealText segments={[
+                                { text: 'Everything you need,' },
+                                {
+                                    text: 'built inside one platform',
+                                    style: {
+                                        background: 'linear-gradient(135deg, var(--primary), var(--secondary))',
+                                        WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text',
+                                    },
+                                },
+                            ]} />
                         </h2>
                         <p className="max-w-xl mx-auto text-lg text-muted-foreground">
-                            Not a collection of random resources. A tightly integrated system — courses, problems, approaches, visualizations, and an AI assistant, all working together.
+                            Not a collection of random resources. A tightly integrated system: courses, problems, approaches, visualizations, and an AI assistant, all working together.
                         </p>
-                    </div>
+                    </motion.div>
 
-                    {/* BENTO GRID */}
-                    <div className="grid grid-cols-1 lg:grid-cols-12 grid-rows-auto gap-4">
+                    {/* BENTO GRID — staggered pop-in entrance via .bento-reveal */}
+                    <div ref={bentoRef} className={`grid grid-cols-1 lg:grid-cols-12 grid-rows-auto gap-4 ${bentoVisible ? 'bento-grid-visible' : ''}`}>
 
                         {/* ROW 1: METHODOLOGY */}
 
@@ -1820,7 +1856,7 @@ export default function LandingPage({ onStart, onExplore }) {
                         <BFSVisualizer isDark={isDark} />
 
                         {/* [4] Courses — PREMIUM DARK (col 4) */}
-                        <div className="lg:col-span-4 rounded-3xl border overflow-hidden relative group hover:scale-[1.01] transition-transform duration-300"
+                        <div className="bento-reveal lg:col-span-4 rounded-3xl border overflow-hidden relative group hover:scale-[1.01] transition-transform duration-300"
                             style={{
                                 background: isDark ? '#14161d' : 'linear-gradient(145deg, #1a2440, #263457)',
                                 borderColor: 'rgba(var(--primary-rgb),0.3)'
@@ -1876,7 +1912,7 @@ export default function LandingPage({ onStart, onExplore }) {
                         {/* ROW 3: ALL PROBLEMS */}
 
                         {/* [6] DSA Problems — LARGE dark card moved to bottom (col 12) */}
-                        <div className="lg:col-span-12 rounded-[2rem] border overflow-hidden relative group transition-transform duration-300"
+                        <div className="bento-reveal lg:col-span-12 rounded-[2rem] border overflow-hidden relative group transition-transform duration-300"
                             style={{
                                 background: isDark ? '#14161d' : 'linear-gradient(145deg, #1a2440, #263457)',
                                 borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.12)',
@@ -2034,13 +2070,18 @@ export default function LandingPage({ onStart, onExplore }) {
                     </div>
 
                     <h2 className="text-[2.5rem] md:text-[4rem] font-black mb-8 tracking-[-0.03em] leading-[1.08] text-foreground">
-                        Ready to level up?{' '}
-                        <span style={{
-                            background: `linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%)`,
-                            WebkitBackgroundClip: 'text',
-                            WebkitTextFillColor: 'transparent',
-                            backgroundClip: 'text',
-                        }}>Start coding today.</span>
+                        <RevealText segments={[
+                            { text: 'Ready to level up?' },
+                            {
+                                text: 'Start coding today.',
+                                style: {
+                                    background: `linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%)`,
+                                    WebkitBackgroundClip: 'text',
+                                    WebkitTextFillColor: 'transparent',
+                                    backgroundClip: 'text',
+                                },
+                            },
+                        ]} />
                     </h2>
 
                     <motion.button
@@ -2065,6 +2106,8 @@ export default function LandingPage({ onStart, onExplore }) {
                     <p className="mt-6 text-sm text-muted-foreground">No credit card required. Free forever.</p>
                 </div>
             </section>
+
+            <Footer />
         </div>
     );
 }

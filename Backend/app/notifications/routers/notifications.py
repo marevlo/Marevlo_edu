@@ -11,6 +11,8 @@ from app.notifications.schemas.notification import (
     MessageOut,
     NotificationListOut,
     NotificationOut,
+    NotificationPrefsOut,
+    NotificationPrefsUpdate,
     UnreadCountOut,
 )
 from app.notifications.services.notification_service import notification_service
@@ -52,6 +54,27 @@ def unread_count(
 ):
     """Lightweight badge endpoint — call this every 30s from the frontend."""
     return UnreadCountOut(unread_count=notification_service.unread_count(db, user_id=user.id))
+
+
+@router.get("/preferences", response_model=NotificationPrefsOut)
+def get_preferences(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Per-user notification toggles. Missing row = defaults (all on)."""
+    return notification_service.get_prefs(db, user_id=user.id)
+
+
+@router.put("/preferences", response_model=NotificationPrefsOut)
+def update_preferences(
+    body: NotificationPrefsUpdate,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Partial update — send any subset of the three toggles."""
+    return notification_service.update_prefs(
+        db, user_id=user.id, fields=body.model_dump(exclude_none=True)
+    )
 
 
 @router.post("/{notification_id}/read", response_model=MessageOut)

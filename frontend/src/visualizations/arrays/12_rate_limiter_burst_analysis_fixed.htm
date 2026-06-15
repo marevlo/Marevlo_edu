@@ -3,411 +3,521 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Rate Limiter Burst Analysis Visualization</title>
+    <title>Rate Limiter Burst Analysis - Visualization</title>
     <style>
         :root {
-            --bg-page: #000000;
-            --bg-surface: #161b22;
-            --bg-input: #000000;
-            --border-main: #30363d;
-            --btn-bg: #21262d;
-            --btn-hover: #2d333b;
-            --text-main: #c9d1d9;
-            --text-dim: #8b949e;
-            --text-log: #58a6ff;
-            --accent-orange: #e3b341;
-            --accent-blue: #388bfd;
-            --accent-green: #3fb950;
-            --accent-red: #f85149;
+            --bg-page: #070b14;
+            --bg-surface: rgba(255, 255, 255, 0.045);
+            --bg-input: rgba(255, 255, 255, 0.04);
+            --border-main: rgba(255, 255, 255, 0.10);
+            --btn-bg: rgba(255, 255, 255, 0.05);
+            --btn-hover: rgba(255, 255, 255, 0.10);
+            --text-main: #e8eefb;
+            --text-dim: #8b98b3;
+            --accent-orange: #f5a524;   /* running window sum / chrome     */
+            --accent-blue:   #06b6d4;   /* current window [L..R]           */
+            --accent-green:  #22c55e;   /* peak-burst window (answer)      */
+            --accent-red:    #f43f5e;   /* window slides off (drop left)   */
+            --accent-purple: #a855f7;   /* right edge R (incoming bucket)  */
+            --mono: ui-monospace, 'SF Mono', 'Cascadia Code', 'Courier New', monospace;
+            --sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+            --shell: 900px;
         }
 
         * { box-sizing: border-box; }
+        html, body { overflow-x: hidden; }
         body {
-            background-color: var(--bg-page);
-            color: var(--text-main);
-            font-family: system-ui, -apple-system, sans-serif;
-            margin: 0;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            min-height: 100vh;
-            padding-bottom: 40px;
+            background:
+                radial-gradient(1100px 600px at 15% -10%, rgba(168, 85, 247, 0.10), transparent 60%),
+                radial-gradient(900px 600px at 100% 10%, rgba(6, 182, 212, 0.10), transparent 55%),
+                linear-gradient(160deg, #070b14 0%, #0b1120 55%, #0a0f1c 100%);
+            background-attachment: fixed;
+            color: var(--text-main); font-family: var(--sans); margin: 0;
+            display: flex; flex-direction: column; align-items: center; min-height: 100vh;
+            padding-bottom: 48px; -webkit-font-smoothing: antialiased;
         }
+        body::before, body::after { content: ''; position: fixed; border-radius: 50%; filter: blur(70px); pointer-events: none; z-index: 0; opacity: 0.45; }
+        body::before { width: 380px; height: 380px; top: 8%; left: -120px; background: radial-gradient(circle, rgba(168,85,247,0.30), transparent 70%); }
+        body::after  { width: 420px; height: 420px; bottom: 4%; right: -140px; background: radial-gradient(circle, rgba(6,182,212,0.22), transparent 70%); }
+        body > * { position: relative; z-index: 1; }
 
-        /* ROW 1: INPUT BAR */
         .input-bar {
-            width: 100%;
-            background-color: var(--bg-surface);
-            padding: 12px 16px;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            gap: 8px;
-            border-bottom: 1px solid var(--border-main);
+            width: 100%; background: rgba(10, 15, 28, 0.55);
+            backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+            padding: 14px 16px; display: flex; justify-content: center; align-items: center; gap: 10px;
+            border-bottom: 1px solid var(--border-main); flex-wrap: wrap; position: sticky; top: 0; z-index: 50;
         }
-        label.array-label { font-family: 'Courier New', monospace; font-size: 14px; color: var(--text-dim); }
+        label.ui-label, .ui-label { font-family: var(--mono); font-size: 13px; color: var(--text-dim); letter-spacing: 0.2px; }
         input[type="text"] {
-            background: var(--bg-input);
-            border: 1px solid var(--border-main);
-            color: var(--text-main);
-            height: 32px;
-            border-radius: 6px;
-            padding: 0 10px;
-            width: 200px;
-            font-size: 14px;
+            background: var(--bg-input); border: 1px solid var(--border-main); color: var(--text-main);
+            height: 34px; border-radius: 9px; padding: 0 12px; font-size: 13px; font-family: var(--mono); width: 220px;
+            transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
         }
-        .t-input { width: 60px !important; }
+        input.t-input { width: 64px; }
+        input[type="text"]:focus { outline: none; border-color: var(--accent-purple); box-shadow: 0 0 0 3px rgba(168, 85, 247, 0.18); background: rgba(168, 85, 247, 0.06); }
+
         button {
-            height: 32px; border-radius: 6px; padding: 0 14px; background: var(--btn-bg);
-            border: 1px solid var(--border-main); color: var(--text-main); font-size: 13px; cursor: pointer;
-            transition: background 0.2s ease;
+            height: 34px; border-radius: 9px; padding: 0 14px; background: var(--btn-bg);
+            border: 1px solid var(--border-main); color: var(--text-main); font-size: 13px; font-weight: 600; cursor: pointer;
+            transition: transform 0.15s ease, background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
         }
-        button:hover { background: var(--btn-hover); }
+        button:hover { background: var(--btn-hover); border-color: rgba(6, 182, 212, 0.5); box-shadow: 0 0 18px rgba(6, 182, 212, 0.18); transform: translateY(-1px); }
+        button:active { transform: translateY(0); }
+        #play-btn { background: linear-gradient(135deg, rgba(6,182,212,0.22), rgba(6,182,212,0.10)); border-color: rgba(6, 182, 212, 0.45); color: #a5f3fc; min-width: 80px; }
 
-        /* ROW 2: ARRAY TILES */
-        .array-container { margin-top: 20px; display: flex; align-items: center; gap: 12px; }
-        .tiles-wrapper { display: flex; gap: 6px; }
-        .tile-unit { display: flex; flex-direction: column; align-items: center; gap: 4px; }
-        .tile {
-            min-width: 44px; height: 44px; display: flex; align-items: center; justify-content: center;
-            border-radius: 6px; font-size: 15px; font-weight: 600; font-family: 'Courier New', monospace;
-            transition: all 0.25s ease; background: #21262d; border: 1px solid var(--border-main);
+        .shell { width: var(--shell); max-width: 95%; margin: 24px auto 0; display: flex; flex-direction: column; gap: 16px; }
+
+        .title-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+        .title-row h1 { font-size: 18px; font-weight: 800; margin: 0; letter-spacing: 0.2px; }
+        .title-row .sub { color: var(--text-dim); font-weight: 500; font-size: 13px; }
+        .step-badge { font-family: var(--mono); font-size: 12px; font-weight: 700; color: #a5f3fc; background: rgba(6,182,212,0.12); border: 1px solid rgba(6,182,212,0.3); padding: 4px 10px; border-radius: 999px; white-space: nowrap; }
+        .progress-track { height: 4px; width: 100%; background: rgba(255,255,255,0.07); border-radius: 999px; overflow: hidden; margin-top: -6px; }
+        .progress-fill { height: 100%; width: 0%; border-radius: 999px; background: linear-gradient(90deg, var(--accent-blue), var(--accent-purple)); box-shadow: 0 0 12px rgba(6,182,212,0.5); transition: width 0.45s cubic-bezier(0.34,1.1,0.64,1); }
+
+        .narration { background: var(--bg-surface); border: 1px solid rgba(6,182,212,0.22); border-radius: 12px; padding: 12px 18px; font-family: var(--mono); font-size: 14px; line-height: 1.5; color: #cfe9f5; min-height: 48px; display: flex; align-items: center; gap: 10px; transition: border-color 0.3s, background 0.3s; }
+        .narration::before { content: '\25B8'; color: var(--accent-blue); font-size: 13px; }
+        .narration.done { border-color: rgba(34,197,94,0.4); background: rgba(34,197,94,0.06); }
+        .narration.done::before { content: '\2713'; color: var(--accent-green); }
+        .narration.slide { border-color: rgba(244,63,94,0.4); background: rgba(244,63,94,0.06); }
+        .narration.slide::before { content: '\21BA'; color: var(--accent-red); }
+        .narration code { background: rgba(6,182,212,0.14); color: #7dd3fc; padding: 1px 6px; border-radius: 5px; font-size: 12.5px; }
+        .narration b { color: #fff; }
+
+        .stage-card { background: var(--bg-surface); border: 1px solid var(--border-main); border-radius: 18px; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); box-shadow: 0 12px 38px rgba(0,0,0,0.4); overflow: hidden; }
+        .stage-screen { position: relative; margin: 14px; border-radius: 14px; background: radial-gradient(700px 300px at 50% -10%, rgba(6,182,212,0.08), transparent 70%), #090d18; border: 1px solid rgba(255,255,255,0.06); }
+        .array-stage { position: relative; width: 100%; overflow: auto; scrollbar-width: thin; padding: 30px 22px 24px; display: flex; justify-content: center; }
+        .array-stage::-webkit-scrollbar { height: 8px; width: 8px; }
+        .array-stage::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 8px; }
+
+        /* The signature 1D array-scan idiom: ONE row of tiles + index labels */
+        .scan-board { position: relative; display: inline-flex; flex-direction: column; gap: 0; }
+        .row-label { font-family: var(--mono); font-size: 11px; letter-spacing: 1px; text-transform: uppercase; color: var(--text-dim); margin-bottom: 8px; }
+        .cell-row { display: flex; gap: 10px; }
+        .col { display: flex; flex-direction: column; align-items: center; }
+
+        .cell {
+            position: relative;
+            display: flex; align-items: center; justify-content: center;
+            border-radius: 10px; font-family: var(--mono); font-weight: 800; font-size: 18px;
+            border: 2px solid var(--border-main); background: rgba(255,255,255,0.04); color: var(--text-main);
+            width: 52px; height: 52px; will-change: transform;
+            transition: background 0.35s, border-color 0.35s, color 0.35s, box-shadow 0.35s, transform 0.3s;
         }
-        .tile-index { font-size: 9px; color: var(--text-dim); font-family: monospace; }
-        
-        .tile.candidate { background: #2a1600; border: 2px solid var(--accent-orange); color: var(--accent-orange); transform: scale(1.12); z-index: 2; }
-        .tile.comparing { background: #0d2244; border: 2px solid var(--accent-blue); color: var(--accent-blue); transform: scale(1.08); z-index: 2; }
-        .tile.winning { background: #0f2a1a; border: 1.5px solid var(--accent-green); color: var(--accent-green); transform: scale(1.06); }
-        .tile.defeated { background: #2a0d0d; border: 1.5px solid var(--accent-red); color: var(--accent-red); opacity: 0.6; }
-        .tile.past { opacity: 0.3; background: #161b22; color: var(--text-dim); }
-        .tile.maximum { background: #0f2a1a; border: 2px solid var(--accent-green); color: var(--accent-green); box-shadow: 0 0 12px var(--accent-green); transform: scale(1.05); }
+        .idx-label { font-family: var(--mono); font-size: 11px; color: var(--text-dim); margin-top: 6px; transition: color 0.3s; }
+        .idx-label.lit { color: var(--accent-blue); }
 
-        /* ROW 3: PANEL */
-        .panel {
-            margin-top: 14px; background: var(--bg-surface); border: 1px solid var(--border-main);
-            border-radius: 6px; padding: 10px 18px; width: 500px; text-align: center; font-family: monospace; min-height: 52px;
-            display: flex; flex-direction: column; justify-content: center;
-        }
+        /* buckets inside the current window [L..R] */
+        .num-cell.inwindow { border-color: var(--accent-blue); background: rgba(6,182,212,0.12); color: #a5f3fc; box-shadow: 0 0 12px rgba(6,182,212,0.28); }
+        /* the right edge R (incoming bucket just added) */
+        .num-cell.rightedge { border-color: var(--accent-purple); background: rgba(168,85,247,0.16); color: #e9d5ff; box-shadow: 0 0 20px rgba(168,85,247,0.55), inset 0 0 12px rgba(168,85,247,0.12); transform: scale(1.08); z-index: 2; }
+        /* the left edge that just slid off the window */
+        .num-cell.dropped  { border-color: var(--accent-red); background: rgba(244,63,94,0.16); color: #fecdd3; box-shadow: 0 0 22px rgba(244,63,94,0.55); transform: scale(1.08); z-index: 2; }
+        /* the final peak-burst window */
+        .num-cell.best     { border-color: var(--accent-green); background: linear-gradient(180deg, rgba(47,224,143,0.85), rgba(33,194,117,0.85)); color: #06251a; box-shadow: 0 0 16px rgba(34,197,94,0.45); }
+        .num-cell.dim      { opacity: 0.4; color: var(--text-dim); }
 
-        /* ROW 4: INFO PANEL */
-        .info-panel { margin-top: 10px; display: flex; gap: 10px; }
-        .info-cell {
-            background: var(--bg-surface); border: 1px solid var(--border-main); border-radius: 6px;
-            padding: 8px 14px; display: flex; flex-direction: column; align-items: center; min-width: 110px; gap: 4px;
-        }
-        .info-label { font-size: 11px; color: var(--text-dim); }
-        .info-value { font-family: monospace; font-size: 16px; font-weight: 700; }
+        /* a small pointer triangle that sits above the right-edge tile */
+        .scan-arrow { position: absolute; top: -22px; left: 50%; transform: translateX(-50%); color: var(--accent-purple); font-size: 14px; opacity: 0; transition: opacity 0.25s; pointer-events: none; }
+        .num-cell.rightedge .scan-arrow { opacity: 1; }
+        .num-cell.dropped   .scan-arrow { opacity: 1; color: var(--accent-red); }
 
-        /* ROW 5: RESULT DISPLAY */
-        .result-display { margin-top: 10px; display: flex; flex-direction: column; align-items: center; }
-        #res-val { font-size: 16px; color: var(--text-dim); font-family: monospace; transition: all 0.3s; }
-        #res-val.complete { color: var(--accent-green); font-size: 26px; font-weight: 700; text-shadow: 0 0 16px var(--accent-green); animation: popAnim 400ms ease; }
+        .action-stage { position: relative; min-height: 92px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; }
+        .answer-track { display: flex; gap: 6px; align-items: center; min-height: 40px; flex-wrap: wrap; justify-content: center; }
+        .ans-tile { min-width: 40px; height: 44px; padding: 0 8px; border-radius: 9px; display: flex; align-items: center; justify-content: center; font-family: var(--mono); font-size: 19px; font-weight: 800; border: 2px solid var(--accent-green); background: rgba(34,197,94,0.16); color: #bbf7d0; box-shadow: 0 0 12px rgba(34,197,94,0.35); }
+        .ans-eq { font-family: var(--mono); font-size: 18px; font-weight: 800; color: var(--text-dim); }
+        .ans-sum { min-width: 48px; height: 44px; padding: 0 12px; border-radius: 9px; display: flex; align-items: center; justify-content: center; font-family: var(--mono); font-size: 22px; font-weight: 800; border: 2px solid var(--accent-orange); background: rgba(245,165,36,0.18); color: #ffd591; box-shadow: 0 0 14px rgba(245,165,36,0.4); }
+        .action-word { font-family: var(--mono); font-weight: 800; font-size: 18px; letter-spacing: 0.4px; min-height: 22px; text-align: center; transition: color 0.3s; }
+        #confetti { position: absolute; inset: 0; overflow: visible; pointer-events: none; }
+        .confetti-piece { position: absolute; top: 0; left: 50%; width: 8px; height: 13px; border-radius: 2px; opacity: 0; animation: confettiFall ease-out forwards; }
 
-        @keyframes popAnim { 0%{transform:scale(1)} 50%{transform:scale(1.28)} 100%{transform:scale(1)} }
+        .controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: center; }
+        .controls .kbd-hint { font-size: 11px; color: var(--text-dim); font-family: var(--mono); margin-left: 4px; }
+        .kbd { background: rgba(255,255,255,0.07); border: 1px solid var(--border-main); border-radius: 5px; padding: 1px 6px; font-size: 10px; }
+        input[type="range"] { accent-color: var(--accent-blue); width: 110px; cursor: pointer; }
 
-        /* ROW 6: STATUS BAR */
-        .status-bar { margin-top: 8px; font-size: 13px; color: var(--text-dim); height: 1.2em; text-align: center; width: 600px;}
+        .details-toggle { align-self: center; height: 32px; padding: 0 16px; border-radius: 999px; cursor: pointer; background: rgba(255,255,255,0.04); border: 1px solid var(--border-main); color: var(--text-dim); font-family: var(--mono); font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; gap: 8px; transition: color 0.2s, border-color 0.2s, background 0.2s; }
+        .details-toggle:hover { color: var(--text-main); border-color: rgba(6,182,212,0.4); background: rgba(6,182,212,0.06); }
+        .details-toggle .chev { transition: transform 0.3s ease; }
+        .details-wrap.open .details-toggle .chev { transform: rotate(180deg); }
+        .details-body { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.4s ease; }
+        .details-wrap.open .details-body { grid-template-rows: 1fr; }
+        .details-inner { overflow: hidden; min-height: 0; }
+        .details-grid { display: flex; flex-direction: column; gap: 14px; padding-top: 14px; }
 
-        /* ROW 7: CONTROLS */
-        .controls { margin-top: 24px; display: flex; align-items: center; gap: 8px; }
-        input[type="range"] { accent-color: var(--accent-blue); width: 100px; cursor: pointer; }
+        .panel-card { background: var(--bg-surface); border: 1px solid var(--border-main); border-radius: 16px; backdrop-filter: blur(10px); box-shadow: 0 8px 30px rgba(0,0,0,0.35); }
+        .panel-head { display: flex; align-items: center; gap: 8px; padding: 11px 16px; border-bottom: 1px solid var(--border-main); font-size: 11px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; color: var(--text-dim); }
+        .panel-head .pip { width: 7px; height: 7px; border-radius: 50%; background: var(--accent-blue); box-shadow: 0 0 8px var(--accent-blue); }
+        .code-body { padding: 12px 6px 14px; font-family: var(--mono); font-size: 12.5px; line-height: 1.7; }
+        .code-line { display: flex; gap: 12px; padding: 1px 16px; border-left: 2px solid transparent; transition: background 0.3s, border-color 0.3s; white-space: pre; }
+        .code-line .lno { color: #4b5772; width: 16px; text-align: right; user-select: none; }
+        .code-line .src { color: #c4cee0; }
+        .code-line .kw { color: #c792ea; }
+        .code-line .fn { color: #82aaff; }
+        .code-line.active { background: rgba(6,182,212,0.12); border-left-color: var(--accent-blue); }
+        .code-line.active .src, .code-line.active .lno { color: #e8eefb; }
 
-        /* ROW 8: LEGEND */
-        .legend { margin-top: 12px; display: flex; gap: 16px; }
-        .legend-item { display: flex; align-items: center; font-size: 12px; color: var(--text-dim); }
-        .dot { width: 8px; height: 8px; border-radius: 50%; margin-right: 4px; display: inline-block; }
+        .state-strip { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 0 2px; }
+        .pill { display: inline-flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 12px; color: var(--text-dim); background: rgba(255,255,255,0.04); border: 1px solid var(--border-main); border-radius: 999px; padding: 4px 11px; }
+        .pill b { color: var(--text-main); font-weight: 800; }
+        .pill.l b { color: var(--accent-blue); } .pill.r b { color: var(--accent-purple); } .pill.s b { color: var(--accent-orange); } .pill.d b { color: var(--accent-green); }
 
-        /* ROW 9: LOG PANEL */
-        .log-panel {
-            margin-top: 12px; background: var(--bg-page); border: 1px solid var(--border-main);
-            border-radius: 6px; padding: 12px 16px; width: 600px; max-width: 90%; height: 120px;
-            overflow-y: auto; font-family: 'Courier New', monospace; font-size: 13px;
-        }
+        .log-panel { border-radius: 14px; padding: 12px 16px; height: 110px; overflow-y: auto; font-family: var(--mono); font-size: 12.5px; line-height: 1.5; background: var(--bg-surface); border: 1px solid var(--border-main); }
+        .log-panel::-webkit-scrollbar { width: 8px; }
+        .log-panel::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 8px; }
+
+        @keyframes confettiFall { 0%{ opacity:1; transform: translate(-50%, 0) rotate(0deg); } 100%{ opacity:0; transform: translate(calc(-50% + var(--x)), 220px) rotate(var(--rot)); } }
+        @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; } }
     </style>
 </head>
 <body>
 
     <div class="input-bar">
-        <label class="array-label">requests =</label>
-        <input type="text" id="array-input" placeholder="1, 2, 3, 4, 5">
-        <label class="array-label">T =</label>
-        <input type="text" id="t-input" class="t-input" placeholder="8">
+        <label class="ui-label">counts =</label>
+        <input type="text" id="nums-input" value="[1,2,3,4,5]" maxlength="60">
+        <label class="ui-label">T =</label>
+        <input type="text" id="t-input" class="t-input" value="8" maxlength="4">
         <button onclick="loadCustom()">Load</button>
-        <button onclick="loadExample([1, 2, 3, 4, 5], 8)">Ex 1</button>
-        <button onclick="loadExample([10, 1, 1, 1, 1], 5)">Ex 2</button>
+        <span class="ui-label" style="opacity:.5">|</span>
+        <button onclick="loadExample(0)">[1,2,3,4,5] T=8 &rarr; 15</button>
+        <button onclick="loadExample(1)">[10,1,1,1,1] T=5 &rarr; 14</button>
     </div>
 
-    <div class="array-container">
-        <div class="info-label" style="font-size: 12px; font-family: monospace;">array =</div>
-        <div class="tiles-wrapper" id="tiles-container"></div>
-    </div>
-
-    <div class="panel" id="main-panel">—</div>
-
-    <div class="info-panel">
-        <div class="info-cell">
-            <span class="info-label">i (start)</span>
-            <span class="info-value" id="val-i" style="color: var(--accent-orange);">—</span>
+    <div class="shell">
+        <div class="title-row">
+            <h1>Rate Limiter Burst <span class="sub">&middot; sliding window &middot; peak = max &sum; counts[L..R] over W buckets &middot; O(n)</span></h1>
+            <span class="step-badge" id="step-badge">Step 1 / 1</span>
         </div>
-        <div class="info-cell">
-            <span class="info-label">j (end)</span>
-            <span class="info-value" id="val-j" style="color: var(--accent-blue);">—</span>
+        <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+
+        <div class="narration" id="main-panel">&mdash;</div>
+
+        <div class="stage-card">
+            <div class="stage-screen">
+                <div class="array-stage" id="array-stage">
+                    <div class="scan-board" id="scan-board">
+                        <div class="row-label">counts[i] &middot; requests per bucket &middot; window slides left &rarr; right</div>
+                        <div class="cell-row" id="num-row"></div>
+                    </div>
+                </div>
+            </div>
         </div>
-        <div class="info-cell">
-            <span class="info-label">curr sum</span>
-            <span class="info-value" id="val-sum" style="color: var(--text-main);">0</span>
+
+        <div class="action-stage">
+            <div id="confetti"></div>
+            <div class="answer-track" id="answer-track"></div>
+            <div class="action-word" id="action-word"></div>
         </div>
-        <div class="info-cell">
-            <span class="info-label">window len</span>
-            <span class="info-value" id="val-len" style="color: var(--accent-green);">—</span>
+
+        <div class="controls">
+            <button onclick="resetSim()">&#8634; Reset</button>
+            <button onclick="prevStep()">&#8592; Back</button>
+            <button onclick="togglePlay()" id="play-btn">Play</button>
+            <button onclick="nextStep()">Next &#8594;</button>
+            <span class="ui-label" style="margin-left:6px; font-size:11px">Speed</span>
+            <input type="range" id="speed" min="0" max="2" value="1">
+            <span class="kbd-hint"><span class="kbd">&#8592;</span> <span class="kbd">&#8594;</span> step &middot; <span class="kbd">space</span> play</span>
+        </div>
+
+        <div class="details-wrap" id="details-wrap">
+            <button class="details-toggle" onclick="toggleDetails()" aria-expanded="false">
+                <span id="details-label">Show code, state &amp; log</span> <span class="chev">&#9662;</span>
+            </button>
+            <div class="details-body">
+                <div class="details-inner">
+                    <div class="details-grid">
+                        <div class="state-strip">
+                            <span class="pill l">L <b id="st-l">&mdash;</b></span>
+                            <span class="pill r">R <b id="st-r">&mdash;</b></span>
+                            <span class="pill s">window sum <b id="st-sum">&mdash;</b></span>
+                            <span class="pill d">peak burst <b id="st-best">&mdash;</b></span>
+                        </div>
+                        <div class="panel-card">
+                            <div class="panel-head"><span class="pip"></span> Algorithm</div>
+                            <div class="code-body" id="code-panel"></div>
+                        </div>
+                        <div class="log-panel" id="log"></div>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
-
-    <div class="result-display">
-        <span class="info-label" style="margin-bottom: 4px;">min_window =</span>
-        <span id="res-val">—</span>
-    </div>
-
-    <div class="status-bar" id="status-text"></div>
-
-    <div class="controls">
-        <button onclick="reset()">↺ Reset</button>
-        <button onclick="back()">← Back</button>
-        <button onclick="togglePlay()" id="play-btn">Play</button>
-        <button onclick="next()">Next →</button>
-        <div class="controls" style="margin-top:0">
-            <span class="info-label" style="margin-right:4px">Speed</span>
-            <input type="range" id="speed-slider" min="0" max="2" value="1">
-        </div>
-    </div>
-
-    <div class="legend">
-        <div class="legend-item"><span class="dot" style="background:var(--accent-orange)"></span> Start (i)</div>
-        <div class="legend-item"><span class="dot" style="background:var(--accent-blue)"></span> End (j)</div>
-        <div class="legend-item"><span class="dot" style="background:var(--accent-green)"></span> Threshold Exceeded</div>
-        <div class="legend-item"><span class="dot" style="background:var(--text-dim); opacity:0.3"></span> Past</div>
-    </div>
-
-    <div class="log-panel" id="log"></div>
 
     <script>
-        let requests = [1, 2, 3, 4, 5];
-        let T = 8;
+        'use strict';
+
+        // ---------- Motion engine (spring pop, zero deps) ----------
+        const REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        const FRAME = 1000 / 60;
+        function sampleSpring(stiffness, damping, mass) {
+            const dt = 1 / 60; let x = 1, v = 0; const out = [];
+            for (let i = 0; i < 240; i++) { const a = (-stiffness * x - damping * v) / mass; v += a * dt; x += v * dt; out.push(1 - x); if (Math.abs(x) < 0.0015 && Math.abs(v) < 0.0015) break; }
+            out.push(1); return out;
+        }
+        const SPRING_POP = sampleSpring(520, 17, 1);
+        const durOf = (a) => a.length * FRAME;
+        const Motion = {
+            pop(el) {
+                if (REDUCED) return;
+                const kf = SPRING_POP.map(p => ({ transform: `scale(${(0.55 + 0.55 * p).toFixed(3)})` }));
+                el.animate(kf, { duration: durOf(SPRING_POP), easing: 'linear' });
+            },
+        };
+
+        // ---------- State ----------
+        let nums = [1, 2, 3, 4, 5];   // per-bucket request counts
+        let T = 8;                    // requested window width (buckets)
+        let W = 5;                    // effective window width = min(T, n)
         let steps = [];
-        let stepIndex = 0;
+        let stepIdx = 0;
         let timer = null;
-        const delays = [1800, 900, 450];
+        let confettiArmed = true;
+        const delays = [1450, 720, 330];
+        const numEls = [];   // index -> tile element
+        const idxEls = [];   // index -> index-label element
 
-        function init() { loadExample([1, 2, 3, 4, 5], 8); }
-
-        function loadExample(arr, threshold) {
-            requests = [...arr];
-            T = threshold;
-            document.getElementById('array-input').value = arr.join(',');
-            document.getElementById('t-input').value = T;
-            generateSteps();
-            reset();
+        const CODE = [
+            [['kw','def '],['fn','peakBurst'],['src','(counts, T):']],
+            [['src','  W = min(T, len(counts))']],
+            [['src','  sum = sum(counts[0:W])      # first window']],
+            [['src','  best = sum; bestL = 0']],
+            [['kw','  for '],['src','R in W..n-1:           # slide right']],
+            [['src','    sum += counts[R]            # add incoming']],
+            [['src','    sum -= counts[R-W]          # drop outgoing']],
+            [['kw','    if '],['src','sum > best:']],
+            [['src','      best = sum; bestL = R-W+1']],
+            [['kw','  return '],['src','best']],
+        ];
+        function buildCodePanel() {
+            const panel = document.getElementById('code-panel'); panel.innerHTML = '';
+            CODE.forEach((tokens, i) => {
+                const line = document.createElement('div'); line.className = 'code-line'; line.dataset.line = i;
+                const lno = document.createElement('span'); lno.className = 'lno'; lno.textContent = i + 1; line.appendChild(lno);
+                const src = document.createElement('span');
+                tokens.forEach(([cls, txt]) => { const s = document.createElement('span'); s.className = cls; s.textContent = txt; src.appendChild(s); });
+                line.appendChild(src); panel.appendChild(line);
+            });
+        }
+        function highlightCode(arr) { document.querySelectorAll('.code-line').forEach(el => el.classList.toggle('active', arr && arr.includes(+el.dataset.line))); }
+        function toggleDetails() {
+            const wrap = document.getElementById('details-wrap'); const open = wrap.classList.toggle('open');
+            wrap.querySelector('.details-toggle').setAttribute('aria-expanded', open ? 'true' : 'false');
+            document.getElementById('details-label').textContent = open ? 'Hide code, state & log' : 'Show code, state & log';
         }
 
-        function loadCustom() {
-            const valArr = document.getElementById('array-input').value;
-            const valT = document.getElementById('t-input').value;
-            const parsedArr = valArr.split(',').map(x => parseInt(x.trim())).filter(x => !isNaN(x));
-            const parsedT = parseInt(valT);
-            if (parsedArr.length > 0 && !isNaN(parsedT)) loadExample(parsedArr.slice(0, 8), parsedT);
-        }
-
+        // ---------- step generation (immutable snapshots) ----------
         function generateSteps() {
             steps = [];
-            const n = requests.length;
-            let minWindow = n + 1;
-            let bestRange = null;
+            const n = nums.length;
+            W = Math.max(1, Math.min(T, n));
 
-            // STEP 0: INIT
-            steps.push({
-                type: 'init', i: null, j: null, sum: 0, winLen: null,
-                tiles: requests.map(v => ({val: v, state: ''})),
-                panel: '—',
-                status: `requests=[${requests}] T=${T}. Click Play to begin.`,
-                log: `requests=[${requests}] — T=${T}. Starting burst analysis.`,
-                logColor: 'var(--text-dim)'
-            });
+            const snap = (extra) => Object.assign({
+                L: null, R: null, sum: null, best: null,
+                winL: null, winR: null,           // current window [winL..winR]
+                bestL: null, bestR: null,         // peak-burst window so far
+                droppedIdx: null, incomingIdx: null,
+                slide: false, newBest: false,
+                finalL: null, finalR: null,       // highlighted answer window (final step only)
+                complete: false, answer: null
+            }, extra);
 
-            for (let i = 0; i < n; i++) {
-                let currentSum = 0;
-                
-                // STEP A: Start window
-                steps.push({
-                    type: 'start', i: i, j: null, sum: 0, winLen: null,
-                    tiles: requests.map((v, idx) => ({val: v, state: idx === i ? 'candidate' : (idx < i ? 'past' : '')})),
-                    panel: '—',
-                    status: `Window start: requests[${i}]=${requests[i]}`,
-                    log: `Window starting at index ${i}, value ${requests[i]}`,
-                    logColor: 'var(--accent-blue)'
-                });
+            // INTRO
+            steps.push(snap({
+                code: [0, 1], action: 'BURST SCAN', actionColor: 'var(--accent-blue)',
+                panel: `Rate limiter: each bucket holds the request <b>count</b> for one time slot. <code>counts = [${nums.join(', ')}]</code>, threshold window <code>T = ${T}</code>. Slide a fixed window of <code>W = min(T, n) = ${W}</code> buckets and track the <b>peak burst</b> &equiv; the largest total requests in any window &#8594; one pass, <code>O(n)</code>.`,
+                log: `init  counts=[${nums.join(',')}]  T=${T}  W=min(${T},${n})=${W}`
+            }));
 
-                for (let j = i; j < n; j++) {
-                    currentSum += requests[j];
-                    const windowLen = j - i + 1;
+            // FIRST WINDOW [0..W-1]
+            let sum = 0;
+            for (let k = 0; k < W; k++) sum += nums[k];
+            let best = sum, bestL = 0, bestR = W - 1;
 
-                    // STEP B: Expand window
-                    steps.push({
-                        type: 'expand', i: i, j: j, sum: currentSum, winLen: null,
-                        tiles: requests.map((v, idx) => ({
-                            val: v, 
-                            state: idx === i ? 'candidate' : (idx === j ? 'comparing' : (idx > i && idx < j ? 'maximum' : (idx < i ? 'past' : '')))
-                        })),
-                        panel: `Sum: ${currentSum} vs T=${T}`,
-                        status: `Window [${i},${j}]: sum=${currentSum}`
-                    });
+            steps.push(snap({
+                L: 0, R: W - 1, sum, best, winL: 0, winR: W - 1, bestL, bestR, newBest: true,
+                code: [2, 3], action: `window sum = ${sum}`, actionColor: 'var(--accent-orange)',
+                panel: `Seed the first window <code>[0..${W - 1}]</code>: sum the first <b>${W}</b> bucket(s) &#8594; <code>sum = ${nums.slice(0, W).join(' + ')} = ${sum}</code>. This is the current <b>peak burst = ${best}</b>.`,
+                log: `R=${W - 1}  first window [0..${W - 1}]  sum=${sum}  peak=${best}`
+            }));
 
-                    if (currentSum > T) {
-                        // STEP B result: Found
-                        steps.push({
-                            type: 'found', i: i, j: j, sum: currentSum, winLen: windowLen,
-                            tiles: requests.map((v, idx) => ({
-                                val: v, 
-                                state: (idx >= i && idx <= j) ? 'winning' : (idx < i ? 'past' : '')
-                            })),
-                            panel: `<span style="color:var(--accent-green)">✓ Sum ${currentSum} > ${T}, window found</span>`,
-                            status: `Window [${i},${j}]: ${currentSum} > ${T} → length=${windowLen} ✓`,
-                            log: `Window [${i},${j}] sum=${currentSum} > ${T}, len=${windowLen} ✓`,
-                            logColor: 'var(--accent-green)'
-                        });
+            // SLIDE: R from W..n-1
+            for (let R = W; R < n; R++) {
+                const incoming = nums[R];
+                const dropIdx = R - W;
+                const dropped = nums[dropIdx];
+                sum += incoming;
+                sum -= dropped;
+                const winL = R - W + 1;
+                const newBest = sum > best;
+                if (newBest) { best = sum; bestL = winL; bestR = R; }
 
-                        // STEP C: Update min
-                        if (windowLen < minWindow) {
-                            minWindow = windowLen;
-                            bestRange = [i, j];
-                            steps.push({
-                                type: 'update', i: i, j: j, sum: currentSum, winLen: windowLen, min: minWindow,
-                                tiles: requests.map((v, idx) => ({
-                                    val: v, 
-                                    state: (idx >= i && idx <= j) ? 'winning' : (idx < i ? 'past' : '')
-                                })),
-                                panel: `New minimum window length: ${windowLen}`,
-                                status: `Min window updated: ${windowLen}`,
-                                log: `Update min_window = ${windowLen}`,
-                                logColor: 'var(--accent-green)'
-                            });
-                        }
-                        break; // Inner loop break
-                    } else {
-                        // STEP B result: Continue
-                        steps.push({
-                            type: 'continue', i: i, j: j, sum: currentSum, winLen: null,
-                            tiles: requests.map((v, idx) => ({
-                                val: v, 
-                                state: idx === i ? 'candidate' : (idx === j ? 'past' : (idx > i && idx < j ? 'maximum' : (idx < i ? 'past' : '')))
-                            })),
-                            status: `sum=${currentSum} ≤ ${T}, continue expanding`,
-                            log: `j=${j}: sum=${currentSum} ≤ ${T}, keep expanding`,
-                            logColor: 'var(--accent-orange)'
-                        });
-                    }
+                let panel = `Slide right: add incoming <code>counts[${R}] = ${incoming}</code>, drop outgoing <code>counts[${dropIdx}] = ${dropped}</code> &#8594; window <code>[${winL}..${R}]</code>, <code>sum = ${sum}</code>.`;
+                let action = `SLIDE &rarr; sum ${sum}`, actionColor = 'var(--accent-red)';
+                if (newBest) {
+                    panel += ` <b style="color:#bbf7d0">New peak burst = ${best}</b> on <code>[${bestL}..${bestR}]</code>.`;
+                    action = `&#10003; NEW PEAK ${best}`; actionColor = 'var(--accent-green)';
                 }
+
+                steps.push(snap({
+                    L: winL, R, sum, best, winL, winR: R, bestL, bestR,
+                    droppedIdx: dropIdx, incomingIdx: R, slide: true, newBest,
+                    code: newBest ? [4, 5, 6, 7, 8] : [4, 5, 6, 7],
+                    action, actionColor, panel,
+                    log: `R=${R}  +${incoming} -${dropped}  win[${winL}..${R}]  sum=${sum}${newBest ? '  <- new peak [' + bestL + '..' + bestR + ']' : ''}`
+                }));
             }
 
-            // FINAL STEP
-            const finalFound = minWindow <= n;
-            steps.push({
-                type: 'final', i: null, j: null, sum: 0, winLen: null,
-                tiles: requests.map((v, idx) => ({
-                    val: v, 
-                    state: (finalFound && idx >= bestRange[0] && idx <= bestRange[1]) ? 'maximum' : 'past'
-                })),
-                panel: finalFound ? 'Analysis Complete' : 'No Burst Found',
-                complete: true,
-                result: finalFound ? minWindow : -1,
-                status: finalFound ? `Done. Shortest burst window length: ${minWindow}` : `Done. No window exceeds threshold T=${T}. Result: -1`,
-                log: finalFound ? `Final result: min_window = ${minWindow}` : `Final result: -1 (no burst detected)`,
-                logColor: finalFound ? 'var(--accent-blue)' : 'var(--accent-orange)', bold: true
+            const sub = nums.slice(bestL, bestR + 1);
+            steps.push(snap({
+                complete: true, confetti: true, code: [9], answer: best,
+                bestL, bestR, finalL: bestL, finalR: bestR,
+                action: `&#10003; peak ${best}`, actionColor: 'var(--accent-green)',
+                panel: `Done. The <b>peak burst</b> is <code><b>${best}</b></code> requests, hit by window <code>[${sub.join(', ')}]</code> at buckets <code>${bestL}..${bestR}</code>. ${best > T ? `That exceeds the threshold <code>T = ${T}</code> &#8594; rate limit would trip.` : `That stays within the threshold <code>T = ${T}</code> &#8594; within limits.`}`,
+                log: `done  peak burst = ${best}  window [${bestL}..${bestR}] = [${sub.join(',')}]`
+            }));
+        }
+
+        // ---------- build persistent DOM skeleton (once per input load) ----------
+        function buildBoard() {
+            const numRow = document.getElementById('num-row');
+            numRow.innerHTML = '';
+            numEls.length = 0; idxEls.length = 0;
+
+            nums.forEach((v, i) => {
+                const col = document.createElement('div'); col.className = 'col';
+                const cell = document.createElement('div'); cell.className = 'cell num-cell';
+                const arrow = document.createElement('span'); arrow.className = 'scan-arrow'; arrow.textContent = '▼';
+                const valSpan = document.createElement('span'); valSpan.textContent = String(v);
+                cell.appendChild(arrow); cell.appendChild(valSpan);
+                const lab = document.createElement('div'); lab.className = 'idx-label'; lab.textContent = i;
+                col.appendChild(cell); col.appendChild(lab); numRow.appendChild(col);
+                numEls.push(cell); idxEls.push(lab);
             });
         }
 
+        // ---------- render (pure function of steps[idx], persistent DOM) ----------
         function renderStep(idx) {
-            const step = steps[idx];
-            if (!step) return;
+            stepIdx = idx; const step = steps[idx]; if (!step) return;
+            const finalMode = step.complete && step.finalL != null;
 
-            const container = document.getElementById('tiles-container');
-            container.innerHTML = '';
-            step.tiles.forEach((t, i) => {
-                const wrapper = document.createElement('div');
-                wrapper.className = 'tile-unit';
-                const tile = document.createElement('div');
-                tile.className = `tile ${t.state}`;
-                tile.innerText = t.val;
-                const idxLabel = document.createElement('div');
-                idxLabel.className = 'tile-index';
-                idxLabel.innerText = `[${i}]`;
-                wrapper.append(tile, idxLabel);
-                container.appendChild(wrapper);
-            });
+            for (let i = 0; i < nums.length; i++) {
+                let cls = 'cell num-cell';
+                const prevPop = numEls[i].classList.contains('rightedge') || numEls[i].classList.contains('dropped');
 
-            document.getElementById('main-panel').innerHTML = step.panel;
-            document.getElementById('val-i').innerText = step.i !== null ? step.i : '—';
-            document.getElementById('val-j').innerText = step.j !== null ? step.j : '—';
-            document.getElementById('val-sum').innerText = step.sum;
-            document.getElementById('val-len').innerText = step.winLen || '—';
-
-            const resVal = document.getElementById('res-val');
-            resVal.innerText = step.result || step.min || (stepIndex === 0 ? '—' : (steps[stepIndex-1].min || '—'));
-            resVal.className = step.complete ? 'complete' : '';
-
-            document.getElementById('status-text').innerText = step.status;
-
-            const logPanel = document.getElementById('log');
-            logPanel.innerHTML = '';
-            for (let k = 0; k <= idx; k++) {
-                if (steps[k].log) {
-                    const line = document.createElement('div');
-                    line.style.marginBottom = '2px';
-                    if (steps[k].logColor) line.style.color = `var(${steps[k].logColor}, ${steps[k].logColor})`;
-                    if (steps[k].bold) line.style.fontWeight = 'bold';
-                    line.innerText = steps[k].log;
-                    logPanel.appendChild(line);
+                if (finalMode) {
+                    if (i >= step.finalL && i <= step.finalR) cls += ' best';
+                    else cls += ' dim';
+                } else {
+                    const inWin = step.winL != null && i >= step.winL && i <= step.winR;
+                    if (step.incomingIdx === i) cls += ' rightedge';
+                    else if (step.droppedIdx === i) cls += ' dropped';
+                    else if (inWin) cls += ' inwindow';
+                    else if (step.winR != null && (i > step.winR || i < step.winL)) cls += ' dim';
                 }
+
+                numEls[i].className = cls;
+                const litIdx = !finalMode && (step.incomingIdx === i || (step.incomingIdx == null && step.winR === i));
+                idxEls[i].className = 'idx-label' + (litIdx ? ' lit' : '');
+
+                const nowPop = numEls[i].classList.contains('rightedge') || numEls[i].classList.contains('dropped');
+                if (nowPop && !prevPop) Motion.pop(numEls[i]);
+                if (finalMode && i >= step.finalL && i <= step.finalR) Motion.pop(numEls[i]);
             }
-            logPanel.scrollTop = logPanel.scrollHeight;
+
+            // answer track: show peak-burst window = sum on completion
+            const at = document.getElementById('answer-track'); at.innerHTML = '';
+            if (finalMode) {
+                for (let i = step.finalL; i <= step.finalR; i++) {
+                    const t = document.createElement('div'); t.className = 'ans-tile'; t.textContent = nums[i]; at.appendChild(t);
+                }
+                const eq = document.createElement('div'); eq.className = 'ans-eq'; eq.textContent = '='; at.appendChild(eq);
+                const s = document.createElement('div'); s.className = 'ans-sum'; s.textContent = step.answer; at.appendChild(s);
+            }
+
+            const mp = document.getElementById('main-panel');
+            mp.innerHTML = step.panel || '&mdash;';
+            mp.classList.toggle('done', !!step.complete);
+            mp.classList.toggle('slide', !!step.slide && !step.complete && !step.newBest);
+            const aw = document.getElementById('action-word'); aw.innerHTML = step.action || ''; aw.style.color = step.actionColor || 'var(--text-dim)';
+            highlightCode(step.code);
+
+            if (step.confetti) { if (confettiArmed) { fireConfetti(); confettiArmed = false; } } else confettiArmed = true;
+
+            document.getElementById('st-l').textContent = step.L != null ? step.L : '—';
+            document.getElementById('st-r').textContent = step.R != null ? step.R : '—';
+            document.getElementById('st-sum').textContent = step.sum != null ? step.sum : '—';
+            document.getElementById('st-best').textContent = step.best != null ? step.best : '—';
+
+            document.getElementById('step-badge').textContent = `Step ${idx + 1} / ${steps.length}`;
+            document.getElementById('progress-fill').style.width = `${(idx / Math.max(1, steps.length - 1)) * 100}%`;
+
+            const logEl = document.getElementById('log');
+            logEl.innerHTML = steps.slice(0, idx + 1).map(s => `<div style="margin:3px 0;white-space:pre-wrap;">${s.log}</div>`).join('');
+            logEl.scrollTop = logEl.scrollHeight;
         }
 
-        function next() {
-            if (stepIndex < steps.length - 1) {
-                stepIndex++;
-                renderStep(stepIndex);
-            } else pause();
-        }
-
-        function back() {
-            if (stepIndex > 0) {
-                stepIndex--;
-                renderStep(stepIndex);
+        function fireConfetti() {
+            const host = document.getElementById('confetti'); if (!host || REDUCED) return;
+            const colors = ['#22c55e', '#06b6d4', '#a855f7', '#f5a524', '#f43f5e'];
+            for (let i = 0; i < 38; i++) {
+                const p = document.createElement('div'); p.className = 'confetti-piece';
+                p.style.setProperty('--x', ((Math.random() * 2 - 1) * 220) + 'px');
+                p.style.setProperty('--rot', ((Math.random() * 720 - 360)) + 'deg');
+                p.style.background = colors[i % colors.length];
+                p.style.animationDuration = (0.9 + Math.random() * 0.8) + 's';
+                p.style.animationDelay = (Math.random() * 0.15) + 's';
+                host.appendChild(p); setTimeout(() => p.remove(), 1900);
             }
         }
 
-        function reset() {
-            pause();
-            stepIndex = 0;
-            renderStep(0);
-        }
-
+        // ---------- controls ----------
+        function nextStep() { if (stepIdx < steps.length - 1) renderStep(stepIdx + 1); else pause(); }
+        function prevStep() { if (stepIdx > 0) renderStep(stepIdx - 1); }
+        function resetSim() { pause(); renderStep(0); }
         function togglePlay() {
             const btn = document.getElementById('play-btn');
-            if (timer) pause();
-            else {
-                btn.innerText = 'Pause';
-                if (stepIndex >= steps.length - 1) stepIndex = 0;
-                timer = setInterval(next, delays[document.getElementById('speed-slider').value]);
+            if (timer) { pause(); return; }
+            btn.textContent = 'Pause';
+            if (stepIdx >= steps.length - 1) renderStep(0);
+            timer = setInterval(() => { if (stepIdx < steps.length - 1) nextStep(); else pause(); }, delays[document.getElementById('speed').value]);
+        }
+        function pause() { clearInterval(timer); timer = null; document.getElementById('play-btn').textContent = 'Play'; }
+
+        function loadArr(arr, t) {
+            pause(); nums = arr.slice(); T = t; confettiArmed = true;
+            buildBoard(); generateSteps(); renderStep(0);
+        }
+        function loadCustom() {
+            const raw = document.getElementById('nums-input').value;
+            const rawT = document.getElementById('t-input').value;
+            let parsed;
+            try { parsed = JSON.parse(raw); }
+            catch (e) {
+                parsed = raw.split(',').map(x => parseInt(x.trim(), 10)).filter(x => !isNaN(x));
+            }
+            let t = parseInt(rawT, 10);
+            if (Array.isArray(parsed) && parsed.length > 0 && parsed.every(x => typeof x === 'number' && isFinite(x)) && parsed.length <= 14) {
+                if (isNaN(t) || t < 1) t = parsed.length;
+                loadArr(parsed, t);
             }
         }
-
-        function pause() {
-            clearInterval(timer);
-            timer = null;
-            document.getElementById('play-btn').innerText = 'Play';
+        function loadExample(n) {
+            const ex = [[[1, 2, 3, 4, 5], 8], [[10, 1, 1, 1, 1], 5]][n];
+            document.getElementById('nums-input').value = JSON.stringify(ex[0]);
+            document.getElementById('t-input').value = ex[1];
+            loadArr(ex[0], ex[1]);
         }
 
-        window.onload = init;
+        document.addEventListener('keydown', (e) => {
+            const tag = (e.target.tagName || '').toLowerCase(); if (tag === 'input' || tag === 'textarea') return;
+            if (e.key === 'ArrowRight') { e.preventDefault(); pause(); nextStep(); }
+            else if (e.key === 'ArrowLeft') { e.preventDefault(); pause(); prevStep(); }
+            else if (e.key === ' ') { e.preventDefault(); togglePlay(); }
+        });
+        document.getElementById('nums-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') loadCustom(); });
+        document.getElementById('t-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') loadCustom(); });
+
+        buildCodePanel();
+        window.onload = () => loadExample(0);
     </script>
 </body>
-</html>```
+</html>

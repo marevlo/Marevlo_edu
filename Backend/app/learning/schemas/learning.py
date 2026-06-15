@@ -70,6 +70,17 @@ class DashboardOut(BaseModel):
     resume: Optional[ProgressOut] = None
 
 
+# ── Course access ───────────────────────────────────────────────────────
+class CourseAccessOut(BaseModel):
+    """What the frontend reads to decide whether to render a course or a
+    paywall. `required_product` is None for free courses."""
+
+    course_id: str
+    required_product: Optional[str] = None
+    is_free: bool
+    has_access: bool
+
+
 # ── Notes ───────────────────────────────────────────────────────────────
 class NoteUpsert(BaseModel):
     course_id: str = Field(..., min_length=1, max_length=128)

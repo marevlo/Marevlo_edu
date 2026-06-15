@@ -24,6 +24,7 @@ from app.moderation.models.moderation import (  # noqa: F401
     UserBlock,
 )
 from app.notifications.models.notification import Notification  # noqa: F401
+from app.notifications.models.preference import UserNotificationPrefs  # noqa: F401
 from app.problems.models.problem import Problem, ProblemTestCase  # noqa: F401
 from app.profile.models.profile import UserAchievement, UserProfile  # noqa: F401
 from app.submissions.models.submission import ProblemSubmission  # noqa: F401
@@ -44,7 +45,3 @@ from app.mira.models.mira import (  # noqa: F401
     MiraUserState,
 )
 from app.mira.models.db_models import MiraConceptLattice  # noqa: F401
-from app.mira.models.documents import MiraDocChunk, MiraDocument  # noqa: F401
-from app.mira.models.topups import MiraQuestionTopup  # noqa: F401
-from app.mira.models.turn_logs import MiraTurnLog, MiraTurnSignal  # noqa: F401
-
