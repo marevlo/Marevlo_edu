@@ -45,7 +45,7 @@ const MIRA_CSS = `
 .mira-launch *{pointer-events:none}
 .mira-launch:active{cursor:grabbing;transform:scale(0.92)}
 .mira-launch:hover{box-shadow:0 12px 40px rgba(0,0,0,0.5), 0 0 25px rgba(34,211,238,0.3); transform:translateY(-2px)}
-.mira-launch .logo{width:34px;height:34px;transition:transform .15s ease; filter:drop-shadow(0 0 4px rgba(34,211,238,0.5))}
+.mira-launch .logo{width:38px;height:auto;transition:transform .15s ease; filter:drop-shadow(0 0 5px rgba(34,211,238,0.55))}
 .mira-launch:hover .logo{transform:scale(1.08)}
 
 .mira-panel{position:fixed;right:22px;bottom:94px;width:400px;max-width:calc(100vw - 28px);
@@ -71,7 +71,7 @@ const MIRA_CSS = `
 .mira-head:active{cursor:grabbing}
 .mira-mark{width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg, rgba(255,255,255,0.05), rgba(255,255,255,0));
   border:1px solid rgba(255,255,255,0.1);display:flex;align-items:center;justify-content:center}
-.mira-mark .logo{width:20px;height:20px}
+.mira-mark .logo{width:24px;height:auto}
 .mira-who{flex:1;min-width:0}
 .mira-who .name{font-weight:700;font-size:16px;display:flex;gap:8px;align-items:center;letter-spacing:-0.01em}
 .mira-dot{width:8px;height:8px;border-radius:50%;background:var(--m-green);box-shadow:0 0 8px var(--m-green)}
@@ -91,8 +91,8 @@ const MIRA_CSS = `
   animation:mira-empty-in .5s cubic-bezier(.22,1,.36,1) both}
 @keyframes mira-empty-in{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
 /* grounded shadow in the mark's own blue, not a neon halo; gentle float */
-.mira-empty-logo{width:52px;height:52px;margin-bottom:18px;
-  filter:drop-shadow(0 6px 14px rgba(37,99,235,.26));animation:mira-float 5s ease-in-out infinite}
+.mira-empty-logo{width:74px;height:auto;margin-bottom:18px;
+  filter:drop-shadow(0 8px 18px rgba(16,137,207,.32)) drop-shadow(0 0 10px rgba(34,211,238,.22));animation:mira-float 5s ease-in-out infinite}
 @keyframes mira-float{0%,100%{transform:translateY(0)}50%{transform:translateY(-5px)}}
 .mira-empty-title{color:var(--m-ink);font-size:21px;font-weight:700;margin-bottom:7px;letter-spacing:-.02em;text-align:center}
 .mira-empty-title b{font-weight:800}
@@ -114,7 +114,7 @@ const MIRA_CSS = `
 .mira-msg-user,.mira-row{animation:mira-in .4s cubic-bezier(.16,1,.3,1) both}
 @keyframes mira-in{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
 .mira-av{width:28px;height:28px;border-radius:50%;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);display:flex;align-items:center;justify-content:center;flex:0 0 auto;margin-top:2px}
-.mira-av .logo{width:18px;height:18px}
+.mira-av .logo{width:21px;height:auto}
 .mira-grow{min-width:0;flex:1;display:flex;flex-direction:column;gap:12px}
 
 .mira-voice{font-size:14.5px;line-height:1.6;color:#e2e8f0;overflow-wrap:break-word}
@@ -210,7 +210,7 @@ const MIRA_CSS = `
 
 .mira-prof-card{border:1px solid rgba(255,255,255,0.1);border-radius:16px;background:rgba(255,255,255,0.03);padding:16px;margin-bottom:16px}
 .mira-prof-top{display:flex;align-items:center;gap:11px}
-.mira-prof-top .mira-mark{width:34px;height:34px}.mira-prof-top .mira-mark .logo{width:22px;height:22px}
+.mira-prof-top .mira-mark{width:34px;height:34px}.mira-prof-top .mira-mark .logo{width:26px;height:auto}
 .mira-prof-name{flex:1;min-width:0}.mira-prof-name .n{font-size:14px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .mira-prof-name .e{font-size:11.5px;color:var(--m-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .mira-tier{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;padding:4px 10px;border-radius:999px;flex:0 0 auto}
@@ -238,32 +238,74 @@ const MIRA_CSS = `
 }
 @media (prefers-reduced-motion:reduce){
   .mira-root *,.mira-root *::after{animation-duration:.01ms !important;animation-iteration-count:1 !important;transition-duration:.01ms !important}
-  .mira-logo-draw, .mira-logo-glow { stroke-dashoffset: 0; animation: none; }
-  .mira-logo-breathe, .mira-logo-stage, .mira-logo-shine { animation: none; opacity: 1; }
+  .mira-logo-stage, .mira-logo-breathe { animation: none !important; opacity: 1; transform: none; }
+  .mira-logo-shine { display: none; }
 }
 
-/* Animated Logo CSS */
-.mira-logo-stage { animation: fadein .7s ease-out both; transform-box: fill-box; transform-origin: center; }
-@keyframes fadein { from { opacity: 0; transform: scale(.86); } to { opacity: 1; transform: scale(1); } }
-.mira-logo-breathe { animation: breathe 4.6s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
-@keyframes breathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.04); } }
-.mira-logo-draw { stroke-dasharray: 100; stroke-dashoffset: 100; animation: draw 1.5s .3s cubic-bezier(.55, 0, .2, 1) forwards; }
-@keyframes draw { to { stroke-dashoffset: 0; } }
-.mira-logo-glow { opacity: .5; stroke-dasharray: 100; stroke-dashoffset: 100; animation: draw 1.5s .3s cubic-bezier(.55, 0, .2, 1) forwards, gpulse 4.6s 1.7s ease-in-out infinite; }
-@keyframes gpulse { 0%, 100% { opacity: .35; } 50% { opacity: .75; } }
-.mira-logo-shine { opacity: 0; animation: show .5s 1.7s forwards; }
-@keyframes show { to { opacity: 1; } }
-.mira-logo.replay .mira-logo-stage, .mira-logo.replay .mira-logo-draw, .mira-logo.replay .mira-logo-glow, .mira-logo.replay .mira-logo-shine { animation: none; }
+/* ---- Marevlo cinematic mark: materialise → breathe → specular sweep ---- */
+.mira-logo { overflow: visible; }
+.mira-logo-stage { animation: mira-logo-in .95s cubic-bezier(.22,1,.36,1) both; transform-box: fill-box; transform-origin: 50% 58%; }
+@keyframes mira-logo-in {
+  0%   { opacity: 0; transform: translateY(9%) scale(.62); filter: blur(4px); }
+  55%  { opacity: 1; filter: blur(0); }
+  100% { opacity: 1; transform: translateY(0) scale(1); filter: blur(0); }
+}
+.mira-logo-breathe { animation: mira-breathe 5.4s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
+@keyframes mira-breathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.035); } }
+/* specular sheen — only rendered on the full (launcher / hero) variant */
+.mira-logo-shine { opacity: 0; mix-blend-mode: screen; animation: mira-shine-in .5s 1.05s forwards; }
+@keyframes mira-shine-in { to { opacity: 1; } }
+/* click-to-replay: drop the animations for one frame so they restart from 0 */
+.mira-logo.replay .mira-logo-stage,
+.mira-logo.replay .mira-logo-breathe,
+.mira-logo.replay .mira-logo-shine { animation: none; }
 `;;
 
 // ---------- brand logo ----------
-function Logo({ className = 'logo' }) {
+// The official Marevlo mark (mirrors /logo/logo marevlo.svg) inlined as SVG so
+// it stays crisp at every size and can carry a self-contained "ignition"
+// animation: it materialises (fade + scale + de-blur), idles with a soft
+// breath, and — on the full variant (launcher / hero) — a specular highlight
+// sweeps its silhouette. Click to replay. Honors prefers-reduced-motion.
+//   variant="mark"  -> base mark (header, avatars, profile — small & repeated)
+//   variant="full"  -> base mark + sheen sweep (the brand moments)
+const BRAND_PATHS = [
+  { d: 'M774.755 723.734C774.755 723.734 857.845 602.995 886.755 560.234C918.993 512.549 1041.33 307.63 1113.26 187.734C1187.18 64.5011 1288.25 23.8469 1427.75 4.23373C1351.46 -4.48987 1181.64 48.5481 1146.75 71.7337C1046.49 117.51 997.755 233.234 959.255 297.234L774.755 576.734L698.349 469.206L618.85 343.206L536.35 211.734C536.35 211.734 473.04 114.509 385.85 68.7337C298.66 22.9589 157.482 -2.57103 118.243 0.232475C79.0049 3.03598 323.007 32.4516 392.762 132.734C415.497 165.417 774.755 723.734 774.755 723.734Z', fill: 'url(#mira-g0)' },
+  { d: 'M774.632 723.649C774.714 723.705 774.796 723.762 774.879 723.819C811.536 670.489 848.23 617.174 884.66 563.569C885.426 562.438 886.162 561.35 886.866 560.309C964.993 437.922 1038.38 312.159 1113.34 187.786C1174.9 73.7738 1303.54 17.7892 1427.77 4.3098L1427.76 4.15741C1330.61 2.00254 1233.93 30.3433 1146.72 71.6836C1053.62 114.687 1007.69 212.288 959.216 297.21C897.722 390.378 836.226 483.548 774.729 576.717L774.781 576.716C749.311 540.874 723.841 505.033 698.371 469.191C671.87 427.193 645.369 385.194 618.868 343.195C591.366 299.372 563.865 255.548 536.364 211.725C496.6 154.792 447.522 102.05 385.855 68.7237C302.64 28.2111 210.649 4.05644 118.243 0.226693C199.393 29.678 326.774 48.3799 392.761 132.735C462.511 238.674 531.467 346.396 600.604 453.391C623.641 489.114 646.564 524.924 669.566 560.655C671.045 562.953 672.516 565.237 673.978 567.506C707.693 619.837 741.246 671.941 774.629 723.815C774.713 723.761 774.797 723.707 774.881 723.653C741.498 671.779 707.945 619.675 674.23 567.344C672.768 565.074 671.297 562.791 669.816 560.494C646.786 524.781 623.641 489.114 600.604 453.391C531.467 346.396 462.512 238.674 392.764 132.733C326.776 48.3823 199.397 29.6449 118.244 0.238258C210.644 4.07072 302.637 28.2295 385.844 68.7438C447.505 102.07 496.578 154.813 536.336 211.743C563.834 255.568 591.333 299.393 618.831 343.218C645.33 385.219 671.829 427.22 698.327 469.22C723.795 505.065 749.263 540.908 774.73 576.752L774.756 576.789L774.781 576.751C836.285 483.587 897.789 390.423 959.293 297.259C1007.78 212.328 1053.72 114.76 1146.78 71.7885C1233.94 30.4798 1330.68 2.14033 1427.75 4.31005L1427.74 4.15766C1303.51 17.6175 1174.77 73.6225 1113.17 187.682C1038.19 312.042 964.777 437.806 886.644 560.159C885.94 561.2 885.204 562.288 884.438 563.418C848.001 617.016 811.297 670.326 774.632 723.649ZM774.879 723.819L774.632 723.649L774.881 723.653L774.629 723.815L774.751 724.004L774.879 723.819Z', fill: '#05070f' },
+  { d: 'M222.047 1166.25L260.833 1138.24L260.832 614.242C260.832 572.453 263.032 503.569 256.833 462.242C237.215 331.458 167.913 289.769 161.352 283.203C110.274 232.091 2.2301 211.295 0.050354 215.638C-2.12939 219.981 64.3818 214.76 150.453 307.207C209.306 370.42 222.047 418.742 222.047 571.173V1166.25Z', fill: 'url(#mira-g1)' },
+  { d: 'M427.288 1035.24L470.34 1001.74V567.242L427.288 459.789V1035.24Z', fill: 'url(#mira-g2)' },
+  { d: 'M774.498 646.018C774.498 646.018 851.539 526.018 861.002 512.518C870.465 499.018 999.911 299.827 1077.5 183.518C1156 65.8451 1282.5 23.63 1422 4.01677C1345.71 -4.70684 1175.89 50.8321 1141 74.0177C1060 121.518 1027.5 184.018 993.502 234.018L774.502 577.018L679.137 438.116L608.134 326.116L548.003 232.02C548.003 232.02 518.433 186.309 499 163.52C468.729 128.02 449.487 99.0234 367 60.019C284.512 21.0146 132.499 -3.98283 114 0.523319C95.4996 5.02946 355.003 36.5198 433.504 135.52C524.162 249.85 774.498 646.018 774.498 646.018Z', fill: 'url(#mira-g3)' },
+  { d: 'M863.177 801.788L815.223 769.092C815.223 769.092 937.289 605.611 1007.04 492.263C1076.79 378.916 1116.03 283.007 1207.58 169.66C1299.43 55.9336 1558.52 43.2344 1558.52 43.2344C1558.52 43.2344 1317.48 92.6626 1235.91 208.896C1148.72 333.141 1102.95 446.489 1050.64 531.499C998.322 616.509 863.177 801.788 863.177 801.788Z', fill: 'url(#mira-g4)' },
+  { d: 'M695.342 801.577L743.297 768.881C743.297 768.881 621.231 605.4 551.479 492.053C481.727 378.705 442.491 282.796 350.941 169.449C259.085 55.7226 0.00115967 43.0234 0.00115967 43.0234C0.00115967 43.0234 241.038 92.4516 322.605 208.685C409.795 332.931 455.57 446.278 507.884 531.288C560.198 616.298 695.342 801.577 695.342 801.577Z', fill: 'url(#mira-g5)' },
+  { d: 'M1229.28 1098.23L1185.46 1072.02C1185.46 1072.02 1181.6 837.015 1185.46 628.022C1186.23 586.24 1185.45 502.323 1187.87 462.522C1195.99 328.555 1260.48 260.024 1305.58 226.312C1398.5 156.855 1540 127.019 1553 125.522C1565.99 124.026 1432 149.523 1325.19 248.132C1261.74 306.721 1231.47 395.382 1231.47 564.522C1231.47 806.475 1229.28 1098.23 1229.28 1098.23Z', fill: 'url(#mira-g6)' },
+  { d: 'M326.592 1097.79L370.414 1071.58C370.414 1071.58 374.28 836.578 370.416 627.585C369.644 585.803 370.422 501.886 368.007 462.085C359.881 328.117 295.398 259.586 250.298 225.874C157.379 156.417 15.875 126.581 2.87891 125.085C-10.1172 123.588 123.879 149.086 230.68 247.694C294.138 306.284 324.41 394.945 324.41 564.085C324.41 806.038 326.592 1097.79 326.592 1097.79Z', fill: 'url(#mira-g7)' },
+  { d: 'M1334.25 1166.03L1295.47 1138.02L1295.47 614.023C1295.47 572.234 1293.27 503.35 1299.47 462.023C1319.09 331.239 1388.39 289.551 1394.95 282.985C1446.03 231.872 1554.07 211.076 1556.25 215.419C1558.43 219.762 1491.92 214.541 1405.85 306.988C1346.99 370.201 1334.25 418.523 1334.25 570.955V1166.03Z', fill: 'url(#mira-g8)' },
+  { d: 'M1129.01 1035.03L1085.96 1001.52V567.023L1129.01 459.57V1035.03Z', fill: 'url(#mira-g9)' },
+];
+
+// brand gradients (mira- prefixed; reused across every instance, like the shell tokens)
+const BRAND_GRADS = [
+  { id: 'mira-g0', x1: 772.963, y1: 13.2344, x2: 772.963, y2: 726.98, stops: [['0.144231', '#062176'], ['0.504808', '#0E8CC9'], ['0.927885', '#064491']] },
+  { id: 'mira-g1', x1: 137.349, y1: 215.078, x2: 137.349, y2: 1166.24, stops: [['0.0817308', '#37C3FF'], ['0.3125', '#27C9F4'], ['0.876896', '#081269']] },
+  { id: 'mira-g2', x1: 452.355, y1: 459.789, x2: 452.398, y2: 1133.24, stops: [['0.225651', '#10A9E0'], ['0.790103', '#0B1B72']] },
+  { id: 'mira-g3', x1: 773.88, y1: -43.8749, x2: 771.023, y2: 585.523, stops: [['0.254808', '#062176'], ['0.610577', '#19B0E7'], ['1', '#1089CF']] },
+  { id: 'mira-g4', x1: 1186.87, y1: 43.2344, x2: 1186.87, y2: 801.788, stops: [['0.0576923', '#01236C'], ['0.485577', '#3AB2EC'], ['1', '#032C78']] },
+  { id: 'mira-g5', x1: 371.649, y1: 43.0234, x2: 371.649, y2: 801.577, stops: [['0.0576923', '#01236C'], ['0.485577', '#3AB2EC'], ['1', '#032C78']] },
+  { id: 'mira-g6', x1: 1362.06, y1: 123.648, x2: 1362.06, y2: 1098.23, stops: [['0.0336538', '#1ABCEF'], ['0.344848', '#1FAFE8'], ['0.907092', '#031C6F']] },
+  { id: 'mira-g7', x1: 193.811, y1: 123.211, x2: 193.811, y2: 1097.79, stops: [['0.0336538', '#1ABCEF'], ['0.344848', '#1FAFE8'], ['0.907092', '#031C6F']] },
+  { id: 'mira-g8', x1: 1418.95, y1: 214.859, x2: 1418.95, y2: 1166.03, stops: [['0.0817308', '#37C3FF'], ['0.3125', '#27C9F4'], ['0.876896', '#081269']] },
+  { id: 'mira-g9', x1: 1103.95, y1: 459.57, x2: 1103.9, y2: 1133.02, stops: [['0.225651', '#10A9E0'], ['0.790103', '#0B1B72']] },
+];
+
+function Logo({ className = 'logo', variant = 'mark' }) {
+  const full = variant === 'full';
   return (
-    <svg 
-      className={`${className} mira-logo`} 
-      viewBox="0 0 260 260" 
-      role="img" 
-      aria-label="Mira logo" 
+    <svg
+      className={`${className} mira-logo`}
+      viewBox="0 0 1559 1167"
+      preserveAspectRatio="xMidYMid meet"
+      role="img"
+      aria-label="Marevlo"
       xmlns="http://www.w3.org/2000/svg"
       onClick={(e) => {
         const svg = e.currentTarget;
@@ -273,52 +315,36 @@ function Logo({ className = 'logo' }) {
       }}
     >
       <defs>
-        <radialGradient id="mira-bg" cx="50%" cy="38%" r="75%">
-          <stop offset="0%" stopColor="#20202b"/>
-          <stop offset="100%" stopColor="#121217"/>
-        </radialGradient>
-        <radialGradient id="mira-spot" cx="50%" cy="35%" r="55%">
-          <stop offset="0%" stopColor="#8484fb" stopOpacity="0.28"/>
-          <stop offset="100%" stopColor="#8484fb" stopOpacity="0"/>
-        </radialGradient>
-        <linearGradient id="mira-mGrad" x1="0" y1="1" x2="1" y2="0">
-          <stop offset="0%" stopColor="#5b5bf2"/>
-          <stop offset="52%" stopColor="#7d7df7"/>
-          <stop offset="100%" stopColor="#aeaefc"/>
-        </linearGradient>
-        <linearGradient id="mira-shine" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stopColor="#fff" stopOpacity="0"/>
-          <stop offset="0.43" stopColor="#fff" stopOpacity="0"/>
-          <stop offset="0.5" stopColor="#fff" stopOpacity="0.9"/>
-          <stop offset="0.57" stopColor="#fff" stopOpacity="0"/>
-          <stop offset="1" stopColor="#fff" stopOpacity="0"/>
-          <animateTransform attributeName="gradientTransform" type="translate"
-            from="-1.1 0" to="1.4 0" dur="3.2s" begin="1.6s" repeatCount="indefinite"/>
-        </linearGradient>
-        <filter id="mira-glow-anim" x="-60%" y="-60%" width="220%" height="220%">
-          <feGaussianBlur stdDeviation="4.5"/>
-        </filter>
+        {BRAND_GRADS.map((g) => (
+          <linearGradient key={g.id} id={g.id} x1={g.x1} y1={g.y1} x2={g.x2} y2={g.y2} gradientUnits="userSpaceOnUse">
+            {g.stops.map(([off, c]) => <stop key={off} offset={off} stopColor={c} />)}
+          </linearGradient>
+        ))}
+        {/* sheen: a narrow white band swept diagonally across the whole mark
+            (userSpaceOnUse so it reads as ONE sweep, not a glint per blade) */}
+        {full && (
+          <linearGradient id="mira-shine" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="1559" y2="1167">
+            <stop offset="0" stopColor="#fff" stopOpacity="0" />
+            <stop offset="0.42" stopColor="#fff" stopOpacity="0" />
+            <stop offset="0.5" stopColor="#fff" stopOpacity="0.85" />
+            <stop offset="0.58" stopColor="#fff" stopOpacity="0" />
+            <stop offset="1" stopColor="#fff" stopOpacity="0" />
+            <animateTransform attributeName="gradientTransform" type="translate"
+              from="-1559 0" to="1559 0" dur="4.6s" begin="1.05s" repeatCount="indefinite" />
+          </linearGradient>
+        )}
       </defs>
 
       <g className="mira-logo-stage">
-        <circle cx="130" cy="130" r="96" fill="url(#mira-bg)"/>
-        <circle cx="130" cy="130" r="96" fill="url(#mira-spot)"/>
-        <circle cx="130" cy="130" r="95.5" fill="none" stroke="#2c2c38" strokeWidth="1"/>
-        <circle cx="130" cy="130" r="95.5" fill="none" stroke="url(#mira-mGrad)" strokeWidth="2"
-          strokeLinecap="round" strokeDasharray="46 250" opacity="0.55">
-          <animateTransform attributeName="transform" type="rotate"
-            from="0 130 130" to="360 130 130" dur="13s" repeatCount="indefinite"/>
-        </circle>
-
-        <g transform="translate(130,131) scale(1.72)">
-          <g className="mira-logo-breathe">
-            <path className="mira-logo-glow" d="M -34,30 L -22,-28 L 0,2 L 22,-28 L 34,30" pathLength="100"
-              fill="none" stroke="url(#mira-mGrad)" strokeWidth="9" strokeLinecap="round" strokeLinejoin="round" filter="url(#mira-glow-anim)"/>
-            <path className="mira-logo-draw" d="M -34,30 L -22,-28 L 0,2 L 22,-28 L 34,30" pathLength="100"
-              fill="none" stroke="url(#mira-mGrad)" strokeWidth="8.5" strokeLinecap="round" strokeLinejoin="round"/>
-            <path className="mira-logo-shine" d="M -34,30 L -22,-28 L 0,2 L 22,-28 L 34,30"
-              fill="none" stroke="url(#mira-shine)" strokeWidth="8.5" strokeLinecap="round" strokeLinejoin="round"/>
-          </g>
+        <g className="mira-logo-breathe">
+          {BRAND_PATHS.map((p, i) => <path key={i} d={p.d} fill={p.fill} />)}
+          {full && (
+            <g className="mira-logo-shine">
+              {BRAND_PATHS.filter((p) => p.fill.startsWith('url')).map((p, i) => (
+                <path key={i} d={p.d} fill="url(#mira-shine)" />
+              ))}
+            </g>
+          )}
         </g>
       </g>
     </svg>
@@ -1120,7 +1146,7 @@ export default function MiraWidget() {
           exit={{ opacity: 0, scale: 0.6, transition: { duration: 0.12, ease: 'easeIn' } }}
           transition={springSnappy}
         >
-          <Logo />
+          <Logo variant="full" />
         </Motion.button>
       )}
 
@@ -1196,7 +1222,8 @@ export default function MiraWidget() {
               <div className="mira-scroll" ref={scrollRef} aria-live="polite" aria-busy={loading}>
                 {messages.length === 0 && !loading && (
                   <div className="mira-empty">
-                    <Logo className="mira-empty-logo" />
+
+
                     <div className="mira-empty-title">Hi {user?.name?.split(' ')[0] || user?.username || 'Learner'}, I'm <b>MIRA</b></div>
                     <div className="mira-empty-sub">Your AI tutor.</div>
                     <div className="mira-suggest">
