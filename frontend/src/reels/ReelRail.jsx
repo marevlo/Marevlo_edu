@@ -34,9 +34,9 @@ export default function ReelRail({ kind, problemId, topicSlugs = [], topicSlug, 
             <div className="flex items-baseline gap-3 mb-3">
                 <h3 className="font-semibold text-[15px] text-gray-900 dark:text-gray-100 flex items-center gap-2">
                     <Film className="w-4 h-4 text-indigo-500" />
-                    {title || (kind === 'problem' ? 'Short explainers for this problem' : 'Reels for this topic')}
+                    {title || (kind === 'problem' ? 'Short explainers for this problem' : 'Eds for this topic')}
                 </h3>
-                <span className="text-xs text-gray-400">{reels.length} reels</span>
+                <span className="text-xs text-gray-400">{reels.length} Eds</span>
             </div>
             <div className="flex gap-3.5 overflow-x-auto pb-3 snap-x snap-mandatory">
                 {reels.map((r, i) => (

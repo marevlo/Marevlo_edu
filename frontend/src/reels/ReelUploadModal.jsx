@@ -71,7 +71,7 @@ export default function ReelUploadModal({ onClose, onUploaded, defaultAnchors = 
 
     const submit = async () => {
         if (!file || !title.trim()) return setError('A valid video and a title are required.');
-        if (anchors.length === 0) return setError('Pick at least one anchor — reels must be wired to the learning graph.');
+        if (anchors.length === 0) return setError('Pick at least one anchor — Eds must be wired to the learning graph.');
         if (!declared) return setError('Please confirm the rights declaration.');
         setBusy(true); setError('');
         try {
@@ -113,7 +113,7 @@ export default function ReelUploadModal({ onClose, onUploaded, defaultAnchors = 
             <div className="bg-white dark:bg-zinc-900 rounded-2xl w-full max-w-2xl p-6 max-h-[92vh] overflow-y-auto">
                 <div className="flex items-center justify-between mb-4">
                     <h2 className="text-lg font-bold flex items-center gap-2 text-gray-900 dark:text-white">
-                        <Film className="w-5 h-5 text-indigo-500" /> Upload a reel
+                        <Film className="w-5 h-5 text-indigo-500" /> Upload an Ed
                     </h2>
                     <button onClick={onClose} disabled={busy} aria-label="Close"><X className="w-5 h-5" /></button>
                 </div>
@@ -123,7 +123,7 @@ export default function ReelUploadModal({ onClose, onUploaded, defaultAnchors = 
                                       text-center cursor-pointer hover:border-indigo-400 transition-colors">
                         <Upload className="w-8 h-8 mx-auto mb-2 text-gray-400" />
                         <p className="text-sm font-medium text-gray-900 dark:text-gray-100">Choose an MP4 or WebM</p>
-                        <p className="text-xs text-gray-500 mt-1">{MIN_D}s – {MAX_D / 60} min · max 150 MB · one concept per reel</p>
+                        <p className="text-xs text-gray-500 mt-1">{MIN_D}s – {MAX_D / 60} min · max 150 MB · one concept per Ed</p>
                         <input type="file" accept="video/mp4,video/webm" className="hidden"
                             onChange={(e) => e.target.files?.[0] && probe(e.target.files[0])} />
                     </label>
@@ -170,7 +170,7 @@ export default function ReelUploadModal({ onClose, onUploaded, defaultAnchors = 
                 </div>
 
                 <p className="text-[13px] font-semibold mt-4 mb-1 text-gray-900 dark:text-gray-100">
-                    Anchors <span className="font-normal text-gray-400">— required: wire this reel to the learning graph</span>
+                    Anchors <span className="font-normal text-gray-400">— required: wire this Ed to the learning graph</span>
                 </p>
                 {defaultAnchors.length > 0 && (
                     <p className="text-xs text-emerald-600 mb-2">
@@ -235,10 +235,10 @@ export default function ReelUploadModal({ onClose, onUploaded, defaultAnchors = 
                     className="w-full mt-5 py-3 rounded-xl bg-indigo-600 text-white text-sm font-semibold
                                disabled:opacity-50 flex items-center justify-center gap-2 hover:bg-indigo-700">
                     {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
-                    {busy ? `Uploading… ${progress}%` : 'Submit for review'}
+                    {busy ? `Uploading… ${progress}%` : 'Publish Ed'}
                 </button>
                 <p className="text-[11.5px] text-gray-400 mt-2 text-center">
-                    Nothing publishes without moderation. You'll see the status in your studio.
+                    Your Ed goes live immediately. You can see it any time in your studio.
                 </p>
             </div>
         </div>

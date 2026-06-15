@@ -84,10 +84,10 @@ export default function ReelsOverlay({ mode = 'feed', reels: initial = [], start
         <div
             className="fixed inset-0 z-50 bg-black/90 backdrop-blur-sm flex items-center justify-center"
             onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
-            role="dialog" aria-label="Reels player"
+            role="dialog" aria-label="Eds player"
         >
             <div className="relative" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
-                <button onClick={() => step(-1)} aria-label="Previous reel"
+                <button onClick={() => step(-1)} aria-label="Previous Ed"
                     className="absolute -top-14 left-1/2 -translate-x-1/2 w-10 h-10 rounded-full bg-white/15 text-white
                                hover:bg-white/30 hidden sm:flex items-center justify-center">
                     <ChevronUp className="w-5 h-5" />
@@ -100,10 +100,10 @@ export default function ReelsOverlay({ mode = 'feed', reels: initial = [], start
                     <div className="w-[min(400px,92vw)] h-[min(720px,90vh)] bg-gray-900 rounded-3xl flex flex-col
                                     items-center justify-center text-gray-400 gap-3">
                         {loading ? <Loader2 className="w-7 h-7 animate-spin" />
-                                 : <><Film className="w-9 h-9" /><p className="text-sm">No reels yet — be the first to upload one.</p></>}
+                                 : <><Film className="w-9 h-9" /><p className="text-sm">No Eds yet — be the first to upload one.</p></>}
                     </div>
                 )}
-                <button onClick={() => step(1)} aria-label="Next reel"
+                <button onClick={() => step(1)} aria-label="Next Ed"
                     className="absolute -bottom-14 left-1/2 -translate-x-1/2 w-10 h-10 rounded-full bg-white/15 text-white
                                hover:bg-white/30 hidden sm:flex items-center justify-center">
                     <ChevronDown className="w-5 h-5" />

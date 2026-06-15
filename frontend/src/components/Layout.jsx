@@ -4,6 +4,7 @@ import Navigation from './Navigation';
 import ErrorBoundary from './ErrorBoundary';
 import LogoLoader from './LogoLoader';
 import { ReelsPill } from '../reels/ReelsBrowser';
+import { useAuth } from '../context/AuthContext';
 
 // Chrome widgets that aren't part of first paint. Lazy-loading them keeps their
 // JS (MiraWidget is ~1.3k lines and pulls framer-motion) out of the initial
@@ -32,6 +33,7 @@ export default function Layout() {
     const location = useLocation();
     const section = location.pathname.split('/')[1] || 'home';
     const deferredReady = useDeferredMount();
+    const { user } = useAuth();
 
     return (
         <div className="h-screen flex flex-col font-sans transition-colors duration-200 overflow-hidden bg-background text-foreground">
@@ -46,7 +48,7 @@ export default function Layout() {
                     </Suspense>
                 </ErrorBoundary>
             </main>
-            <ReelsPill />
+            {user && <ReelsPill />}
             {/* fallback={null}: these are passive overlays, so there's nothing to
                 show while their chunks load — no loader flash. */}
             {deferredReady && (

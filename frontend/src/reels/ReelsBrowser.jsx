@@ -30,7 +30,7 @@ const SECTIONS = {
         name: 'Data Structures & Algorithms',
         short: 'DSA',
         desc: 'Problem-anchored explainers — watch, then solve the exact problem.',
-        route: 'Reels here route to the problem bank',
+        route: 'Eds here route to the problem bank',
         Icon: Code2,
         text: 'text-indigo-700', soft: 'bg-indigo-50', ring: 'hover:border-indigo-500',
         dot: 'bg-indigo-500',
@@ -39,7 +39,7 @@ const SECTIONS = {
         name: 'AI & Data Science',
         short: 'AI & DS',
         desc: 'ML, deep learning, GenAI, agents, RAG and more — with MIRA one tap away.',
-        route: 'Reels here open MIRA — never redirect',
+        route: 'Eds here open MIRA — never redirect',
         Icon: Network,
         text: 'text-purple-700', soft: 'bg-purple-50', ring: 'hover:border-purple-500',
         dot: 'bg-purple-500',
@@ -48,7 +48,7 @@ const SECTIONS = {
         name: 'Software Engineering',
         short: 'Engineering',
         desc: 'Web, cloud, security, DevOps — everything you build and ship with.',
-        route: 'Reels here open MIRA — never redirect',
+        route: 'Eds here open MIRA — never redirect',
         Icon: Layers,
         text: 'text-sky-700', soft: 'bg-sky-50', ring: 'hover:border-sky-500',
         dot: 'bg-sky-500',
@@ -66,12 +66,12 @@ export function ReelsPill() {
                 className="fixed right-5 bottom-24 z-40 flex items-center gap-2 bg-gray-900 text-white
                            rounded-full pl-3 pr-4 py-2.5 text-sm font-semibold shadow-xl
                            hover:scale-105 transition-transform"
-                aria-label="Open reels"
+                aria-label="Open Eds"
             >
                 <span className="w-6 h-6 rounded-full bg-emerald-400 text-emerald-950 flex items-center justify-center">
                     <Play className="w-3.5 h-3.5 ml-0.5" />
                 </span>
-                Reels
+                Eds
             </button>
             {open && <ReelsBrowser onClose={() => setOpen(false)} />}
         </>
@@ -147,7 +147,7 @@ export default function ReelsBrowser({ onClose }) {
                 className="fixed right-5 bottom-24 z-50 w-[404px] max-w-[calc(100vw-28px)] h-[660px]
                            max-h-[calc(100vh-130px)] bg-white dark:bg-zinc-900 rounded-3xl shadow-2xl
                            border border-gray-100 dark:border-zinc-800 flex flex-col overflow-hidden"
-                role="dialog" aria-label="Reels"
+                role="dialog" aria-label="Eds"
             >
                 {/* header */}
                 <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-100 dark:border-zinc-800">
@@ -159,8 +159,8 @@ export default function ReelsBrowser({ onClose }) {
                         </button>
                     ) : <span className="w-8" />}
                     <h2 className="flex-1 font-bold text-[15px] text-gray-900 dark:text-white">
-                        {view === 'sections' ? 'Reels'
-                            : view === 'studio' ? 'Your reels'
+                        {view === 'sections' ? 'Eds'
+                            : view === 'studio' ? 'Your Eds'
                                 : <>{S.short} <span className="text-[11px] font-semibold text-gray-400">· pick a topic</span></>}
                     </h2>
                     <button onClick={onClose} aria-label="Close"
@@ -203,7 +203,7 @@ export default function ReelsBrowser({ onClose }) {
                                             <span className="block font-bold text-[14.5px] text-gray-900 dark:text-white">{s.name}</span>
                                             <span className="block text-[11.5px] text-gray-500 mt-0.5 leading-relaxed">{s.desc}</span>
                                             <span className={`inline-block text-[11px] font-semibold mt-1.5 ${s.text}`}>
-                                                {list.length} topics · {total === 0 ? 'be the first to upload' : `${total} reels`}
+                                                {list.length} topics · {total === 0 ? 'be the first to upload' : `${total} Eds`}
                                             </span>
                                         </span>
                                         <ChevronRight className="absolute right-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-300" />
@@ -241,16 +241,16 @@ export default function ReelsBrowser({ onClose }) {
                                 <div className="mb-3 rounded-xl border border-indigo-100 dark:border-indigo-900
                                                 bg-indigo-50 dark:bg-indigo-950/40 px-3.5 py-3">
                                     <p className="text-[12.5px] font-semibold text-indigo-800 dark:text-indigo-300">
-                                        No reels in {emptyTopic.name} yet.
+                                        No Eds in {emptyTopic.name} yet.
                                     </p>
                                     <p className="text-[11.5px] text-indigo-700/80 dark:text-indigo-300/70 mt-0.5">
-                                        Explain one concept in 60 seconds — the first reel in a topic owns it.
+                                        Explain one concept in 60 seconds — the first Ed in a topic owns it.
                                     </p>
                                     <button
                                         onClick={() => setUploadFor(emptyTopic)}
                                         className="mt-2 inline-flex items-center gap-1.5 bg-indigo-600 text-white text-[11.5px]
                                                    font-semibold rounded-full px-3.5 py-1.5 hover:bg-indigo-700">
-                                        <Upload className="w-3 h-3" /> Upload the first reel
+                                        <Upload className="w-3 h-3" /> Upload the first Ed
                                     </button>
                                 </div>
                             )}
@@ -271,7 +271,7 @@ export default function ReelsBrowser({ onClose }) {
                                                 {loadingTopic === t.slug
                                                     ? <Loader2 className="w-3 h-3 animate-spin" />
                                                     : <span className={`w-1.5 h-1.5 rounded-full ${zero ? 'bg-gray-300 dark:bg-zinc-600' : S.dot}`} />}
-                                                {zero ? 'No reels yet' : `${t.reel_count} reel${t.reel_count > 1 ? 's' : ''}`}
+                                                {zero ? 'No Eds yet' : `${t.reel_count} Ed${t.reel_count > 1 ? 's' : ''}`}
                                             </span>
                                         </button>
                                     );
@@ -291,20 +291,20 @@ export default function ReelsBrowser({ onClose }) {
                         onClick={() => openUpload()}
                         className="flex-1 inline-flex items-center justify-center gap-2 bg-indigo-600 text-white
                                    text-[13px] font-semibold rounded-xl px-3.5 py-2.5 hover:bg-indigo-700 transition-colors">
-                        <Upload className="w-4 h-4" /> Upload a reel
+                        <Upload className="w-4 h-4" /> Upload an Ed
                     </button>
                     <button
                         onClick={() => { if (!isAuthed()) { setAuthHint(true); return; } setView('studio'); }}
                         className="inline-flex items-center justify-center gap-1.5 text-[13px] font-semibold rounded-xl
                                    px-3.5 py-2.5 border border-gray-200 dark:border-zinc-700 text-gray-700 dark:text-gray-200
                                    hover:bg-gray-50 dark:hover:bg-zinc-800 transition-colors">
-                        <Film className="w-4 h-4" /> Your reels
+                        <Film className="w-4 h-4" /> Your Eds
                     </button>
                 </div>
                 {authHint && (
                     <div className="px-3 pb-2.5 -mt-1">
                         <p className="text-[11.5px] text-amber-600 dark:text-amber-400 text-center">
-                            Please sign in to upload or manage your reels.
+                            Please sign in to upload or manage your Eds.
                         </p>
                     </div>
                 )}

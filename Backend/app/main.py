@@ -55,6 +55,19 @@ from app.unlock.router import router as unlock_router
 from app.entitlements.routers.entitlement import router as entitlements_router
 from app.entitlements.routers.admin import router as entitlements_admin_router
 from app.mira.routers.mira import router as mira_router
+from app.mira.routers.documents import router as mira_documents_router
+from app.billing.router import router as billing_router
+from app.reels.routers.reels import (
+    public_router as reels_public_router,
+    reels_router,
+    admin_router as reels_admin_router,
+)
+from app.reels.routers.comments import (
+    comments_public_router,
+    comments_router,
+    comments_admin_router,
+)
+from app.reels.routers.social import social_router
 
 # Import the registry so all models are loaded into Base.metadata.
 from app import models_registry  # noqa: F401

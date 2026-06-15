@@ -25,12 +25,12 @@ export default function PublicReelPage() {
     }, [slug]);
 
     useEffect(() => {
-        if (reel) document.title = `${reel.title} — Marevlo Reels`;
+        if (reel) document.title = `${reel.title} — Marevlo Eds`;
     }, [reel]);
 
     if (err) return (
         <div className="max-w-xl mx-auto py-24 text-center text-gray-500">
-            <p className="text-lg font-semibold text-gray-800 dark:text-gray-200">This reel isn't available</p>
+            <p className="text-lg font-semibold text-gray-800 dark:text-gray-200">This Ed isn't available</p>
             <p className="text-sm mt-1">It may have been removed or is still in review.</p>
             <a href="/" className="inline-block mt-4 text-indigo-600 font-semibold text-sm">Explore Marevlo →</a>
         </div>
@@ -56,7 +56,7 @@ export default function PublicReelPage() {
             <div className="relative aspect-[9/16] max-h-[600px] rounded-2xl overflow-hidden bg-gray-950 shadow-xl">
                 {reel.thumbnailUrl && <img src={reel.thumbnailUrl} alt="" className="absolute inset-0 w-full h-full object-cover opacity-80" />}
                 <div className="absolute inset-0 bg-gradient-to-t from-black/70 to-black/10" />
-                <button onClick={() => setPlaying(true)} aria-label="Play reel"
+                <button onClick={() => setPlaying(true)} aria-label="Play Ed"
                     className="absolute inset-0 m-auto w-16 h-16 rounded-full bg-white/90 text-gray-900
                                flex items-center justify-center hover:scale-105 transition-transform">
                     <Play className="w-7 h-7 ml-1" />

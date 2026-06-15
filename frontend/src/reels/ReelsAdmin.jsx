@@ -50,7 +50,7 @@ export function ReelsModerationDashboard() {
     return (
         <div className="max-w-5xl mx-auto px-4 py-8">
             <h1 className="text-2xl font-bold flex items-center gap-2 text-gray-900 dark:text-white">
-                <ShieldAlert className="w-6 h-6 text-indigo-500" /> Reels moderation
+                <ShieldAlert className="w-6 h-6 text-indigo-500" /> Eds moderation
             </h1>
             <p className="text-sm text-gray-500 mt-1">Review before publish. Every action is logged to the audit trail.</p>
 
@@ -129,12 +129,12 @@ export function ReelsModerationDashboard() {
                             <div className="flex-1 min-w-0">
                                 <p className="font-semibold text-sm text-gray-900 dark:text-gray-100">
                                     {rep.reason === 'copyright' ? '© Copyright complaint' : `⚑ ${rep.reason.replace(/_/g, ' ')}`}
-                                    <span className="text-gray-400 font-normal"> · reel #{rep.reelId}</span>
+                                    <span className="text-gray-400 font-normal"> · Ed #{rep.reelId}</span>
                                 </p>
                                 {rep.description && <p className="text-xs text-gray-500 mt-1">{rep.description}</p>}
                                 {rep.reason === 'copyright' && (
                                     <p className="text-[11px] text-amber-600 mt-1.5 font-medium">
-                                        Reel auto-hidden on filing. Awaiting creator response.
+                                        Ed auto-hidden on filing. Awaiting creator response.
                                     </p>
                                 )}
                             </div>
@@ -156,7 +156,7 @@ export function ReelsModerationDashboard() {
                         <span className={a.action === 'approve' || a.action === 'restore' ? 'text-emerald-400' : 'text-rose-300'}>
                             {a.reviewerId ? `mod#${a.reviewerId}` : 'system'} · {a.action}
                         </span>{' '}
-                        — reel #{a.reelId}{a.reason ? ` · ${a.reason}` : ''}
+                        — Ed #{a.reelId}{a.reason ? ` · ${a.reason}` : ''}
                     </div>
                 ))}
             </div>
@@ -207,12 +207,12 @@ export function CreatorStudio({ onUploadClick }) {
         <div className="max-w-4xl mx-auto px-4 py-8">
             <div className="flex items-center justify-between">
                 <h1 className="text-2xl font-bold flex items-center gap-2 text-gray-900 dark:text-white">
-                    <Film className="w-6 h-6 text-indigo-500" /> Your reels
+                    <Film className="w-6 h-6 text-indigo-500" /> Your Eds
                 </h1>
                 {onUploadClick && (
                     <button onClick={onUploadClick}
                         className="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700">
-                        Upload a reel
+                        Upload an Ed
                     </button>
                 )}
             </div>
@@ -221,7 +221,7 @@ export function CreatorStudio({ onUploadClick }) {
                     <div className="text-center py-16 text-gray-400">
                         <Film className="w-9 h-9 mx-auto mb-2" />
                         <p className="font-semibold text-gray-700 dark:text-gray-200">Nothing here yet</p>
-                        <p className="text-sm mt-1">Explain one concept in 60 seconds — that's a reel.</p>
+                        <p className="text-sm mt-1">Explain one concept in 60 seconds — that's an Ed.</p>
                     </div>
                 )}
                 {reels.map((r) => (
