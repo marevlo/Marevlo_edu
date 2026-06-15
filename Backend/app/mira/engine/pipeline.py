@@ -38,8 +38,13 @@ def match_concept(q: str, kb=None):
 
 
 def cheap_embed(text: str) -> list[float]:
-    """Question embedding for repeat-detection. Uses the same embedder as the KB."""
-    return get_kb().embedder.embed(text)
+    """Question embedding for repeat-detection. Uses the same embedder as the KB.
+    Issue #6: never raises — repeat-detection/topic-grouping degrade gracefully
+    (cosine() returns 0.0 for empty vectors) instead of 500ing the chat turn."""
+    try:
+        return get_kb().embedder.embed(text)
+    except Exception:
+        return []
 
 
 # ---------- conversation context (multi-turn follow-ups) ----------
@@ -108,6 +113,14 @@ def _page_context_from_ctx(ctx) -> str:
     return pc.strip()[:8000] if isinstance(pc, str) and pc.strip() else ""
 
 
+def _doc_context_from_ctx(ctx) -> str:
+    """Retrieved excerpts from the learner's uploaded document or course
+    lesson (services/document_service). Bounded at the grounding_block
+    renderer; re-bounded here defensively."""
+    dc = getattr(ctx, "doc_context", None)
+    return dc.strip()[:9500] if isinstance(dc, str) and dc.strip() else ""
+
+
 def _page_title(page_ctx: str) -> str:
     """Pull the problem title out of the page context (its first line is
     'Problem: <title>'), used to anchor concept matching for vague asks."""
@@ -150,19 +163,64 @@ class TurnContext:
     are read-only inputs the GPT-slide uses to taper model cost with volume."""
     turns_used_this_period: int = 0
     monthly_turn_budget: int = 500
+    # Issue #10: the classification the service already computed (for the
+    # build-credit gate). When present, the pipeline REUSES it as the base
+    # instead of calling the classifier again — one classify per request, and
+    # the credit decision and the answer shape can never disagree. The pipeline
+    # still does the follow-up-aware refinement on top using the cheap provider.
+    precomputed_cls: object | None = None
 
 
 @dataclass
 class ChatPipeline:
     router: Router
     cache: ResponseCache = field(default_factory=ResponseCache)
-    rng: random.Random = field(default_factory=lambda: random.Random(7))
+    # Issue #18: NO shared seeded RNG. A process-wide random.Random(7) made
+    # every user's bandit exploration identical and correlated, and was mutated
+    # from multiple request threads without locking. Each handle() call now
+    # uses its own RNG (seeded per-user+turn for reproducibility in tests).
+
+    def _plan_scaffold(self, full_system: str, user_msg: str):
+        """gpt_scaffold lane, call 1: GPT designs the walkthrough skeleton
+        (titles + load-bearing insights + checkpoint, ~700 tokens). Returns
+        (system_for_writer, writer_lane, provider_label, (in,out,cost)) on
+        success, or (full_system, "minimax", None, None) on ANY failure so the
+        turn degrades to today's behavior instead of dying."""
+        from .intent import _extract_json_obj
+        from . import contracts as C
+        import json as _json
+        import logging as _logging
+        _plog = _logging.getLogger("mira.pipeline")
+        try:
+            comp = self.router.complete("gpt", C.SCAFFOLD_SYSTEM, user_msg,
+                                        max_tokens=700)
+            if not comp.ok or not comp.text:
+                return full_system, "minimax", None, None
+            data = _extract_json_obj(comp.text)
+            if not isinstance(data, dict) or not data.get("steps"):
+                return full_system, "minimax", None, None
+            scaffold_json = _json.dumps(data, ensure_ascii=False)
+            usage = comp.usage
+            extra = ((usage.in_tokens, usage.out_tokens, usage.cost_inr())
+                     if usage else (0, 0, 0.0))
+            return (C.expansion_contract(scaffold_json, full_system),
+                    "minimax", "gpt+m3", extra)
+        except Exception:
+            _plog.exception("scaffold planning failed — degrading to plain minimax")
+            return full_system, "minimax", None, None
 
     def handle(self, state: UserState, question: str,
                ctx: "TurnContext | None" = None) -> PipelineResult:
         import time
         t0 = time.time()
         ctx = ctx or TurnContext(monthly_turn_budget=500)
+        # Issue #18: per-request RNG, not a shared process-global. Seeded from
+        # user + turn count + question so exploration is independent per user
+        # and stable for a given (user, turn) — testable without being globally
+        # correlated or thread-shared.
+        _rng = random.Random(
+            hash((getattr(state, "user_id", ""), len(state.recent_questions), question))
+            & 0xFFFFFFFF)
         result_in_tokens = 0
         result_out_tokens = 0
 
@@ -201,6 +259,7 @@ class ChatPipeline:
 
         # current page / problem context (IDE statement + the user's live code)
         page_ctx = _page_context_from_ctx(ctx)
+        doc_ctx = _doc_context_from_ctx(ctx)
         page_title = _page_title(page_ctx)
         on_problem = bool(page_ctx) or bool(getattr(ctx, "problem_id", None))
 
@@ -225,7 +284,12 @@ class ChatPipeline:
         # 2b. INTENT CLASSIFICATION — decides the answer SHAPE. The ACTION
         # (CODE_PLEASE / LEARN / ...) comes from the current message; DOMAIN can
         # be inherited from the conversation so a continuation isn't redirected.
-        cls = classify_intent(question, provider=clf_provider)
+        # Issue #10: reuse the classification the service already computed for
+        # the build-credit gate (ctx.precomputed_cls) instead of classifying a
+        # second time — one classify per request; credit + shape can't disagree.
+        cls = getattr(ctx, "precomputed_cls", None)
+        if cls is None:
+            cls = classify_intent(question, provider=clf_provider)
         if is_followup and (cls.intent == Intent.OFF_TOPIC or not cls.in_core_domain):
             cls_ctx = classify_intent(ctx_query, provider=clf_provider)
             if cls_ctx.in_core_domain:
@@ -294,7 +358,7 @@ class ChatPipeline:
                   Pedagogy.TEACH: "answer"}[decision.pedagogy]
 
         # pick style via bandit
-        style = state.bandit.select(self.rng)
+        style = state.bandit.select(_rng)
 
         # 4. cache check — SAFE caching only (strict review #8):
         #   - never cache BUILD / DEBUG / CODE_PLEASE (user/project-specific)
@@ -302,7 +366,10 @@ class ChatPipeline:
         #   - key includes intent + a normalized question hash so two different
         #     questions sharing concept/depth/style can't collide
         import hashlib as _hl
-        _cacheable = cls.intent.value in ("LEARN", "PRACTICE") and not page_ctx
+        # doc-grounded answers are personal to the retrieved excerpts — never
+        # serve them from (or write them to) the shared response cache.
+        _cacheable = (cls.intent.value in ("LEARN", "PRACTICE")
+                      and not page_ctx and not doc_ctx)
         _qhash = _hl.sha256(question.lower().strip().encode()).hexdigest()[:16]
         cache_key_depth = f"{cls.intent.value}:{depth.value}:{state.depth_mode.value}:{_qhash}"
         cached = self.cache.get(concept, cache_key_depth, style) if _cacheable else None
@@ -316,8 +383,14 @@ class ChatPipeline:
             monthly_budget = ctx.monthly_turn_budget
             hard = (level == "mastered" or depth == Depth.CREATIVE
                     or decision.pedagogy == Pedagogy.CHALLENGE)
-            lane = self.router.pick_lane(state.tier, action, hard=hard,
-                                         turns_used=turns_used, monthly_budget=monthly_budget)
+            lane = self.router.pick_lane(
+                state.tier, action, hard=hard,
+                turns_used=turns_used, monthly_budget=monthly_budget,
+                # length axis: only LEARN walkthroughs use the plan/write split —
+                # they're the long-output shape where GPT-as-typewriter bleeds.
+                long_output=(cls.intent == Intent.LEARN),
+                escalate=bool(getattr(ctx, "escalate", False)),
+                margin_blocked=bool(getattr(ctx, "margin_blocked", False)))
             # Per-intent contract drives the answer SHAPE (walkthrough/code/build/etc.)
             system = C.build_contract(cls, level, style, state.memory.as_prompt())
             base_user = question if action != "prereq_walk" else (
@@ -332,8 +405,15 @@ class ChatPipeline:
                 "The learner is working on this problem in the IDE right now — treat it "
                 "as the primary context: refer to THIS problem and debug THEIR code.\n"
                 f"{page_ctx}" if page_ctx else "")
+            doc_block = (
+                "The learner uploaded the material below and is asking about IT. "
+                "Ground your answer in these excerpts: quote/refer to what the "
+                "material actually says, cite pages like (p. 3) when you use them, "
+                "and if the excerpts don't contain the answer, say so plainly "
+                "instead of inventing content and attributing it to the document.\n"
+                f"{doc_ctx}" if doc_ctx else "")
             convo = _convo_prompt(history)
-            preamble = "\n\n".join(p for p in (page_block, convo) if p)
+            preamble = "\n\n".join(p for p in (doc_block, page_block, convo) if p)
             if preamble:
                 user_msg = (f"{preamble}\n\n---\n{base_user}\n\n"
                             "(Resolve references like 'it', 'this', or 'the code' from the "
@@ -345,6 +425,17 @@ class ChatPipeline:
             # intent-aware output budget — walkthroughs/builds are long structured
             # JSON; the default 1200 truncated them and forced a prose fallback.
             max_out = C.max_tokens_for(cls.intent)
+            scaffold_label = None
+            extra_in = extra_out = 0
+            extra_cost = 0.0
+            if lane == "gpt_scaffold":
+                # GPT plans (short, reasoning-dense), MiniMax writes (long, cheap).
+                # Any failure in the planning call degrades to a plain MiniMax
+                # turn — the scaffold path is never worse than no scaffold.
+                system, lane, scaffold_label, extra = self._plan_scaffold(
+                    system, user_msg)
+                if extra is not None:
+                    extra_in, extra_out, extra_cost = extra
             comp = self.router.complete(lane, system, user_msg, max_tokens=max_out)
             answer_fmt = "blocks"
             if comp.ok:
@@ -362,11 +453,22 @@ class ChatPipeline:
                         b2, f2, ok2 = C.parse_structured_response(comp2.text, cls.intent)
                         if ok2:
                             blocks, answer_fmt, parse_ok, comp = b2, f2, True, comp2
-                served = "model"
+                # Issue #7: a double-parse failure means the user receives a
+                # truncated prose dump, not a real answer. Mark it honestly so
+                # the service layer charges 0 tokens and refunds any reserved
+                # build credit. Previously this stayed served="model" and the
+                # refund branch checking "prose_fallback" was dead code.
+                served = "model" if parse_ok else "prose_fallback"
                 provider, cost = comp.provider, comp.usage.cost_inr() if comp.usage else 0.0
                 if comp.usage:
                     result_in_tokens = comp.usage.in_tokens
                     result_out_tokens = comp.usage.out_tokens
+                if scaffold_label and parse_ok:
+                    # account for BOTH calls of the plan/write split, honestly
+                    provider = scaffold_label
+                    cost += extra_cost
+                    result_in_tokens += extra_in
+                    result_out_tokens += extra_out
                 # promote ONLY a clean parse — never cache a prose fallback, or the
                 # broken answer would be replayed from cache for every repeat.
                 if _cacheable and parse_ok:
@@ -377,8 +479,18 @@ class ChatPipeline:
                 if golden:
                     blocks, provider, served, cost = golden, "golden", "golden", 0.0
                 else:
-                    blocks = [{"type": "callout", "variant": "warning", "title": "One moment",
-                               "content": "I'm thinking slower than usual — your question is saved."}]
+                    # Issue #8: do NOT claim the question is saved — no queue
+                    # exists. Be truthful, and don't charge for this (served=
+                    # "queued" reconciles to 0 tokens in the service layer).
+                    # golden-backlog: these turns land in mira_usage_events as
+                    # served_from="queued"; scripts/golden_backlog.py mines them
+                    # (grouped by concept x intent) into the authoring list for
+                    # the ~top-30 golden answers this floor should serve.
+                    blocks = [{"type": "callout", "variant": "warning",
+                               "title": "I couldn't answer that right now",
+                               "content": ("My answer engine didn't respond in time, and "
+                                           "you have NOT been charged for this question. "
+                                           "Please try again in a moment, or rephrase it.")}]
                     provider, served, cost = "none", "queued", 0.0
             lat = comp.latency_ms if comp.ok else int((time.time() - t0) * 1000)
 

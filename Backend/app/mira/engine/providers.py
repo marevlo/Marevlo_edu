@@ -21,7 +21,11 @@ from typing import Any
 # ---- per-provider token pricing (USD per 1M tokens), edit as prices change ----
 PRICING = {
     "qwen":    {"in": 0.05, "out": 0.20},     # engine-room (self-host/cheap proxy est.)
-    "minimax": {"in": 0.279, "out": 1.20},    # workhorse (M2.7, verified)
+    # workhorse — MiniMax M3, verified Jun 2026: $0.30/$1.20 is a 50% LAUNCH
+    # PROMO; list price is $0.60/$2.40. When the promo ends, set
+    # MIRA_PRICE_MINIMAX_IN=0.60 MIRA_PRICE_MINIMAX_OUT=2.40 (env override
+    # below) or every margin number silently reads half the real cost.
+    "minimax": {"in": 0.30, "out": 1.20},
     "gpt":     {"in": 5.00, "out": 30.00},    # specialist (GPT-5.5, verified)
     "mock":    {"in": 0.0,  "out": 0.0},
     # sonnet/opus included so you can A/B against them as the user asked:
@@ -29,6 +33,17 @@ PRICING = {
     "opus":    {"in": 15.00, "out": 75.00},
 }
 USD_INR = 86.0
+
+# Prices drift (promos end, models swap). Allow ops to correct them without a
+# deploy: MIRA_PRICE_<LANE>_IN / _OUT in $ per million tokens.
+for _lane in list(PRICING):
+    for _dirn in ("in", "out"):
+        _v = os.environ.get(f"MIRA_PRICE_{_lane.upper()}_{_dirn.upper()}")
+        if _v:
+            try:
+                PRICING[_lane][_dirn] = float(_v)
+            except ValueError:
+                pass
 
 
 @dataclass
@@ -75,6 +90,42 @@ class MockProvider(Provider):
         seed = int(hashlib.md5(user.encode()).hexdigest(), 16)
         # Emit a small, schema-valid block array that varies a little by input.
         topic = user.strip().rstrip("?").split()[-1] if user.strip() else "concept"
+        if "walkthrough" in system:
+            wt = {"format": "walkthrough", "steps": [
+                {"title": f"The {topic} problem",
+                 "explanation": f"Why {topic} matters and what breaks without it.",
+                 "takeaway": f"{topic} solves a real problem.",
+                 "equations": [],
+                 "visual": {"template": "generic_box", "labels": {"cap": f"the {topic} problem"}}},
+                {"title": "The key insight",
+                 "explanation": f"The one idea that makes {topic} click.",
+                 "takeaway": "This is the insight.",
+                 "equations": [],
+                 "visual": {"template": "process_3stage",
+                            "labels": {"cap": "how it flows",
+                                       "stages": ["input", topic, "result"]}}},
+                {"title": "Where you meet it",
+                 "explanation": f"A real place {topic} shows up in practice.",
+                 "takeaway": "You already rely on it.",
+                 "equations": [],
+                 "visual": {"template": "generic_box", "labels": {"cap": "in the wild"}}},
+            ],
+                "checkpoint": {"after_step": 2,
+                               "question": f"What is the key idea behind {topic}?",
+                               "options": ["The insight from step two",
+                                           "A common misconception",
+                                           "Another plausible misconception"],
+                               "correct": 0,
+                               "explain_right": "That is exactly the insight step two taught.",
+                               "repair_hint": "Think of it as a different picture: same idea, new angle.",
+                               "repair_prompt": f"Re-explain the key idea of {topic} with a simple analogy"},
+                "follow_ups": [f"go deeper on {topic}",
+                               f"compare {topic} with an alternative",
+                               f"apply {topic} to a real problem"]}
+            text = json.dumps(wt)
+            lat = int((time.time() - t0) * 1000) + (seed % 40)
+            u = Usage(self._approx_tokens(system, user), self._approx_tokens(text), "mock")
+            return Completion(text=text, usage=u, latency_ms=lat, provider="mock")
         blocks = [
             {"type": "callout", "variant": "idea",
              "title": "Core idea",
@@ -122,10 +173,14 @@ class _HTTPProvider(Provider):
     def complete(self, system: str, user: str, max_tokens: int = 1200) -> Completion:
         import urllib.request
         t0 = time.time()
+        # Issue #5: a 60s timeout × 3-provider failover × retry could hold a
+        # threadpool worker for minutes and stall every sync endpoint in the
+        # app. Keep each provider call short; the router holds the total budget.
+        timeout_s = float(os.environ.get("MIRA_PROVIDER_TIMEOUT_S", "18"))
         body = json.dumps(self._payload(system, user, max_tokens)).encode()
         req = urllib.request.Request(self.endpoint, data=body, headers=self._headers(), method="POST")
         try:
-            with urllib.request.urlopen(req, timeout=60) as resp:
+            with urllib.request.urlopen(req, timeout=timeout_s) as resp:
                 data = json.loads(resp.read())
             text = self._extract(data)
             usage = data.get("usage", {})
@@ -152,7 +207,7 @@ class GPTProvider(_HTTPProvider):
 class MiniMaxProvider(_HTTPProvider):
     name = "minimax"
     endpoint = os.environ.get("MINIMAX_ENDPOINT", "https://api.minimax.io/v1/chat/completions")
-    model_id = os.environ.get("MINIMAX_MODEL", "minimax-m2.7")
+    model_id = os.environ.get("MINIMAX_MODEL", "minimax-m3")
     env_key = "MINIMAX_API_KEY"
 
 
@@ -183,7 +238,8 @@ class _AnthropicProvider(Provider):
         req = urllib.request.Request("https://api.anthropic.com/v1/messages",
                                      data=body, headers=headers, method="POST")
         try:
-            with urllib.request.urlopen(req, timeout=60) as resp:
+            with urllib.request.urlopen(
+                    req, timeout=float(os.environ.get("MIRA_PROVIDER_TIMEOUT_S", "18"))) as resp:
                 data = json.loads(resp.read())
             text = "".join(b.get("text", "") for b in data.get("content", []))
             u = data.get("usage", {})

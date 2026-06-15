@@ -39,6 +39,14 @@ class Classification:
     concept_hint: str | None = None
     language: str | None = None
     is_their_project: bool = False
+    # wants_code: the user expects runnable code in the answer (CODE/BUILD/DEBUG).
+    # wants_explanation: they ALSO asked to understand it ("explain X and code it")
+    #   -> the code answer teaches through the code instead of dumping it.
+    wants_code: bool = False
+    wants_explanation: bool = False
+    # why this classification was produced — "rules" | "llm" |
+    # "classifier_failed_or_uncertain" (the fail-open path). Audit/debug only.
+    reason: str | None = None
 
 
 # ---- vocabulary the rules pass keys on ----
@@ -51,6 +59,13 @@ _PRACTICE_CUES = ("give me problems", "practice", "quiz me", "exercises",
                   "practice problems", "more problems", "similar problems")
 _CODE_PLEASE_CUES = ("code", "write a function", "implement", "write code",
                      "give me the code", "write me", "snippet", "one-liner")
+# STRONG, unambiguous "produce code" requests. Unlike the bare word "code"
+# (which appears in conceptual asks like "what is clean code"), these always
+# mean: write me runnable code — even alongside an "explain" cue.
+_STRONG_CODE_CUES = ("write a function", "write code", "write the code",
+                     "write me", "give me the code", "give me code", "code for",
+                     "the code for", "implement", "snippet", "one-liner",
+                     "code it", "show me the code", "show me code")
 _BUILD_CUES = ("my project", "my app", "office project", "build me", "build a",
                "build an", "help me build", "wire", "integrate", "for my",
                "in my", "production", "deploy", "set up a", "create an app",
@@ -189,15 +204,22 @@ def classify_rules(message: str) -> Classification | None:
         return Classification(Intent.PRACTICE, technical_core=True,
                               in_core_domain=technical, confidence="high")
 
-    # 5. CODE_PLEASE — "code X for me" but NOT "explain"
-    if _has_any(t, _CODE_PLEASE_CUES) and not _has_any(t, _LEARN_CUES):
+    # 5. CODE_PLEASE — an explicit request to PRODUCE code. A mixed ask
+    #    ("explain X AND write the code") still routes here because code is the
+    #    concrete deliverable, but flags wants_explanation so the answer teaches
+    #    through the code instead of dumping it. A bare "code" mention WITHOUT a
+    #    learn cue also lands here; "what is clean code" (learn cue + only the
+    #    weak "code" mention, no strong request) correctly stays LEARN.
+    has_learn = _has_any(t, _LEARN_CUES)
+    if _has_any(t, _STRONG_CODE_CUES) or (_has_any(t, _CODE_PLEASE_CUES) and not has_learn):
         return Classification(Intent.CODE_PLEASE, technical_core=True,
                               in_core_domain=technical, confidence="high",
                               language=_detect_language(t),
-                              concept_hint=_concept_hint(t))
+                              concept_hint=_concept_hint(t),
+                              wants_code=True, wants_explanation=has_learn)
 
     # 6. LEARN — explain/understand cues
-    if _has_any(t, _LEARN_CUES):
+    if has_learn:
         if technical:
             return Classification(Intent.LEARN, technical_core=True, in_core_domain=True,
                                   confidence="high", concept_hint=_concept_hint(t))
@@ -231,10 +253,17 @@ def is_explicit_off_topic(message: str) -> bool:
 
 
 def _detect_language(t: str) -> str | None:
-    for lang in ("python", "javascript", "typescript", "java", "golang", "go",
-                 "rust", "c++", "sql", "react"):
+    # order matters: check longer/overlapping names first ("javascript" before
+    # "java", "typescript" before its substring) and return on first hit.
+    for lang in ("javascript", "typescript", "python", "kotlin", "swift",
+                 "golang", "java", "rust", "c++", "csharp", "c#", "php",
+                 "ruby", "scala", "sql", "react", "go"):
         if lang in t:
-            return "go" if lang == "golang" else lang
+            if lang == "golang":
+                return "go"
+            if lang == "csharp":
+                return "c#"
+            return lang
     return None
 
 
@@ -267,41 +296,140 @@ in_core_domain = true only if the CORE is computer science, AI, or coding
 with no computing core = false). Judge on the core, not the surface topic."""
 
 
-def classify_llm(message: str, provider) -> Classification:
-    """Used only when rules are uncertain. `provider` is an engine Provider."""
+def _fail_open(message: str = "") -> Classification:
+    """The classifier could not produce a trustworthy verdict. FAIL OPEN to
+    LEARN/low — never OFF_TOPIC. Cost asymmetry: answering a question that
+    turns out off-topic costs a fraction of a rupee in tokens; refusing a
+    paying user's legitimate question ("what is a monad?") costs the user.
+    OFF_TOPIC requires POSITIVE evidence, not classifier failure."""
+    return Classification(
+        Intent.LEARN, technical_core=True, in_core_domain=True,
+        confidence="low", concept_hint=_concept_hint(message.lower()),
+        reason="classifier_failed_or_uncertain")
+
+
+def _extract_json_obj(raw: str) -> dict | None:
+    """Tolerant extraction of ONE JSON object from model output. Handles:
+    a bare object; a JSON array (takes the first object element); ```json
+    fences; prose before/after the JSON. Returns None if nothing usable."""
     import json
-    comp = provider.complete(LLM_CLASSIFIER_SYSTEM, message, max_tokens=200)
+    if not raw or not raw.strip():
+        return None
+    t = raw.strip()
+    # strip code fences anywhere (```json ... ``` or bare ```)
+    t = _re.sub(r"```(?:json)?", "", t, flags=_re.I).strip()
+    # 1) direct parse — object, or array containing an object
     try:
-        raw = comp.text.strip().replace("```json", "").replace("```", "").strip()
-        d = json.loads(raw)
+        d = json.loads(t)
+        if isinstance(d, dict):
+            return d
+        if isinstance(d, list):
+            for item in d:
+                if isinstance(item, dict):
+                    return item
+            return None
+    except Exception:
+        pass
+    # 2) first balanced {...} substring inside surrounding prose
+    start = t.find("{")
+    while start != -1:
+        depth = 0
+        for i in range(start, len(t)):
+            c = t[i]
+            if c == "{":
+                depth += 1
+            elif c == "}":
+                depth -= 1
+                if depth == 0:
+                    try:
+                        d = json.loads(t[start:i + 1])
+                        if isinstance(d, dict):
+                            return d
+                    except Exception:
+                        pass
+                    break
+        start = t.find("{", start + 1)
+    return None
+
+
+def classify_llm(message: str, provider) -> Classification:
+    """Used only when rules are uncertain. `provider` is an engine Provider.
+
+    Failure policy (issue #4): ANY failure — provider error, timeout, malformed
+    JSON, a JSON array instead of an object, missing keys, an unknown intent
+    value — fails OPEN to LEARN/low via _fail_open(). OFF_TOPIC is returned
+    only when the model POSITIVELY classifies the message as off-topic."""
+    try:
+        comp = provider.complete(LLM_CLASSIFIER_SYSTEM, message, max_tokens=200)
+        if not getattr(comp, "ok", True):
+            return _fail_open(message)
+        d = _extract_json_obj(getattr(comp, "text", "") or "")
+        if d is None:
+            return _fail_open(message)
+        raw_intent = str(d.get("intent", "LEARN")).strip().upper()
+        try:
+            intent = Intent(raw_intent)
+        except ValueError:
+            return _fail_open(message)
+        if intent == Intent.OFF_TOPIC:
+            # Positive off-topic verdict from the model. Belt-and-suspenders:
+            # if the text plainly contains core technical vocabulary, the model
+            # is wrong more often than the vocab is — fail open instead.
+            if _looks_technical(message):
+                return _fail_open(message)
+            return Classification(
+                Intent.OFF_TOPIC, technical_core=False, in_core_domain=False,
+                confidence="high", reason="llm")
         return Classification(
-            intent=Intent(d.get("intent", "LEARN")),
+            intent=intent,
             technical_core=bool(d.get("technical_core", True)),
             in_core_domain=bool(d.get("in_core_domain", True)),
             confidence="high",
             concept_hint=d.get("concept_hint"),
             language=d.get("language"),
             is_their_project=bool(d.get("is_their_project", False)),
+            wants_code=bool(d.get("wants_code",
+                                  intent in (Intent.CODE_PLEASE, Intent.BUILD, Intent.DEBUG))),
+            wants_explanation=bool(d.get("wants_explanation", False)),
+            reason="llm",
         )
     except Exception:
-        # if the LLM classifier fails to produce valid JSON, be conservative:
-        # treat as out-of-domain so we redirect rather than burn cost answering
-        # something that may be off-topic.
-        return Classification(Intent.OFF_TOPIC, False, False, "low")
+        return _fail_open(message)
 
 
 def classify(message: str, provider=None) -> Classification:
-    """Main entry: rules first (free), LLM only if rules are uncertain."""
+    """Main entry: rules first (free), LLM only if rules are uncertain.
+
+    Fallback policy (issue #4): when neither rules nor the LLM produce a
+    confident verdict, fail OPEN to LEARN/low. OFF_TOPIC requires positive
+    evidence — an explicit non-technical cue (is_explicit_off_topic) or a
+    confident rules/LLM verdict — never mere uncertainty."""
     r = classify_rules(message)
     if r is not None and r.confidence == "high":
         return r
     if provider is not None:
-        return classify_llm(message, provider)
-    # No provider and rules uncertain. If rules produced a guess, use it; else
-    # default to OFF_TOPIC/out-of-domain — safer to redirect than to burn provider
-    # cost answering something that may be off-topic. (With a real provider wired,
-    # the LLM classifier resolves these properly.)
-    if r is not None:
+        out = classify_llm(message, provider)
+        # A failed/uncertain LLM pass must not downgrade a usable rules guess:
+        # keep the rules intent (e.g. CODE_PLEASE w/ wants_code) but adopt the
+        # fail-open domain so the pipeline doesn't redirect it.
+        if (out.reason == "classifier_failed_or_uncertain" and r is not None
+                and r.intent != Intent.OFF_TOPIC):
+            from dataclasses import replace as _replace
+            return _replace(r, in_core_domain=True, technical_core=True,
+                            confidence="low",
+                            reason="classifier_failed_or_uncertain")
+        return out
+    # No provider and rules uncertain:
+    if r is not None and r.intent == Intent.OFF_TOPIC:
         return r
-    return Classification(Intent.OFF_TOPIC, technical_core=False,
-                          in_core_domain=False, confidence="low")
+    if is_explicit_off_topic(message):
+        return Classification(Intent.OFF_TOPIC, technical_core=False,
+                              in_core_domain=False, confidence="high",
+                              reason="rules")
+    if r is not None:
+        # a low-confidence non-off-topic rules guess: keep its intent but fail
+        # open on domain so an unknown term ("what is a monad?") gets ANSWERED.
+        from dataclasses import replace as _replace
+        return _replace(r, in_core_domain=True, technical_core=True,
+                        reason="classifier_failed_or_uncertain")
+    return _fail_open(message)

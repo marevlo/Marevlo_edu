@@ -44,7 +44,25 @@ INTENT: LEARN — produce a paced WALKTHROUGH as a JSON object:
            "takeaway":"1 sentence",
            "equations":[{"lab":"<=4 word label","f":"the formula in plain text/words, e.g. w·x + b — NEVER LaTeX, no dollar signs, no backslash commands"}],
            "visual":{"template":"...","labels":{...}}}],
+ "checkpoint":{"after_step":2,"question":"<=15 words","options":["a","b","c"],"correct":0,
+               "explain_right":"1 sentence","repair_hint":"1-2 sentences, a DIFFERENT representation",
+               "repair_prompt":"one line MIRA can answer to re-teach"},
  "follow_ups":["go deeper","compare","apply"]}
+
+CHECKPOINT — one 5-second comprehension check, REQUIRED on every walkthrough:
+- after_step: the 1-based index of the step that delivered the KEY INSIGHT —
+  the check appears right after it (never after the last step).
+- question: tests THE insight itself, answerable in 5 seconds from what was
+  just taught. Never trivia, never notation recall.
+- options: exactly 3, one correct ("correct" is the 0-based index). The two
+  distractors must be REAL misconceptions a learner at this level holds, not
+  obviously-wrong fillers.
+- explain_right: one sentence confirming WHY it's right (no "correct!" filler).
+- repair_hint: re-explain the insight through a DIFFERENT representation than
+  the step used (used an equation? give an analogy. used an analogy? give a
+  tiny numeric example). Never restate the same wording.
+- repair_prompt: a one-line learner question MIRA could be asked to re-teach
+  this insight from the new angle (it becomes a tap-to-ask button).
 
 STEP COUNT — DYNAMIC, never a fixed number:
 - Use as FEW or as MANY steps as the question genuinely needs: between {min_steps} and {max_steps}.
@@ -72,12 +90,16 @@ INTENT: PRACTICE — produce a laddered problem set as JSON:
 - Give a HINT, never the full solution. Note one trap where relevant.
 """,
     Intent.CODE_PLEASE: """
-INTENT: CODE_PLEASE — give working code FIRST as JSON:
-{"format":"code","language":"...","code":"...","why":"2-4 lines max",
-"offer_explain":true}
-- Lead with clean, runnable, idiomatic code in the requested language.
-- Handle edge cases in the code. Keep 'why' short — they asked for code, not a lecture.
-- Do NOT force a walkthrough.
+INTENT: CODE_PLEASE — give working code FIRST, then explain it. JSON:
+{"format":"code","language":"...","code":"...",
+ "explanation":{"summary":"1-2 lines: what the code does",
+                "how_it_works":["plain-text bullets: the key steps / important lines"],
+                "complexity":"time & space in plain words",
+                "edge_cases":["cases the code handles"],
+                "alternative":null|"one other approach + its tradeoff, or null"}}
+- Lead with clean, runnable, idiomatic code in the requested language; handle edge cases IN the code.
+- ALWAYS fill the explanation object — never code alone. {explain_depth}
+- Plain text only (see OUTPUT FORMAT): no LaTeX, no markdown fences inside any string.
 """,
     Intent.BUILD: """
 INTENT: BUILD — help on THEIR project. JSON:
@@ -114,10 +136,28 @@ def max_tokens_for(intent) -> int:
         Intent.LEARN: 5000,        # walkthrough: up to ~9 steps of structured JSON
         Intent.BUILD: 4000,        # plan + a working code piece
         Intent.PRACTICE: 2500,     # 3 problems w/ hints
-        Intent.CODE_PLEASE: 2500,  # code can be long
+        Intent.CODE_PLEASE: 3500,  # code + a structured explanation alongside it
         Intent.DEBUG: 1500,
         Intent.OFF_TOPIC: 400,
     }.get(intent, 1500)
+
+
+def code_explain_depth(level: str, wants_explanation: bool) -> str:
+    """How deep the CODE_PLEASE explanation goes — adaptive to the learner.
+    A fluent user who just wants code gets a tight explainer; a struggling
+    learner, or anyone who explicitly asked to understand it (wants_explanation),
+    gets a fuller teach-through. Either way the explanation is never omitted."""
+    if wants_explanation or level == "struggling":
+        return ("Teach it through: a clear summary, 4-6 how_it_works bullets that "
+                "walk the important lines, complexity, the edge cases, and ONE "
+                "alternative approach with its tradeoff.")
+    if level == "mastered":
+        return ("Keep it tight — they're fluent: a 1-line summary, 2-3 how_it_works "
+                "bullets, and complexity. Use [] / null for edge_cases and "
+                "alternative unless they genuinely matter here.")
+    # 'learning' (default band)
+    return ("Balanced: a summary, 3-5 how_it_works bullets, complexity, and the "
+            "key edge cases. Add an alternative only if it's instructive.")
 
 
 def step_range_for_level(level: str) -> tuple[int, int]:
@@ -136,7 +176,9 @@ def build_contract(cls: Classification, level: str, style: str, memory: str) -> 
     lo, hi = step_range_for_level(level)
     contract = (_CONTRACTS[cls.intent]
                 .replace("{min_steps}", str(lo))
-                .replace("{max_steps}", str(hi)))
+                .replace("{max_steps}", str(hi))
+                .replace("{explain_depth}",
+                         code_explain_depth(level, getattr(cls, "wants_explanation", False))))
     return identity + contract
 
 
@@ -180,11 +222,46 @@ def walkthrough_to_blocks(data: dict) -> list[dict]:
                 step.get("equations", step.get("equation"))),
             "visual": _validate_visual(step.get("visual")),
         })
-    return [{
+    block = {
         "type": "walkthrough",
         "steps": steps,
         "follow_ups": (data.get("follow_ups") or [])[:3],
-    }]
+    }
+    cp = _validate_checkpoint(data.get("checkpoint"), n_steps=len(steps))
+    if cp:
+        block["checkpoint"] = cp
+    return [block]
+
+
+def _validate_checkpoint(cp, n_steps: int) -> dict | None:
+    """Pass the checkpoint through ONLY if it is fully well-formed — a broken
+    quiz is worse than none (silently drop, the walkthrough stands alone).
+    Guarantees for the renderer: exactly 3 string options, a valid 0-based
+    correct index, after_step clamped inside [1, n_steps-1] so the check never
+    lands after the final step, and all text fields are non-empty strings."""
+    if not isinstance(cp, dict) or n_steps < 2:
+        return None
+    q = cp.get("question")
+    opts = cp.get("options")
+    correct = cp.get("correct")
+    if not isinstance(q, str) or not q.strip():
+        return None
+    if not isinstance(opts, list) or len(opts) != 3 or             not all(isinstance(o, str) and o.strip() for o in opts):
+        return None
+    if not isinstance(correct, int) or not 0 <= correct <= 2:
+        return None
+    try:
+        after = int(cp.get("after_step", 2))
+    except (TypeError, ValueError):
+        after = 2
+    after = max(1, min(after, n_steps - 1))
+    out = {"after_step": after, "question": q.strip(),
+           "options": [o.strip() for o in opts], "correct": correct}
+    for f in ("explain_right", "repair_hint", "repair_prompt"):
+        v = cp.get(f)
+        if isinstance(v, str) and v.strip():
+            out[f] = v.strip()
+    return out
 
 
 def _normalize_equations(eq) -> list[dict]:
@@ -442,6 +519,39 @@ def _practice_to_blocks(d: dict) -> list[dict]:
 
 def _code_to_blocks(d: dict) -> list[dict]:
     out = [{"type": "code", "language": d.get("language", ""), "content": d.get("code", "")}]
+    exp = d.get("explanation")
+    if isinstance(exp, dict):
+        # PRIMARY explainer: what it does + how it works (always shown).
+        summary = str(exp.get("summary") or "").strip()
+        how = exp.get("how_it_works") or []
+        if isinstance(how, str):
+            how = [how]
+        how_lines = "\n".join(f"• {str(h).strip()}" for h in how if str(h).strip())
+        body = "\n".join(x for x in (summary, how_lines) if x)
+        if body:
+            out.append({"type": "callout", "variant": "idea",
+                        "title": "How it works", "content": body})
+        # SECONDARY: complexity + edge cases folded into one compact note.
+        extras = []
+        if exp.get("complexity"):
+            extras.append(f"Complexity: {str(exp['complexity']).strip()}")
+        ec = exp.get("edge_cases") or []
+        if isinstance(ec, str):
+            ec = [ec]
+        ec = [str(e).strip() for e in ec if str(e).strip()]
+        if ec:
+            extras.append("Edge cases: " + "; ".join(ec))
+        if extras:
+            out.append({"type": "callout", "variant": "definition",
+                        "title": "Good to know", "content": "\n".join(extras)})
+        alt = exp.get("alternative")
+        if isinstance(alt, str) and alt.strip():
+            out.append({"type": "callout", "variant": "gotcha",
+                        "title": "Another approach", "content": alt.strip()})
+        # still offer a deeper, line-by-line pass for anyone who wants it.
+        out.append({"type": "_follow_ups", "items": ["Walk me through it line by line"]})
+        return out
+    # legacy shape (older model output): short 'why' + opt-in deep dive.
     if d.get("why"):
         out.append({"type": "callout", "variant": "idea", "title": "Why it works",
                     "content": d["why"]})
@@ -482,3 +592,33 @@ def _debug_to_blocks(d: dict) -> list[dict]:
         out.append({"type": "callout", "variant": "idea", "title": "Why",
                     "content": d["why"]})
     return out
+
+
+# ── GPT-plans / MiniMax-writes (the "gpt_scaffold" lane) ───────────────────
+SCAFFOLD_SYSTEM = """You are the PLANNING engine for a structured tutoring answer.
+Do NOT write the lesson — design it. Output ONE compact JSON object ONLY:
+{"steps":[{"title":"<=6 words","insight":"1 sentence — the load-bearing idea of this step","equation":null}],
+ "checkpoint":{"after_step":2,"question":"<=15 words","options":["a","b","c"],"correct":0,
+               "explain_right":"1 sentence","repair_hint":"1-2 sentences, DIFFERENT representation",
+               "repair_prompt":"one line to re-teach from the new angle"},
+ "follow_ups":["go deeper","compare","apply"]}
+Rules: 4-8 steps following problem -> insight -> mechanism -> real world -> remember.
+The per-step "insight" sentences are the entire value of this call — make each one
+precise and load-bearing. equation: plain text only (no LaTeX) or null.
+Checkpoint distractors must be REAL misconceptions. No prose outside the JSON."""
+
+
+def expansion_contract(scaffold_json: str, full_system: str) -> str:
+    """Wrap the LEARN contract so the writer model expands the planner's
+    scaffold instead of planning from scratch. The reasoning is locked in; the
+    writer adds explanation/takeaway/visual flesh around each given insight."""
+    return (
+        "A senior tutor already PLANNED this walkthrough — titles, the key "
+        "insight of every step, equations, the checkpoint, and follow-ups:\n\n"
+        f"SCAFFOLD:\n{scaffold_json}\n\n"
+        "EXPAND it into the FULL walkthrough JSON required by the contract "
+        "below. HARD RULES: keep the step ORDER, every step TITLE, every "
+        "equation, the checkpoint (verbatim), and the follow_ups EXACTLY as "
+        "given — your job is to write each step's explanation and takeaway "
+        "AROUND its given insight, and choose a fitting visual. Do not add, "
+        "drop, or reorder steps.\n\n" + full_system)

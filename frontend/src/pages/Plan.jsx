@@ -275,7 +275,7 @@ export default function Plan() {
                                 <li>Hands-on projects &amp; notebooks</li>
                                 <li>Progress tracking</li>
                             </ul>
-                            <button type="button" className="cta solid" onClick={() => selectPlan('course_combo')}>Choose DS + DSA</button>
+                            <button type="button" className="cta solid" onClick={() => selectPlan('course_ds_dsa')}>Choose DS + DSA</button>
                         </div>
 
                     </div>
@@ -367,7 +367,7 @@ export default function Plan() {
                         <div className="right">
                             <div className="price"><span className="cur">₹</span><span className="amt">4,999</span></div>
                             <div className="sub">one-time · 700 build credits + GST</div>
-                            <button type="button" className="cta" onClick={() => selectPlan('mira_pack_large')}>Buy the build pack</button>
+                            <button type="button" className="cta" onClick={() => selectPlan('build_pack_700')}>Buy the build pack</button>
                         </div>
                     </div>
                 </section>
@@ -387,7 +387,7 @@ export default function Plan() {
                             </div>
                             <div className="buy">
                                 <span className="p">₹399</span>
-                                <button type="button" onClick={() => selectPlan('mira_topup_questions')}>Add questions →</button>
+                                <button type="button" onClick={() => selectPlan('topup_questions_250')}>Add questions →</button>
                             </div>
                         </div>
                         <div className="topup">
@@ -397,7 +397,7 @@ export default function Plan() {
                             </div>
                             <div className="buy">
                                 <span className="p">₹699</span>
-                                <button type="button" onClick={() => selectPlan('mira_topup_credits')}>Add credits →</button>
+                                <button type="button" onClick={() => selectPlan('topup_credits_100')}>Add credits →</button>
                             </div>
                         </div>
                     </div>
@@ -415,3 +415,4 @@ export default function Plan() {
         </div>
     );
 }
+

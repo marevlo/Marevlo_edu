@@ -11,6 +11,7 @@ those are 'must-not-get-this-wrong' moments (and they're rare, so affordable).
 from __future__ import annotations
 
 import logging
+import os
 import time
 from dataclasses import dataclass, field
 
@@ -44,28 +45,83 @@ class Breaker:
 class Router:
     providers: dict[str, Provider]
     breakers: dict[str, Breaker] = field(default_factory=dict)
+    # lane-down alarm state (per process; an alert repeats at most every 30min)
+    _down_since: dict[str, float] = field(default_factory=dict)
+    _last_alert: dict[str, float] = field(default_factory=dict)
 
     def _breaker(self, name: str) -> Breaker:
         return self.breakers.setdefault(name, Breaker())
 
+    # ---------- lane-down alarm ----------
+    def _lane_result(self, name: str, ok: bool) -> None:
+        """Track per-lane health; when a lane has been failing longer than
+        MIRA_LANE_DOWN_ALERT_S (default 600s), emit a CRITICAL log line and an
+        optional webhook (MIRA_ALERT_WEBHOOK) — because a down lane silently
+        CHANGES THE BLENDED COST (gpt down = cheaper but dumber on dense turns;
+        minimax down = every routine turn now rides the expensive lane)."""
+        now = time.time()
+        if ok:
+            self._down_since.pop(name, None)
+            return
+        start = self._down_since.setdefault(name, now)
+        threshold = float(os.environ.get("MIRA_LANE_DOWN_ALERT_S", "600"))
+        if now - start < threshold:
+            return
+        last = self._last_alert.get(name)
+        if last is not None and now - last < 1800:
+            return  # throttle: one alert per lane per 30 minutes
+        self._last_alert[name] = now
+        msg = (f"LANE_DOWN lane={name} down_for={int(now - start)}s — failovers "
+               f"are absorbing this lane's traffic; blended cost has changed.")
+        log.critical(msg)
+        hook = os.environ.get("MIRA_ALERT_WEBHOOK", "")
+        if hook:
+            try:
+                import json as _json
+                import urllib.request as _rq
+                req = _rq.Request(hook, data=_json.dumps(
+                    {"text": msg, "lane": name,
+                     "down_seconds": int(now - start)}).encode(),
+                    headers={"Content-Type": "application/json"}, method="POST")
+                _rq.urlopen(req, timeout=3)
+            except Exception:
+                log.warning("lane-down webhook delivery failed", exc_info=True)
+
     # ---------- routing: pick the default lane ----------
     # Tiers: free / day / plus / pro  (no sonnet/opus in production routing)
     def pick_lane(self, tier: str, action: str, hard: bool,
-                  turns_used: int = 0, monthly_budget: int = 0) -> str:
-        # capability override: misconception correction always gets the strong model
+                  turns_used: int = 0, monthly_budget: int = 0,
+                  long_output: bool = False, escalate: bool = False,
+                  margin_blocked: bool = False) -> str:
+        """Route by REASONING DENSITY x ANSWER LENGTH, under two money guards.
+
+        Density (dense = `hard` prediction OR `escalate` evidence) decides
+        whether GPT's reasoning is worth paying for. Length decides HOW we pay:
+        dense + short answer -> "gpt" direct (diagnosis-priced, ~Rs.3-5);
+        dense + long answer  -> "gpt_scaffold" (GPT plans ~700 tokens, MiniMax
+        writes the prose — the Rs.13 GPT-walkthrough becomes ~Rs.4). GPT is a
+        reasoning engine, never a typewriter.
+
+        Guards: margin_blocked (the per-user margin ledger says this window
+        already spent its cost cap) is ABSOLUTE — it beats escalation and the
+        taper. The taper still slides predicted-hard turns to MiniMax as
+        monthly volume climbs, but demonstrated failure (escalate) bypasses it:
+        a user who just failed a checkpoint earned the premium retry."""
+        # capability override: must-not-get-this-wrong moments (rare, short)
         if action in ("misconception_correction", "research_stress_test"):
-            return "gpt"
+            return "minimax" if margin_blocked else "gpt"
         if action in ("grade", "scaffold_question"):
             return "qwen"
-        # free tier is qwen-only (rare minimax handled by capability override above)
         if tier == "free":
             return "qwen"
-        # paid tiers: MiniMax workhorse, GPT on hard turns — BUT the GPT share
-        # slides toward MiniMax as the user's monthly volume climbs (cost control,
-        # invisible to the user). Implemented in should_use_gpt().
-        if hard and self.should_use_gpt(tier, turns_used, monthly_budget):
-            return "gpt"
-        return "minimax"
+        dense = hard or escalate
+        if not dense or margin_blocked:
+            return "minimax"
+        if not escalate and not self.should_use_gpt(tier, turns_used, monthly_budget):
+            return "minimax"
+        if long_output and os.environ.get("MIRA_SCAFFOLD_MODE", "1") == "1":
+            return "gpt_scaffold"
+        return "gpt"
 
     @staticmethod
     def gpt_share(turns_used: int, low: int, high: int) -> float:
@@ -95,17 +151,29 @@ class Router:
     }
 
     def complete(self, lane: str, system: str, user: str, max_tokens: int = 1200) -> Completion:
-        """Try the lane; on breaker-open or failure, walk the failover chain."""
+        """Try the lane; on breaker-open or failure, walk the failover chain.
+
+        Issue #5: a total per-turn time budget (MIRA_TURN_BUDGET_S, default 45s)
+        bounds the WHOLE chain. Each provider call is already capped at
+        MIRA_PROVIDER_TIMEOUT_S (~18s); without a chain budget, 3 lanes + a
+        parse-retry could still hold a threadpool worker for minutes."""
+        import os as _os
+        budget_s = float(_os.environ.get("MIRA_TURN_BUDGET_S", "45"))
+        t_start = time.time()
         chain = self.FAILOVER.get(lane, [lane, "qwen"])
         last: Completion | None = None
         for name in chain:
             if name not in self.providers:
                 continue
+            if time.time() - t_start > budget_s:
+                log.warning("MIRA turn budget (%.0fs) exhausted before '%s'", budget_s, name)
+                break
             br = self._breaker(name)
             if br.is_open():
                 continue
             comp = self.providers[name].complete(system, user, max_tokens)
             br.record(comp.ok)
+            self._lane_result(name, comp.ok)
             last = comp
             if comp.ok:
                 return comp
@@ -126,9 +194,15 @@ class CacheEntry:
 @dataclass
 class ResponseCache:
     """Tiny in-memory semantic-ish cache for the demo. In prod: Redis L1 +
-    pgvector L2. Key here is (concept, depth, style) bucket."""
+    pgvector L2. Key here is (concept, depth, style) bucket.
+
+    Issue #12: bounded so it can't leak memory. When the store exceeds
+    MAX_ENTRIES, the least-recently-inserted/used entries are evicted. (In a
+    multi-worker deploy this is per-process; the production answer is a shared
+    Redis cache, but a bounded in-proc cache is correct and leak-free here.)"""
     store: dict[str, CacheEntry] = field(default_factory=dict)
     golden: dict[str, list[dict]] = field(default_factory=dict)  # ~200 hand-written floor
+    MAX_ENTRIES: int = 2000
 
     @staticmethod
     def key(concept: str, depth: str, style: str) -> str:
@@ -142,7 +216,17 @@ class ResponseCache:
         return None
 
     def put(self, concept: str, depth: str, style: str, blocks: list[dict]) -> None:
+        if len(self.store) >= self.MAX_ENTRIES and self.key(concept, depth, style) not in self.store:
+            self._evict()
         self.store[self.key(concept, depth, style)] = CacheEntry(blocks=blocks)
+
+    def _evict(self) -> None:
+        """Drop ~10% of entries, lowest-hit first (cheap approximation of LRU;
+        the dict preserves insertion order so ties break toward oldest)."""
+        n_drop = max(1, len(self.store) // 10)
+        victims = sorted(self.store.items(), key=lambda kv: kv[1].hits)[:n_drop]
+        for k, _ in victims:
+            self.store.pop(k, None)
 
     def golden_answer(self, concept: str) -> list[dict] | None:
         """The never-dead floor: zero model calls, human-written."""

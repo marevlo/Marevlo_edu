@@ -38,6 +38,12 @@ _USE_MOCK = os.environ.get("MIRA_REAL", "0") != "1"
 _registry = build_registry(use_mock=_USE_MOCK)
 _pipeline = ChatPipeline(router=Router(providers=_registry))
 
+import logging as _logging
+_logging.getLogger("mira.engine").warning(
+    "MIRA engine mode: %s (providers: %s)",
+    "MOCK — canned answers, dev/test only" if _USE_MOCK else "REAL",
+    ", ".join(sorted(_registry.keys())))
+
 EST_TOKENS = 3000
 
 
@@ -66,7 +72,8 @@ def _course_context(db: Session, user_id: int, course_id: str | None,
 def chat(db: Session, user_id: int, question: str,
          course_id: str | None = None, lesson_id: str | None = None,
          problem_id: str | None = None, page_context: str | None = None,
-         history: list[dict] | None = None) -> dict:
+         history: list[dict] | None = None,
+         document_id: int | None = None) -> dict:
     t0 = time.time()
     access: MiraAccess = resolve_access(db, user_id)
 
@@ -88,21 +95,60 @@ def chat(db: Session, user_id: int, question: str,
                 "meta": {"answer_format": "redirect",
                          "quota": quota.get_usage(db, access)}}
 
-    # pre-classify (cheap) for safety + build-credit gating before the model
+    # 4→FIRST. SAFETY gate — issue #11: this must run BEFORE intent
+    # classification, because classify_intent's LLM fallback would otherwise
+    # send unsafe text to a provider before any verdict exists. It also scans
+    # the client-supplied history and page_context, which are pasted into the
+    # model prompt and were previously an unchecked bypass channel.
+    # Document grounding (paper Q&A / course grounding share this path):
+    # retrieve BEFORE the safety gate so the doc excerpts are scanned as a
+    # prompt channel like history/page_context (issue #11 discipline).
+    doc_context = ""
+    doc_meta = None
+    if document_id is not None:
+        try:
+            from app.mira.services import document_service as _docs
+            _r = _docs.retrieve(db, question=question, doc_id=document_id,
+                                user_id=user_id)
+            if _r:
+                doc_context = _docs.grounding_block(_r)
+                doc_meta = _r["doc"]
+        except Exception:
+            # retrieval is an enhancement — its failure must never kill the turn
+            doc_context, doc_meta = "", None
+    # Course grounding rides the SAME retrieval substrate: if the learner is
+    # inside a course (and didn't pin an uploaded doc), pull the most relevant
+    # ingested lesson text. No-op until lessons are ingested via
+    # document_service.ingest_text(scope="course", ...).
+    if not doc_context and course_id:
+        try:
+            from app.mira.services import document_service as _docs
+            _r = _docs.retrieve(db, question=question, scope="course",
+                                owner_key=course_id, lesson_id=lesson_id)
+            if _r is None and lesson_id:
+                _r = _docs.retrieve(db, question=question, scope="course",
+                                    owner_key=course_id)
+            if _r:
+                doc_context = _docs.grounding_block(_r, source_label="course lesson")
+                doc_meta = _r["doc"]
+        except Exception:
+            pass
+    verdict = safety_mod.check_safety_all(question, history=history,
+                                          page_context=page_context,
+                                          doc_context=doc_context or None)
     clf_provider = _registry.get("qwen") or _registry.get("mock")
-    cls = classify_intent(question, provider=clf_provider)
-
-    # 4. SAFETY gate — before any model call
-    verdict = safety_mod.check_safety(question)
     if verdict.allowed and verdict.needs_llm_review and clf_provider is not None:
         verdict = safety_mod.llm_safety_check(question, clf_provider)
     if not verdict.allowed:
         quota.reconcile(access, EST_TOKENS, 0)  # refund
         return {"ok": True, "blocks": safety_mod.safety_block_blocks(verdict.reason),
-                "meta": {"intent": cls.intent.value, "answer_format": "refused_safety",
+                "meta": {"intent": "REFUSED", "answer_format": "refused_safety",
                          "served_from": "safety_gate", "quota": quota.get_usage(db, access)}}
 
-    # 5. BUILD-credit reservation BEFORE the model call (cost protection)
+    # 5. pre-classify (cheap) for build-credit gating — AFTER safety cleared.
+    cls = classify_intent(question, provider=clf_provider)
+
+    # BUILD-credit reservation BEFORE the model call (cost protection)
     build_reserved = False
     if cls.intent == Intent.BUILD and cls.in_core_domain:
         credit = quota.charge_build_credit(db, access, n=1)
@@ -122,6 +168,55 @@ def chat(db: Session, user_id: int, question: str,
     state = state_svc.load_state(db, user_id, access.plan)
     course_ctx = _course_context(db, user_id, course_id, lesson_id)
     ctx = TurnContext(monthly_turn_budget=access.token_limit // quota.TOKENS_PER_QUESTION)
+    # Issue #10: hand the already-computed classification to the pipeline so it
+    # doesn't classify a second time (saves a provider call and prevents the
+    # credit-gate vs answer-shape disagreement).
+    ctx.precomputed_cls = cls
+    # ── Router v2 inputs ──────────────────────────────────────────────────
+    # Escalate-on-evidence: a fail signal in the last 10 minutes (checkpoint
+    # miss, "explain differently", thumbs-down) means the cheap lane just
+    # demonstrably failed this learner — the next turn earns the premium
+    # retry, bypassing the taper (but never the margin floor).
+    try:
+        from datetime import datetime, timedelta
+        from sqlalchemy import select as _sel
+        from app.mira.models.turn_logs import MiraTurnSignal as _Sig
+        recent_fail = db.execute(_sel(_Sig.id).where(
+            _Sig.user_id == user_id,
+            _Sig.kind.in_(("checkpoint_fail", "explain_differently",
+                           "thumbs_down")),
+            _Sig.created_at >= datetime.utcnow() - timedelta(minutes=10),
+        ).limit(1)).first()
+        ctx.escalate = recent_fail is not None
+    except Exception:
+        ctx.escalate = False
+    # Margin ledger: this window's model spend vs this plan's revenue. Past
+    # the cap (MIRA_MARGIN_CAP, default 60% of revenue) every turn rides
+    # MiniMax — an absolute floor under the taper, so no single user's month
+    # can go margin-negative.
+    try:
+        import os as _os
+        from app.mira.services.turn_logger import window_cost as _wcost
+        _rev = {"plus": 799.0, "pro": 1499.0, "day": 99.0}.get(access.plan, 0.0)
+        if _rev > 0:
+            _cap = float(_os.environ.get("MIRA_MARGIN_CAP", "0.6"))
+            _since = access.period_start
+            if _since is None:
+                from datetime import datetime as _dt
+                _since = _dt.utcnow().replace(day=1, hour=0, minute=0,
+                                              second=0, microsecond=0)
+            ctx.margin_blocked = _wcost(db, user_id, _since) >= _cap * _rev
+        else:
+            ctx.margin_blocked = False
+    except Exception:
+        ctx.margin_blocked = False
+    # Issue #14: populate turns_used_this_period so the GPT cost-taper actually
+    # engages (it was always 0 → every hard turn went to GPT regardless of a
+    # heavy user's volume). Sourced from the live per-window question counter.
+    try:
+        ctx.turns_used_this_period = quota.questions_used(access)
+    except Exception:
+        ctx.turns_used_this_period = 0
     # attach course context if the engine TurnContext supports it
     for k, v in course_ctx.items():
         try:
@@ -142,6 +237,14 @@ def chat(db: Session, user_id: int, question: str,
         ctx.page_context = page_context
     except Exception:
         pass
+    # attach retrieved document grounding so the pipeline answers FROM the
+    # learner's material, with page citations, instead of from thin air.
+    if doc_context:
+        try:
+            ctx.doc_context = doc_context
+            ctx.doc_meta = doc_meta
+        except Exception:
+            pass
     # Inject a course-specific KnowledgeBase built from the course's concept
     # lattice (mira_concept_lattices). This is what makes runtime concept
     # matching use real Marevlo course concepts instead of the built-in 16.
@@ -159,14 +262,19 @@ def chat(db: Session, user_id: int, question: str,
             quota.credit_grant(db, user_id, 1, reason="refund")
         raise
 
-    if build_reserved and result.served_from in ("queued", "prose_fallback"):
+    # Issue #7: refund the reserved build credit whenever the turn did NOT
+    # produce a real answer — provider failure (queued), a broken parse
+    # (prose_fallback), or a redirect (a BUILD classified pre-pipeline that the
+    # pipeline then refused/redirected must not silently burn a paid credit).
+    if build_reserved and (result.served_from in ("queued", "prose_fallback")
+                           or result.answer_format == "redirect"):
         quota.credit_grant(db, user_id, 1, reason="refund")
         build_reserved = False
 
     # 7. reconcile quota fairly
     real_tokens = (result.in_tokens or 0) + (result.out_tokens or 0)
     if result.answer_format == "redirect":
-        charged = 150
+        charged = 0  # issue #7: a refusal/redirect is not an answer — never charge
     elif result.served_from == "cache":
         charged = 200
     elif result.served_from == "golden":
@@ -194,6 +302,26 @@ def chat(db: Session, user_id: int, question: str,
     if result.answer_format != "redirect":
         quota.commit_question(access)
 
+    if getattr(ctx, "escalate", False) and str(result.provider or "").startswith("gpt"):
+        from app.mira.services import turn_logger as _tl_esc
+        _tl_esc.record_signal(db, turn_id=request_id, user_id=user_id,
+                              kind="escalated", detail=result.provider)
+    # MIRA-1 phase 0: capture the (context, answer) pair + routing facts.
+    # Never blocks or breaks the turn (logger is failure-isolated).
+    from app.mira.services import turn_logger as _tlog
+    _tlog.log_turn(
+        db, turn_id=request_id, user_id=user_id, question=question,
+        history=history, page_context=page_context,
+        doc_context=doc_context or None, course_id=course_id,
+        lesson_id=lesson_id, level=getattr(state, "level", None) and str(state.level),
+        style=getattr(state, "style", None) and str(state.style),
+        intent=result.intent, concept=result.concept, lane=result.provider,
+        served_from=result.served_from,
+        parse_ok=result.served_from != "prose_fallback",
+        in_tokens=getattr(result, "in_tokens", 0),
+        out_tokens=getattr(result, "out_tokens", 0),
+        cost_inr=result.cost_inr or 0.0, latency_ms=result.latency_ms or 0,
+        blocks=result.blocks)
     return {"ok": True, "blocks": result.blocks,
             "meta": {"request_id": request_id, "intent": result.intent,
                      "answer_format": result.answer_format, "concept": result.concept,

@@ -35,13 +35,24 @@ _entitlements = EntitlementService()
 # MIRA plan → quota. The MIRA plan is granted by a MIRA-specific entitlement
 # (mira_pro / mira_plus), paid SEPARATELY from courses. No MIRA entitlement = free.
 PLAN_QUOTA = {
-    "free":  {"token_limit": 60_000,    "build_credit_limit": 0,   "window": "week"},
+    # Issue #13: the free quota key anchors to the calendar MONTH (free:%Y%m,
+    # see entitlement_key) — the window label and Redis TTL must agree with
+    # that, or resets are unpredictable and contradict the UI. Free is monthly.
+    "free":  {"token_limit": 60_000,    "build_credit_limit": 0,   "window": "month"},
     "plus":  {"token_limit": 2_000_000, "build_credit_limit": 50,  "window": "month"},
     "pro":   {"token_limit": 5_000_000, "build_credit_limit": 150, "window": "month"},
+    # Day pass (₹99): 40 questions x 4k tokens, expires with its 24h entitlement.
+    "day":   {"token_limit": 160_000,   "build_credit_limit": 0,   "window": "day"},
 }
 
 # Entitlement products that grant a MIRA plan (paid separately from courses).
-MIRA_PLAN_PRODUCTS = {"mira_pro": "pro", "mira_plus": "plus"}
+MIRA_PLAN_PRODUCTS = {
+    "mira_pro": "pro", "mira_pro_year": "pro",
+    "mira_plus": "plus", "mira_plus_year": "plus",
+    "mira_day": "day",
+}
+# precedence when a user somehow holds several MIRA products at once
+_PLAN_PRECEDENCE = ["mira_pro", "mira_pro_year", "mira_plus", "mira_plus_year", "mira_day"]
 # Course products — they unlock Marevlo courses and feed course context to MIRA,
 # but do NOT grant a MIRA plan.
 COURSE_PRODUCTS = {"all_access", "dsa", "courses"}
@@ -116,12 +127,12 @@ def resolve_access(db: Session, user_id: int) -> MiraAccess:
     period_start = None
     period_end = None
     mira_ent = None
-    if any(r.product == "mira_pro" for r in active):
-        mira_ent = next(r for r in active if r.product == "mira_pro")
-        plan = "pro"
-    elif any(r.product == "mira_plus" for r in active):
-        mira_ent = next(r for r in active if r.product == "mira_plus")
-        plan = "plus"
+    for prod in _PLAN_PRECEDENCE:
+        hit = next((r for r in active if r.product == prod), None)
+        if hit is not None:
+            mira_ent = hit
+            plan = MIRA_PLAN_PRODUCTS[prod]
+            break
     if mira_ent is not None:
         ent_id = mira_ent.id
         period_start = mira_ent.created_at.isoformat() if mira_ent.created_at else None
@@ -137,13 +148,30 @@ def resolve_access(db: Session, user_id: int) -> MiraAccess:
     course_products = sorted({r.product for r in active if r.product in COURSE_PRODUCTS})
     course_ids = _enrolled_course_ids(db, user_id)
 
-    return MiraAccess(
+    access = MiraAccess(
         user_id=user_id, plan=plan, mira_enabled=mira_enabled,
         token_limit=quota["token_limit"], build_credit_limit=quota["build_credit_limit"],
         window=quota["window"], entitlement_id=ent_id,
         period_start=period_start, period_end=period_end,
         course_ids=course_ids, course_products=course_products,
     )
+    # "+250 questions" top-ups extend THIS window's allowance. Durable rows,
+    # idempotent per payment ref; the Lua quota gate sees the raised limit
+    # because it reads access.token_limit.
+    try:
+        from sqlalchemy import func as _f
+        from app.mira.models.topups import MiraQuestionTopup
+        extra = db.execute(
+            select(_f.coalesce(_f.sum(MiraQuestionTopup.tokens), 0)).where(
+                MiraQuestionTopup.user_id == user_id,
+                MiraQuestionTopup.window_key == access.entitlement_key(),
+            )
+        ).scalar_one()
+        if extra:
+            access.token_limit += int(extra)
+    except Exception:
+        pass  # topups are an enhancement; their absence never blocks access
+    return access
 
 
 def _enrolled_course_ids(db: Session, user_id: int) -> list[str]:

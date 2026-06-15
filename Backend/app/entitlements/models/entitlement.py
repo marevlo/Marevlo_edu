@@ -47,7 +47,8 @@ from app.core.database import Base
 # Products a user can be entitled to. Course products unlock Marevlo courses;
 # MIRA products unlock the MIRA tutor (paid SEPARATELY from courses). "all_access"
 # is a COURSE superset (all courses) — it does NOT include MIRA.
-PRODUCTS = ("all_access", "dsa", "courses", "mira_plus", "mira_pro", "mira_day")
+PRODUCTS = ("all_access", "dsa", "courses", "mira_plus", "mira_pro", "mira_day",
+            "mira_plus_year", "mira_pro_year")
 SOURCES = ("paid", "comped", "trial", "free")
 STATUSES = ("active", "revoked", "expired")
 
@@ -98,7 +99,8 @@ class Entitlement(Base):
         Index("idx_entitlements_user_status", "user_id", "status"),
         Index("idx_entitlements_expires", "expires_at"),
         CheckConstraint(
-            "product IN ('all_access','dsa','courses','mira_plus','mira_pro','mira_day')",
+            "product IN ('all_access','dsa','courses','mira_plus','mira_pro',"
+            "'mira_day','mira_plus_year','mira_pro_year')",
             name="ck_entitlements_product",
         ),
         CheckConstraint(

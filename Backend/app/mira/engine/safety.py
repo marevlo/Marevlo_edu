@@ -140,3 +140,41 @@ def safety_block_blocks(reason: str) -> list[dict]:
     return [{"type": "callout", "variant": "warning",
              "title": "I can't help with that",
              "content": reason}]
+
+
+def check_safety_all(question: str, history: list[dict] | None = None,
+                     page_context: str | None = None,
+                     doc_context: str | None = None) -> SafetyVerdict:
+    """Issue #11: the safety gate must cover EVERY channel that reaches the
+    model prompt, not just the current question. The client-supplied history
+    (including forgeable 'mira'-role turns) and the page context are pasted
+    verbatim into the prompt — blocked content moved into a history entry
+    previously sailed straight through.
+
+    Policy: the QUESTION's verdict carries its needs_llm_review flag (the
+    caller may run the LLM second layer on it). History/page-context entries
+    are checked with the rules gate only — a HARD rule hit in any of them
+    blocks the turn; soft hits there do not (they are context, not the ask)."""
+    v = check_safety(question)
+    if not v.allowed:
+        return v
+    extra_texts: list[str] = []
+    for m in (history or []):
+        c = (m or {}).get("content") if isinstance(m, dict) else None
+        if isinstance(c, str) and c.strip():
+            extra_texts.append(c)
+    if isinstance(page_context, str) and page_context.strip():
+        extra_texts.append(page_context)
+    # uploaded-document excerpts are a prompt channel too — a hard-block
+    # phrase inside the PDF must not ride into the model via retrieval.
+    if isinstance(doc_context, str) and doc_context.strip():
+        extra_texts.append(doc_context)
+    for t in extra_texts:
+        hv = check_safety(t)
+        if not hv.allowed:
+            return SafetyVerdict(False,
+                "Part of this conversation's context contains a request to "
+                "build something for attacking, stealing, or harming systems. "
+                "I can teach the defensive and educational side, but I can't "
+                "continue with that thread. Start a fresh question and I'll help.")
+    return v

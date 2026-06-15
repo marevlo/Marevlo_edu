@@ -44,3 +44,7 @@ from app.mira.models.mira import (  # noqa: F401
     MiraUserState,
 )
 from app.mira.models.db_models import MiraConceptLattice  # noqa: F401
+from app.mira.models.documents import MiraDocChunk, MiraDocument  # noqa: F401
+from app.mira.models.topups import MiraQuestionTopup  # noqa: F401
+from app.mira.models.turn_logs import MiraTurnLog, MiraTurnSignal  # noqa: F401
+

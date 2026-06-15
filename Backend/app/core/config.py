@@ -10,6 +10,7 @@ ECS task definition.
 from __future__ import annotations
 
 from functools import lru_cache
+from pathlib import Path
 from typing import List, Literal, Optional
 
 from pydantic import Field, field_validator
@@ -17,13 +18,14 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 Environment = Literal["dev", "test", "staging", "prod"]
+ROOT_ENV_FILE = Path(__file__).resolve().parents[3] / ".env"
 
 
 class Settings(BaseSettings):
     """All runtime configuration. Validated on first access."""
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=str(ROOT_ENV_FILE),
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore",
@@ -115,6 +117,32 @@ class Settings(BaseSettings):
     RATE_LIMIT_ENABLED: bool = True
     TRUSTED_PROXIES: str = ""  # comma-separated CIDRs of trusted proxies
 
+    # ── MIRA (AI tutor) ──────────────────────────────────────────────────
+    # MIRA_REAL="1" → real model providers; anything else → mock engine.
+    # Mock is acceptable ONLY in dev/test; validate_for_env() refuses to boot
+    # staging/prod in mock mode (issue #3: prod silently served canned answers).
+    MIRA_REAL: str = "0"
+    # /mira/chat rate limit (slowapi syntax), the most expensive endpoint in
+    # the app (issue #2). Override via env without a deploy.
+    MIRA_CHAT_RATE_LIMIT: str = "20/minute"
+
+    # ── MIRA documents (paper Q&A + course grounding) ────────────────────
+    # Per-plan uploaded-document limits; size/page caps bound ingest cost
+    # (ingest is free to the user — the chat turn that uses the doc charges).
+    MIRA_DOC_LIMIT_FREE: int = 1
+    MIRA_DOC_LIMIT_PLUS: int = 5
+    MIRA_DOC_LIMIT_PRO: int = 20
+    MIRA_DOC_MAX_MB: float = 10.0
+    MIRA_DOC_MAX_PAGES: int = 100
+    MIRA_DOC_UPLOAD_RATE_LIMIT: str = "10/hour"
+
+    # ── Billing / PayU ───────────────────────────────────────────────────
+    # Merchant key + salt for verifying PayU payment-success webhooks. Empty in
+    # dev; in staging/prod they come from Secrets Manager. The webhook refuses
+    # to fulfil if the salt is unset (no salt = can't verify = don't grant).
+    PAYU_MERCHANT_KEY: str = ""
+    PAYU_MERCHANT_SALT: str = ""
+
     @property
     def trusted_proxy_list(self) -> List[str]:
         return [p.strip() for p in self.TRUSTED_PROXIES.split(",") if p.strip()]
@@ -134,6 +162,19 @@ class Settings(BaseSettings):
     SENTRY_TRACES_SAMPLE_RATE: float = 0.05
 
     # ── Validators ───────────────────────────────────────────────────────
+    @field_validator("DEBUG", mode="before")
+    @classmethod
+    def _normalize_debug(cls, v):
+        # Some local shells/toolchains export DEBUG=release; treat that as off
+        # instead of failing settings initialization for CLI tasks like Alembic.
+        if isinstance(v, str):
+            normalized = v.strip().lower()
+            if normalized in {"release", "prod", "production"}:
+                return False
+            if normalized in {"debug", "development", "dev"}:
+                return True
+        return v
+
     @field_validator("JWT_SECRET")
     @classmethod
     def _validate_jwt_secret(cls, v: str, info) -> str:
@@ -160,6 +201,13 @@ class Settings(BaseSettings):
                 raise RuntimeError(f"DB_ECHO must be False in {self.ENV}")
             if not self.S3_BUCKET:
                 raise RuntimeError(f"S3_BUCKET must be set in {self.ENV}")
+            if self.MIRA_REAL != "1":
+                raise RuntimeError(
+                    f"MIRA_REAL must be '1' in {self.ENV} — refusing to boot: "
+                    "the MIRA engine would silently serve MOCK answers to real "
+                    "users. Set MIRA_REAL=1 (and the provider API keys) in the "
+                    "task environment."
+                )
 
     @property
     def is_prod(self) -> bool:

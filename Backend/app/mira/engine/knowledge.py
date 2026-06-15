@@ -44,8 +44,24 @@ class KnowledgeBase:
       DOMAIN_THRESHOLD  — below this top-similarity, the question is OFF-DOMAIN
                           (reject politely). This is the open-world guard.
       Matching always returns the argmax concept above the domain threshold.
+
+    Issue #17: 0.28 was calibrated against the LOCAL HASH embedder. A real
+    embedder (OpenAI text-embedding-3-small, bge/e5) has a very different
+    similarity distribution, so this MUST be retuned once real embeddings are
+    enabled — otherwise the guard either accepts everything or rejects valid
+    questions. The value is env-overridable (MIRA_DOMAIN_THRESHOLD) so it can
+    be retuned without a deploy.
+    TODO(eval): when EMBED_BACKEND != local, run the domain eval set and set
+    MIRA_DOMAIN_THRESHOLD from the in/out-of-domain separation point. Do NOT
+    rely on the 0.28 default with a real backend.
     """
-    DOMAIN_THRESHOLD = float(os.environ.get("MIRA_DOMAIN_THRESHOLD", "0.28"))
+    DOMAIN_THRESHOLD = float(os.environ.get(
+        "MIRA_DOMAIN_THRESHOLD",
+        # default depends on the active embedder: the hash embedder needs the
+        # historically-calibrated 0.28; a real backend gets a conservative
+        # placeholder that the eval above must replace.
+        "0.28" if os.environ.get("EMBED_BACKEND", "").lower() in ("", "local")
+        else "0.35"))
 
     def __init__(self, embedder: Embedder | None = None, concepts_path: str | None = None,
                  entries: list[dict] | None = None):
@@ -130,16 +146,39 @@ class KnowledgeBase:
                 id=cid, domain=domain, aliases=aliases, prereqs=prereqs)
 
     def _embed_all(self) -> None:
-        """Embed each concept once. We embed the concept's aliases joined — that
-        gives a rich centroid of how the concept is actually phrased by users.
-        In production these vectors are persisted (pgvector), not recomputed."""
-        for c in self.concepts.values():
-            text = c.id.replace("_", " ") + " " + " ".join(c.aliases)
-            c.embedding = self.embedder.embed(text)
+        """Embed each concept once, in ONE batched call.
+
+        Issue #6: the old per-concept loop made 115 serial HTTP calls with a
+        real embedder (30-60s first request), and any failure propagated as a
+        raw 500. Now: one embed_batch call; on failure, concepts keep empty
+        embeddings and match() degrades to 'general' instead of crashing."""
+        items = list(self.concepts.values())
+        texts = [c.id.replace("_", " ") + " " + " ".join(c.aliases) for c in items]
+        try:
+            vecs = self.embedder.embed_batch(texts)
+            for c, v in zip(items, vecs):
+                c.embedding = v
+        except Exception:
+            import logging
+            logging.getLogger("mira.kb").exception(
+                "concept embedding failed (%s backend) — KB will match as "
+                "'general' until embeddings succeed", self.embedder.name)
 
     def match(self, question: str) -> MatchResult:
-        """Embed the question, return the closest concept + whether it's in-domain."""
-        q = self.embedder.embed(question)
+        """Embed the question, return the closest concept + whether it's in-domain.
+
+        Issue #6: an embedding-provider failure (rate limit, outage, bad key)
+        must never propagate as a raw 500 — degrade to the open 'general'
+        concept; the intent classifier still owns the domain decision."""
+        try:
+            q = self.embedder.embed(question)
+        except Exception:
+            import logging
+            logging.getLogger("mira.kb").warning(
+                "question embedding failed (%s backend) — degrading to "
+                "concept='general'", self.embedder.name)
+            return MatchResult(concept_id="general", score=0.0,
+                               in_domain=False, domain="none")
         best_id, best_score = "general", -1.0
         for c in self.concepts.values():
             s = cosine(q, c.embedding)
@@ -180,14 +219,22 @@ def get_kb() -> KnowledgeBase:
 # Per-course KB cache. Each course's concept lattice (from mira_concept_lattices)
 # is loaded once and reused. This is what makes MIRA actually use Marevlo course
 # concepts at runtime instead of the built-in fallback.
-_COURSE_KB_CACHE: dict[str, KnowledgeBase] = {}
+# Issue #12: bounded (each entry holds a full embedding set). Oldest course is
+# evicted past the cap; re-ingestion still calls clear_course_kb_cache().
+_COURSE_KB_CACHE: "OrderedDict[str, KnowledgeBase]" = None  # set below
+_COURSE_KB_MAX = int(os.environ.get("MIRA_COURSE_KB_CACHE_MAX", "32"))
 
 
 def get_course_kb(db, course_id: str) -> KnowledgeBase:
     """Build (and cache) a KnowledgeBase from the concept lattices stored for
     `course_id`. Falls back to the global built-in KB if the course has no
     lattices yet (e.g. before ingestion has run)."""
+    global _COURSE_KB_CACHE
+    if _COURSE_KB_CACHE is None:
+        from collections import OrderedDict
+        _COURSE_KB_CACHE = OrderedDict()
     if course_id in _COURSE_KB_CACHE:
+        _COURSE_KB_CACHE.move_to_end(course_id)  # mark recently used
         return _COURSE_KB_CACHE[course_id]
     entries: list[dict] = []
     try:
@@ -208,9 +255,12 @@ def get_course_kb(db, course_id: str) -> KnowledgeBase:
         return get_kb()
     kb = KnowledgeBase(entries=entries)
     _COURSE_KB_CACHE[course_id] = kb
+    while len(_COURSE_KB_CACHE) > _COURSE_KB_MAX:
+        _COURSE_KB_CACHE.popitem(last=False)  # drop least-recently-used
     return kb
 
 
 def clear_course_kb_cache() -> None:
     """Call after re-ingesting a course so the new lattice is picked up."""
-    _COURSE_KB_CACHE.clear()
+    if _COURSE_KB_CACHE is not None:
+        _COURSE_KB_CACHE.clear()

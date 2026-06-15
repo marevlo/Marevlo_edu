@@ -22,6 +22,9 @@ class User(Base):
         String(128), unique=True, index=True, nullable=True
     )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    # DPDP: when true, this user's turns are excluded from training exports.
+    training_opt_out: Mapped[bool] = mapped_column(Boolean, default=False,
+                                                   nullable=False)
     is_admin: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default="false", nullable=False
     )

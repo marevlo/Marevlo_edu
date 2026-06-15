@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.mira.engine.cognitive import UserState
@@ -39,11 +40,25 @@ def save_state(db: Session, user_id: int, state: UserState) -> None:
         row = MiraUserState(user_id=user_id, state=blob,
                             preferred_style=style, turns=1)
         db.add(row)
+        try:
+            db.commit()
+        except IntegrityError:
+            # Issue #9: two concurrent first-turns both saw no row and both
+            # INSERTed → PK violation → 500. Re-read the winner's row and apply
+            # this turn's state on top (last-write-wins is acceptable here —
+            # cognitive state is advisory, not money).
+            db.rollback()
+            row = db.get(MiraUserState, user_id)
+            if row is not None:
+                row.state = blob
+                row.preferred_style = style
+                row.turns = (row.turns or 0) + 1
+                db.commit()
     else:
         row.state = blob
         row.preferred_style = style
         row.turns = (row.turns or 0) + 1
-    db.commit()
+        db.commit()
 
 
 def log_usage(db: Session, user_id: int, **fields) -> None:
